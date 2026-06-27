@@ -17,17 +17,47 @@ Item {
 
     onSourceChanged: {
         player.stop();
-        if (source.length > 0)
+        if (source.length > 0) {
+            watchdog.restart();
             player.play();
+        } else {
+            watchdog.stop();
+        }
     }
+
+    // Ensure the GStreamer pipeline is torn down when the Loader deactivates or
+    // the detail page is popped — otherwise it can keep buffering in background.
+    Component.onDestruction: player.stop()
 
     MediaPlayer {
         id: player
         source: root.source
         autoPlay: true
         onError: {
+            watchdog.stop();
             if (root.fallbackUrl.length > 0)
                 Qt.openUrlExternally(root.fallbackUrl);
+        }
+        // Stop the watchdog once playback actually starts / buffers.
+        onPlaybackStateChanged: if (playbackState === MediaPlayer.PlayingState) watchdog.stop()
+        onStatusChanged: if (status === MediaPlayer.Buffered) watchdog.stop()
+    }
+
+    // Watchdog for unreachable files (e.g. SEREY .mov returning 504): if nothing
+    // is playing/buffered after a few seconds, stop and hand off to the browser
+    // instead of leaving the UI frozen on a spinner.
+    Timer {
+        id: watchdog
+        interval: 6000
+        repeat: false
+        onTriggered: {
+            if (player.playbackState !== MediaPlayer.PlayingState
+                && player.status !== MediaPlayer.Buffered
+                && player.status !== MediaPlayer.EndOfMedia) {
+                player.stop();
+                if (root.fallbackUrl.length > 0)
+                    Qt.openUrlExternally(root.fallbackUrl);
+            }
         }
     }
 

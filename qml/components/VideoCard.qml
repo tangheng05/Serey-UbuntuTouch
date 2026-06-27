@@ -1,30 +1,19 @@
 import QtQuick 2.7
-import QtQuick.Layouts 1.3
+import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Video row (serey-ubutu VideoCard style): 16:9 rounded thumbnail with a
- * bottom-right duration badge, then an avatar + 2-line title + "author · N
- * comments" meta. Emits clicked(). Expects a view-model from Mappers.toVideo().
- *
- * Outer stack is a plain Column (not ColumnLayout): sizing the card from an
- * anchored Layout's implicitHeight produces a binding loop.
- */
 AbstractButton {
     id: root
     property var video: ({})
-    // Guard: the delegate may rebind `video` to undefined during model churn.
     readonly property var v: video ? video : ({})
 
-    width: parent ? parent.width : units.gu(40)
-    implicitHeight: column.height + Style.spacingM * 2
-    height: implicitHeight
+    signal authorClicked()
+    signal moreClicked()
 
-    Rectangle {
-        anchors.fill: parent
-        color: root.pressed ? Style.pressed : "transparent"
-    }
+    width: parent ? parent.width : units.gu(40)
+    implicitHeight: column.height + Style.spacingM + units.dp(1)
+    height: implicitHeight
 
     Column {
         id: column
@@ -32,117 +21,133 @@ AbstractButton {
             left: parent.left
             right: parent.right
             top: parent.top
-            margins: Style.spacingM
+            leftMargin: Style.spacingM
+            rightMargin: Style.spacingM
+            topMargin: Style.spacingM
         }
         spacing: Style.spacingS
 
-        // Thumbnail 16:9
+        // Thumbnail — large rounded, no play overlay
         Item {
             width: parent.width
-            height: width * 9 / 16
+            height: width * 0.56
 
             Rectangle {
+                id: thumbBg
                 anchors.fill: parent
-                radius: Style.cardRadius
-                color: Style.lightGray
-                clip: true
-                Image {
-                    anchors.fill: parent
-                    source: v.thumbnail || ""
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    Behavior on opacity { NumberAnimation { duration: 200 } }
-                    opacity: status === Image.Ready ? 1.0 : 0.0
-                }
+                radius: units.dp(12)
+                color: Style.iconBackground
             }
 
-            // Play affordance
-            Rectangle {
-                anchors.centerIn: parent
-                width: units.gu(5.5); height: width
-                radius: width / 2
-                color: Qt.rgba(0, 0, 0, 0.5)
-                Icon {
-                    anchors.centerIn: parent
-                    width: units.gu(3); height: width
-                    name: "media-playback-start"
-                    color: Style.textOnBrand
-                }
+            Image {
+                id: thumbImg
+                anchors.fill: parent
+                source: v.thumbnail || ""
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                sourceSize.width: parent.width * 2
+                visible: false
+                Behavior on opacity { NumberAnimation { duration: 200 } }
+                opacity: status === Image.Ready ? 1.0 : 0.0
             }
 
-            // Duration badge
             Rectangle {
-                visible: (v.duration || "") !== "" && v.duration !== "0"
-                anchors { right: parent.right; bottom: parent.bottom; margins: Style.spacingS }
-                width: durLabel.width + Style.spacingS
-                height: units.gu(2.5)
-                radius: Style.durationBadgeRadius
-                color: Qt.rgba(0, 0, 0, 0.8)
-                Label {
-                    id: durLabel
-                    anchors.centerIn: parent
-                    text: v.duration || ""
-                    font.pixelSize: Style.fontXSmall
-                    font.weight: Font.DemiBold
-                    color: Style.textOnBrand
-                }
+                id: thumbMask
+                anchors.fill: parent
+                radius: units.dp(12)
+                visible: false
+            }
+
+            OpacityMask {
+                anchors.fill: parent
+                source: thumbImg
+                maskSource: thumbMask
+                opacity: thumbImg.opacity
             }
         }
 
-        // Info: avatar + title + meta
+        // Info: avatar + title/author + "•••" button
         Row {
             width: parent.width
             spacing: Style.spacingS
 
-            Rectangle {
+            Item {
                 width: units.gu(4.5); height: width
-                radius: width / 2
-                color: Style.iconBackground
-                clip: true
-                Image {
+                anchors.top: parent.top
+
+                Rectangle {
                     anchors.fill: parent
-                    anchors.margins: units.dp(1)
+                    radius: width / 2
+                    color: Style.avatarTint(v.author || "")
+                    visible: (v.authorImage || "") === ""
+
+                    Label {
+                        anchors.centerIn: parent
+                        text: (v.author || "?").charAt(0).toUpperCase()
+                        font.pixelSize: Style.fontMedium
+                        font.bold: true
+                        color: Style.brand
+                    }
+                }
+
+                CircleImage {
+                    anchors.fill: parent
                     source: v.authorImage || ""
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
+                    decode: units.gu(9)
                     visible: (v.authorImage || "") !== ""
                 }
-                Icon {
-                    anchors.centerIn: parent
-                    width: units.gu(2.5); height: width
-                    name: "contact"
-                    color: Style.textSecondary
-                    visible: (v.authorImage || "") === ""
-                }
+
+                MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
             }
 
             Column {
-                width: parent.width - units.gu(4.5) - Style.spacingS
+                width: parent.width - units.gu(4.5) - Style.spacingS - moreBtn.width - Style.spacingS
                 spacing: units.dp(2)
+
                 Label {
                     width: parent.width
                     text: v.title || ""
                     font.pixelSize: Style.fontRegular
                     font.weight: Font.DemiBold
                     font.family: Style.fontFamily
-                    color: Style.textTitle
+                    color: Style.textPrimary
                     wrapMode: Text.WordWrap
                     maximumLineCount: 2
                     elide: Text.ElideRight
                 }
                 Label {
                     width: parent.width
-                    text: (v.comments || 0) > 0
-                        ? (v.author || "") + "  ·  " + (v.comments || 0) + " " + i18n.tr("comments")
-                        : (v.author || "")
+                    text: v.author || ""
                     font.pixelSize: Style.fontSmall
                     color: Style.textSecondary
                     elide: Text.ElideRight
                 }
             }
+
+            AbstractButton {
+                id: moreBtn
+                anchors.top: parent.top
+                width: units.gu(3.5); height: units.gu(3.5)
+                onClicked: root.moreClicked()
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: units.dp(3)
+                    Repeater {
+                        model: 3
+                        delegate: Rectangle {
+                            width: units.dp(4); height: units.dp(4)
+                            radius: width / 2
+                            color: Style.textSecondary
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+                    }
+                }
+            }
         }
     }
 
+    // Divider between cards
     Rectangle {
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: units.dp(1)

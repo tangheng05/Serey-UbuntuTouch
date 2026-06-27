@@ -2,11 +2,13 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
+import "../components"
 import "../services/AccountService.js" as AccountService
 
 /*
  * Username/password login. On success stores the JWT in Session and pops back
- * to Settings (which then loads the profile).
+ * to Settings (which then loads the profile). Styled with the app's shared
+ * design tokens (logo hero, branded FormField inputs, PrimaryButton).
  */
 Page {
     id: page
@@ -17,6 +19,8 @@ Page {
     header: PageHeader {
         title: i18n.tr("Log in")
     }
+
+    Component.onCompleted: usernameField.input.forceActiveFocus()
 
     function submit() {
         if (busy) return;
@@ -30,6 +34,9 @@ Page {
             function (auth) {
                 busy = false;
                 Session.setAuth(auth.token, usernameField.text);
+                AccountService.profile(Config.baseUrl, usernameField.text, auth.token,
+                    function (user) { Session.avatarUrl = user.profileUrl; },
+                    function (err) { /* keep letter-fallback avatar */ });
                 page.pageStack.pop();
             },
             function (err) {
@@ -38,7 +45,7 @@ Page {
             });
     }
 
-    Flickable {
+    KeyboardAwareFlickable {
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         contentWidth: width
         contentHeight: form.height + Style.spacingL * 2
@@ -51,60 +58,85 @@ Page {
             y: Style.spacingL
             spacing: Style.spacingM
 
-            Label {
-                width: parent.width
-                text: i18n.tr("Sign in with your Serey account")
-                textSize: Label.Large
-                font.weight: Font.DemiBold
-                wrapMode: Text.WordWrap
+            // Logo hero
+            Image {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: units.gu(9); height: width
+                source: Qt.resolvedUrl("../../assets/serey-logo.png")
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
             }
 
-            TextField {
+            Column {
+                width: parent.width
+                spacing: Style.spacingXs
+                Label {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: i18n.tr("Welcome back")
+                    font.pixelSize: Style.fontTitle
+                    font.weight: Font.DemiBold
+                    font.family: Style.fontFamily
+                    color: Style.textTitle
+                }
+                Label {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: i18n.tr("Sign in to your Serey account")
+                    font.pixelSize: Style.fontRegular
+                    font.family: Style.fontFamily
+                    color: Style.textSecondary
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            Item { width: 1; height: Style.spacingXs }
+
+            FormField {
                 id: usernameField
                 width: parent.width
-                placeholderText: i18n.tr("Username")
+                placeholder: i18n.tr("Username")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
-                onAccepted: passwordField.forceActiveFocus()
+                onAccepted: passwordField.input.forceActiveFocus()
             }
 
-            TextField {
+            FormField {
                 id: passwordField
                 width: parent.width
-                placeholderText: i18n.tr("Password")
+                placeholder: i18n.tr("Password")
                 echoMode: TextInput.Password
                 onAccepted: page.submit()
             }
 
             Label {
                 width: parent.width
+                font.family: Style.fontFamily
+                font.pixelSize: Style.fontSmall
                 text: page.errorMsg
                 color: Style.danger
                 wrapMode: Text.WordWrap
                 visible: text.length > 0
             }
 
-            Button {
+            PrimaryButton {
                 width: parent.width
                 text: page.busy ? i18n.tr("Signing in…") : i18n.tr("Log in")
-                color: Style.brand
-                enabled: !page.busy
+                busy: page.busy
                 onClicked: page.submit()
             }
 
-            ActivityIndicator {
-                anchors.horizontalCenter: parent.horizontalCenter
-                running: page.busy
+            Item { width: 1; height: Style.spacingXs }
+
+            LinkButton {
+                width: parent.width
+                label: i18n.tr("Forgot password?")
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ForgotPasswordPage.qml"))
             }
 
-            Label {
+            LinkButton {
                 width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                textSize: Label.Small
-                color: Style.textSecondary
-                wrapMode: Text.WordWrap
-                linkColor: Style.brand
-                text: i18n.tr("Don't have an account? <a href='https://signup.serey.io'>Sign up at serey.io</a>")
-                onLinkActivated: Qt.openUrlExternally(link)
+                label: i18n.tr("Sign up")
+                onClicked: page.pageStack.push(Qt.resolvedUrl("CreateAccountPage.qml"))
             }
         }
     }

@@ -9,17 +9,25 @@ import "../Theme"
 Item {
     id: root
     property string message: ""
+    // Number of skeleton "cards" to render — 3 for a feed, 1 for a detail page.
+    property int count: 3
+    // Detail pages (PostDetailPage, GalleryDetailPage) show one full-bleed
+    // square cover, matching their real layout, instead of the feed's inset
+    // ~16:9 thumbnail.
+    property bool fullBleedCover: false
+    property real coverAspect: fullBleedCover ? 1.0 : 0.56
 
     Column {
         anchors { left: parent.left; right: parent.right; top: parent.top }
         spacing: 0
 
         Repeater {
-            model: 3
+            model: root.count
             delegate: Column {
                 width: root.width
                 spacing: Style.spacingS
-                topPadding: Style.spacingM
+
+                Item { width: 1; height: Style.spacingM }
 
                 // Header: avatar + two lines
                 Row {
@@ -36,10 +44,10 @@ Item {
 
                 // Cover image block
                 SkeletonRect {
-                    x: Style.spacingM
-                    width: root.width - Style.spacingM * 2
-                    height: (root.width - Style.spacingM * 2) * 0.56
-                    radius: Style.thumbRadius
+                    x: root.fullBleedCover ? 0 : Style.spacingM
+                    width: root.fullBleedCover ? root.width : root.width - Style.spacingM * 2
+                    height: width * root.coverAspect
+                    radius: root.fullBleedCover ? 0 : Style.thumbRadius
                 }
 
                 // Action line

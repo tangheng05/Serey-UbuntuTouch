@@ -9,9 +9,9 @@
  */
 
 function listVideos(baseUrl, params, token, onOk, onErr) {
-    Http.get(baseUrl, "/video-component/list-all-videos-by-author", params, token, function (data) {
-        var videos = (data.data || []).map(M.toVideo);
-        onOk(videos);
+    return Http.get(baseUrl, "/video-component/list-all-videos-by-author", params, token, function (data) {
+        var raw = data.data || [];
+        onOk(raw.map(M.toVideo), raw.length);
     }, onErr);
 }
 

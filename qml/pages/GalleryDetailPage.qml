@@ -1,0 +1,469 @@
+import QtQuick 2.7
+import QtQuick.Controls 2.2
+import Lomiri.Components 1.3
+import "../Theme"
+import "../Session"
+import "../components"
+import "../services/PostService.js" as PostService
+import "../services/CommentService.js" as CommentService
+
+/*
+ * Gallery post detail — Instagram-style single-post view (header row, full-width
+ * swipeable image carousel, action bar, "author caption" line, comments below),
+ * as opposed to PostDetailPage's blog-article layout. Pushed from GalleryPage.
+ */
+Page {
+    id: page
+
+    property string author: ""
+    property string permlink: ""
+
+    property var post: null
+    property var comments: []
+    property int commentCount: 0
+    property bool loading: false
+    property bool posting: false
+    property string errorMsg: ""
+    property var replyTarget: null
+
+    readonly property var imgs: post && post.images ? post.images : []
+
+    header: Rectangle {
+        height: units.gu(6)
+        color: Style.surface
+
+        BackButton {
+            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            onClicked: page.pageStack.pop()
+        }
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: units.dp(1)
+            color: Style.divider
+        }
+    }
+
+    function load() {
+        loading = true;
+        errorMsg = "";
+        PostService.detailGallery(Config.baseUrl, author, permlink, Session.token,
+            function (result) {
+                loading = false;
+                page.post = result.post;
+                page.commentCount = result.post.comments;
+                page.comments = result.replies || [];
+            },
+            function (err) {
+                loading = false;
+                page.errorMsg = err.message;
+            });
+    }
+
+    function pushLogin() {
+        page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"));
+    }
+
+    function _removeFrom(list, permlinkToRemove) {
+        var out = [];
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].permlink === permlinkToRemove)
+                continue;
+            var node = list[i];
+            if (node.replies && node.replies.length)
+                node = Object.assign({}, node, { replies: page._removeFrom(node.replies, permlinkToRemove) });
+            out.push(node);
+        }
+        return out;
+    }
+
+    function removeComment(permlinkToRemove) {
+        page.comments = page._removeFrom(page.comments, permlinkToRemove);
+        page.commentCount = Math.max(0, page.commentCount - 1);
+        Toast.success(i18n.tr("Comment deleted"));
+    }
+
+    function _editIn(list, permlinkToEdit, newBody) {
+        var out = [];
+        for (var i = 0; i < list.length; i++) {
+            var node = list[i];
+            if (node.permlink === permlinkToEdit)
+                node = Object.assign({}, node, { body: newBody });
+            else if (node.replies && node.replies.length)
+                node = Object.assign({}, node, { replies: page._editIn(node.replies, permlinkToEdit, newBody) });
+            out.push(node);
+        }
+        return out;
+    }
+
+    function editComment(permlinkToEdit, newBody) {
+        page.comments = page._editIn(page.comments, permlinkToEdit, newBody);
+        Toast.success(i18n.tr("Comment updated"));
+    }
+
+    function startReply(comment) {
+        page.replyTarget = comment;
+        composer.forceActiveFocus();
+    }
+
+    function cancelReply() {
+        page.replyTarget = null;
+    }
+
+    function _appendReply(list, parentPermlink, reply) {
+        var out = [];
+        for (var i = 0; i < list.length; i++) {
+            var node = list[i];
+            if (node.permlink === parentPermlink) {
+                node = Object.assign({}, node, { replies: [reply].concat(node.replies || []) });
+            } else if (node.replies && node.replies.length) {
+                node = Object.assign({}, node, { replies: page._appendReply(node.replies, parentPermlink, reply) });
+            }
+            out.push(node);
+        }
+        return out;
+    }
+
+    function submitComment() {
+        var text = composer.text.trim();
+        if (text.length === 0)
+            return;
+        if (!Session.isLoggedIn) {
+            Toast.error(i18n.tr("Please log in first."));
+            page.pushLogin();
+            return;
+        }
+        var target = page.replyTarget;
+        var parentAuthor = target ? target.author : page.author;
+        var parentPermlink = target ? target.permlink : page.permlink;
+
+        page.posting = true;
+        CommentService.create(Config.baseUrl,
+            { parentAuthor: parentAuthor, parentPermlink: parentPermlink, body: text },
+            Session.token,
+            function (data) {
+                page.posting = false;
+                composer.text = "";
+                var mine = { author: Session.username, permlink: "", body: text,
+                             parentAuthor: parentAuthor, parentPermlink: parentPermlink,
+                             date: i18n.tr("just now"), votes: 0, voters: [], replies: [],
+                             authorImage: Session.avatarUrl };
+                if (target) {
+                    page.comments = page._appendReply(page.comments, target.permlink, mine);
+                } else {
+                    page.comments = [mine].concat(page.comments);
+                }
+                page.commentCount = page.commentCount + 1;
+                page.replyTarget = null;
+                Toast.success(i18n.tr("Comment posted"));
+                page.load();
+            },
+            function (err) {
+                page.posting = false;
+                Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't post comment."));
+            });
+    }
+
+    function openProfile() {
+        if (page.post && page.post.author)
+            page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: page.post.author });
+    }
+
+    Component.onCompleted: load()
+
+    Flickable {
+        id: scroll
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: footer.visible ? footer.top : parent.bottom }
+        contentWidth: width
+        contentHeight: contentCol.height
+        clip: true
+        visible: page.post !== null
+        opacity: 0
+        NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
+
+        Column {
+            id: contentCol
+            width: scroll.width
+
+            // Post header: avatar + author + time (Instagram-style row above the image)
+            AbstractButton {
+                width: parent.width
+                height: units.gu(6)
+                onClicked: page.openProfile()
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: Style.spacingM
+                    anchors.rightMargin: Style.spacingM
+                    spacing: Style.spacingS
+
+                    CircleImage {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(4.25); height: width
+                        source: page.post ? (page.post.authorImage || "") : ""
+                        decode: units.gu(9)
+                    }
+
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(4.25); height: width
+                        radius: width / 2
+                        visible: !page.post || (page.post.authorImage || "") === ""
+                        color: Style.avatarTint(page.post ? page.post.author : "")
+                        Label {
+                            anchors.centerIn: parent
+                            text: page.post && page.post.author ? page.post.author.charAt(0).toUpperCase() : "?"
+                            font.pixelSize: Style.fontMedium
+                            font.bold: true
+                            color: Style.brand
+                        }
+                    }
+
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 0
+                        Label {
+                            text: page.post ? page.post.author : ""
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            color: Style.textPrimary
+                        }
+                        Label {
+                            text: page.post ? Style.formatTimeAgo(page.post.date) : ""
+                            font.pixelSize: Style.fontXSmall
+                            color: Style.textSecondary
+                        }
+                    }
+                }
+            }
+
+            // Full-width swipeable image carousel
+            Item {
+                id: cover
+                width: parent.width
+                height: width
+
+                Rectangle { anchors.fill: parent; color: Style.iconBackground }
+
+                SwipeView {
+                    id: swipe
+                    anchors.fill: parent
+                    clip: true
+
+                    Repeater {
+                        model: page.imgs
+                        delegate: Image {
+                            source: modelData
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            sourceSize.width: cover.width * 2
+                            Behavior on opacity { NumberAnimation { duration: 200 } }
+                            opacity: status === Image.Ready ? 1.0 : 0.0
+                        }
+                    }
+                }
+
+                // Page dots
+                Row {
+                    visible: page.imgs.length > 1
+                    anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: Style.spacingS }
+                    spacing: Style.spacingXs
+
+                    Repeater {
+                        model: page.imgs.length
+                        delegate: Rectangle {
+                            width: units.dp(7); height: units.dp(7)
+                            radius: width / 2
+                            color: swipe.currentIndex === index ? Style.brand : Style.dotInactive
+                        }
+                    }
+                }
+            }
+
+            Item { width: 1; height: Style.spacingM }
+
+            // Caption
+            Label {
+                visible: page.post && (page.post.caption || "") !== ""
+                width: parent.width - Style.spacingM * 2
+                x: Style.spacingM
+                text: page.post ? page.post.caption : ""
+                font.pixelSize: Style.fontRegular
+                font.family: Style.fontFamily
+                color: Style.textPrimary
+                wrapMode: Text.WordWrap
+            }
+
+            Item { width: 1; height: Style.spacingM }
+
+            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+            Item { width: 1; height: Style.spacingS }
+
+            // --- Comments ---------------------------------------------------
+            Label {
+                width: parent.width - Style.spacingM * 2
+                x: Style.spacingM
+                visible: page.comments.length === 0
+                text: i18n.tr("No comments yet. Be the first!")
+                textSize: Label.Small
+                color: Style.textSecondary
+            }
+
+            Repeater {
+                model: page.comments
+                delegate: CommentItem {
+                    width: contentCol.width
+                    comment: modelData
+                    onDeleted: page.removeComment(permlink)
+                    onEdited: page.editComment(permlink, newBody)
+                    onReplyRequested: page.startReply(comment)
+                }
+            }
+
+            Item { width: 1; height: Style.spacingM }
+        }
+    }
+
+    LoadingState {
+        anchors.fill: parent
+        visible: page.loading && page.post === null
+        count: 1
+        fullBleedCover: true
+    }
+    ErrorState {
+        anchors.fill: parent
+        visible: page.errorMsg !== "" && page.post === null
+        message: page.errorMsg
+        onRetry: page.load()
+    }
+
+    // --- Fixed footer: votes/voters/share + comment composer ---------------
+    Rectangle {
+        id: footer
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: footerCol.height
+        visible: page.post !== null
+        color: Style.surface
+
+    Column {
+        id: footerCol
+        width: parent.width
+        spacing: Style.spacingS
+
+        Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+        Item { width: 1; height: Style.spacingXs }
+
+        VoteBar {
+            width: parent.width - Style.spacingM * 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            author: page.author
+            permlink: page.permlink
+            voteType: "post"
+            votes: page.post ? page.post.votes : 0
+            flaggers: page.post ? page.post.flaggers.length : 0
+            showComments: false
+            showVotersLabel: true
+            payout: page.post ? page.post.payout : ""
+            upvoted: page.post && page.post.voters.indexOf(Session.username) >= 0
+            flagged: page.post && page.post.flaggers.indexOf(Session.username) >= 0
+            onRequireLogin: page.pushLogin()
+        }
+
+        // Replying-to banner
+        Row {
+            visible: page.replyTarget !== null
+            width: parent.width - Style.spacingM * 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: Style.spacingS
+
+            Label {
+                text: page.replyTarget ? i18n.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                font.pixelSize: Style.fontSmall
+                color: Style.textSecondary
+            }
+            AbstractButton {
+                width: cancelLabel.implicitWidth
+                height: cancelLabel.implicitHeight
+                onClicked: page.cancelReply()
+                Label {
+                    id: cancelLabel
+                    text: i18n.tr("Cancel")
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.DemiBold
+                    color: Style.brand
+                }
+            }
+        }
+
+        // Comment input pill
+        Row {
+            width: parent.width - Style.spacingM * 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: Style.spacingS
+
+            Rectangle {
+                width: parent.width - sendButton.width - Style.spacingS
+                height: units.gu(5)
+                radius: height / 2
+                color: Style.iconBackground
+
+                Label {
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        verticalCenter: parent.verticalCenter
+                        leftMargin: Style.spacingM
+                        rightMargin: Style.spacingM
+                    }
+                    visible: composer.text.length === 0
+                    text: Session.isLoggedIn
+                        ? i18n.tr("Post a comment…")
+                        : i18n.tr("Log in to comment…")
+                    font.family: Style.fontFamily
+                    color: Style.textSecondary
+                    elide: Text.ElideRight
+                }
+
+                TextInput {
+                    id: composer
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        verticalCenter: parent.verticalCenter
+                        leftMargin: Style.spacingM
+                        rightMargin: Style.spacingM
+                    }
+                    font.family: Style.fontFamily
+                    font.pixelSize: Style.fontRegular
+                    color: Style.textPrimary
+                    clip: true
+                    onAccepted: page.submitComment()
+                }
+            }
+
+            AbstractButton {
+                id: sendButton
+                width: units.gu(5); height: units.gu(5)
+                enabled: !page.posting && composer.text.trim().length > 0
+                onClicked: page.submitComment()
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    color: sendButton.enabled ? Style.brand : Style.iconBackground
+                }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.4); height: width
+                    name: "send"
+                    color: sendButton.enabled ? Style.textOnBrand : Style.textSecondary
+                }
+            }
+        }
+
+        Item { width: 1; height: Style.spacingS }
+    }
+    }
+}

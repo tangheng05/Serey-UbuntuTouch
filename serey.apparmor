@@ -2,6 +2,7 @@
     "policy_version": "@APPARMOR_POLICY@",
     "policy_groups": [
         "networking",
-        "webview"
+        "webview",
+        "content_exchange"
     ]
 }

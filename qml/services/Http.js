@@ -33,6 +33,13 @@ function send(method, url, token, bodyObj, onOk, onErr) {
     if (token)
         xhr.setRequestHeader("Authorization", "Bearer " + token);
 
+    // Without a timeout a stalled mobile request never resolves, leaving the
+    // caller's `loading` flag stuck true and permanently blocking pagination.
+    xhr.timeout = 15000;
+    xhr.ontimeout = function () {
+        onErr({ status: 0, message: "Request timed out. Check your connection." });
+    };
+
     xhr.onreadystatechange = function () {
         if (xhr.readyState !== XMLHttpRequest.DONE)
             return;
@@ -61,16 +68,17 @@ function send(method, url, token, bodyObj, onOk, onErr) {
     };
 
     xhr.send(bodyObj ? JSON.stringify(bodyObj) : null);
+    return xhr;   // returned so callers can abort() a stale/in-flight request
 }
 
 function get(baseUrl, path, params, token, onOk, onErr) {
-    send("GET", baseUrl + path + buildQuery(params), token, null, onOk, onErr);
+    return send("GET", baseUrl + path + buildQuery(params), token, null, onOk, onErr);
 }
 
 function post(baseUrl, path, bodyObj, token, onOk, onErr) {
-    send("POST", baseUrl + path, token, bodyObj || {}, onOk, onErr);
+    return send("POST", baseUrl + path, token, bodyObj || {}, onOk, onErr);
 }
 
 function del(baseUrl, path, token, onOk, onErr) {
-    send("DELETE", baseUrl + path, token, null, onOk, onErr);
+    return send("DELETE", baseUrl + path, token, null, onOk, onErr);
 }

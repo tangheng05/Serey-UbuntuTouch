@@ -2,15 +2,16 @@
 .import "Http.js" as Http
 
 /*
- * Create a comment/reply. JWT-only; the backend broadcasts it to the chain
- * using the token's posting key.
+ * Create or update a comment/reply. JWT-only; the backend broadcasts it to
+ * the chain using the token's posting key.
  *
  *   POST /serey-web/create-or-update-comment
- *     { parent_author, parent_permlink, maincategory, body }
+ *     { parent_author, parent_permlink, maincategory, body, permlink? }
  *
  * `maincategory` is the parent post's primary category. Omitting `permlink`
- * creates a new comment (the backend generates one). The response does not
- * echo the created comment, so the UI appends an optimistic local copy.
+ * creates a new comment (the backend generates one); passing the existing
+ * `permlink` updates that comment instead. The response does not echo the
+ * created/updated comment, so the UI applies the change optimistically.
  */
 function create(baseUrl, params, token, onOk, onErr) {
     var body = {
@@ -19,6 +20,8 @@ function create(baseUrl, params, token, onOk, onErr) {
         maincategory: params.maincategory || "serey",
         body: params.body
     };
+    if (params.permlink)
+        body.permlink = params.permlink;
     Http.post(baseUrl, "/serey-web/create-or-update-comment", body, token,
               function (data) { onOk(data || {}); }, onErr);
 }

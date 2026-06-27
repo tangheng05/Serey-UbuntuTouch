@@ -102,7 +102,9 @@ function toPost(raw) {
         payout: raw.serey_value || "",
         categories: parseList(raw.categories),
         voters: voterNames(raw.voters),
+        voterStr: "," + voterNames(raw.voters).join(",") + ",",
         flaggers: voterNames(raw.flaggers),
+        flaggerStr: "," + voterNames(raw.flaggers).join(",") + ",",
         community: raw.community_title || "",
         checkmark: raw.checkmark_icon || ""
     };
@@ -110,6 +112,34 @@ function toPost(raw) {
 
 // A comment/reply node. Recurses into nested `replies` so the detail page can
 // flatten the tree with indentation.
+// Gallery post: like toPost, but keeps every image (not just the cover) for
+// the swipeable carousel.
+function toGalleryPost(raw) {
+    raw = raw || {};
+    var imgs = parseList(raw.image_url).map(fixThumb);
+    return {
+        id: raw.id,
+        author: raw.author || "",
+        permlink: raw.permlink || "",
+        authorImage: raw.author_image_url || "",
+        date: raw.publish_date || "",
+        images: imgs,
+        // A dynamicRoles ListModel wraps the `images` array into a nested model
+        // whose .get(i) loses the bare URL strings (returns empty objects), so
+        // the feed card reads this newline-joined scalar instead — scalars
+        // survive the ListModel intact. URLs never contain a raw newline.
+        imagesStr: imgs.join("\n"),
+        caption: raw.title || "",
+        votes: toInt(raw.voter_count),
+        flaggers: voterNames(raw.flaggers),
+        comments: toInt(raw.answer_count),
+        payout: raw.serey_value || "",
+        voters: voterNames(raw.voters),
+        voterStr: "," + voterNames(raw.voters).join(",") + ",",
+        checkmark: raw.checkmark_icon || ""
+    };
+}
+
 function toComment(raw) {
     raw = raw || {};
     var kids = [];
@@ -120,10 +150,15 @@ function toComment(raw) {
     return {
         author: raw.author || "",
         permlink: raw.permlink || "",
+        // Needed to resubmit create-or-update-comment when editing (it always
+        // requires the parent it's attached to, not just its own permlink).
+        parentAuthor: raw.parent_author || "",
+        parentPermlink: raw.parent_permlink || "",
         body: stripHtml(raw.description || raw.body || ""),
         date: raw.publish_date || "",
         votes: toInt(raw.voter_count),
         voters: voterNames(raw.voters),
+        voterStr: "," + voterNames(raw.voters).join(",") + ",",
         authorImage: raw.author_image_url || "",
         replies: kids
     };
@@ -167,13 +202,30 @@ function toCommunity(raw) {
 
 function toUser(username, raw) {
     raw = raw || {};
-    var name = raw.full_name;
-    if (!name && typeof raw.name === "string")
-        name = raw.name;
+    // `full_name` is an object { first_name, last_name } (it's the DB `name`
+    // column); flatten it. Fall back to the blockchain account `name` string.
+    var fn = "", ln = "";
+    if (raw.full_name && typeof raw.full_name === "object") {
+        fn = raw.full_name.first_name || "";
+        ln = raw.full_name.last_name || "";
+    } else if (typeof raw.full_name === "string") {
+        fn = raw.full_name;
+    }
+    var full = (fn + " " + ln).trim();
+    if (!full && typeof raw.name === "string")
+        full = raw.name;
+    // `phone` can be a scalar or an object { primary, secondary }.
+    var phone = raw.phone;
+    if (phone && typeof phone === "object")
+        phone = phone.primary || phone.secondary || "";
     return {
         username: username,
-        fullName: name || username,
+        firstName: fn,
+        lastName: ln,
+        fullName: full || username,
         bio: raw.bio || "",
+        gender: raw.gender_title || "",
+        dob: raw.dob || "",
         reputation: raw.reputation,
         postCount: toInt(raw.post_count),
         commentCount: toInt(raw.comment_count),
@@ -186,6 +238,6 @@ function toUser(username, raw) {
         coverUrl: raw.cover_image_url || "",
         checkmark: raw.checkmark_icon || "",
         email: raw.email || "",
-        phone: raw.phone || ""
+        phone: phone || ""
     };
 }

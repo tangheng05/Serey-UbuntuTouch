@@ -6,9 +6,9 @@ import "../components"
 import "../services/PostService.js" as PostService
 
 /*
- * News feed: Trending / New posts, filtered by the selected regional source
- * (community_id from Config). The source is chosen via the global AppHeader
- * community pill and shared app-wide through Config.sourceIndex.
+ * Gallery feed: image-only posts from the selected regional source
+ * (community_id from Config), rendered as swipeable carousels via
+ * GalleryCard. Mirrors NewsPage's pagination/reload pattern.
  */
 Page {
     id: page
@@ -17,20 +17,15 @@ Page {
     property bool loading: false
     property bool endReached: false
     property string errorMsg: ""
-    property int feedIndex: 0
     // Request generation: bumped on reload() so a late response from a previous
-    // community/tab can't append stale rows into the freshly-cleared model.
+    // community can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
 
-    // Zero-height header: the global AppHeader provides the top bar, but giving
-    // the Page an explicit header keeps it off Lomiri's deprecated Page.head path.
     header: Item { height: 0 }
 
-    ListModel { id: feedModel; dynamicRoles: true }
+    ListModel { id: galleryModel; dynamicRoles: true }
 
-    // Source switching now lives in the global AppHeader community pill; the feed
-    // just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
         function onSourceIndexChanged() { page.reload(); }
@@ -39,19 +34,14 @@ Page {
     Connections {
         target: PostActions
         function onHideRequested(author, permlink) {
-            for (var i = 0; i < feedModel.count; i++) {
-                if (feedModel.get(i).permlink === permlink) {
-                    feedModel.remove(i);
+            for (var i = 0; i < galleryModel.count; i++) {
+                if (galleryModel.get(i).permlink === permlink) {
+                    galleryModel.remove(i);
                     Toast.show(i18n.tr("Post hidden"));
                     return;
                 }
             }
         }
-    }
-
-    function feedFn() {
-        if (feedIndex === 1) return PostService.listNew;
-        return PostService.listTrending;
     }
 
     function reload() {
@@ -61,7 +51,7 @@ Page {
         endReached = false;
         loading = false;
         errorMsg = "";
-        feedModel.clear();
+        galleryModel.clear();
         loadMore();
     }
 
@@ -73,13 +63,15 @@ Page {
         var params = { limit: Config.pageSize, offset: page.offset };
         if (Config.communityId > 0)
             params.community_id = Config.communityId;
-        inflight = feedFn()(Config.baseUrl, params, Session.token,
+        inflight = PostService.listGallery(Config.baseUrl, params, Session.token,
             function (result, rawCount) {
                 if (epoch !== page.reqEpoch) return;   // stale response — ignore
                 inflight = null;
                 loading = false;
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    galleryModel.append(result[i]);
+                // Advance by RAW server count (not the image-filtered length) so
+                // the next page doesn't re-request already-seen rows.
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
             },
@@ -93,72 +85,60 @@ Page {
 
     Component.onCompleted: loadMore()
 
-    SectionTabs {
-        id: tabs
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        model: [i18n.tr("Trending"), i18n.tr("New")]
-        currentIndex: page.feedIndex
-        onSelected: {
-            page.feedIndex = index;
-            page.reload();
-        }
-    }
-
     ListView {
         id: list
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.fill: parent
         clip: true
-        model: feedModel
+        model: galleryModel
         cacheBuffer: units.gu(12)
 
-        delegate: PostCard {
+        delegate: GalleryCard {
             width: list.width
-            post: feedModel.get(index)
+            post: galleryModel.get(index)
             onClicked: {
-                var p = feedModel.get(index);
-                page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
-                    { author: p.author, permlink: p.permlink, title: p.title });
+                var p = galleryModel.get(index);
+                page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"),
+                    { author: p.author, permlink: p.permlink });
             }
             onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                { username: feedModel.get(index).author })
+                { username: galleryModel.get(index).author })
             onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
-            onMoreClicked: PostActions.open(feedModel.get(index))
+            onMoreClicked: PostActions.open(galleryModel.get(index))
         }
 
         // Constant-height footer: a conditional height feeds back into
-        // contentHeight/atYEnd and trips a "height" binding loop, so keep it
-        // fixed and just toggle the spinner.
+        // contentHeight/atYEnd and trips a "height" binding loop.
         footer: Item {
             width: list.width
             height: units.gu(6)
             ActivityIndicator {
                 anchors.centerIn: parent
-                running: page.loading && feedModel.count > 0
+                running: page.loading && galleryModel.count > 0
                 visible: running
             }
         }
 
         onAtYEndChanged: {
-            if (atYEnd && !page.loading && !page.endReached && feedModel.count > 0)
+            if (atYEnd && !page.loading && !page.endReached && galleryModel.count > 0)
                 page.loadMore();
         }
     }
 
     LoadingState {
         anchors.fill: list
-        visible: page.loading && feedModel.count === 0
+        visible: page.loading && galleryModel.count === 0
     }
     ErrorState {
         anchors.fill: list
-        visible: page.errorMsg !== "" && feedModel.count === 0
+        visible: page.errorMsg !== "" && galleryModel.count === 0
         message: page.errorMsg
         onRetry: page.reload()
     }
     EmptyState {
         anchors.fill: list
-        visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
-        iconName: "stock_note"
-        message: i18n.tr("No posts in %1").arg(Config.communityName)
+        visible: !page.loading && page.errorMsg === "" && galleryModel.count === 0
+        iconName: "image-x-generic-symbolic"
+        message: i18n.tr("No gallery posts in %1").arg(Config.communityName)
     }
 
     // Floating compose button
@@ -173,7 +153,7 @@ Page {
         width: units.gu(5.5); height: width
         z: 10
         onClicked: {
-            page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"))
+            page.pageStack.push(Qt.resolvedUrl("CreateGalleryPostPage.qml"))
         }
 
         Rectangle {

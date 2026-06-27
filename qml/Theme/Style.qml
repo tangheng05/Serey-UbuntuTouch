@@ -17,6 +17,8 @@ QtObject {
     readonly property color brandDark: "#0067C8"
     readonly property color accentRed: "#D30020"     // category badge / downvote
     readonly property color danger: "#C7162B"        // destructive (delete)
+    readonly property color dangerTint: "#FBEAEC"     // danger background wash
+    readonly property color success: "#52C41A"       // satisfied rule / positive
 
     // --- Text -----------------------------------------------------------------
     readonly property color textPrimary: "#262626"

@@ -1,12 +1,13 @@
 import QtQuick 2.7
+import QtQuick.Layouts 1.3
 import Lomiri.Components 1.3
 import "../Theme"
 
 /*
- * Segmented tab strip (e.g. Trending / Hot / New) in the serey-ubutu style:
- * left-aligned labels with the active one tinted brand and underlined by a
- * short pill. Set `model` to a list of labels; emits selected(index) and
- * exposes currentIndex.
+ * Segmented tab strip (e.g. Trending / New) in the serey-ubutu style: tabs
+ * share the row equally (1 row, N equal-width columns), the active one
+ * tinted brand and underlined by a short pill. Set `model` to a list of
+ * labels; emits selected(index) and exposes currentIndex.
  */
 Item {
     id: root
@@ -16,24 +17,23 @@ Item {
 
     implicitHeight: units.gu(5.5)
 
-    Row {
+    RowLayout {
         id: row
-        anchors { left: parent.left; bottom: parent.bottom; leftMargin: Style.spacingM }
-        height: parent.height
-        spacing: Style.spacingL
+        anchors.fill: parent
+        spacing: 0
 
         Repeater {
             model: root.model
             delegate: AbstractButton {
                 id: tab
-                height: row.height
-                width: tabLabel.implicitWidth
+                Layout.fillWidth: true
+                Layout.fillHeight: true
                 property bool active: index === root.currentIndex
                 onClicked: { root.currentIndex = index; root.selected(index); }
 
                 Label {
                     id: tabLabel
-                    anchors { horizontalCenter: parent.horizontalCenter; verticalCenter: parent.verticalCenter }
+                    anchors.centerIn: parent
                     text: modelData
                     font.pixelSize: Style.fontMedium
                     font.weight: tab.active ? Font.DemiBold : Font.Normal
@@ -43,7 +43,7 @@ Item {
                 // Active underline
                 Rectangle {
                     anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
-                    width: tabLabel.implicitWidth
+                    width: tabLabel.implicitWidth + units.gu(2)
                     height: units.dp(3)
                     radius: units.dp(1.5)
                     color: Style.brand

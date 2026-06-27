@@ -17,11 +17,18 @@ QtObject {
 
     property string token: ""
     property string username: ""
+    // Not persisted to disk (only token/username are) — refetched each launch
+    // via AccountService.profile() so optimistic local comments can show a
+    // real avatar instead of the letter-fallback.
+    property string avatarUrl: ""
 
     readonly property bool isLoggedIn: token.length > 0
 
+    property var _dbHandle: null
     function _db() {
-        return LocalStorage.openDatabaseSync("SereyAuth", "1.0", "Serey auth store", 100000);
+        if (!_dbHandle)
+            _dbHandle = LocalStorage.openDatabaseSync("SereyAuth", "1.0", "Serey auth store", 100000);
+        return _dbHandle;
     }
 
     function _load() {
@@ -53,14 +60,18 @@ QtObject {
     }
 
     function setAuth(newToken, newUsername) {
-        token = newToken;
+        // Set username first: assigning `token` fires onTokenChanged synchronously,
+        // and listeners (e.g. SettingsPage) immediately fetch the profile by
+        // username — so username must already be in place or the fetch uses "".
         username = newUsername;
+        token = newToken;
         _save();
     }
 
     function clear() {
         token = "";
         username = "";
+        avatarUrl = "";
         _save();
     }
 

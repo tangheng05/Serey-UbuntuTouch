@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<!--
+  Off-screen Serey key generator for self-custody signup. Loaded in a hidden
+  WebEngineView (KeygenBridge.qml). Reuses the EXACT @sereynetwork/sereyjs
+  library the web app uses (vendored as serey.min.js, UMD global `window.steem`),
+  so generated keys are byte-identical to the web's self-custody flow.
+
+  generateSereyKeys(username) returns the master password (a strong random
+  brain-key the user must save) plus the four SRY public keys and the posting
+  private key derived from it. steem.auth.generateKeys and getPrivateKeys both
+  derive from sha256(name + role + password), so the pair is consistent.
+-->
+<script src="serey.min.js"></script>
+<script>
+  function generateSereyKeys(username) {
+    try {
+      var steem = window.steem;
+      if (!steem || !steem.auth) return { ok: false, error: "Crypto library not loaded." };
+
+      // Master password = "P" + a random WIF, matching the web's format. This is
+      // REQUIRED: the backend login (checkPasswordChecksum) only accepts a key of
+      // the form P<WIF> (/^5[HJK].../ + isWif), so a plain hex string would let the
+      // account be created but never logged into. We have no `ecc` on the UMD
+      // global, so derive a random WIF via toWif() of 32 random bytes.
+      var bytes = new Uint8Array(32);
+      (window.crypto || window.msCrypto).getRandomValues(bytes);
+      var seedHex = "";
+      for (var i = 0; i < bytes.length; i++) seedHex += ("0" + bytes[i].toString(16)).slice(-2);
+      var masterPassword = "P" + steem.auth.toWif("", seedHex, "");
+
+      var roles = ["owner", "active", "posting", "memo"];
+      var pub = steem.auth.generateKeys(username, masterPassword, roles);
+      var priv = steem.auth.getPrivateKeys(username, masterPassword, ["posting"]);
+
+      return {
+        ok: true,
+        master_password: masterPassword,
+        owner_public_key: pub.owner,
+        active_public_key: pub.active,
+        posting_public_key: pub.posting,
+        memo_public_key: pub.memo,
+        posting_private_key: priv.posting
+      };
+    } catch (e) {
+      return { ok: false, error: String(e && e.message ? e.message : e) };
+    }
+  }
+</script>
+</body>
+</html>

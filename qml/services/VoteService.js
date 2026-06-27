@@ -14,6 +14,26 @@
  * Success data: { voter_count, flagger_count, voters[], flaggers[], serey_value }.
  */
 
+// Session-level vote state cache. Survives delegate recycling and page
+// navigation so a post the user just upvoted still shows blue when they
+// navigate back. Keyed by "author/permlink".
+var _cache = {};
+
+function _key(author, permlink) { return author + "/" + permlink; }
+
+function getCached(author, permlink) {
+    return _cache[_key(author, permlink)] || null;
+}
+
+function _updateCache(author, permlink, upvoted, flagged, votes, payout) {
+    _cache[_key(author, permlink)] = {
+        upvoted: upvoted,
+        flagged: flagged,
+        votes: votes,
+        payout: payout
+    };
+}
+
 function _norm(data) {
     var d = (data && data.data) ? data.data : (data || {});
     return {
@@ -32,9 +52,9 @@ function _send(baseUrl, path, body, token, onOk, onErr) {
     }, onErr);
 }
 
-function upvote(baseUrl, author, permlink, voteType, token, onOk, onErr) {
+function upvote(baseUrl, author, permlink, voteType, weight, token, onOk, onErr) {
     _send(baseUrl, "/vote/vote",
-          { author: author, permlink: permlink, weight: 100, vote_type: voteType || "post" },
+          { author: author, permlink: permlink, weight: weight || 100, vote_type: voteType || "post" },
           token, onOk, onErr);
 }
 

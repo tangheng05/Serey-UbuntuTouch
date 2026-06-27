@@ -1,0 +1,77 @@
+import QtQuick 2.7
+import Lomiri.Components 1.3
+import Lomiri.Components.Popups 1.3 as Popups
+import Lomiri.Content 1.3
+import "../Theme"
+
+/*
+ * Photo importer built on Content Hub, modelled on the system's own
+ * ContentPickerDialog (morph-browser). It MUST be a PopupBase parented to the
+ * root item — a plain toggled-visibility Item anchored to a Page never gets a
+ * correct size/stacking and so never paints (the dialog's own source notes the
+ * parent must be set at construction time). Open it with PopupUtils.open(); it
+ * emits picked(fileUrl) with a local file:// URL, then closes itself.
+ *
+ * Requires the `content_exchange` AppArmor policy group (see serey.apparmor).
+ */
+Popups.PopupBase {
+    id: picker
+    objectName: "photoPickerDialog"
+
+    // Full-screen, correctly sized: parent to the window root at construction.
+    parent: QuickUtils.rootItem(picker)
+    anchors.fill: parent
+
+    property var activeTransfer
+    signal picked(string fileUrl)
+    signal cancelled()
+
+    Rectangle {
+        anchors.fill: parent
+        color: Style.surface
+
+        // Progress overlay shown while the chosen item transfers in.
+        ContentTransferHint {
+            anchors.fill: parent
+            activeTransfer: picker.activeTransfer
+        }
+
+        ContentPeerPicker {
+            id: peerPicker
+            anchors.fill: parent
+            visible: true
+            contentType: ContentType.Pictures
+            handler: ContentHandler.Source
+
+            onPeerSelected: {
+                peer.selectionType = ContentTransfer.Single;
+                picker.activeTransfer = peer.request();
+                stateChangeConnection.target = picker.activeTransfer;
+            }
+            onCancelPressed: {
+                picker.cancelled();
+                Popups.PopupUtils.close(picker);
+            }
+        }
+    }
+
+    Connections {
+        id: stateChangeConnection
+        target: null
+        onStateChanged: {
+            var t = picker.activeTransfer;
+            if (!t)
+                return;
+            if (t.state === ContentTransfer.Charged) {
+                if (t.items.length > 0)
+                    picker.picked(String(t.items[0].url));
+                Popups.PopupUtils.close(picker);
+            } else if (t.state === ContentTransfer.Aborted) {
+                picker.cancelled();
+                Popups.PopupUtils.close(picker);
+            }
+        }
+    }
+
+    Component.onCompleted: show()
+}

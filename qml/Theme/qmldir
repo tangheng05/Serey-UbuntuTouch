@@ -1,3 +1,6 @@
 singleton Config 1.0 Config.qml
 singleton Style 1.0 Style.qml
 singleton Toast 1.0 Toast.qml
+singleton Nav 1.0 Nav.qml
+singleton FollowStore 1.0 FollowStore.qml
+singleton PostActions 1.0 PostActions.qml

@@ -26,6 +26,17 @@ QtObject {
     // Upstream media host used to normalise some relative asset paths.
     readonly property string uploadHost: "https://upload.serey.io"
 
+    // Image upload endpoint + key (the same public key shipped in the web
+    // bundle as NEXT_PUBLIC_UPLOAD_SECRET_KEY — not a private secret). Avatars
+    // POST a multipart image here and get back a hosted URL.
+    readonly property string uploadUrl: "https://upload.serey.io/uploads/upload_image"
+    readonly property string uploadSecret: "5876aafc87185dc0521afcqceo87185dc058718affc7b382730e89s"
+
+    // Homepage mini-app: a single fixed site (matches serey-ubutu), filtered
+    // client-side via a `community_id` query param rather than switching
+    // domains per source.
+    readonly property string homeLandingPageUrl: "https://khmer.serey.io"
+
     // --- Regional sources (verified community IDs) -----------------------
     // Three communities. "Global" (id 0) applies no community filter, so its
     // News/Video feeds combine content from every community. Keep `sourceNames`

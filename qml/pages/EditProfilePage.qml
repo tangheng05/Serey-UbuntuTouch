@@ -6,7 +6,6 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
-import "../services/Uploads.js" as Uploads
 
 /*
  * Edit the signed-in user's profile: avatar (uploaded via Content Hub + the
@@ -55,34 +54,31 @@ Page {
         else uploadAvatar(fileUrl);
     }
 
-    // --- Avatar: upload to the media server, then set it active --------------
-    function uploadAvatar(fileUrl) {
-        errorMsg = "";
-        uploading = true;
-        Uploads.uploadImage(Config.uploadUrl, Config.uploadSecret, fileUrl,
-            function (url) {
-                AccountService.setProfilePicture(Config.baseUrl, Session.token, url,
-                    function () {
-                        uploading = false;
-                        page.avatarUrl = url;
-                        Toast.success(i18n.tr("Photo updated."));
-                    }, fail);
-            }, fail);
-    }
+    // Avatar + cover both downscale + upload through imgUploader, then set the
+    // hosted URL active. pickTarget routes the post-upload step (see imgUploader).
+    function uploadAvatar(fileUrl) { errorMsg = ""; uploading = true; imgUploader.upload(fileUrl); }
+    function uploadCover(fileUrl)  { errorMsg = ""; coverUploading = true; imgUploader.upload(fileUrl); }
 
-    // --- Cover: same upload, then set the active cover photo -----------------
-    function uploadCover(fileUrl) {
-        errorMsg = "";
-        coverUploading = true;
-        Uploads.uploadImage(Config.uploadUrl, Config.uploadSecret, fileUrl,
-            function (url) {
+    PhotoUploader {
+        id: imgUploader
+        onUploaded: {
+            if (page.pickTarget === "cover") {
                 AccountService.setCoverPhoto(Config.baseUrl, Session.token, url,
                     function () {
-                        coverUploading = false;
+                        page.coverUploading = false;
                         page.coverUrl = url;
                         Toast.success(i18n.tr("Cover updated."));
-                    }, fail);
-            }, fail);
+                    }, page.fail);
+            } else {
+                AccountService.setProfilePicture(Config.baseUrl, Session.token, url,
+                    function () {
+                        page.uploading = false;
+                        page.avatarUrl = url;
+                        Toast.success(i18n.tr("Photo updated."));
+                    }, page.fail);
+            }
+        }
+        onFailed: page.fail({ message: message })
     }
 
     // --- Save the editable detail fields ------------------------------------

@@ -412,6 +412,7 @@ Page {
                     source: page.post ? (page.post.thumbnail || "") : ""
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
+                    autoTransform: true     // honour EXIF orientation
                     visible: false
                     Behavior on opacity { NumberAnimation { duration: 200 } }
                     opacity: status === Image.Ready ? 1.0 : 0.0
@@ -462,6 +463,7 @@ Page {
                                     fillMode: Image.PreserveAspectFit
                                     source: model.content
                                     asynchronous: true
+                                    autoTransform: true     // honour EXIF orientation
                                     visible: false
                                     Behavior on opacity { NumberAnimation { duration: 200 } }
                                     opacity: status === Image.Ready ? 1.0 : 0.0
@@ -537,12 +539,12 @@ Page {
     }
 
     LoadingState {
-        anchors.fill: parent
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: page.loading && page.post === null
         count: 1
     }
     ErrorState {
-        anchors.fill: parent
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: page.errorMsg !== "" && page.post === null
         message: page.errorMsg
         onRetry: page.load()

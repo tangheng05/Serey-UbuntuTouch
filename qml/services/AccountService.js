@@ -8,8 +8,14 @@
  */
 
 function login(baseUrl, username, password, onOk, onErr) {
+    // Sending `device_name` makes the backend mint a NON-expiring token and a
+    // persistent device session (auth_service: `hasExpired = !device_name`,
+    // `expired_at: null`). Without it the token hard-expires in 24h, forcing a
+    // daily re-login. This mirrors the web's "remembered device" sign-in so the
+    // session survives until the user explicitly logs out.
     Http.post(baseUrl, "/auth/login",
-              { username: username, password: password }, null, function (data) {
+              { username: username, password: password, device_name: "Ubuntu Touch" },
+              null, function (data) {
         var token = data.data && data.data.token;
         if (!token) {
             onErr({ message: "Login succeeded but no token was returned." });

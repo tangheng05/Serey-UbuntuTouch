@@ -11,6 +11,13 @@
  * an error too.
  */
 
+// Optional global hook fired when an authenticated request is rejected with 401
+// (an expired/invalid JWT). Registered once by the app (Main.qml) to clear the
+// session and prompt re-login — otherwise a dead token leaves the user shown as
+// "logged in" while every required-auth action (e.g. publishing) keeps failing.
+var _onUnauthorized = null;
+function setUnauthorizedHandler(fn) { _onUnauthorized = fn; }
+
 function buildQuery(params) {
     if (!params)
         return "";
@@ -61,6 +68,10 @@ function send(method, url, token, bodyObj, onOk, onErr) {
         if (xhr.status >= 200 && xhr.status < 300 && !logicalFail) {
             onOk(data);
         } else {
+            // A 401 on a request we sent a token with means that token is no
+            // longer valid — hand off to the app's re-auth handler.
+            if (xhr.status === 401 && token && _onUnauthorized)
+                _onUnauthorized();
             var msg = (data && data.message) ? data.message
                                              : ("Request failed (" + xhr.status + ").");
             onErr({ status: xhr.status, message: msg, data: data });

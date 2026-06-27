@@ -5,6 +5,7 @@ import "Session"
 import "components"
 import "services/CommunityService.js" as CommunityService
 import "services/AccountService.js" as AccountService
+import "services/Http.js" as Http
 
 /*
  * Application shell: a persistent bottom tab bar with one PageStack per tab so
@@ -35,6 +36,17 @@ MainView {
     readonly property bool showNavBar: activeDepth <= 1
 
     Component.onCompleted: {
+        // A stale/expired JWT can't be detected up-front (see note below), so
+        // catch it lazily: any authed request that comes back 401 clears the
+        // session and prompts re-login, instead of leaving the user "logged in"
+        // with a dead token while publishing etc. silently fail. Guarded on
+        // isLoggedIn so concurrent 401s only clear + toast once.
+        Http.setUnauthorizedHandler(function () {
+            if (!Session.isLoggedIn) return;
+            Session.clear();
+            Toast.error(i18n.tr("Your session expired. Please log in again."));
+        });
+
         // NOTE: we deliberately do NOT validate the token via /auth/authenticated
         // on startup. That endpoint additionally requires a *device* JWT
         // (isDeviceJwtAuthenticated) which the native client never has, so it

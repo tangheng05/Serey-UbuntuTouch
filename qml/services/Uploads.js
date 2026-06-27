@@ -32,23 +32,39 @@ function _contentType(fileUrl) {
     return { mime: "image/jpeg", ext: "jpg" };
 }
 
+// The most recent in-flight request (reader or upload). PhotoUploader's
+// watchdog calls abort() when QML's XMLHttpRequest hangs without honouring its
+// own `timeout` — see PhotoUploader.qml. Only one upload runs at a time (every
+// caller guards with an `uploading` flag), so a single handle is enough.
+var _active = null;
+
+function abort() {
+    if (_active) {
+        try { _active.abort(); } catch (e) { /* already done */ }
+        _active = null;
+    }
+}
+
 function uploadImage(uploadUrl, secret, fileUrl, onOk, onErr) {
     var type = _contentType(fileUrl);
 
     // 1. Read the local file's raw bytes.
     var reader = new XMLHttpRequest();
+    _active = reader;
     reader.open("GET", fileUrl);
     reader.responseType = "arraybuffer";
     reader.onreadystatechange = function () {
         if (reader.readyState !== XMLHttpRequest.DONE)
             return;
         if (!reader.response) {
+            _active = null;
             onErr({ message: "Couldn't read the selected image." });
             return;
         }
         try {
             _post(uploadUrl, secret, type, new Uint8Array(reader.response), onOk, onErr);
         } catch (e) {
+            _active = null;
             onErr({ message: "Couldn't prepare the image for upload." });
         }
     };
@@ -69,16 +85,18 @@ function _post(uploadUrl, secret, type, fileBytes, onOk, onErr) {
     body.set(trailer, preamble.length + fileBytes.length);
 
     var xhr = new XMLHttpRequest();
+    _active = xhr;
     xhr.open("POST", uploadUrl);
     xhr.setRequestHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
     xhr.setRequestHeader("api-secret", secret);
     xhr.setRequestHeader("Accept", "application/json");
-    xhr.timeout = 30000;   // images are larger than JSON calls
-    xhr.ontimeout = function () { onErr({ message: "Upload timed out. Check your connection." }); };
     xhr.onreadystatechange = function () {
         if (xhr.readyState !== XMLHttpRequest.DONE)
             return;
+        _active = null;
         if (xhr.status === 0) {
+            // status 0 at DONE means the request was aborted (by the watchdog)
+            // or the network dropped; the caller surfaces the message.
             onErr({ message: "Network error during upload." });
             return;
         }

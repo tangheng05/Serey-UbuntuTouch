@@ -5,7 +5,7 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/PostService.js" as PostService
-import "../services/Uploads.js" as Uploads
+import "../services/CategoryService.js" as CategoryService
 
 Page {
     id: page
@@ -17,11 +17,52 @@ Page {
     property string coverImageUrl: ""
     property bool uploading: false
 
-    readonly property var categories: [
-        "general", "breaking & news", "entertainment", "creativity",
-        "digital art", "culture", "environment", "society",
-        "philosophy", "football", "crypto", "general knowledge"
-    ]
+    // When set, this page edits an existing post (sends its permlink to update in
+    // place) instead of creating a new one. `saved` lets the opener refresh.
+    property var editPost: null
+    readonly property bool isEdit: !!editPost
+    signal saved()
+
+    // Categories are per-community (each community defines its own set), loaded
+    // from the backend for the currently-selected source rather than hardcoded.
+    property var categories: []
+    property bool categoriesLoading: false
+    property int catEpoch: 0
+
+    function loadCategories() {
+        var epoch = ++page.catEpoch;
+        var prev = page.selectedCategory;
+        page.categoriesLoading = true;
+        CategoryService.listByCommunity(Config.baseUrl, Config.communityName, Session.token,
+            function (names) {
+                if (epoch !== page.catEpoch) return;   // stale community switch
+                page.categoriesLoading = false;
+                page.categories = names;
+                if (names.indexOf(prev) < 0) page.selectedCategory = "";
+            },
+            function () {
+                if (epoch !== page.catEpoch) return;
+                page.categoriesLoading = false;
+                page.categories = [];
+            });
+    }
+
+    Component.onCompleted: {
+        if (page.editPost) {
+            titleField.text = page.editPost.title || "";
+            // Strip the leading cover <img> we prepend on publish so it isn't
+            // duplicated; the cover is restored from the post's thumbnail.
+            bodyArea.text = (page.editPost.body || "").replace(/^\s*<img[^>]*>\s*/i, "");
+            page.coverImageUrl = page.editPost.thumbnail || "";
+            // primaryCategory is a scalar (the categories array is wrapped by the
+            // feed ListModel and loses [] indexing).
+            page.selectedCategory = page.editPost.primaryCategory || "";
+        }
+        loadCategories();   // captures selectedCategory above as the kept value
+    }
+    // The community can't change while this page is up (header is collapsed), but
+    // react anyway so the list is always correct for the active source.
+    Connections { target: Config; function onSourceIndexChanged() { page.loadCategories() } }
 
     header: Item { height: 0 }
 
@@ -47,7 +88,7 @@ Page {
 
         Label {
             anchors.centerIn: parent
-            text: i18n.tr("Create Post")
+            text: page.isEdit ? i18n.tr("Edit Post") : i18n.tr("Create Post")
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
             color: Style.textPrimary
@@ -68,7 +109,8 @@ Page {
             Label {
                 id: postPillLabel
                 anchors.centerIn: parent
-                text: page.submitting ? i18n.tr("Posting…") : i18n.tr("Publish")
+                text: page.submitting ? (page.isEdit ? i18n.tr("Saving…") : i18n.tr("Posting…"))
+                                      : (page.isEdit ? i18n.tr("Save") : i18n.tr("Publish"))
                 font.pixelSize: Style.fontSmall
                 font.weight: Font.DemiBold
                 color: parent.enabled ? Style.textOnBrand : Style.textSecondary
@@ -88,21 +130,20 @@ Page {
     Component {
         id: pickerComp
         PhotoPicker {
-            onPicked: {
-                page.uploading = true;
-                Uploads.uploadImage(Config.uploadUrl, Config.uploadSecret, fileUrl,
-                    function (url) {
-                        page.uploading = false;
-                        page.coverImageUrl = url;
-                        Toast.success(i18n.tr("Cover image uploaded"));
-                    },
-                    function (err) {
-                        page.uploading = false;
-                        Toast.error((err && err.message) ? err.message : i18n.tr("Upload failed."));
-                    });
-            }
+            onPicked: imgUploader.upload(fileUrl)
             onCancelled: { /* nothing to do */ }
         }
+    }
+
+    // Downscales + uploads the picked image; keeps the spinner honest.
+    PhotoUploader {
+        id: imgUploader
+        onUploadingChanged: page.uploading = uploading
+        onUploaded: {
+            page.coverImageUrl = url;
+            Toast.success(i18n.tr("Cover image uploaded"));
+        }
+        onFailed: Toast.error(message)
     }
 
     function publish() {
@@ -119,17 +160,31 @@ Page {
         PostService.createPost(Config.baseUrl, {
             title: titleField.text.trim(),
             body: body,
-            communityId: Config.communityId,
-            category: page.selectedCategory
+            // On edit, keep the post in its own community (resolve by its title)
+            // rather than the currently-selected source.
+            communityId: page.isEdit ? 0 : Config.communityId,
+            communityName: page.isEdit ? (page.editPost.community || Config.communityName)
+                                       : Config.communityName,
+            categories: page.selectedCategory || "general",
+            permlink: page.isEdit ? (page.editPost.permlink || "") : "",
+            // Also send the cover in `images` (→ json_meta.image), not just the
+            // body <img>. The web derives a post's thumbnail from json_meta.image,
+            // so without this the cover only shows inside the article, never as
+            // the card/thumbnail. (Our app body-scrapes as a fallback, which is
+            // why it looked fine on mobile.) The detail view dedupes it.
+            images: page.coverImageUrl.length > 0 ? [page.coverImageUrl] : []
         }, Session.token,
         function (data) {
             page.submitting = false;
-            Toast.success(i18n.tr("Post published!"));
+            Toast.success(page.isEdit ? i18n.tr("Post updated!") : i18n.tr("Post published!"));
+            page.saved();
             page.pageStack.pop();
         },
         function (err) {
             page.submitting = false;
-            Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't publish post."));
+            Toast.error((err && err.message) ? err.message
+                                             : (page.isEdit ? i18n.tr("Couldn't update post.")
+                                                            : i18n.tr("Couldn't publish post.")));
         });
     }
 
@@ -148,6 +203,15 @@ Page {
         bodyArea.forceActiveFocus();
     }
 
+    // Move active focus onto a neutral item so the on-screen keyboard drops.
+    // Tapping any empty area of the form calls this (see the background
+    // MouseArea below) — previously only re-tapping a field would dismiss it.
+    Item { id: focusSink }
+    function dismissKeyboard() {
+        focusSink.forceActiveFocus();
+        Qt.inputMethod.hide();
+    }
+
     Flickable {
         id: scroll
         anchors { top: hdr.bottom; left: parent.left; right: parent.right; bottom: toolbar.top }
@@ -155,6 +219,16 @@ Page {
         clip: true
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
+
+        // Sits behind the form (z -1); taps that miss a field fall through here
+        // and dismiss the keyboard. A plain tap still flicks fine because the
+        // Flickable steals drag gestures from child MouseAreas.
+        MouseArea {
+            width: scroll.width
+            height: Math.max(scroll.height, col.height + Style.spacingL)
+            z: -1
+            onClicked: page.dismissKeyboard()
+        }
 
         Column {
             id: col
@@ -296,6 +370,7 @@ Page {
                     source: page.coverImageUrl
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
+                    autoTransform: true     // honour EXIF orientation
                     visible: page.coverImageUrl.length > 0
                 }
 
@@ -525,6 +600,25 @@ Page {
                 }
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+                // Loading / empty state while categories fetch for this community.
+                Item {
+                    width: parent.width
+                    height: units.gu(8)
+                    visible: page.categories.length === 0
+                    ActivityIndicator {
+                        anchors.centerIn: parent
+                        running: page.categoriesLoading
+                        visible: running
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !page.categoriesLoading
+                        text: i18n.tr("No categories for this community")
+                        font.pixelSize: Style.fontSmall
+                        color: Style.textSecondary
+                    }
+                }
 
                 Repeater {
                     model: page.categories

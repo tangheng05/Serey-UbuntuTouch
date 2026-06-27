@@ -52,9 +52,13 @@ RowLayout {
         }
         return !bar.busy;
     }
+    // NOTE: the vote count is updated OPTIMISTICALLY by each action below, not
+    // from r.voterCount. Serey signs/broadcasts the vote to the chain async, so
+    // the immediate response still carries the pre-vote count — trusting it left
+    // the icon blue while the number never moved. The authoritative count comes
+    // back on the next feed/detail reload.
     function _apply(r) {
         bar.busy = false;
-        bar.votes = r.voterCount;
         bar.flaggers = r.flaggerCount;
         if (r.payout)
             bar.payout = r.payout;
@@ -73,7 +77,7 @@ RowLayout {
         if (bar.upvoted) {
             bar.busy = true;
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { bar.upvoted = false; _apply(r); bar._cache(); Toast.show(i18n.tr("Vote removed")); }, _fail);
+                function (r) { bar.upvoted = false; bar.votes = Math.max(0, bar.votes - 1); _apply(r); bar._cache(); Toast.show(i18n.tr("Vote removed")); }, _fail);
         } else {
             PopupUtils.open(voteWeightDialog);
         }
@@ -82,7 +86,8 @@ RowLayout {
     function _sendUpvote(weight) {
         bar.busy = true;
         VoteService.upvote(Config.baseUrl, author, permlink, voteType, weight, Session.token,
-            function (r) { bar.upvoted = true; bar.flagged = false; _apply(r); bar._cache();
+            function (r) { if (!bar.upvoted) bar.votes = bar.votes + 1;   // count this vote now
+                           bar.upvoted = true; bar.flagged = false; _apply(r); bar._cache();
                            Toast.success(voteType === "comment" ? i18n.tr("Liked") : i18n.tr("Upvoted %1%").arg(weight)); }, _fail);
     }
 
@@ -175,7 +180,8 @@ RowLayout {
                 function (r) { bar.flagged = false; _apply(r); bar._cache(); Toast.show(i18n.tr("Vote removed")); }, _fail);
         } else {
             VoteService.flag(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { bar.flagged = true; bar.upvoted = false; _apply(r); bar._cache(); Toast.show(i18n.tr("Flagged")); }, _fail);
+                function (r) { if (bar.upvoted) bar.votes = Math.max(0, bar.votes - 1);   // flag clears the upvote
+                               bar.flagged = true; bar.upvoted = false; _apply(r); bar._cache(); Toast.show(i18n.tr("Flagged")); }, _fail);
         }
     }
 

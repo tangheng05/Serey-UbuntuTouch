@@ -197,7 +197,8 @@ Item {
                 }
             }
 
-            // More button
+            // More button — owner sees Edit/Delete, others see moderation
+            // actions (the sheet branches on ownership).
             AbstractButton {
                 Layout.preferredWidth: units.gu(3.5)
                 Layout.preferredHeight: units.gu(3.5)
@@ -254,6 +255,7 @@ Item {
                 source: p.thumbnail || ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
+                autoTransform: true     // honour EXIF orientation
                 sourceSize.width: cover.width
                 visible: false
                 Behavior on opacity { NumberAnimation { duration: 200 } }

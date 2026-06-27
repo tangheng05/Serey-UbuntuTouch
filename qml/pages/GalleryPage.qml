@@ -42,6 +42,16 @@ Page {
                 }
             }
         }
+        function onPostDeleted(author, permlink) {
+            for (var i = galleryModel.count - 1; i >= 0; i--) {
+                if (galleryModel.get(i).permlink === permlink) galleryModel.remove(i);
+            }
+        }
+        function onEditRequested(post) {
+            if (!page.visible) return;
+            var ed = page.pageStack.push(Qt.resolvedUrl("CreateGalleryPostPage.qml"), { editPost: post });
+            if (ed && ed.saved) ed.saved.connect(page.reload);
+        }
     }
 
     function reload() {
@@ -53,6 +63,37 @@ Page {
         errorMsg = "";
         galleryModel.clear();
         loadMore();
+    }
+
+    // Pull-to-refresh: re-fetch page one but keep current rows until the new
+    // ones arrive (no skeleton flash — just the pull spinner).
+    property bool refreshing: false
+    function refresh() {
+        if (page.refreshing) return;
+        page.refreshing = true;
+        page.reqEpoch++;
+        if (inflight) { inflight.abort(); inflight = null; }
+        var epoch = page.reqEpoch;
+        var params = { limit: Config.pageSize, offset: 0 };
+        if (Config.communityId > 0)
+            params.community_id = Config.communityId;
+        inflight = PostService.listGallery(Config.baseUrl, params, Session.token,
+            function (result, rawCount) {
+                if (epoch !== page.reqEpoch) return;
+                inflight = null;
+                page.refreshing = false;
+                page.loading = false;
+                galleryModel.clear();
+                for (var i = 0; i < result.length; i++)
+                    galleryModel.append(result[i]);
+                page.offset = rawCount;
+                page.endReached = rawCount < Config.pageSize;
+            },
+            function (err) {
+                if (epoch !== page.reqEpoch) return;
+                inflight = null;
+                page.refreshing = false;
+            });
     }
 
     function loadMore() {
@@ -92,6 +133,19 @@ Page {
         model: galleryModel
         cacheBuffer: units.gu(12)
 
+        PullToRefresh {
+            refreshing: page.refreshing
+            onRefresh: page.refresh()
+            content: Label {
+                text: i18n.tr("Pull to refresh")
+                opacity: list.dragging ? 1 : 0
+                font.pixelSize: Style.fontSmall
+                color: Style.textSecondary
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+
         delegate: GalleryCard {
             width: list.width
             post: galleryModel.get(index)
@@ -103,7 +157,7 @@ Page {
             onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                 { username: galleryModel.get(index).author })
             onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
-            onMoreClicked: PostActions.open(galleryModel.get(index))
+            onMoreClicked: PostActions.open(galleryModel.get(index), "gallery")
         }
 
         // Constant-height footer: a conditional height feeds back into
@@ -126,6 +180,7 @@ Page {
 
     LoadingState {
         anchors.fill: list
+        variant: "gallery"
         visible: page.loading && galleryModel.count === 0
     }
     ErrorState {
@@ -153,7 +208,8 @@ Page {
         width: units.gu(5.5); height: width
         z: 10
         onClicked: {
-            page.pageStack.push(Qt.resolvedUrl("CreateGalleryPostPage.qml"))
+            var ed = page.pageStack.push(Qt.resolvedUrl("CreateGalleryPostPage.qml"));
+            if (ed && ed.saved) ed.saved.connect(page.reload);   // show the new post immediately
         }
 
         Rectangle {

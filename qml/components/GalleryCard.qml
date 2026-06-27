@@ -196,7 +196,7 @@ Item {
                     }
                 }
 
-                // More button
+                // More button — owner sees Edit/Delete, others moderation.
                 AbstractButton {
                     Layout.preferredWidth: units.gu(3.5)
                     Layout.preferredHeight: units.gu(3.5)
@@ -230,6 +230,7 @@ Item {
                 source: root.imgs.length > 0 ? root.imgs[0] : ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
+                autoTransform: true     // honour EXIF orientation (camera photos)
                 // Showcase photo in a square crop — decode at 2× display width so
                 // PreserveAspectCrop downsamples (sharp) instead of upscaling (blur).
                 sourceSize.width: cover.width * 2

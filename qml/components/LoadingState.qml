@@ -3,57 +3,137 @@ import Lomiri.Components 1.3
 import "../Theme"
 
 /*
- * Loading placeholder shown while a list/detail is fetching. Renders a few
- * shimmer skeleton "cards" (serey-ubutu style) rather than a bare spinner.
+ * Loading placeholder shown while a list/detail is fetching. Renders shimmer
+ * skeleton "cards" whose shape mirrors the REAL card for that surface, so the
+ * layout doesn't visibly jump when content arrives:
+ *
+ *   variant "post"    PostCard    — header · title lines · inset 16:9 cover · action chips
+ *   variant "gallery" GalleryCard — header · full-bleed square photo · action chips
+ *   variant "video"   VideoCard   — inset 16:9 thumbnail · avatar + title rows
+ *
+ * Detail pages set fullBleedCover (one full-width cover) instead of a feed row.
  */
 Item {
     id: root
     property string message: ""
     // Number of skeleton "cards" to render — 3 for a feed, 1 for a detail page.
     property int count: 3
-    // Detail pages (PostDetailPage, GalleryDetailPage) show one full-bleed
-    // square cover, matching their real layout, instead of the feed's inset
-    // ~16:9 thumbnail.
+    // "post" | "gallery" | "video" — picks the card shape to imitate.
+    property string variant: "post"
+    // Detail pages (PostDetailPage, GalleryDetailPage) show one full-bleed cover.
     property bool fullBleedCover: false
-    property real coverAspect: fullBleedCover ? 1.0 : 0.56
+
+    readonly property real inset: Style.spacingM
+    readonly property real contentWidth: root.width - inset * 2
+    // Covers sit a shade lighter than the text bars so the skeleton keeps the
+    // real card's title-vs-photo hierarchy instead of reading as one grey slab.
+    readonly property color coverTone: "#ECECEC"
+    readonly property string photoGlyph: "image-x-generic-symbolic"
+
+    // Opaque card surface so the skeleton always reads cleanly on its own.
+    Rectangle { anchors.fill: parent; color: Style.surface }
 
     Column {
         anchors { left: parent.left; right: parent.right; top: parent.top }
         spacing: 0
 
         Repeater {
-            model: root.count
+            // Gate on visibility so the pulse animations don't keep ticking when
+            // the skeleton is hidden (content loaded) — no work while off-screen.
+            model: root.visible ? root.count : 0
             delegate: Column {
                 width: root.width
                 spacing: Style.spacingS
 
                 Item { width: 1; height: Style.spacingM }
 
-                // Header: avatar + two lines
+                // --- Video: thumbnail leads (inset 16:9) ---------------------
+                SkeletonRect {
+                    visible: root.variant === "video" && !root.fullBleedCover
+                    x: root.inset
+                    width: root.contentWidth
+                    height: width * 0.56
+                    radius: Style.thumbRadius
+                    baseColor: root.coverTone
+                    glyph: root.photoGlyph
+                }
+
+                // --- Header: avatar + name/time (post, gallery, detail) ------
                 Row {
-                    x: Style.spacingM
+                    visible: root.variant !== "video" || root.fullBleedCover
+                    x: root.inset
                     spacing: Style.spacingS
                     SkeletonRect { width: units.gu(4.25); height: width; radius: width / 2 }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: Style.spacingXs
-                        SkeletonRect { width: units.gu(18); height: units.gu(1.5) }
-                        SkeletonRect { width: units.gu(10); height: units.gu(1.2) }
+                        SkeletonRect { width: units.gu(17); height: units.gu(1.6); radius: height / 2 }
+                        SkeletonRect { width: units.gu(9); height: units.gu(1.2); radius: height / 2 }
                     }
                 }
 
-                // Cover image block
-                SkeletonRect {
-                    x: root.fullBleedCover ? 0 : Style.spacingM
-                    width: root.fullBleedCover ? root.width : root.width - Style.spacingM * 2
-                    height: width * root.coverAspect
-                    radius: root.fullBleedCover ? 0 : Style.thumbRadius
+                // --- Title lines (post only — two uneven lines) --------------
+                Column {
+                    visible: root.variant === "post" && !root.fullBleedCover
+                    x: root.inset
+                    spacing: Style.spacingXs
+                    SkeletonRect { width: root.contentWidth; height: units.gu(1.9); radius: height / 2 }
+                    SkeletonRect { width: root.contentWidth * 0.55; height: units.gu(1.9); radius: height / 2 }
                 }
 
-                // Action line
+                // --- Post cover (inset 16:9) ---------------------------------
                 SkeletonRect {
-                    x: Style.spacingM
-                    width: units.gu(22); height: units.gu(2)
+                    visible: root.variant === "post" && !root.fullBleedCover
+                    x: root.inset
+                    width: root.contentWidth
+                    height: width * 0.56
+                    radius: Style.thumbRadius
+                    baseColor: root.coverTone
+                    glyph: root.photoGlyph
+                }
+
+                // --- Gallery photo (full-bleed square) -----------------------
+                SkeletonRect {
+                    visible: root.variant === "gallery" && !root.fullBleedCover
+                    width: root.width
+                    height: width
+                    radius: 0
+                    baseColor: root.coverTone
+                    glyph: root.photoGlyph
+                }
+
+                // --- Detail cover (full-bleed square) ------------------------
+                SkeletonRect {
+                    visible: root.fullBleedCover
+                    width: root.width
+                    height: width
+                    radius: 0
+                    baseColor: root.coverTone
+                    glyph: root.photoGlyph
+                }
+
+                // --- Video info: avatar + two title lines (after thumbnail) --
+                Row {
+                    visible: root.variant === "video" && !root.fullBleedCover
+                    x: root.inset
+                    spacing: Style.spacingS
+                    SkeletonRect { width: units.gu(4.5); height: width; radius: width / 2 }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Style.spacingXs
+                        SkeletonRect { width: root.contentWidth * 0.8; height: units.gu(1.7); radius: height / 2 }
+                        SkeletonRect { width: units.gu(12); height: units.gu(1.3); radius: height / 2 }
+                    }
+                }
+
+                // --- Action chips: mirrors the VoteBar's left icon+count row -
+                Row {
+                    visible: root.variant !== "video"
+                    x: root.inset
+                    spacing: Style.spacingM
+                    SkeletonRect { width: units.gu(5); height: units.gu(2); radius: height / 2 }
+                    SkeletonRect { width: units.gu(3); height: units.gu(2); radius: height / 2 }
+                    SkeletonRect { width: units.gu(5); height: units.gu(2); radius: height / 2 }
                 }
 
                 Item { width: 1; height: Style.spacingS }

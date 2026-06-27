@@ -256,6 +256,7 @@ Page {
                             source: modelData
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
+                            autoTransform: true     // honour EXIF orientation
                             sourceSize.width: cover.width * 2
                             Behavior on opacity { NumberAnimation { duration: 200 } }
                             opacity: status === Image.Ready ? 1.0 : 0.0
@@ -326,13 +327,13 @@ Page {
     }
 
     LoadingState {
-        anchors.fill: parent
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: page.loading && page.post === null
         count: 1
         fullBleedCover: true
     }
     ErrorState {
-        anchors.fill: parent
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: page.errorMsg !== "" && page.post === null
         message: page.errorMsg
         onRetry: page.load()

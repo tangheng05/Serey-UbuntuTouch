@@ -47,6 +47,18 @@ Page {
                 }
             }
         }
+        // Owner deleted a post → drop the row (no-op if it isn't in this feed).
+        function onPostDeleted(author, permlink) {
+            for (var i = feedModel.count - 1; i >= 0; i--) {
+                if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
+            }
+        }
+        // Owner chose Edit → only the active page opens the editor; reload on save.
+        function onEditRequested(post) {
+            if (!page.visible) return;
+            var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { editPost: post });
+            if (ed && ed.saved) ed.saved.connect(page.reload);
+        }
     }
 
     function feedFn() {
@@ -63,6 +75,38 @@ Page {
         errorMsg = "";
         feedModel.clear();
         loadMore();
+    }
+
+    // Pull-to-refresh: re-fetch the first page but keep the current rows on
+    // screen (clearing only once the new ones arrive) so there's no skeleton
+    // flash — just the pull spinner, Facebook-style.
+    property bool refreshing: false
+    function refresh() {
+        if (page.refreshing) return;
+        page.refreshing = true;
+        page.reqEpoch++;
+        if (inflight) { inflight.abort(); inflight = null; }
+        var epoch = page.reqEpoch;
+        var params = { limit: Config.pageSize, offset: 0 };
+        if (Config.communityId > 0)
+            params.community_id = Config.communityId;
+        inflight = feedFn()(Config.baseUrl, params, Session.token,
+            function (result, rawCount) {
+                if (epoch !== page.reqEpoch) return;
+                inflight = null;
+                page.refreshing = false;
+                page.loading = false;
+                feedModel.clear();
+                for (var i = 0; i < result.length; i++)
+                    feedModel.append(result[i]);
+                page.offset = rawCount;
+                page.endReached = rawCount < Config.pageSize;
+            },
+            function (err) {
+                if (epoch !== page.reqEpoch) return;
+                inflight = null;
+                page.refreshing = false;
+            });
     }
 
     function loadMore() {
@@ -111,6 +155,25 @@ Page {
         model: feedModel
         cacheBuffer: units.gu(12)
 
+        PullToRefresh {
+            refreshing: page.refreshing
+            onRefresh: page.refresh()
+            // Show "Pull to refresh" only while actively dragging, so it's gone
+            // the moment you release — no built-in "Release to refresh..." text and
+            // no flash during load/retract. We drive OPACITY (not visible): the
+            // PullToRefresh style imperatively sets the content's `visible` per its
+            // own state, which would clobber a `visible` binding; it never touches
+            // opacity, so this is the reliable lever.
+            content: Label {
+                text: i18n.tr("Pull to refresh")
+                opacity: list.dragging ? 1 : 0
+                font.pixelSize: Style.fontSmall
+                color: Style.textSecondary
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+
         delegate: PostCard {
             width: list.width
             post: feedModel.get(index)
@@ -122,7 +185,7 @@ Page {
             onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                 { username: feedModel.get(index).author })
             onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
-            onMoreClicked: PostActions.open(feedModel.get(index))
+            onMoreClicked: PostActions.open(feedModel.get(index), "blog")
         }
 
         // Constant-height footer: a conditional height feeds back into
@@ -173,7 +236,8 @@ Page {
         width: units.gu(5.5); height: width
         z: 10
         onClicked: {
-            page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"))
+            var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"));
+            if (ed && ed.saved) ed.saved.connect(page.reload);   // show the new post immediately
         }
 
         Rectangle {

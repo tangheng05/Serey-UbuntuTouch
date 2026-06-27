@@ -45,6 +45,12 @@ Page {
                 }
             }
         }
+        // Video has no in-app editor, so only delete-prune is handled here.
+        function onPostDeleted(author, permlink) {
+            for (var i = feedModel.count - 1; i >= 0; i--) {
+                if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
+            }
+        }
     }
 
     function reload() {
@@ -56,6 +62,37 @@ Page {
         errorMsg = "";
         feedModel.clear();
         loadMore();
+    }
+
+    // Pull-to-refresh: re-fetch page one but keep current rows until the new
+    // ones arrive (no skeleton flash — just the pull spinner).
+    property bool refreshing: false
+    function refresh() {
+        if (page.refreshing) return;
+        page.refreshing = true;
+        page.reqEpoch++;
+        if (inflight) { inflight.abort(); inflight = null; }
+        var epoch = page.reqEpoch;
+        var params = { limit: Config.pageSize, offset: 0 };
+        if (Config.communityId > 0)
+            params.community_id = Config.communityId;
+        inflight = VideoService.listVideos(Config.baseUrl, params, Session.token,
+            function (result, rawCount) {
+                if (epoch !== page.reqEpoch) return;
+                inflight = null;
+                page.refreshing = false;
+                page.loading = false;
+                feedModel.clear();
+                for (var i = 0; i < result.length; i++)
+                    feedModel.append(result[i]);
+                page.offset = rawCount;
+                page.endReached = rawCount < Config.pageSize;
+            },
+            function (err) {
+                if (epoch !== page.reqEpoch) return;
+                inflight = null;
+                page.refreshing = false;
+            });
     }
 
     function loadMore() {
@@ -93,6 +130,19 @@ Page {
         model: feedModel
         cacheBuffer: units.gu(16)
 
+        PullToRefresh {
+            refreshing: page.refreshing
+            onRefresh: page.refresh()
+            content: Label {
+                text: i18n.tr("Pull to refresh")
+                opacity: list.dragging ? 1 : 0
+                font.pixelSize: Style.fontSmall
+                color: Style.textSecondary
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+
         header: Item {
             width: list.width
             height: headerLabel.height + Style.spacingM + Style.spacingS
@@ -114,7 +164,7 @@ Page {
                 { video: feedModel.get(index) })
             onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                 { username: feedModel.get(index).author })
-            onMoreClicked: PostActions.open(feedModel.get(index))
+            onMoreClicked: PostActions.open(feedModel.get(index), "video")
         }
 
         // Constant-height footer: a conditional height feeds back into
@@ -137,6 +187,7 @@ Page {
 
     LoadingState {
         anchors.fill: list
+        variant: "video"
         visible: page.loading && feedModel.count === 0
     }
     ErrorState {

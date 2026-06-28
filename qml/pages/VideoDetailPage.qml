@@ -13,7 +13,8 @@ Page {
 
     property var video: ({})
     property bool playing: false
-    property bool nativeMode: false
+    property bool nativeMode: false     // QtMultimedia (efficient, mp4/webm/m4v)
+    property bool webVideoMode: false   // Chromium HTML5 <video> (mov / native fallback)
     property bool isFollowing: false
     property bool descSheetOpen: false
     property bool commentSheetOpen: false
@@ -31,18 +32,74 @@ Page {
     function isDirectFile(u) {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
+    // Formats the device's GStreamer plays reliably. Everything else (notably
+    // .mov / QuickTime) goes through Chromium's HTML5 <video> instead.
+    function isNativeFriendly(u) {
+        return /\.(mp4|webm|m4v)(\?|$)/i.test(u || "");
+    }
+
+    // The direct media URL for a Serey-hosted clip (empty for third-party embeds).
+    function directUrl() {
+        var v = page.video;
+        if (v.platform === "SEREY") return v.videoLink || v.embedUrl || "";
+        if (isDirectFile(v.videoLink)) return v.videoLink;
+        if (isDirectFile(v.embedUrl)) return v.embedUrl;
+        return "";
+    }
+
+    // Build a playable third-party embed URL, mirroring the web's fallbackEmbedSrc:
+    // prefer the backend's embed_video, compute it from video_id when missing, and
+    // augment YouTube with the params it needs to actually play inline on mobile
+    // (a bare youtube.com/embed/<id> renders a black, unresponsive frame).
+    function embedSrc() {
+        var v = page.video;
+        var url = v.embedUrl || "";
+        if (url.length === 0 && (v.videoId || "").length > 0) {
+            if (v.platform === "YOUTUBE")
+                url = "https://www.youtube.com/embed/" + v.videoId;
+            else if (v.platform === "TIKTOK")
+                url = "https://www.tiktok.com/embed/v2/" + v.videoId;
+            else if (v.platform === "FACEBOOK")
+                url = "https://www.facebook.com/plugins/video.php?href="
+                    + encodeURIComponent("https://www.facebook.com/facebook/videos/" + v.videoId)
+                    + "&show_text=false";
+        }
+        if (url.indexOf("youtube.com/embed/") >= 0)
+            url += (url.indexOf("?") >= 0 ? "&" : "?")
+                + "autoplay=1&playsinline=1&rel=0&modestbranding=1&origin=https://serey.io";
+        return url;
+    }
 
     function startPlay() {
         var v = page.video;
-        if (v.platform === "SEREY" || isDirectFile(v.videoLink) || isDirectFile(v.embedUrl)) {
-            page.nativeMode = true;
+        var direct = page.directUrl();
+        if (direct.length > 0) {
+            // Serey-hosted file: native player for codecs GStreamer handles,
+            // in-app Chromium <video> for the rest (e.g. .mov).
+            page.nativeMode = page.isNativeFriendly(direct);
+            page.webVideoMode = !page.nativeMode;
             page.playing = true;
-        } else if ((v.embedUrl || "").length > 0) {
+        } else if (page.embedSrc().length > 0) {
             page.nativeMode = false;
+            page.webVideoMode = false;
             page.playing = true;
         } else if ((v.videoLink || "").length > 0) {
             Qt.openUrlExternally(v.videoLink);
         }
+    }
+
+    // GStreamer couldn't play the file — retry in-app via Chromium's <video>
+    // rather than dumping the user into an external browser. The mode change
+    // re-evaluates the Loader's source, reloading it as a web <video>.
+    function onNativeFailed() {
+        if (page.webVideoMode) {
+            // Even Chromium failed — last resort is the system handler.
+            var link = page.directUrl() || page.video.videoLink || page.video.embedUrl;
+            if ((link || "").length > 0) Qt.openUrlExternally(link);
+            return;
+        }
+        page.nativeMode = false;
+        page.webVideoMode = true;
     }
 
     function toggleFollow() {
@@ -86,8 +143,10 @@ Page {
                 var replies = result.replies || [];
                 page.comments = replies;
                 // The backend's answer_count can be stale; trust the actual
-                // replies array when it's larger.
-                page.commentCount = Math.max(result.post.comments, replies.length);
+                // replies array when it's larger. (result.post can be absent if
+                // the detail fetch came back empty — guard it.)
+                var serverCount = (result.post && result.post.comments) || 0;
+                page.commentCount = Math.max(serverCount, replies.length);
             },
             function (err) { /* keep empty */ });
     }
@@ -261,23 +320,28 @@ Page {
                     id: webLoader
                     anchors.fill: parent
                     active: page.playing
+                    // Native player only for nativeMode; webVideoMode and embed
+                    // playback both use the WebView (HTML5 <video> vs iframe).
                     source: page.playing
                         ? (page.nativeMode ? Qt.resolvedUrl("../components/VideoNativePlayer.qml")
                                            : Qt.resolvedUrl("../components/VideoWebView.qml"))
                         : ""
                     onLoaded: {
                         if (page.nativeMode) {
-                            item.fallbackUrl = page.video.videoLink || page.video.embedUrl || "";
-                            item.source = page.video.videoLink || page.video.embedUrl || "";
+                            item.source = page.directUrl();
+                            item.failed.connect(page.onNativeFailed);
+                        } else if (page.webVideoMode) {
+                            item.directVideo = true;
+                            item.embedUrl = page.directUrl();
                         } else {
                             item.wrap = true;
-                            item.embedUrl = page.video.embedUrl || "";
+                            item.embedUrl = page.embedSrc();
                         }
                     }
                     onStatusChanged: {
                         if (status === Loader.Error) {
                             page.playing = false;
-                            var link = page.video.videoLink || page.video.embedUrl;
+                            var link = page.directUrl() || page.video.videoLink || page.video.embedUrl;
                             if ((link || "").length > 0)
                                 Qt.openUrlExternally(link);
                         }

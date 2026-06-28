@@ -13,6 +13,9 @@ Page {
     property bool submitting: false
     property string selectedCategory: ""
     property bool catSheetOpen: false
+    // On-screen-keyboard height; the formatting toolbar rides above it (same as
+    // the video comment composer) so B/I/U stay reachable while typing.
+    readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     readonly property int titleMaxLength: 250
     property string coverImageUrl: ""
     property bool uploading: false
@@ -449,10 +452,12 @@ Page {
         }
     }
 
-    // Formatting toolbar
+    // Formatting toolbar — rides above the on-screen keyboard while typing.
     Rectangle {
         id: toolbar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.bottomMargin: page.kbHeight
+        Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
         height: units.gu(5.5)
         color: Style.surface
 

@@ -7,13 +7,17 @@ import "../Theme"
  * Native player for Serey-hosted videos (platform_type === "SEREY"), whose
  * `video_link` is a direct media file (mp4 on s3.serey.io / upload.serey.io /
  * fsgw.sabay.com). Third-party embeds use VideoWebView instead. Loaded lazily by
- * VideoDetailPage. On a playback error it opens the file externally (system
- * player / browser) via `fallbackUrl`.
+ * VideoDetailPage. On a playback error it emits `failed()` and the caller falls
+ * back to a Chromium <video> (broader codec support) instead.
  */
 Item {
     id: root
     property string source: ""
-    property string fallbackUrl: ""
+
+    // Emitted when GStreamer can't play the file (decode error or watchdog
+    // timeout — typically a .mov). The caller decides what to do; VideoDetailPage
+    // retries in-app via a Chromium <video> rather than the external browser.
+    signal failed()
 
     onSourceChanged: {
         player.stop();
@@ -35,17 +39,16 @@ Item {
         autoPlay: true
         onError: {
             watchdog.stop();
-            if (root.fallbackUrl.length > 0)
-                Qt.openUrlExternally(root.fallbackUrl);
+            root.failed();
         }
         // Stop the watchdog once playback actually starts / buffers.
         onPlaybackStateChanged: if (playbackState === MediaPlayer.PlayingState) watchdog.stop()
         onStatusChanged: if (status === MediaPlayer.Buffered) watchdog.stop()
     }
 
-    // Watchdog for unreachable files (e.g. SEREY .mov returning 504): if nothing
-    // is playing/buffered after a few seconds, stop and hand off to the browser
-    // instead of leaving the UI frozen on a spinner.
+    // Watchdog for stalled/unreachable files: if nothing is playing/buffered
+    // after a few seconds, stop and emit failed() so the caller can retry in-app
+    // (Chromium <video>) instead of leaving the UI frozen on a spinner.
     Timer {
         id: watchdog
         interval: 6000
@@ -55,8 +58,7 @@ Item {
                 && player.status !== MediaPlayer.Buffered
                 && player.status !== MediaPlayer.EndOfMedia) {
                 player.stop();
-                if (root.fallbackUrl.length > 0)
-                    Qt.openUrlExternally(root.fallbackUrl);
+                root.failed();
             }
         }
     }

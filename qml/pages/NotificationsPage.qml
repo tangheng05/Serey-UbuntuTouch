@@ -16,11 +16,48 @@ Page {
     property var inflight: null
 
     header: PageHeader {
+        id: pageHeader
         title: i18n.tr("Notifications")
         leadingActionBar.actions: [
             Action { iconName: "back"; text: i18n.tr("Back"); onTriggered: page.pageStack.pop() }
         ]
         trailingActionBar.actions: page.unreadCount > 0 ? [markAllReadAction] : []
+
+        extension: Item {
+            anchors { left: parent.left; right: parent.right }
+            height: units.gu(5)
+
+            Row {
+                anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                spacing: Style.spacingS
+
+                Icon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: units.gu(2.2); height: width
+                    name: Session.pushEnabled ? "notification" : "reminder-snooze"
+                    color: Session.pushEnabled ? Style.brand : Style.textSecondary
+                }
+                Label {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: i18n.tr("Background notifications")
+                    font.pixelSize: Style.fontSmall
+                    font.family: Style.fontFamily
+                    color: Style.textPrimary
+                    width: parent.width - pushSwitch.width - units.gu(2.2) - Style.spacingS * 2
+                }
+                Switch {
+                    id: pushSwitch
+                    anchors.verticalCenter: parent.verticalCenter
+                    checked: Session.pushEnabled
+                    onClicked: Session.setPushEnabled(!Session.pushEnabled)
+                }
+            }
+
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                height: units.dp(1); color: Style.divider
+            }
+        }
     }
 
     Action {
@@ -75,7 +112,7 @@ Page {
     }
 
     function fetchUnread() {
-        NotificationService.unreadCount(Config.baseUrl, Session.token,
+        NotificationService.countUnread(Config.baseUrl, Session.token,
             function (count) { page.unreadCount = count },
             function (err)   { /* silent */ })
     }

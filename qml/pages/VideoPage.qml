@@ -31,7 +31,7 @@ Page {
     // just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
-        function onSourceIndexChanged() { page.reload(); }
+        function onCommunityIdChanged() { page.reload(); }
     }
 
     Connections {

@@ -34,12 +34,40 @@ Output JSON (Ubuntu Touch postal format):
 
 import sys
 import json
+import os
+import glob
+import sqlite3
 
 if len(sys.argv) < 3:
     sys.exit(1)
 
 input_path = sys.argv[1]
 output_path = sys.argv[2]
+
+# Check if user disabled push notifications in the app settings.
+# The QML LocalStorage DB is under ~/.local/share/serey.ubuntu/Databases/.
+def is_push_enabled():
+    db_dir = os.path.expanduser("~/.local/share/serey.ubuntu/Databases")
+    if not os.path.isdir(db_dir):
+        return True
+    dbs = glob.glob(os.path.join(db_dir, "*.sqlite"))
+    for db_path in dbs:
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.execute("SELECT v FROM auth WHERE k='pushEnabled'")
+            row = cur.fetchone()
+            conn.close()
+            if row and row[0] == "false":
+                return False
+        except Exception:
+            continue
+    return True
+
+if not is_push_enabled():
+    # Write an empty notification so the system doesn't show anything
+    with open(output_path, "w") as f:
+        json.dump({}, f)
+    sys.exit(0)
 
 try:
     with open(input_path, "r") as f:

@@ -9,7 +9,10 @@
  */
 
 function listVideos(baseUrl, params, token, onOk, onErr) {
-    return Http.get(baseUrl, "/video-component/list-all-videos-by-author", params, token, function (data) {
+    var path = params.community_id
+        ? "/video-component/"
+        : "/video-component/list-all-videos-by-author"
+    return Http.get(baseUrl, path, params, token, function (data) {
         var raw = data.data || [];
         onOk(raw.map(M.toVideo), raw.length);
     }, onErr);

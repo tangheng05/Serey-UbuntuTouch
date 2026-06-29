@@ -65,7 +65,10 @@ Page {
     }
     // The community can't change while this page is up (header is collapsed), but
     // react anyway so the list is always correct for the active source.
-    Connections { target: Config; function onSourceIndexChanged() { page.loadCategories() } }
+    Connections {
+        target: Config
+        function onCommunityIdChanged() { page.loadCategories() }
+    }
 
     header: Item { height: 0 }
 

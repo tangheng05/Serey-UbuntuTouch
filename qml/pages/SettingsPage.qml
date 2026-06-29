@@ -6,6 +6,7 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
+import "../services/NotificationService.js" as NotificationService
 
 /*
  * Settings, in the iOS Serey app's grouped style: a welcome/identity header, then
@@ -89,6 +90,8 @@ Page {
     function doLogout() {
         if (Session.token.length > 0)
             AccountService.logout(Config.baseUrl, Session.token, function () { /* fire-and-forget */ }, function () { /* already clearing locally */ });
+        NotificationService.removeToken(Session.username,
+            function () { /* fire-and-forget */ }, function () { /* silent */ });
         Session.clear();
         FollowStore.reset();
         page.profile = null;
@@ -226,20 +229,16 @@ Page {
 
                             Icon {
                                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                                name: searchField.text.length > 0 ? "close" : "down"
+                                name: "close"
                                 width: units.gu(2); height: width
                                 color: Style.textSecondary
-                                visible: searchField.text.length > 0 || searchField.activeFocus
+                                visible: searchField.text.length > 0
 
                                 MouseArea {
                                     anchors { fill: parent; margins: -units.gu(0.5) }
                                     onClicked: {
-                                        if (searchField.text.length > 0) {
-                                            searchField.text = ""
-                                            searchField.forceActiveFocus()
-                                        } else {
-                                            searchField.focus = false
-                                        }
+                                        searchField.text = ""
+                                        searchField.forceActiveFocus()
                                     }
                                 }
                             }

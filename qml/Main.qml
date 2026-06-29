@@ -77,27 +77,41 @@ MainView {
     property var  sysNotif:   null   // Lomiri.Notifications Notification
     property var  pushClient: null   // Ubuntu.PushNotifications PushClient
     property string pushToken: ""
-    property int  lastUnreadCount: 0
+    property int  lastUnreadCount: -1
+    property var  notifSound: null
 
     function _showNotif(body) {
-        if (!root.sysNotif) return
-        root.sysNotif.body = body
-        root.sysNotif.show()
+        // Play sound
+        if (root.notifSound) root.notifSound.play()
+
+        // System notification (lock screen / indicator)
+        if (root.sysNotif) {
+            root.sysNotif.body = body
+            root.sysNotif.show()
+        }
+
+        // In-app toast (always works)
+        Toast.show(body)
     }
 
     function _registerPushToken(pt) {
-        NotificationService.registerPushToken(Config.baseUrl, Session.token, pt,
+        NotificationService.registerPushToken(Session.username, pt,
             function () { /* fire-and-forget */ },
             function ()  { /* silent — retry on next app launch */ })
     }
 
     function _initNotifications() {
-        // Local notification object
+        // Notification sound (QtMultimedia Audio for ogg support)
+        try {
+            root.notifSound = Qt.createQmlObject(
+                'import QtMultimedia 5.6; Audio { source: "/usr/share/sounds/lomiri/notifications/Xylo.ogg"; autoPlay: false }',
+                root, "notifSound")
+        } catch (e) { /* QtMultimedia not available — silent */ }
+
+        // System notification (indicator + lock screen)
         try {
             root.sysNotif = Qt.createQmlObject(
-                'import Lomiri.Notifications 1.0; Notification {' +
-                '  summary: "Serey";' +
-                '  icon: Qt.resolvedUrl("../assets/serey-logo.png"); }',
+                'import Lomiri.Notifications 1.0; Notification { summary: "Serey" }',
                 root, "sysNotif")
         } catch (e) { /* Lomiri.Notifications not available on desktop — expected */ }
 
@@ -118,29 +132,33 @@ MainView {
             root.pushClient.notificationsChanged.connect(function () {
                 var notifs = root.pushClient.notifications
                 if (notifs.length > 0) {
-                    root.lastUnreadCount = 0   // force re-check on next poll
+                    root.lastUnreadCount = -1   // force re-check on next poll
                     root.pushClient.clearAll()
                 }
             })
         } catch (e) { /* Ubuntu.PushNotifications not available on desktop — expected */ }
     }
 
-    // Poll every 60 s while logged in — fallback when push isn't available and
-    // keeps the in-app badge up to date even on device.
+    // Poll every 60 s while logged in
     Timer {
         id: notifPoller
         interval: 60000
         repeat: true
-        running: Session.isLoggedIn
+        running: Session.isLoggedIn && Session.pushEnabled
         triggeredOnStart: true
         onTriggered: {
-            if (!Session.isLoggedIn) return
-            NotificationService.unreadCount(Config.baseUrl, Session.token,
+            if (!Session.isLoggedIn || !Session.pushEnabled) return
+            NotificationService.countUnread(Config.baseUrl, Session.token,
                 function (count) {
+                    if (root.lastUnreadCount < 0) {
+                        root.lastUnreadCount = count
+                        return
+                    }
                     if (count > root.lastUnreadCount) {
-                        var body = count === 1
+                        var diff = count - root.lastUnreadCount
+                        var body = diff === 1
                             ? i18n.tr("You have 1 new notification")
-                            : i18n.tr("You have %1 new notifications").arg(count)
+                            : i18n.tr("You have %1 new notifications").arg(diff)
                         root._showNotif(body)
                     }
                     root.lastUnreadCount = count
@@ -153,7 +171,7 @@ MainView {
         target: Session
         function onIsLoggedInChanged() {
             if (!Session.isLoggedIn) {
-                root.lastUnreadCount = 0
+                root.lastUnreadCount = -1
             } else if (root.pushToken !== "") {
                 root._registerPushToken(root.pushToken)
             }

@@ -90,6 +90,26 @@ function post(baseUrl, path, bodyObj, token, onOk, onErr) {
     return send("POST", baseUrl + path, token, bodyObj || {}, onOk, onErr);
 }
 
+function postForm(baseUrl, path, formBody, token, onOk, onErr) {
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", baseUrl + path);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+    if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+    xhr.timeout = 15000;
+    xhr.ontimeout = function () { onErr({ status: 0, message: "Request timed out." }); };
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState !== XMLHttpRequest.DONE) return;
+        if (xhr.status === 0) { onErr({ status: 0, message: "Network error." }); return; }
+        var data = null;
+        try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (e) { }
+        if (xhr.status >= 200 && xhr.status < 300) onOk(data);
+        else onErr({ status: xhr.status, message: (data && data.message) || "Request failed.", data: data });
+    };
+    xhr.send(formBody);
+    return xhr;
+}
+
 function put(baseUrl, path, bodyObj, token, onOk, onErr) {
     return send("PUT", baseUrl + path, token, bodyObj || {}, onOk, onErr);
 }

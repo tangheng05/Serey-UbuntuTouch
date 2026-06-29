@@ -1,5 +1,6 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
+import Lomiri.Components.Popups 1.3
 import "../Theme"
 import "../Session"
 import "../components"
@@ -15,6 +16,7 @@ Page {
     property bool playing: false
     property bool nativeMode: false     // QtMultimedia (efficient, mp4/webm/m4v)
     property bool webVideoMode: false   // Chromium HTML5 <video> (mov / native fallback)
+    property bool isFullscreen: false   // player reparented to fill the whole screen
     property bool isFollowing: false
     property bool descSheetOpen: false
     property bool commentSheetOpen: false
@@ -32,19 +34,25 @@ Page {
     function isDirectFile(u) {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
-    // Formats the device's GStreamer plays reliably. Everything else (notably
-    // .mov / QuickTime) goes through Chromium's HTML5 <video> instead.
-    function isNativeFriendly(u) {
-        return /\.(mp4|webm|m4v)(\?|$)/i.test(u || "");
-    }
 
-    // The direct media URL for a Serey-hosted clip (empty for third-party embeds).
-    function directUrl() {
+    // The remote direct media URL for a Serey-hosted clip (empty for third-party
+    // embeds). This is also the "is this downloadable?" gate for the offline
+    // download button — embeds return "" because there are no bytes to fetch.
+    function remoteDirectUrl() {
         var v = page.video;
         if (v.platform === "SEREY") return v.videoLink || v.embedUrl || "";
         if (isDirectFile(v.videoLink)) return v.videoLink;
         if (isDirectFile(v.embedUrl)) return v.embedUrl;
         return "";
+    }
+
+    // The URL to actually play: a saved offline copy when one exists, otherwise
+    // the remote file. Extension-based routing in startPlay() still applies (the
+    // local path keeps the original extension), so offline .mp4 → native player
+    // and offline .mov → Chromium <video>, exactly like the streamed case.
+    function directUrl() {
+        var local = Downloads.pathFor((page.video && page.video.permlink) || "");
+        return local.length > 0 ? local : page.remoteDirectUrl();
     }
 
     // Build a playable third-party embed URL, mirroring the web's fallbackEmbedSrc:
@@ -74,10 +82,27 @@ Page {
         var v = page.video;
         var direct = page.directUrl();
         if (direct.length > 0) {
-            // Serey-hosted file: native player for codecs GStreamer handles,
-            // in-app Chromium <video> for the rest (e.g. .mov).
-            page.nativeMode = page.isNativeFriendly(direct);
-            page.webVideoMode = !page.nativeMode;
+            var isLocal = direct.indexOf("file://") === 0;
+            if (!isLocal && /\.mov(\?|$)/i.test(direct)) {
+                // Remote QuickTime .mov: Chromium's <video> decodes the audio but
+                // not the video track (black screen, stuttering). media-hub /
+                // GStreamer (qtdemux) renders it, and the AppArmor block that broke
+                // downloads only applies to *local* files — a remote stream is fine
+                // on the native player.
+                page.nativeMode = true;
+                page.webVideoMode = false;
+            } else {
+                // All local downloads and remote mp4/webm/m4v → in-app Chromium
+                // <video> (VideoWebView), NOT QtMultimedia. On Ubuntu Touch
+                // QtMultimedia delegates to the out-of-process media-hub service,
+                // whose AppArmor profile can't read our download-manager file
+                // ("InsufficientAppArmorPermissions") → 0x0 surface then SIGSEGV.
+                // Chromium decodes in our own confinement, so it reads the app's own
+                // file, and for remote mp4 it range-requests the non-faststart moov
+                // tail.
+                page.nativeMode = false;
+                page.webVideoMode = true;
+            }
             page.playing = true;
         } else if (page.embedSrc().length > 0) {
             page.nativeMode = false;
@@ -88,9 +113,19 @@ Page {
         }
     }
 
-    // GStreamer couldn't play the file — retry in-app via Chromium's <video>
-    // rather than dumping the user into an external browser. The mode change
-    // re-evaluates the Loader's source, reloading it as a web <video>.
+    // Reparent the player Loader into the fullscreen host (or back to the inline
+    // stage). On this pushed page the app header and bottom nav are already hidden,
+    // so filling the page is genuinely fullscreen. webLoader keeps anchors.fill:
+    // parent, so it resizes to whichever container it lands in.
+    function setFullscreen(on) {
+        page.isFullscreen = on;
+        webLoader.parent = on ? fsHost : stage;
+    }
+
+    // The native (.mov) player failed — retry in-app via Chromium's <video> rather
+    // than dropping the user into an external browser. The mode change re-evaluates
+    // the Loader's source. (Chromium can't render the .mov container, so this then
+    // usually falls through to the system-handler last resort below.)
     function onNativeFailed() {
         if (page.webVideoMode) {
             // Even Chromium failed — last resort is the system handler.
@@ -140,6 +175,7 @@ Page {
     function loadComments() {
         PostService.detail(Config.baseUrl, video.author, video.permlink, Session.token,
             function (result) {
+                if (!result) return;   // empty/failed detail fetch — keep current state
                 var replies = result.replies || [];
                 page.comments = replies;
                 // The backend's answer_count can be stale; trust the actual
@@ -268,6 +304,25 @@ Page {
             function (err) { /* ignore */ });
     }
 
+    // Confirm before forgetting an offline download.
+    Component {
+        id: removeDialog
+        Dialog {
+            id: rdlg
+            title: i18n.tr("Remove download?")
+            text: i18n.tr("This video will no longer be available offline.")
+            Button {
+                text: i18n.tr("Remove")
+                color: Style.danger
+                onClicked: { PopupUtils.close(rdlg); Downloads.remove((page.video && page.video.permlink) || ""); }
+            }
+            Button {
+                text: i18n.tr("Cancel")
+                onClicked: PopupUtils.close(rdlg)
+            }
+        }
+    }
+
     Flickable {
         id: scroll
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -291,7 +346,7 @@ Page {
 
                 Image {
                     anchors.fill: parent
-                    source: page.video.thumbnail || ""
+                    source: page.video.localThumb || page.video.thumbnail || ""
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     sourceSize.width: stage.width * 2
@@ -337,6 +392,10 @@ Page {
                             item.wrap = true;
                             item.embedUrl = page.embedSrc();
                         }
+                        // Both WebView modes (<video> + YouTube iframe) can request
+                        // fullscreen; the native player can't.
+                        if (!page.nativeMode)
+                            item.fullscreenToggled.connect(page.setFullscreen);
                     }
                     onStatusChanged: {
                         if (status === Loader.Error) {
@@ -515,6 +574,59 @@ Page {
                         }
                     }
                 }
+
+                // Download pill — Serey/direct files only (hidden for embeds, which
+                // have no downloadable bytes). Tri-state: Download → progress% →
+                // Saved. All reactivity is keyed off Downloads.rev.
+                AbstractButton {
+                    id: dlBtn
+                    visible: page.remoteDirectUrl().length > 0
+                    readonly property string _pl: (page.video && page.video.permlink) || ""
+                    readonly property var _active: (Downloads.rev, Downloads.activeFor(_pl))
+                    readonly property bool _saved: (Downloads.rev, Downloads.isSaved(_pl))
+                    width: dlRow.width + Style.spacingM * 2
+                    height: units.gu(4.5)
+                    onClicked: {
+                        if (_active) return;                  // in flight — ignore taps
+                        if (_saved) PopupUtils.open(removeDialog);
+                        else Downloads.start(page.video, page.remoteDirectUrl());
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: height / 2
+                        color: dlBtn._saved ? Style.brand : "transparent"
+                        border.width: dlBtn._saved ? 0 : units.dp(1.5)
+                        border.color: Style.divider
+                    }
+                    Row {
+                        id: dlRow
+                        anchors.centerIn: parent
+                        spacing: Style.spacingXs
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(2); height: width
+                            name: dlBtn._saved ? "tick" : "save"
+                            color: dlBtn._saved ? Style.textOnBrand : Style.textPrimary
+                            visible: !dlBtn._active
+                        }
+                        ActivityIndicator {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(2); height: width
+                            running: !!dlBtn._active
+                            visible: running
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: dlBtn._active
+                                  ? (Math.round(dlBtn._active.progress) + "%")
+                                  : (dlBtn._saved ? i18n.tr("Saved") : i18n.tr("Download"))
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            color: dlBtn._saved ? Style.textOnBrand : Style.textPrimary
+                        }
+                    }
+                }
             }
 
             Item { width: 1; height: Style.spacingM }
@@ -592,6 +704,16 @@ Page {
 
             Item { width: 1; height: Style.spacingL }
         }
+    }
+
+    // Fullscreen host: setFullscreen() reparents the player Loader in here to fill
+    // the screen. Sits above the content and the bottom sheets (z 1500).
+    Item {
+        id: fsHost
+        anchors.fill: parent
+        z: 2000
+        visible: page.isFullscreen
+        Rectangle { anchors.fill: parent; color: "black" }
     }
 
     // --- Comment bottom sheet ------------------------------------------------

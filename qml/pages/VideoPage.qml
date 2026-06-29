@@ -155,6 +155,33 @@ Page {
                 font.weight: Font.DemiBold
                 color: Style.textPrimary
             }
+
+            // Offline library shortcut.
+            AbstractButton {
+                anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: headerLabel.verticalCenter }
+                width: dlShortcutRow.width + Style.spacingS * 2
+                height: units.gu(4)
+                onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
+
+                Row {
+                    id: dlShortcutRow
+                    anchors.centerIn: parent
+                    spacing: Style.spacingXs
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2); height: width
+                        name: "save"
+                        color: Style.brand
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: i18n.tr("Downloaded")
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.DemiBold
+                        color: Style.brand
+                    }
+                }
+            }
         }
 
         delegate: VideoCard {

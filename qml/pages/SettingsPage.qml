@@ -492,6 +492,16 @@ Page {
                 onClicked: PopupUtils.open(logoutDialog)
             }
 
+            // ===== Library ===============================================
+            SettingsSectionHeader { text: i18n.tr("Library") }
+
+            SettingsRow {
+                iconName: "save"
+                label: i18n.tr("Offline videos")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
+            }
+
             // ===== About ==================================================
             SettingsSectionHeader { text: i18n.tr("About") }
 

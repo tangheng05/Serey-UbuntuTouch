@@ -42,7 +42,7 @@ AbstractButton {
             Image {
                 id: thumbImg
                 anchors.fill: parent
-                source: v.thumbnail || ""
+                source: v.localThumb || v.thumbnail || ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 sourceSize.width: parent.width * 2

@@ -6,7 +6,10 @@
     "hooks": {
         "serey": {
             "apparmor": "serey.apparmor",
-            "desktop": "serey.desktop",
+            "desktop": "serey.desktop"
+        },
+        "push": {
+            "apparmor": "push-helper.apparmor",
             "push-helper": "push-helper.json"
         }
     },

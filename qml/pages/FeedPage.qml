@@ -54,9 +54,8 @@ Page {
     ListModel { id: feedModel; dynamicRoles: true }
 
     function feedFn() {
-        if (feedIndex === 1) return PostService.listGalleryFeed;
-        if (feedIndex === 2) return VideoService.listVideos;
-        if (feedIndex === 3) return PostService.listDrumFeed;
+        if (feedIndex === 1) return VideoService.listVideos;
+        if (feedIndex === 2) return PostService.listDrumFeed;
         return PostService.listFeedMixed;
     }
 
@@ -154,7 +153,7 @@ Page {
     SectionTabs {
         id: tabs
         anchors { top: topBar.bottom; left: parent.left; right: parent.right }
-        model: [i18n.tr("Blog"), i18n.tr("Gallery"), i18n.tr("Video"), i18n.tr("Drum")]
+        model: [i18n.tr("Blog"), i18n.tr("Video"), i18n.tr("Drum")]
         currentIndex: page.feedIndex
         onSelected: {
             page.feedIndex = index;
@@ -186,9 +185,7 @@ Page {
             width: list.width
             property var postData: feedModel.get(index)
 
-            sourceComponent: page.feedIndex === 1 ? galleryDelegate
-                           : page.feedIndex === 2 ? videoDelegate
-                           : blogDelegate
+            sourceComponent: page.feedIndex === 1 ? videoDelegate : blogDelegate
 
             Component {
                 id: blogDelegate

@@ -12,7 +12,7 @@ AbstractButton {
     signal moreClicked()
 
     width: parent ? parent.width : units.gu(40)
-    implicitHeight: column.height + Style.spacingM + units.dp(1)
+    implicitHeight: column.height + Style.spacingM + Style.spacingM + units.dp(1)
     height: implicitHeight
 
     Column {

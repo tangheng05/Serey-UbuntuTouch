@@ -20,7 +20,7 @@ Item {
     // Which source row is currently expanded (-1 = none).
     property int expandedIndex: -1
     // Per-source cache: null = not fetched yet, [] = fetched but empty, [...] = data.
-    property var cache: [null, null, null]
+    property var cache: [null, null, null, null]
     property int loadingIndex: -1
     // Map of communityId (string) → true for communities the user is subscribed to.
     property var subscribedMap: ({})
@@ -40,14 +40,12 @@ Item {
         picker.subscriptionsLoaded = true  // mark before call so retries don't stack
         SubscriberService.fetchSubscribed(Config.baseUrl, Session.token,
             function (map) { picker.subscribedMap = map; picker.subscribedRev++ },
-            function (err) { console.log("fetchSubscribed error:", err.message) })
+            function () { /* silent — picker still works without subscription data */ })
     }
 
     function _toggleSubscribe(commId, currentlySubscribed) {
         if (!Session.isLoggedIn) { Toast.show(i18n.tr("Log in to subscribe")); return }
         var id = String(commId)
-        console.log("_toggleSubscribe id:", id, "subscribed:", currentlySubscribed, "token len:", Session.token.length)
-
         function _newMap(add) {
             var m = {}
             for (var k in picker.subscribedMap) m[k] = true
@@ -59,11 +57,11 @@ Item {
         if (currentlySubscribed) {
             SubscriberService.unsubscribe(Config.baseUrl, Session.token, id,
                 function () { picker.subscribedMap = _newMap(false); picker.subscribedRev++; Toast.show(i18n.tr("Unsubscribed")) },
-                function (err) { console.log("unsubscribe error:", JSON.stringify(err)); Toast.show(err.message || i18n.tr("Failed to unsubscribe")) })
+                function (err) { Toast.show(err.message || i18n.tr("Failed to unsubscribe")) })
         } else {
             SubscriberService.subscribe(Config.baseUrl, Session.token, id,
                 function () { picker.subscribedMap = _newMap(true); picker.subscribedRev++; Toast.show(i18n.tr("Subscribed!")) },
-                function (err) { console.log("subscribe error:", JSON.stringify(err)); Toast.show(err.message || i18n.tr("Failed to subscribe")) })
+                function (err) { Toast.show(err.message || i18n.tr("Failed to subscribe")) })
         }
     }
 
@@ -86,8 +84,6 @@ Item {
                       || (Array.isArray(raw.data) ? raw.data
                           : (raw.data && (raw.data.communities || raw.data.results || raw.data.items)))
                       || []
-            console.log("categories/list arr length:", arr.length)
-            if (arr.length > 0) console.log("categories/list arr[0] keys:", JSON.stringify(Object.keys(arr[0])))
             return arr
         }
 
@@ -131,7 +127,6 @@ Item {
                 var catId = String(catArr[i].community_category_id || catArr[i].id || catArr[i]._id || "")
                 if (catId) catMap[catId] = meta
             }
-            console.log("catMap size:", Object.keys(catMap).length)
             var groups = {}, order = [], metaByKey = {}
             for (var k = 0; k < sourceComms.length; k++) {
                 var comm = sourceComms[k]
@@ -150,30 +145,60 @@ Item {
         }
 
         function _store(si, cats) {
-            console.log("storing", cats.length, "category groups for source", si)
-            var nc = [picker.cache[0], picker.cache[1], picker.cache[2]]
+            var nc = []
+            for (var i = 0; i < picker.cache.length; i++) nc.push(picker.cache[i])
             nc[si] = cats
             picker.cache = nc
             picker.loadingIndex = -1
         }
 
         if (srcIndex === 0) {
-            // Global: categories/list already has the grouping, use directly
-            var xhrG = new XMLHttpRequest()
-            xhrG.open("GET", Config.baseUrl + "/community/categories/list?limit=100")
-            xhrG.setRequestHeader("Accept", "application/json")
-            xhrG.timeout = 15000
-            xhrG.onreadystatechange = function () {
-                if (xhrG.readyState !== XMLHttpRequest.DONE) return
-                var cats = []
-                try {
-                    console.log("categories/list raw (global):", xhrG.responseText.substring(0, 400))
-                    var arr = _parseCategoryList(JSON.parse(xhrG.responseText))
-                    cats = _buildFromCategoryList(arr)
-                } catch (e) { console.log("categories/list error:", e) }
-                _store(0, cats)
+            // Global: fetch both Netherlands (99) and US (26) and combine
+            var regionalIds = []
+            for (var ri = 1; ri < Config.sources.length; ri++)
+                regionalIds.push(Config.sources[ri].id)
+            var allComms = [], pending = regionalIds.length
+
+            function _onRegionalDone() {
+                pending--
+                if (pending > 0) return
+                if (allComms.length === 0) { _store(0, []); return }
+                var xhrCat = new XMLHttpRequest()
+                xhrCat.open("GET", Config.baseUrl + "/community/categories/list?limit=100")
+                xhrCat.setRequestHeader("Accept", "application/json")
+                xhrCat.timeout = 15000
+                xhrCat.onreadystatechange = function () {
+                    if (xhrCat.readyState !== XMLHttpRequest.DONE) return
+                    var cats = []
+                    try {
+                        var arr = _parseCategoryList(JSON.parse(xhrCat.responseText))
+                        cats = _applyCategories(allComms, arr)
+                    } catch (e) { }
+                    cats = cats.filter(function(c) { return c.name.length > 0 })
+                    if (cats.length === 0) cats = [{ name: "", icon: "", color: "", communities: allComms }]
+                    _store(0, cats)
+                }
+                xhrCat.send(null)
             }
-            xhrG.send(null)
+
+            for (var gi = 0; gi < regionalIds.length; gi++) {
+                (function(rid) {
+                    var xhr = new XMLHttpRequest()
+                    xhr.open("GET", Config.baseUrl + "/community/list-by-parent-id/" + rid)
+                    xhr.setRequestHeader("Accept", "application/json")
+                    xhr.timeout = 15000
+                    xhr.onreadystatechange = function () {
+                        if (xhr.readyState !== XMLHttpRequest.DONE) return
+                        try {
+                            var d = JSON.parse(xhr.responseText)
+                            var comms = d.data || d.communities || d.results || []
+                            for (var c = 0; c < comms.length; c++) allComms.push(comms[c])
+                        } catch (e) { }
+                        _onRegionalDone()
+                    }
+                    xhr.send(null)
+                })(regionalIds[gi])
+            }
 
         } else {
             // Netherlands / US: step 1 — get communities for this source
@@ -187,9 +212,7 @@ Item {
                 try {
                     var d = JSON.parse(xhrP.responseText)
                     sourceComms = d.data || d.communities || d.results || []
-                    console.log("list-by-parent-id/" + apiId + " count:", sourceComms.length)
-                    if (sourceComms.length > 0) console.log("comm[0] keys:", JSON.stringify(Object.keys(sourceComms[0])))
-                } catch (e) { console.log("list-by-parent-id error:", e) }
+                } catch (e) { }
 
                 if (sourceComms.length === 0) { _store(srcIndex, []); return }
 
@@ -204,7 +227,7 @@ Item {
                     try {
                         var arr = _parseCategoryList(JSON.parse(xhrC.responseText))
                         cats = _applyCategories(sourceComms, arr)
-                    } catch (e) { console.log("categories match error:", e) }
+                    } catch (e) { }
                     // Remove uncategorised group (empty name) — only show properly categorised communities.
                     cats = cats.filter(function(c) { return c.name.length > 0 })
                     // Fallback: if nothing matched any category, show flat without header

@@ -63,7 +63,7 @@ Page {
                                     }
                                 }
                             },
-                            function(_) {})
+                            function() { /* avatar optional */ })
                     })(gen, users[j].username)
                 }
             },
@@ -88,7 +88,7 @@ Page {
 
     function doLogout() {
         if (Session.token.length > 0)
-            AccountService.logout(Config.baseUrl, Session.token, function () {}, function () {});
+            AccountService.logout(Config.baseUrl, Session.token, function () { /* fire-and-forget */ }, function () { /* already clearing locally */ });
         Session.clear();
         FollowStore.reset();
         page.profile = null;

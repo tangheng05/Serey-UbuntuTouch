@@ -87,8 +87,8 @@ MainView {
 
     function _registerPushToken(pt) {
         NotificationService.registerPushToken(Config.baseUrl, Session.token, pt,
-            function ()    { console.log("Push token registered") },
-            function (err) { console.log("Push token registration failed:", err.message) })
+            function () { /* fire-and-forget */ },
+            function ()  { /* silent — retry on next app launch */ })
     }
 
     function _initNotifications() {
@@ -112,7 +112,6 @@ MainView {
                 var t = root.pushClient.token
                 if (t === "" || t === root.pushToken) return
                 root.pushToken = t
-                console.log("Push token received, length:", t.length)
                 if (Session.isLoggedIn) root._registerPushToken(t)
             })
 

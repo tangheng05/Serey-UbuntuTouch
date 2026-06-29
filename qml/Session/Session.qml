@@ -43,7 +43,7 @@ QtObject {
                 }
             });
         } catch (e) {
-            console.log("Session load error: " + e);
+            console.warn("Session load error: " + e);
         }
     }
 
@@ -55,7 +55,7 @@ QtObject {
                 tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('username', ?)", [session.username]);
             });
         } catch (e) {
-            console.log("Session save error: " + e);
+            console.warn("Session save error: " + e);
         }
     }
 

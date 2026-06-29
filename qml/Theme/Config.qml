@@ -43,9 +43,9 @@ QtObject {
     // News/Video feeds combine content from every community. Keep `sourceNames`
     // in the same order as `sources`.
     readonly property var sources: [
-        { "name": "Global",        "id": 0,  "dns": "serey.io" },
-        { "name": "Netherlands",   "id": 99, "dns": "netherlands.serey.io" },
-        { "name": "United States", "id": 26, "dns": "us.serey.io" }
+        { "name": "Global",        "id": 0,  "dns": "serey.io",             "icon": "view-grid-symbolic" },
+        { "name": "Netherlands",   "id": 99, "dns": "netherlands.serey.io", "icon": "" },
+        { "name": "United States", "id": 26, "dns": "us.serey.io",          "icon": "" }
     ]
     readonly property var sourceNames: ["Global", "Netherlands", "United States"]
 

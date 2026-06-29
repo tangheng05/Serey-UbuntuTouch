@@ -40,7 +40,6 @@ Page {
             },
             function (err) {
                 busy = false
-                console.log("change-password error:", JSON.stringify(err))
                 errorMsg = err.message || i18n.tr("Failed to change password.")
             }
         )
@@ -71,12 +70,30 @@ Page {
 
             Item { width: 1; height: Style.spacingXs }
 
-            FormField {
-                id: currentPassField
+            Column {
                 width: parent.width
-                placeholder: i18n.tr("Current password")
-                echoMode: TextInput.Password
-                onAccepted: newPassField.input.forceActiveFocus()
+                spacing: units.dp(4)
+
+                FormField {
+                    id: currentPassField
+                    width: parent.width
+                    placeholder: i18n.tr("Current password")
+                    echoMode: TextInput.Password
+                    onAccepted: newPassField.input.forceActiveFocus()
+                }
+
+                Label {
+                    anchors.right: parent.right
+                    text: i18n.tr("Forgot password?")
+                    font.pixelSize: Style.fontSmall
+                    font.family: Style.fontFamily
+                    color: Style.brand
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: page.pageStack.push(Qt.resolvedUrl("ForgotPasswordPage.qml"),
+                                                       { prefillUsername: Session.username })
+                    }
+                }
             }
 
             FormField {
@@ -126,39 +143,6 @@ Page {
                 busy: page.busy
                 enabled: page.canSubmit
                 onClicked: page.submit()
-            }
-
-            // ── Divider ──────────────────────────────────────────────────
-            Rectangle {
-                width: parent.width
-                height: units.dp(1)
-                color: Style.divider
-            }
-
-            // ── Reset via OTP (fallback) ─────────────────────────────────
-            Label {
-                width: parent.width
-                text: i18n.tr("Forgot your password?")
-                font.pixelSize: Style.fontLarge
-                font.weight: Font.DemiBold
-                font.family: Style.fontFamily
-                color: Style.textTitle
-            }
-
-            Label {
-                width: parent.width
-                text: i18n.tr("You can reset your password via email OTP.")
-                font.pixelSize: Style.fontSmall
-                font.family: Style.fontFamily
-                color: Style.textSecondary
-                wrapMode: Text.WordWrap
-            }
-
-            PrimaryButton {
-                width: parent.width
-                text: i18n.tr("Reset via OTP")
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ForgotPasswordPage.qml"),
-                                               { prefillUsername: Session.username })
             }
 
             Item { width: 1; height: Style.spacingL }

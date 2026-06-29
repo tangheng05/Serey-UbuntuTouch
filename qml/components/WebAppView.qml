@@ -193,7 +193,7 @@ Item {
                 _sendError(id, "Unknown method: " + method);
             }
         } catch (e) {
-            console.log("WebAppView bridge parse error: " + e);
+            console.warn("WebAppView bridge parse error: " + e);
         }
     }
 

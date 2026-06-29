@@ -70,9 +70,13 @@ output = {
             "persist": True,
             "actions": ["appid://serey.ubuntu/serey/current-user-version"]
         },
-        "sound": True,
+        "sound": {
+            "file": "/usr/share/sounds/lomiri/notifications/Xylo.ogg",
+            "pulse": True
+        },
         "vibrate": {
-            "duration": 200
+            "pattern": [100, 50, 100],
+            "repeat": 1
         }
     }
 }

@@ -31,7 +31,7 @@ Rectangle {
         id: input
         anchors.fill: parent
         anchors.leftMargin: Style.spacingM
-        anchors.rightMargin: Style.spacingM
+        anchors.rightMargin: input.activeFocus ? doneBtn.width + Style.spacingS : Style.spacingM
         verticalAlignment: TextInput.AlignVCenter
         clip: true
         font.pixelSize: Style.fontRegular
@@ -54,6 +54,34 @@ Rectangle {
             font.family: Style.fontFamily
             color: Style.textSecondary
             opacity: 0.7
+        }
+    }
+
+    AbstractButton {
+        id: doneBtn
+        anchors {
+            right: parent.right
+            rightMargin: Style.spacingS
+            verticalCenter: parent.verticalCenter
+        }
+        width: doneLabel.implicitWidth + Style.spacingS * 2
+        height: units.gu(3.5)
+        visible: input.activeFocus
+        onClicked: input.focus = false
+
+        Rectangle {
+            anchors.fill: parent
+            radius: units.dp(6)
+            color: Style.brand
+        }
+
+        Label {
+            id: doneLabel
+            anchors.centerIn: parent
+            text: i18n.tr("Done")
+            font.pixelSize: Style.fontSmall
+            font.family: Style.fontFamily
+            color: "white"
         }
     }
 

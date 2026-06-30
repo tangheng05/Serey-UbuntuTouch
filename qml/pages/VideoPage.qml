@@ -184,14 +184,55 @@ Page {
             }
         }
 
-        delegate: VideoCard {
+        // VideoCard wrapped in a Lomiri ListItem so the row gains native swipe
+        // context actions (and the same actions via pointer right-click / keyboard
+        // MENU — convergence). Leading = negative (Hide), trailing = positive
+        // (Share), mirroring the ••• sheet. Tap still opens the detail through
+        // VideoCard.onClicked, so navigation is unchanged even if the swipe
+        // gesture is unavailable.
+        delegate: ListItem {
+            id: videoRow
             width: list.width
-            video: feedModel.get(index)
-            onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
-                { video: feedModel.get(index) })
-            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                { username: feedModel.get(index).author })
-            onMoreClicked: PostActions.open(feedModel.get(index), "video")
+            height: card.height
+            // VideoCard draws its own bottom divider — suppress ListItem's to
+            // avoid a double hairline.
+            divider.visible: false
+
+            leadingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: i18n.tr("Hide")
+                        onTriggered: {
+                            var vm = feedModel.get(index);
+                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                        }
+                    }
+                ]
+            }
+            trailingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: i18n.tr("Share")
+                        onTriggered: {
+                            var vm = feedModel.get(index);
+                            if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
+                        }
+                    }
+                ]
+            }
+
+            VideoCard {
+                id: card
+                width: parent.width
+                video: feedModel.get(index)
+                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
+                    { video: feedModel.get(index) })
+                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                    { username: feedModel.get(index).author })
+                onMoreClicked: PostActions.open(feedModel.get(index), "video")
+            }
         }
 
         // Constant-height footer: a conditional height feeds back into

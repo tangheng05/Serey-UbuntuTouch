@@ -349,7 +349,11 @@ Page {
         id: removeDialog
         Dialog {
             id: rdlg
-            title: i18n.tr("Remove download?")
+            // Title carries the video name so the dialog reads clearly on its own
+            // (HIG "drop-the-title test"). Falls back when the title is missing.
+            title: (page.video && page.video.title)
+                   ? i18n.tr("Remove “%1”?").arg(page.video.title)
+                   : i18n.tr("Remove download?")
             text: i18n.tr("This video will no longer be available offline.")
             Button {
                 text: i18n.tr("Remove")

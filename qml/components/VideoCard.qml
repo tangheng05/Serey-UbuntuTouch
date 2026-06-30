@@ -45,7 +45,11 @@ AbstractButton {
                 source: v.localThumb || v.thumbnail || ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
-                sourceSize.width: parent.width * 2
+                // HIG scaling: snap the decode size to a breakpoint instead of a
+                // continuous `width * N`, so the image isn't re-rasterized on every
+                // width change (only when crossing the threshold). See
+                // docs/ubports-other-considerations/02-scaling-images.md.
+                sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
                 Behavior on opacity { NumberAnimation { duration: 200 } }
                 opacity: status === Image.Ready ? 1.0 : 0.0

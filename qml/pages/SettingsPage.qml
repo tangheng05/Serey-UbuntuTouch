@@ -166,7 +166,7 @@ Page {
                         topMargin: Style.spacingS
                         bottomMargin: Style.spacingS
                     }
-                    radius: height / 2
+                    radius: Style.cardRadius
                     color: searchField.activeFocus ? Style.surface : (Style.inputBackground || "#F2F2F7")
                     border.width: searchField.activeFocus ? units.dp(2) : 0
                     border.color: Style.brand
@@ -294,7 +294,7 @@ Page {
                             // Brand-colour background + initial letter
                             Rectangle {
                                 anchors.fill: parent
-                                radius: units.gu(1.2)
+                                radius: Style.cardRadius
                                 color: Style.brand
 
                                 Label {
@@ -324,7 +324,7 @@ Page {
                             Rectangle {
                                 id: avatarMask
                                 anchors.fill: parent
-                                radius: units.gu(1.2)
+                                radius: Style.cardRadius
                                 visible: false
                             }
                         }

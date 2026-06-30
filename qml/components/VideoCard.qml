@@ -35,7 +35,7 @@ AbstractButton {
             Rectangle {
                 id: thumbBg
                 anchors.fill: parent
-                radius: units.dp(12)
+                radius: Style.thumbRadius
                 color: Style.iconBackground
             }
 
@@ -58,7 +58,7 @@ AbstractButton {
             Rectangle {
                 id: thumbMask
                 anchors.fill: parent
-                radius: units.dp(12)
+                radius: Style.thumbRadius
                 visible: false
             }
 

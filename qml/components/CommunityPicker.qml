@@ -256,7 +256,7 @@ Item {
         id: sheet
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: Math.min(sheetContent.height + units.gu(4), picker.height * 0.82)
-        radius: units.dp(16)
+        radius: units.gu(1)
         color: Style.surface
         clip: true
 
@@ -449,7 +449,7 @@ Item {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 height: units.gu(3.2)
                                                 width: pillContent.width + units.gu(2)
-                                                radius: height / 2
+                                                radius: Style.pillRadius
                                                 color: {
                                                     var hex = (catData.color && catData.color.length === 7) ? catData.color : "#17A77E"
                                                     return Qt.rgba(
@@ -535,7 +535,7 @@ Item {
                                                     topMargin: units.dp(4)
                                                     bottomMargin: units.dp(4)
                                                 }
-                                                radius: units.gu(1.5)
+                                                radius: Style.cardRadius
                                                 color: Style.surface
                                                 border.width: commBtn.isSelected ? units.dp(2) : units.dp(1)
                                                 border.color: commBtn.isSelected ? Style.brand : Style.divider
@@ -592,7 +592,7 @@ Item {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: subLbl.width + units.gu(3)
                                                         height: units.gu(4)
-                                                        radius: height / 2
+                                                        radius: Style.pillRadius
                                                         color: commBtn.subscribed ? Style.surface : Style.brand
                                                         border.width: commBtn.subscribed ? units.dp(1.5) : 0
                                                         border.color: Style.brand

@@ -71,7 +71,7 @@ Item {
         height: (sheet.step === 0 ? mainCol.height
                  : sheet.step === 1 ? reportCol.height
                  : deleteCol.height) + units.gu(4)
-        radius: units.dp(16)
+        radius: units.gu(1)
         color: Style.surface
 
         transform: Translate { id: sheetTranslate; y: 0 }
@@ -351,7 +351,7 @@ Item {
                 onClicked: sheet.doDelete()
                 Rectangle {
                     anchors.fill: parent
-                    radius: units.dp(10)
+                    radius: Style.cardRadius
                     color: Style.danger
                     opacity: sheet.deleting ? 0.6 : 1
                 }
@@ -375,7 +375,7 @@ Item {
                 onClicked: sheet.step = 0
                 Rectangle {
                     anchors.fill: parent
-                    radius: units.dp(10)
+                    radius: Style.cardRadius
                     color: "transparent"
                     border.width: units.dp(1.5)
                     border.color: Style.divider

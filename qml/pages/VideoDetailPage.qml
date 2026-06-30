@@ -788,7 +788,7 @@ Page {
             id: cmtSheetRect
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: parent.height * 0.8
-            radius: units.dp(16)
+            radius: units.gu(1)
             color: Style.surface
             clip: true
             transform: Translate { id: cmtSlideT; y: 0 }
@@ -996,7 +996,7 @@ Page {
             id: descSheetRect
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: Math.min(descCol.height + units.gu(4), parent.height * 0.75)
-            radius: units.dp(16)
+            radius: units.gu(1)
             color: Style.surface
             clip: true
             transform: Translate { id: descSlideT; y: 0 }

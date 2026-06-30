@@ -366,7 +366,7 @@ Page {
             Rectangle {
                 width: parent.width
                 height: units.gu(20)
-                radius: units.dp(12)
+                radius: Style.thumbRadius
                 color: Style.iconBackground
                 clip: true
 
@@ -573,7 +573,7 @@ Page {
             id: catSheetRect
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: catSheetCol.height + units.gu(4)
-            radius: units.dp(16)
+            radius: units.gu(1)
             color: Style.surface
             transform: Translate { id: catSlideT; y: 0 }
             NumberAnimation { id: catSlideAnim; target: catSlideT; property: "y"; from: catSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }

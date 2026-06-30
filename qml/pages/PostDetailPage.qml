@@ -425,7 +425,7 @@ Page {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: units.dp(25)
+                    radius: Style.thumbRadius
                     color: Style.iconBackground
                 }
                 Image {
@@ -442,7 +442,7 @@ Page {
                 Rectangle {
                     id: coverMask
                     anchors.fill: parent
-                    radius: units.dp(25)
+                    radius: Style.thumbRadius
                     visible: false
                 }
                 OpacityMask {
@@ -476,7 +476,7 @@ Page {
 
                                 Rectangle {
                                     anchors.fill: parent
-                                    radius: units.dp(25)
+                                    radius: Style.thumbRadius
                                     color: Style.iconBackground
                                 }
                                 Image {
@@ -493,7 +493,7 @@ Page {
                                 Rectangle {
                                     id: bImgMask
                                     anchors.fill: parent
-                                    radius: units.dp(25)
+                                    radius: Style.thumbRadius
                                     visible: false
                                 }
                                 OpacityMask {

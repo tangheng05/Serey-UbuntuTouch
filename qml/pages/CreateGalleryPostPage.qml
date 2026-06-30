@@ -242,7 +242,7 @@ Page {
 
                         Rectangle {
                             anchors.fill: parent
-                            radius: units.dp(10)
+                            radius: Style.cardRadius
                             color: Style.iconBackground
                             clip: true
                             Image {
@@ -285,7 +285,7 @@ Page {
 
                         Rectangle {
                             anchors.fill: parent
-                            radius: units.dp(10)
+                            radius: Style.cardRadius
                             color: Style.iconBackground
                         }
 

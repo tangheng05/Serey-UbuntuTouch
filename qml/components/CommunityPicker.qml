@@ -320,12 +320,17 @@ Item {
                             width: parent.width
                             height: units.gu(7)
                             onClicked: {
-                                if (picker.expandedIndex === sourceCol.srcIndex) {
+                                if (sourceCol.srcIndex === 0) {
+                                    // Global: select directly and close — no sub-community dropdown
+                                    Config.sourceIndex = 0
+                                    Config.selectedSubCommunity = null
+                                    picker.expandedIndex = -1
+                                    picker.closeAnimated()
+                                } else if (picker.expandedIndex === sourceCol.srcIndex) {
                                     picker.expandedIndex = -1
                                 } else {
                                     picker.expandedIndex = sourceCol.srcIndex
                                     picker._fetch(sourceCol.srcIndex)
-                                    // Also select this top-level source
                                     Config.sourceIndex = sourceCol.srcIndex
                                     Config.selectedSubCommunity = null
                                 }
@@ -373,12 +378,13 @@ Item {
                                     elide: Text.ElideRight
                                 }
 
-                                // Chevron
+                                // Chevron (hidden for Global — it selects directly)
                                 Icon {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: units.gu(2.5); height: width
                                     name: sourceCol.isExpanded ? "go-up" : "go-down"
                                     color: sourceCol.isExpanded ? Style.brand : Style.textSecondary
+                                    visible: sourceCol.srcIndex !== 0
                                 }
                             }
 

@@ -180,6 +180,31 @@ Page {
                         visible: status === Image.Ready
                     }
 
+                    // Block button — top-right corner of cover
+                    AbstractButton {
+                        visible: !page.isSelf && !!page.profile
+                        anchors {
+                            top: parent.top
+                            right: parent.right
+                            topMargin: Style.spacingS
+                            rightMargin: Style.spacingS
+                        }
+                        width: units.gu(4); height: units.gu(4)
+                        z: 10
+                        onClicked: Toast.show(i18n.tr("@%1 blocked.").arg(page.username))
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: Qt.rgba(0, 0, 0, 0.4)
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.2); height: width
+                            name: "system-shutdown"
+                            color: "white"
+                        }
+                    }
                 }
 
                 // --- Avatar (overlaps the cover) -------------------------

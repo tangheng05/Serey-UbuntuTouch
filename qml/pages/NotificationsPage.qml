@@ -91,14 +91,25 @@ Page {
                 for (var i = 0; i < items.length; i++) {
                     var n = items[i]
                     var info = n.information || {}
+                    var ntype = n.type || n.notification_type || ""
+                    var postAuthor   = info.post_author || info.voted_on_author || info.commented_on_author || ""
+                    var postPermlink = info.post_permlink || info.voted_on_permlink || info.commented_on_permlink || ""
+                    // For REPLY, scroll to the comment that was replied to so the
+                    // new reply is visible right below it.
+                    var scrollPermlink = (ntype === "REPLY" || ntype === "COMMENT")
+                                        ? (info.commented_on_permlink || "")
+                                        : ""
                     notifModel.append({
-                        nid:        String(n.id || n._id || ""),
-                        message:    n.actor + " " + (info.description || n.message || n.content || ""),
-                        actorName:  n.actor || n.actor_name || n.from_user || "",
-                        actorIcon:  n.actor_image_url || n.actor_image || "",
-                        timeAgo:    Style.formatTimeAgo(n.created_at || n.createdAt || ""),
-                        isRead:     !!(n.is_read || n.read || false),
-                        ntype:      n.type || n.notification_type || ""
+                        nid:            String(n.id || n._id || ""),
+                        message:        n.actor + " " + (info.description || n.message || n.content || ""),
+                        actorName:      n.actor || n.actor_name || n.from_user || "",
+                        actorIcon:      n.actor_image_url || n.actor_image || "",
+                        timeAgo:        Style.formatTimeAgo(n.created_at || n.createdAt || ""),
+                        isRead:         !!(n.is_read || n.read || false),
+                        ntype:          ntype,
+                        postAuthor:     postAuthor,
+                        postPermlink:   postPermlink,
+                        scrollPermlink: scrollPermlink
                     })
                 }
                 page.offset += items.length
@@ -167,7 +178,19 @@ Page {
 
             MouseArea {
                 anchors.fill: parent
-                onClicked: page.markOneRead(index, model.nid)
+                onClicked: {
+                    page.markOneRead(index, model.nid)
+                    if (model.ntype === "FOLLOW") {
+                        page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                            { username: model.actorName })
+                    } else if (model.postAuthor !== "" && model.postPermlink !== "") {
+                        page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"), {
+                            author:                model.postAuthor,
+                            permlink:              model.postPermlink,
+                            scrollToCommentPermlink: model.scrollPermlink
+                        })
+                    }
+                }
             }
 
             Row {

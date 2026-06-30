@@ -32,6 +32,8 @@ Page {
     property bool loading: false
     property bool posting: false
     property string errorMsg: ""
+    // When opened from a notification, scroll to this comment permlink after load.
+    property string scrollToCommentPermlink: ""
     // On-screen-keyboard height; the docked comment composer rides above it.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     // Set while replying to a specific comment (rather than the post itself);
@@ -71,6 +73,7 @@ Page {
                 page.commentCount = result.post.comments;
                 page.comments = result.replies || [];
                 page._parseBody();
+                if (page.scrollToCommentPermlink !== "") scrollToTimer.start();
 
                 // Sync vote bar: cache wins over API data (the feed may have
                 // recorded a vote the detail endpoint hasn't caught up with).
@@ -264,6 +267,25 @@ Page {
                 text = text.trim();
                 if (text.length > 0)
                     bodyModel.append({ type: "text", content: text });
+            }
+        }
+    }
+
+    // Scroll to a specific comment after the layout settles post-load.
+    Timer {
+        id: scrollToTimer
+        interval: 350
+        onTriggered: {
+            for (var i = 0; i < page.comments.length; i++) {
+                if (page.comments[i].permlink === page.scrollToCommentPermlink) {
+                    var item = commentsRepeater.itemAt(i)
+                    if (item) {
+                        var targetY = contentCol.y + item.mapToItem(contentCol, 0, 0).y
+                        scroll.contentY = Math.max(0, Math.min(targetY - units.gu(2),
+                                          scroll.contentHeight - scroll.height))
+                    }
+                    return
+                }
             }
         }
     }
@@ -523,6 +545,7 @@ Page {
             }
 
             Repeater {
+                id: commentsRepeater
                 model: page.comments
                 delegate: CommentItem {
                     width: contentCol.width

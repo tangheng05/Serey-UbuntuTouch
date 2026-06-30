@@ -285,12 +285,33 @@ MainView {
                     height: navBar.height
                     property bool active: root.currentTab === index
 
-                    Icon {
+                    Item {
                         anchors.centerIn: parent
                         width: units.gu(3)
                         height: width
-                        name: modelData.icon
-                        color: active ? Style.brand : Style.textSecondary
+
+                        Icon {
+                            anchors.fill: parent
+                            name: modelData.icon
+                            color: active ? Style.brand : Style.textSecondary
+                        }
+
+                        // Unread badge — shown on Settings tab when notifications are pending
+                        Rectangle {
+                            visible: index === 3 && root.lastUnreadCount > 0
+                            anchors { top: parent.top; right: parent.right; topMargin: -units.dp(2); rightMargin: -units.dp(2) }
+                            width: units.gu(1.6); height: width
+                            radius: width / 2
+                            color: Style.danger
+
+                            Label {
+                                anchors.centerIn: parent
+                                text: root.lastUnreadCount > 99 ? "99+" : root.lastUnreadCount
+                                font.pixelSize: units.dp(8)
+                                font.weight: Font.Bold
+                                color: "white"
+                            }
+                        }
                     }
                     onClicked: root.currentTab = index
                 }

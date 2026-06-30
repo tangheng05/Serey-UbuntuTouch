@@ -83,8 +83,9 @@ AbstractButton {
         }
     }
 
+    // Full-width hairline (Lomiri list dividers span edge-to-edge, not inset).
     Rectangle {
-        anchors { left: rowIcon.visible ? rowIcon.right : parent.left; leftMargin: Style.spacingM; right: parent.right; bottom: parent.bottom }
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: units.dp(1)
         color: Style.divider
     }

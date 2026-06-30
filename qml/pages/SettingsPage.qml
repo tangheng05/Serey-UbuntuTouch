@@ -24,6 +24,8 @@ Page {
     property bool searching: false
     property bool searchOpen: false
     property int searchGeneration: 0
+    // Search field is revealed by the header search action (Lomiri pattern).
+    property bool searchActive: false
 
     ListModel { id: searchModel }
 
@@ -75,8 +77,42 @@ Page {
             })
     }
 
-    // Zero-height header: the global AppHeader is the real top bar.
-    header: Item { height: 0 }
+    // Flat Lomiri page header: left-aligned title + a search action + bottom
+    // hairline. Replaces the iOS sticky search field; search now reveals on the
+    // action (matches the reference, e.g. uNav's header search icon).
+    header: Rectangle {
+        id: settingsHeader
+        height: units.gu(6)
+        color: Style.surface
+
+        Label {
+            anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+            text: i18n.tr("Settings")
+            font.pixelSize: Style.fontTitle
+            font.family: Style.fontFamily
+            color: Style.textPrimary
+        }
+        AbstractButton {
+            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: width
+            onClicked: {
+                page.searchActive = !page.searchActive;
+                if (page.searchActive) searchField.forceActiveFocus();
+                else { searchField.text = ""; searchField.focus = false; }
+            }
+            Icon {
+                anchors.centerIn: parent
+                width: units.gu(2.6); height: width
+                name: page.searchActive ? "close" : "find"
+                color: Style.textPrimary
+            }
+        }
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: units.dp(1)
+            color: Style.divider
+        }
+    }
 
     function refreshProfile() {
         if (!Session.isLoggedIn) { profile = null; return; }
@@ -142,7 +178,7 @@ Page {
     }
 
     Flickable {
-        anchors.fill: parent
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         contentWidth: width
         contentHeight: col.height
         clip: true
@@ -155,7 +191,8 @@ Page {
             Item {
                 id: searchBarContainer
                 width: parent.width
-                height: units.gu(7)
+                visible: page.searchActive
+                height: page.searchActive ? units.gu(7) : 0
 
                 Rectangle {
                     id: searchBarBg

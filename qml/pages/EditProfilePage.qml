@@ -148,7 +148,7 @@ Page {
                 // "Edit cover" chip
                 Rectangle {
                     anchors { right: parent.right; bottom: parent.bottom; margins: Style.spacingS }
-                    height: units.gu(3.4); width: coverHint.width + Style.spacingM; radius: height / 2
+                    height: units.gu(3.4); width: coverHint.width + Style.spacingM; radius: Style.pillRadius
                     color: Qt.rgba(0, 0, 0, 0.45)
                     Row {
                         id: coverHint

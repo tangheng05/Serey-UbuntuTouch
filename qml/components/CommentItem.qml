@@ -180,7 +180,7 @@ Item {
                 anchors { top: moreButton.bottom; right: moreButton.right; topMargin: Style.spacingXs }
                 width: units.gu(16)
                 height: item.confirmingDelete ? confirmCol.height : menuCol.height
-                radius: units.dp(8)
+                radius: Style.cardRadius
                 color: Style.surface
                 border.width: units.dp(1)
                 border.color: Style.divider
@@ -278,7 +278,7 @@ Item {
                     height: units.gu(3.5)
                     enabled: !item.saving && item.editText.trim().length > 0
                     onClicked: item.saveEdit()
-                    Rectangle { anchors.fill: parent; radius: height / 2; color: parent.enabled ? Style.brand : Style.iconBackground }
+                    Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: parent.enabled ? Style.brand : Style.iconBackground }
                     Label {
                         id: saveLabel
                         anchors.centerIn: parent

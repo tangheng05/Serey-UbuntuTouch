@@ -136,7 +136,7 @@ RowLayout {
 
                         Rectangle {
                             anchors.fill: parent
-                            radius: units.dp(8)
+                            radius: Style.cardRadius
                             color: dialog.selectedWeight === modelData ? Style.brand : Style.iconBackground
                         }
                         Label {

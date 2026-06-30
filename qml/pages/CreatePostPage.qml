@@ -109,7 +109,7 @@ Page {
 
             Rectangle {
                 anchors.fill: parent
-                radius: height / 2
+                radius: Style.cardRadius
                 color: parent.enabled ? Style.brand : Style.iconBackground
             }
             Label {
@@ -248,7 +248,7 @@ Page {
             Rectangle {
                 width: parent.width
                 height: titleField.height + Style.spacingM * 2 + counterLabel.height + Style.spacingXs
-                radius: units.dp(8)
+                radius: Style.cardRadius
                 color: "transparent"
                 border.width: units.dp(1.5)
                 border.color: titleField.activeFocus ? Style.brand : Style.divider
@@ -295,7 +295,7 @@ Page {
             Rectangle {
                 width: parent.width
                 height: Math.max(units.gu(25), bodyArea.contentHeight + Style.spacingM * 2)
-                radius: units.dp(8)
+                radius: Style.cardRadius
                 color: "transparent"
                 border.width: units.dp(1.5)
                 border.color: bodyArea.activeFocus ? Style.brand : Style.divider
@@ -333,7 +333,7 @@ Page {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: units.dp(8)
+                    radius: Style.cardRadius
                     color: "transparent"
                     border.width: units.dp(1.5)
                     border.color: Style.divider
@@ -488,7 +488,7 @@ Page {
                     Rectangle {
                         anchors.fill: parent
                         anchors.margins: units.dp(4)
-                        radius: units.dp(6)
+                        radius: Style.cardRadius
                         color: "transparent"
                         border.width: units.dp(1)
                         border.color: Style.divider
@@ -512,7 +512,7 @@ Page {
                 onClicked: page.wrapSelection("<a href=\"\">", "</a>")
                 Rectangle {
                     anchors.fill: parent; anchors.margins: units.dp(4)
-                    radius: units.dp(6); color: "transparent"
+                    radius: Style.cardRadius; color: "transparent"
                     border.width: units.dp(1); border.color: Style.divider
                 }
                 Icon {
@@ -528,7 +528,7 @@ Page {
                 onClicked: page.pickCoverImage()
                 Rectangle {
                     anchors.fill: parent; anchors.margins: units.dp(4)
-                    radius: units.dp(6); color: "transparent"
+                    radius: Style.cardRadius; color: "transparent"
                     border.width: units.dp(1); border.color: Style.divider
                 }
                 Icon {

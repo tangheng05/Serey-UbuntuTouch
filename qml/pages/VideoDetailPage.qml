@@ -1077,7 +1077,7 @@ Page {
                         Rectangle {
                             width: (parent.width - Style.spacingS * 2) / 3
                             height: units.gu(7)
-                            radius: units.dp(8)
+                            radius: Style.cardRadius
                             color: Style.iconBackground
                             Column {
                                 anchors.centerIn: parent
@@ -1101,7 +1101,7 @@ Page {
                         Rectangle {
                             width: (parent.width - Style.spacingS * 2) / 3
                             height: units.gu(7)
-                            radius: units.dp(8)
+                            radius: Style.cardRadius
                             color: Style.iconBackground
                             Column {
                                 anchors.centerIn: parent
@@ -1125,7 +1125,7 @@ Page {
                         Rectangle {
                             width: (parent.width - Style.spacingS * 2) / 3
                             height: units.gu(7)
-                            radius: units.dp(8)
+                            radius: Style.cardRadius
                             color: Style.iconBackground
                             Column {
                                 anchors.centerIn: parent
@@ -1153,7 +1153,7 @@ Page {
                         width: parent.width - Style.spacingM * 2
                         x: Style.spacingM
                         height: bodyLabel.height + Style.spacingM * 2
-                        radius: units.dp(8)
+                        radius: Style.cardRadius
                         color: Style.iconBackground
 
                         Label {

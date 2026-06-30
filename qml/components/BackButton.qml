@@ -14,7 +14,7 @@ AbstractButton {
 
     Rectangle {
         anchors.fill: parent
-        radius: units.dp(8)
+        radius: Style.cardRadius
         color: root.bgColor
     }
 

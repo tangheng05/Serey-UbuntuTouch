@@ -53,7 +53,7 @@ Page {
         Rectangle {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: units.dp(1)
-            color: "#CCCCCC"
+            color: Style.divider
         }
     }
 
@@ -654,7 +654,7 @@ Page {
             Rectangle {
                 width: parent.width - sendButton.width - Style.spacingS
                 height: units.gu(5)
-                radius: height / 2
+                radius: Style.cardRadius
                 color: Style.iconBackground
 
                 Label {

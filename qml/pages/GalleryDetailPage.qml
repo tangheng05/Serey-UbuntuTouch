@@ -407,7 +407,7 @@ Page {
             Rectangle {
                 width: parent.width - sendButton.width - Style.spacingS
                 height: units.gu(5)
-                radius: height / 2
+                radius: Style.cardRadius
                 color: Style.iconBackground
 
                 Label {

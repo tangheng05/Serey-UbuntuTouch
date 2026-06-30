@@ -68,7 +68,7 @@ Page {
 
             Rectangle {
                 anchors.fill: parent
-                radius: height / 2
+                radius: Style.cardRadius
                 color: parent.enabled ? Style.brand : Style.iconBackground
             }
             Label {
@@ -197,7 +197,7 @@ Page {
             Rectangle {
                 width: parent.width
                 height: Math.max(units.gu(12), captionField.contentHeight + Style.spacingM * 2)
-                radius: units.dp(8)
+                radius: Style.cardRadius
                 color: "transparent"
                 border.width: units.dp(1.5)
                 border.color: captionField.activeFocus ? Style.brand : Style.divider

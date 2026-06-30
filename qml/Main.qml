@@ -26,7 +26,7 @@ MainView {
     height: units.gu(80)
 
     property int currentTab: 0
-    onCurrentTabChanged: { body.opacity = 0; tabFadeIn.start(); }
+    onCurrentTabChanged: { Config.currentTab = currentTab; body.opacity = 0; tabFadeIn.start(); }
     NumberAnimation { id: tabFadeIn; target: body; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
 
     // Depth of the active tab's stack. The global header only shows at a tab's

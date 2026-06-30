@@ -8,6 +8,7 @@ import "../services/VideoService.js" as VideoService
 import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 import "../services/FollowService.js" as FollowService
+import "../services/YouTube.js" as YouTube
 
 Page {
     id: page
@@ -20,6 +21,9 @@ Page {
     property bool isFollowing: false
     property bool descSheetOpen: false
     property bool commentSheetOpen: false
+    // YouTube stream extraction is in flight (resolving a direct URL before the
+    // download daemon can fetch it). Drives the download button's spinner.
+    property bool ytExtracting: false
 
     property var comments: []
     property int commentCount: video ? (video.comments || 0) : 0
@@ -44,6 +48,42 @@ Page {
         if (isDirectFile(v.videoLink)) return v.videoLink;
         if (isDirectFile(v.embedUrl)) return v.embedUrl;
         return "";
+    }
+
+    // The 11-char YouTube id, from the backend's video_id or parsed out of the
+    // embed/watch URL. Empty for non-YouTube videos.
+    function youtubeId() {
+        var v = page.video;
+        if (v.platform === "YOUTUBE" && (v.videoId || "").length === 11) return v.videoId;
+        var s = (v.embedUrl || "") + " " + (v.videoLink || "");
+        var m = s.match(/(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+        return m ? m[1] : "";
+    }
+
+    // YouTube videos have no direct file URL up front (so remoteDirectUrl() is
+    // empty), but they're still downloadable via InnerTube extraction.
+    function isYouTube() {
+        return page.video && page.video.platform === "YOUTUBE" && youtubeId().length > 0;
+    }
+
+    // Resolve a YouTube clip to a direct stream URL, then hand it to the same
+    // offline-download path as Serey files. Extraction is async; ytExtracting
+    // gates the button so repeat taps and the post-extract handoff don't race.
+    function downloadYouTube() {
+        if (page.ytExtracting) return;
+        var id = youtubeId();
+        if (id.length === 0) { Toast.error("Couldn't read the YouTube video."); return; }
+        page.ytExtracting = true;
+        Toast.show("Preparing download…");
+        YouTube.extract(id, function (result, errMsg) {
+            page.ytExtracting = false;
+            if (result && result.url) {
+                Downloads.start(page.video, result.url);
+            } else {
+                Toast.error("This YouTube video can't be downloaded.");
+                console.log("YouTube extract failed: " + (errMsg || "unknown"));
+            }
+        });
     }
 
     // The URL to actually play: a saved offline copy when one exists, otherwise
@@ -580,16 +620,20 @@ Page {
                 // Saved. All reactivity is keyed off Downloads.rev.
                 AbstractButton {
                     id: dlBtn
-                    visible: page.remoteDirectUrl().length > 0
+                    visible: page.remoteDirectUrl().length > 0 || page.isYouTube()
                     readonly property string _pl: (page.video && page.video.permlink) || ""
                     readonly property var _active: (Downloads.rev, Downloads.activeFor(_pl))
                     readonly property bool _saved: (Downloads.rev, Downloads.isSaved(_pl))
+                    // Busy = the download daemon is fetching, or (YouTube) we're still
+                    // resolving the stream URL before the daemon can start.
+                    readonly property bool _busy: !!_active || page.ytExtracting
                     width: dlRow.width + Style.spacingM * 2
                     height: units.gu(4.5)
                     onClicked: {
-                        if (_active) return;                  // in flight — ignore taps
+                        if (_busy) return;                    // in flight — ignore taps
                         if (_saved) PopupUtils.open(removeDialog);
-                        else Downloads.start(page.video, page.remoteDirectUrl());
+                        else if (page.remoteDirectUrl().length > 0) Downloads.start(page.video, page.remoteDirectUrl());
+                        else if (page.isYouTube()) page.downloadYouTube();
                     }
 
                     Rectangle {
@@ -608,19 +652,20 @@ Page {
                             width: units.gu(2); height: width
                             name: dlBtn._saved ? "tick" : "save"
                             color: dlBtn._saved ? Style.textOnBrand : Style.textPrimary
-                            visible: !dlBtn._active
+                            visible: !dlBtn._busy
                         }
                         ActivityIndicator {
                             anchors.verticalCenter: parent.verticalCenter
                             width: units.gu(2); height: width
-                            running: !!dlBtn._active
+                            running: dlBtn._busy
                             visible: running
                         }
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
                             text: dlBtn._active
                                   ? (Math.round(dlBtn._active.progress) + "%")
-                                  : (dlBtn._saved ? i18n.tr("Saved") : i18n.tr("Download"))
+                                  : (page.ytExtracting ? i18n.tr("Preparing…")
+                                                       : (dlBtn._saved ? i18n.tr("Saved") : i18n.tr("Download")))
                             font.pixelSize: Style.fontSmall
                             font.weight: Font.DemiBold
                             color: dlBtn._saved ? Style.textOnBrand : Style.textPrimary

@@ -34,6 +34,31 @@ Item {
     property string authToken: ""
     property string username: ""
 
+    // When true (the Homepage tab is hidden) the WebEngineView's Chromium
+    // renderer is moved to the Frozen lifecycle state: it stops background
+    // timers/rendering and lets Chromium reclaim memory, so it no longer
+    // competes for GPU/shared memory with the video player's separate WebView.
+    // Two live Chromium views on the Pixel 3a exhausted shared memory and
+    // SIGSEGV'd the app (see device log). Frozen keeps the DOM, so returning to
+    // the tab resumes instantly without reloading the site or losing the session.
+    property bool suspended: false
+    // WebEngineView.LifecycleState values. UT's QtWebEngine doesn't expose the
+    // enum names to QML (WebEngineView.Frozen reads as undefined), but the
+    // lifecycleState property accepts the underlying ints: Active=0, Frozen=1.
+    readonly property int _lcActive: 0
+    readonly property int _lcFrozen: 1
+    // Freezing is only legal once the view is actually hidden, and `visible`
+    // settles a tick after the tab switch — so defer the freeze, but resume
+    // immediately (Active is always legal).
+    onSuspendedChanged: {
+        if (suspended) {
+            freezeTimer.restart();
+        } else {
+            freezeTimer.stop();
+            webView.lifecycleState = webAppView._lcActive;
+        }
+    }
+
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
     signal getUserInfoRequested()
@@ -102,6 +127,15 @@ Item {
 
     onUrlChanged: if (url !== "") loadTimer.restart()
     Component.onCompleted: if (url !== "") loadTimer.start()
+
+    // Apply the Frozen state once the view has had a moment to become hidden.
+    // Guarded on `suspended` in case the tab was re-activated within the delay.
+    Timer {
+        id: freezeTimer
+        interval: 300
+        repeat: false
+        onTriggered: if (webAppView.suspended) webView.lifecycleState = webAppView._lcFrozen
+    }
 
     Rectangle {
         anchors.fill: parent

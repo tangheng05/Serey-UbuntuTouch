@@ -35,6 +35,9 @@ Page {
 
     WebAppView {
         anchors.fill: parent
+        // Freeze this Chromium renderer while another tab is showing so it doesn't
+        // compete for GPU/shared memory with the video player's WebView.
+        suspended: Config.currentTab !== 0
         url: page.siteUrl()
         authToken: Session.token
         username: Session.username

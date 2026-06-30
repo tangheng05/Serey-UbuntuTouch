@@ -80,12 +80,21 @@ Page {
     // Flat Lomiri page header: left-aligned title + a search action + bottom
     // hairline. Replaces the iOS sticky search field; search now reveals on the
     // action (matches the reference, e.g. uNav's header search icon).
-    header: Rectangle {
+    // Suppress Lomiri's default header and draw our own as a top-anchored child.
+    // (Page.header did not render the right-side action icon reliably; a normal
+    // child item — like the global AppHeader — does.)
+    header: Item { height: 0 }
+
+    Rectangle {
         id: settingsHeader
+        anchors { top: parent.top; left: parent.left; right: parent.right }
         height: units.gu(6)
         color: Style.surface
+        z: 50
 
+        // ----- Default state: title + search action -----
         Label {
+            visible: !page.searchActive
             anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
             text: i18n.tr("Settings")
             font.pixelSize: Style.fontTitle
@@ -93,20 +102,102 @@ Page {
             color: Style.textPrimary
         }
         AbstractButton {
+            visible: !page.searchActive
             anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
             width: units.gu(4); height: width
-            onClicked: {
-                page.searchActive = !page.searchActive;
-                if (page.searchActive) searchField.forceActiveFocus();
-                else { searchField.text = ""; searchField.focus = false; }
-            }
+            onClicked: { page.searchActive = true; searchField.forceActiveFocus(); }
             Icon {
                 anchors.centerIn: parent
                 width: units.gu(2.6); height: width
-                name: page.searchActive ? "close" : "find"
+                name: "find"
                 color: Style.textPrimary
             }
         }
+
+        // ----- Active state: back chevron + inline search field (Lomiri header
+        // search — the field expands into the header, per the HIG reference). -----
+        AbstractButton {
+            id: searchBack
+            visible: page.searchActive
+            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: width
+            onClicked: {
+                page.searchActive = false;
+                searchField.text = "";
+                searchField.focus = false;
+                searchModel.clear();
+                page.searchOpen = false;
+            }
+            Icon {
+                anchors.centerIn: parent
+                width: units.gu(2.4); height: width
+                name: "back"
+                color: Style.textPrimary
+            }
+        }
+        Rectangle {
+            visible: page.searchActive
+            anchors { left: searchBack.right; leftMargin: Style.spacingXs; right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+            height: units.gu(4.5)
+            radius: Style.cardRadius
+            color: Style.iconBackground
+
+            Row {
+                anchors { fill: parent; leftMargin: units.gu(1.5); rightMargin: units.gu(1) }
+                spacing: units.gu(1)
+
+                Icon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: "find"
+                    width: units.gu(2); height: width
+                    color: Style.textSecondary
+                }
+                Item {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - units.gu(2) - units.gu(1)
+                    height: units.gu(3)
+
+                    TextInput {
+                        id: searchField
+                        anchors.fill: parent
+                        verticalAlignment: TextInput.AlignVCenter
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFamily
+                        color: Style.textPrimary
+                        clip: true
+                        inputMethodHints: Qt.ImhNoPredictiveText
+                        onTextChanged: {
+                            if (searchField.text.trim().length < 2) {
+                                page.searchOpen = false
+                                searchModel.clear()
+                            }
+                            searchDebounce.restart()
+                        }
+                        Keys.onReturnPressed: {
+                            searchDebounce.stop()
+                            page.doSearch(searchField.text.trim())
+                            searchField.focus = false
+                        }
+                    }
+                    Label {
+                        anchors.fill: parent
+                        verticalAlignment: Text.AlignVCenter
+                        text: i18n.tr("Search users...")
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFamily
+                        color: Style.textSecondary
+                        visible: searchField.text.length === 0
+                    }
+                }
+            }
+        }
+
+        Timer {
+            id: searchDebounce
+            interval: 200
+            onTriggered: page.doSearch(searchField.text.trim())
+        }
+
         Rectangle {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: units.dp(1)
@@ -178,7 +269,7 @@ Page {
     }
 
     Flickable {
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: settingsHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         contentWidth: width
         contentHeight: col.height
         clip: true
@@ -187,108 +278,7 @@ Page {
             id: col
             width: parent.width
 
-            // ===== Search bar =================================================
-            Item {
-                id: searchBarContainer
-                width: parent.width
-                visible: page.searchActive
-                height: page.searchActive ? units.gu(7) : 0
-
-                Rectangle {
-                    id: searchBarBg
-                    anchors {
-                        fill: parent
-                        leftMargin: Style.spacingM
-                        rightMargin: Style.spacingM
-                        topMargin: Style.spacingS
-                        bottomMargin: Style.spacingS
-                    }
-                    radius: Style.cardRadius
-                    color: searchField.activeFocus ? Style.surface : (Style.inputBackground || "#F2F2F7")
-                    border.width: searchField.activeFocus ? units.dp(2) : 0
-                    border.color: Style.brand
-
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                    Behavior on border.width { NumberAnimation { duration: 150 } }
-
-                    Row {
-                        anchors {
-                            fill: parent
-                            leftMargin: units.gu(1.5); rightMargin: units.gu(1.5)
-                        }
-                        spacing: units.gu(1)
-
-                        Icon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: "find"
-                            width: units.gu(2.2); height: width
-                            color: searchField.activeFocus ? Style.brand : Style.textSecondary
-
-                            Behavior on color { ColorAnimation { duration: 150 } }
-                        }
-
-                        Item {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - units.gu(2.2) - units.gu(1)
-                            height: units.gu(3)
-
-                            TextInput {
-                                id: searchField
-                                anchors.fill: parent
-                                verticalAlignment: TextInput.AlignVCenter
-                                font.pixelSize: Style.fontRegular
-                                font.family: Style.fontFamily
-                                color: Style.textPrimary
-                                clip: true
-                                inputMethodHints: Qt.ImhNoPredictiveText
-                                onTextChanged: {
-                                    if (searchField.text.trim().length < 2) {
-                                        page.searchOpen = false
-                                        searchModel.clear()
-                                    }
-                                    searchDebounce.restart()
-                                }
-                                Keys.onReturnPressed: {
-                                    searchDebounce.stop()
-                                    page.doSearch(searchField.text.trim())
-                                    searchField.focus = false
-                                }
-                            }
-                            Label {
-                                anchors.fill: parent
-                                verticalAlignment: Text.AlignVCenter
-                                text: i18n.tr("Search users...")
-                                font.pixelSize: Style.fontRegular
-                                font.family: Style.fontFamily
-                                color: Style.textSecondary
-                                visible: searchField.text.length === 0 && !searchField.activeFocus
-                            }
-
-                            Icon {
-                                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                                name: "close"
-                                width: units.gu(2); height: width
-                                color: Style.textSecondary
-                                visible: searchField.text.length > 0
-
-                                MouseArea {
-                                    anchors { fill: parent; margins: -units.gu(0.5) }
-                                    onClicked: {
-                                        searchField.text = ""
-                                        searchField.forceActiveFocus()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Timer {
-                    id: searchDebounce
-                    interval: 200
-                    onTriggered: page.doSearch(searchField.text.trim())
-                }
-            }
+            // (Search field now lives in the page header — Lomiri header search.)
 
             // ===== Profile card row (signed-in) / Welcome row (signed-out) =====
             Item {

@@ -33,6 +33,11 @@ QtObject {
     readonly property string uploadUrl: "https://upload.serey.io/uploads/upload_image"
     readonly property string uploadSecret: "5876aafc87185dc0521afcqceo87185dc058718affc7b382730e89s"
 
+    // Video upload endpoint (same media server + api-secret). The simple endpoint
+    // caps at ~95 MB; larger files use the web's chunked S3 flow, not implemented
+    // here yet — see Uploads.uploadVideo's size guard.
+    readonly property string uploadVideoUrl: "https://upload.serey.io/uploads/upload_video"
+
     // Homepage mini-app: a single fixed site (matches serey-ubutu), filtered
     // client-side via a `community_id` query param rather than switching
     // domains per source.
@@ -77,6 +82,20 @@ QtObject {
     // Map of community dns -> icon URL, fetched from the backend at startup
     // (see Main.qml) so the source switcher shows each country's real icon.
     property var iconByDns: ({})
+
+    // Map of community dns -> is_allow_post (bool), fetched alongside iconByDns.
+    // Backend rule: is_allow_post=true → anyone may post; false → owner/managers
+    // only. Used to gate the compose buttons (e.g. the Video upload FAB).
+    property var allowPostByDns: ({})
+
+    // Whether the *currently selected* community allows the signed-in user to
+    // post. Global (sentinel id 0, no filter) is never postable. A picked
+    // sub-community carries its own allowPost flag; otherwise fall back to the
+    // top-level source's flag keyed by dns. (Owner/manager overrides aren't
+    // resolved client-side — managers of an owner-only community post via web.)
+    readonly property bool canPostCurrent: communityId > 0
+        && (selectedSubCommunity ? !!selectedSubCommunity.allowPost
+                                 : !!allowPostByDns[communityDns])
 
     function communityIcon(dns) {
         // Global uses a bundled multi-flag globe icon instead of the backend logo.

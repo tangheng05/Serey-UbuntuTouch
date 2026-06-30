@@ -201,7 +201,10 @@ function toCommunity(raw) {
         dns: raw.dns || "",
         icon: raw.icon_url || raw.logo_url || "",
         country: raw.country || "",
-        level: toInt(raw.level)
+        level: toInt(raw.level),
+        // is_allow_post=true → anyone may post; false → owner/managers only.
+        // Drives whether the compose buttons are shown for this community.
+        allowPost: !!raw.is_allow_post
     };
 }
 

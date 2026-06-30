@@ -71,6 +71,94 @@ function uploadImage(uploadUrl, secret, fileUrl, onOk, onErr) {
     reader.send();
 }
 
+// --- Video upload --------------------------------------------------------
+// The simple /uploads/upload_video endpoint accepts the same multipart envelope
+// as images (field name `video`, header `api-secret`, returns { url }). QML's
+// XMLHttpRequest reads the whole file into memory, so we cap well under the
+// server's ~95 MB limit; larger files need the web's chunked S3 flow (TODO).
+var MAX_VIDEO_BYTES = 90 * 1024 * 1024;
+
+function _videoType(fileUrl) {
+    var u = String(fileUrl).toLowerCase();
+    if (u.indexOf(".webm") >= 0) return { mime: "video/webm", ext: "webm" };
+    if (u.indexOf(".mov") >= 0)  return { mime: "video/quicktime", ext: "mov" };
+    if (u.indexOf(".mkv") >= 0)  return { mime: "video/x-matroska", ext: "mkv" };
+    if (u.indexOf(".ogv") >= 0 || u.indexOf(".ogg") >= 0) return { mime: "video/ogg", ext: "ogv" };
+    if (u.indexOf(".mpeg") >= 0 || u.indexOf(".mpg") >= 0) return { mime: "video/mpeg", ext: "mpeg" };
+    return { mime: "video/mp4", ext: "mp4" };   // most common; also the default ext
+}
+
+function uploadVideo(uploadUrl, secret, fileUrl, onOk, onErr) {
+    var type = _videoType(fileUrl);
+    var reader = new XMLHttpRequest();
+    _active = reader;
+    reader.open("GET", fileUrl);
+    reader.responseType = "arraybuffer";
+    reader.onreadystatechange = function () {
+        if (reader.readyState !== XMLHttpRequest.DONE)
+            return;
+        if (!reader.response) {
+            _active = null;
+            onErr({ message: "Couldn't read the selected video." });
+            return;
+        }
+        var bytes = new Uint8Array(reader.response);
+        if (bytes.length > MAX_VIDEO_BYTES) {
+            _active = null;
+            onErr({ message: "Video is too large (max " + Math.round(MAX_VIDEO_BYTES / 1048576) + " MB)." });
+            return;
+        }
+        try {
+            _postVideo(uploadUrl, secret, type, bytes, onOk, onErr);
+        } catch (e) {
+            _active = null;
+            onErr({ message: "Couldn't prepare the video for upload." });
+        }
+    };
+    reader.send();
+}
+
+function _postVideo(uploadUrl, secret, type, fileBytes, onOk, onErr) {
+    var boundary = "----SereyBoundary" + Date.now() + Math.floor(Math.random() * 1e9);
+    var preamble = _ascii(
+        "--" + boundary + "\r\n" +
+        'Content-Disposition: form-data; name="video"; filename="video.' + type.ext + '"\r\n' +
+        "Content-Type: " + type.mime + "\r\n\r\n");
+    var trailer = _ascii("\r\n--" + boundary + "--\r\n");
+
+    var body = new Uint8Array(preamble.length + fileBytes.length + trailer.length);
+    body.set(preamble, 0);
+    body.set(fileBytes, preamble.length);
+    body.set(trailer, preamble.length + fileBytes.length);
+
+    var xhr = new XMLHttpRequest();
+    _active = xhr;
+    xhr.open("POST", uploadUrl);
+    xhr.setRequestHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
+    xhr.setRequestHeader("api-secret", secret);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState !== XMLHttpRequest.DONE)
+            return;
+        _active = null;
+        if (xhr.status === 0) {
+            onErr({ message: "Network error during upload." });
+            return;
+        }
+        var data = null;
+        try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; }
+        catch (e) { onErr({ message: "Upload server returned an invalid response." }); return; }
+        var url = data && data.url;
+        if (xhr.status >= 200 && xhr.status < 300 && url) {
+            onOk(url);
+        } else {
+            var msg = (data && data.message) ? data.message : "Upload failed (" + xhr.status + ").";
+            onErr({ message: msg });
+        }
+    };
+    xhr.send(body.buffer);
+}
+
 function _post(uploadUrl, secret, type, fileBytes, onOk, onErr) {
     var boundary = "----SereyBoundary" + Date.now() + Math.floor(Math.random() * 1e9);
     var preamble = _ascii(

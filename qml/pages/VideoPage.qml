@@ -270,4 +270,7 @@ Page {
         iconName: "camcorder"
         message: i18n.tr("No videos to show")
     }
+
+    // Upload lives in the global header action now (see Main.qml, gated on the
+    // Video tab) — Lomiri uses a header action, not a Material floating button.
 }

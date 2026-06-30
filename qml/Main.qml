@@ -61,7 +61,10 @@ MainView {
         _initNotifications()
 
         CommunityService.listAll(Config.baseUrl,
-            function (list) { Config.iconByDns = CommunityService.iconMap(list); },
+            function (list) {
+                Config.iconByDns = CommunityService.iconMap(list);
+                Config.allowPostByDns = CommunityService.allowPostMap(list);
+            },
             function (err) { /* keep globe fallback */ });
 
         // A persisted session only carries token + username (see Session.qml);
@@ -218,6 +221,28 @@ MainView {
                     anchors.centerIn: parent
                     width: units.gu(2.8); height: width
                     name: "edit"
+                    color: Style.brand
+                }
+            }
+
+            // Upload video (Video tab only) — Lomiri header action, replacing the
+            // old Material floating button on VideoPage.
+            AbstractButton {
+                id: uploadBtn
+                // Only when the selected community allows posting (is_allow_post);
+                // hidden for Global and owner-only communities.
+                visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostCurrent
+                anchors.verticalCenter: parent.verticalCenter
+                width: units.gu(4); height: width
+                onClicked: {
+                    var vp = videoStack.currentPage;
+                    var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
+                    if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);
+                }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.8); height: width
+                    name: "add"
                     color: Style.brand
                 }
             }

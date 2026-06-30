@@ -36,3 +36,14 @@ function iconMap(list) {
     }
     return map;
 }
+
+// Convenience: build a { dns: allowPost(bool) } map from listAll's result, used
+// to gate the compose buttons (only show when the community permits posting).
+function allowPostMap(list) {
+    var map = {};
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].dns)
+            map[list[i].dns] = !!list[i].allowPost;
+    }
+    return map;
+}

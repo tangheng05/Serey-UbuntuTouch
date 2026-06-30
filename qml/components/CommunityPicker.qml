@@ -547,7 +547,9 @@ Item {
                                                         Config.selectedSubCommunity = {
                                                             id: commBtn.commId,
                                                             name: commBtn.commName,
-                                                            icon: commBtn.commIcon
+                                                            icon: commBtn.commIcon,
+                                                            // Posting permission for this sub-community (gates compose buttons).
+                                                            allowPost: !!modelData.is_allow_post
                                                         }
                                                         picker.closeAnimated()
                                                     }

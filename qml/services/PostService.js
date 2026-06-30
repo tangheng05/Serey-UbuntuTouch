@@ -142,6 +142,43 @@ function createPost(baseUrl, params, token, onOk, onErr) {
               token, function (data) { onOk(data || {}); }, onErr);
 }
 
+// POST /serey-web/create-or-update-post — create a VIDEO post. A "video" is a
+// normal Post carrying the uploaded media URL plus the video-component flags;
+// the backend's createOrUpdatePost also creates the YoutubeComponent row (so it
+// surfaces in the curated video feed) and broadcasts on-chain.
+//
+// Backend contract (verified against serey-api):
+//   - `categories` MUST be the literal "video".
+//   - `subcategories` MUST be an array (the service calls .forEach on it).
+//   - `community_id` must resolve to a real community > 0 — "Global" (id 0) is
+//     rejected for videos (it's also used to allocate the html_section_id), so
+//     the caller must pick a concrete community first.
+//   - `videos` is [hostedVideoUrl]; the URL must be on a Serey upload host or the
+//     server can't classify it as platform SEREY.
+//   - `images` is [thumbnailUrl] (optional; the post's card thumbnail).
+//   - Rate limited to 10 videos / 48h per author (enforced server-side).
+function createVideoPost(baseUrl, params, token, onOk, onErr) {
+    var body = {
+        title: params.title,
+        desc: params.desc || "",
+        body: params.body || params.desc || "",
+        videos: [params.videoUrl],
+        images: params.thumbUrl ? [params.thumbUrl] : [],
+        categories: "video",
+        subcategories: [],
+        is_video_component_only: true,
+        is_post_video_component: true,
+        is_ai_generated: false,
+        site_credit: '<p>This was posted using <a href="https://serey.io" rel="nofollow noopener">Serey.io</a></p>'
+    };
+    if (params.communityId)
+        body.community_id = Number(params.communityId);
+    if (params.communityName)
+        body.country_name = params.communityName;
+    Http.post(baseUrl, "/serey-web/create-or-update-post", body,
+              token, function (data) { onOk(data || {}); }, onErr);
+}
+
 // Delete one of the signed-in user's own posts (blog, gallery or video — all are
 // Posts server-side). Uses the POST alias of /serey-web/delete-post-or-comment
 // (QML's XMLHttpRequest can't send a DELETE body). The backend authorises by the

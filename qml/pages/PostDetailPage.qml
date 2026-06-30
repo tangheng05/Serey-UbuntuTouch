@@ -101,10 +101,9 @@ Page {
             function (result) {
                 loading = false;
                 page.post = result.post;
-                page.commentCount = result.post.comments;
                 page.comments = result.replies || [];
+                page.commentCount = page._countAll(page.comments);
                 page._parseBody();
-                if (page.scrollToCommentPermlink !== "") scrollToTimer.start();
 
                 // Sync vote bar: cache wins over API data (the feed may have
                 // recorded a vote the detail endpoint hasn't caught up with).
@@ -148,6 +147,16 @@ Page {
         page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"));
     }
 
+    function _countAll(list) {
+        var n = 0;
+        for (var i = 0; i < list.length; i++) {
+            n++;
+            if (list[i].replies && list[i].replies.length)
+                n += page._countAll(list[i].replies);
+        }
+        return n;
+    }
+
     // Recursively drop a comment by permlink, wherever it sits in the tree.
     function _removeFrom(list, permlinkToRemove) {
         var out = [];
@@ -189,6 +198,7 @@ Page {
     function startReply(comment) {
         page.replyTarget = comment;
         composer.forceActiveFocus();
+        Qt.inputMethod.show();
     }
 
     function cancelReply() {
@@ -315,24 +325,6 @@ Page {
         }
     }
 
-    // Scroll to a specific comment after the layout settles post-load.
-    Timer {
-        id: scrollToTimer
-        interval: 350
-        onTriggered: {
-            for (var i = 0; i < page.comments.length; i++) {
-                if (page.comments[i].permlink === page.scrollToCommentPermlink) {
-                    var item = commentsRepeater.itemAt(i)
-                    if (item) {
-                        var targetY = contentCol.y + item.mapToItem(contentCol, 0, 0).y
-                        scroll.contentY = Math.max(0, Math.min(targetY - units.gu(2),
-                                          scroll.contentHeight - scroll.height))
-                    }
-                    return
-                }
-            }
-        }
-    }
 
     Component.onCompleted: {
         // Render the saved copy immediately (instant + offline), then refresh.
@@ -353,11 +345,13 @@ Page {
 
     KeyboardAwareFlickable {
         id: scroll
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: footer.visible ? footer.top : parent.bottom }
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.bottomMargin: footer.visible ? footer.height + page.kbHeight : 0
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
         visible: page.post !== null
+        onMovementStarted: Qt.inputMethod.hide()
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
@@ -717,13 +711,18 @@ Page {
                         leftMargin: Style.spacingM
                         rightMargin: Style.spacingM
                     }
-                    visible: composer.text.length === 0 && !composer.inputMethodComposing
+                    visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
                     text: Session.isLoggedIn
                         ? i18n.tr("Post a comment…")
                         : i18n.tr("Log in to comment…")
                     font.family: Style.fontFamily
                     color: Style.textSecondary
                     elide: Text.ElideRight
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: { composer.forceActiveFocus(); Qt.inputMethod.show(); }
                 }
 
                 TextInput {

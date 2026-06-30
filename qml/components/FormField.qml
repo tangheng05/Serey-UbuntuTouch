@@ -48,7 +48,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width
             text: root.placeholder
-            visible: input.text.length === 0 && !input.inputMethodComposing
+            visible: input.text.length === 0 && !input.inputMethodComposing && !input.activeFocus && !Qt.inputMethod.visible
             elide: Text.ElideRight
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFamily

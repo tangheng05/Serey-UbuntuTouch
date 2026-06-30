@@ -281,7 +281,7 @@ Page {
             page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: page.video.author });
     }
 
-    function startReply(comment) { page.replyTarget = comment; composer.forceActiveFocus(); }
+    function startReply(comment) { page.replyTarget = comment; composer.forceActiveFocus(); Qt.inputMethod.show(); }
     function cancelReply() { page.replyTarget = null; }
 
     function submitComment() {
@@ -926,11 +926,16 @@ Page {
                                 verticalCenter: parent.verticalCenter
                                 leftMargin: Style.spacingM; rightMargin: Style.spacingM
                             }
-                            visible: composer.text.length === 0 && !composer.inputMethodComposing
+                            visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
                             text: Session.isLoggedIn ? i18n.tr("Post a comment…") : i18n.tr("Log in to comment…")
                             font.family: Style.fontFamily
                             color: Style.textSecondary
                             elide: Text.ElideRight
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: { composer.forceActiveFocus(); Qt.inputMethod.show(); }
                         }
 
                         TextInput {

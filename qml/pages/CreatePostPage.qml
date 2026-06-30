@@ -272,7 +272,7 @@ Page {
                         left: parent.left; top: parent.top
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
-                    visible: titleField.text.length === 0 && !titleField.activeFocus
+                    visible: titleField.text.length === 0 && !titleField.activeFocus && !Qt.inputMethod.visible
                     text: i18n.tr("Enter title")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontMedium
@@ -317,7 +317,7 @@ Page {
                         left: parent.left; top: parent.top
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
-                    visible: bodyArea.text.length === 0 && !bodyArea.activeFocus
+                    visible: bodyArea.text.length === 0 && !bodyArea.activeFocus && !Qt.inputMethod.visible
                     text: i18n.tr("Write your article here...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular

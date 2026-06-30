@@ -3,6 +3,9 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 import "../services/PostService.js" as PostService
+import "../services/AccountService.js" as AccountService
+import "../services/ReportService.js" as ReportService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 Item {
     id: sheet
@@ -17,12 +20,30 @@ Item {
     // No video editor exists, so Edit is offered for blog/gallery only.
     readonly property bool canEdit: isOwn && PostActions.kind !== "video"
     property bool deleting: false
-    // 0 = main menu, 1 = report reasons, 2 = delete confirm
+    property bool blocking: false
+    property bool reporting: false
+    property var reportTypes: []
+    property bool reportTypesLoaded: false
+    property string selectedReportTypeId: ""
+    // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm
     property int step: 0
 
     onVisibleChanged: {
-        if (!visible) { step = 0; }
-        else { backdropFade.start(); sheetSlide.start(); }
+        if (!visible) {
+            step = 0;
+            selectedReportTypeId = "";
+        } else {
+            backdropFade.start();
+            sheetSlide.start();
+            if (!reportTypesLoaded) _loadReportTypes();
+        }
+    }
+
+    function _loadReportTypes() {
+        reportTypesLoaded = true;
+        ReportService.getReportTypes(Config.baseUrl,
+            function (arr) { sheet.reportTypes = arr; },
+            function ()    { /* silent — fallback list shown */ });
     }
 
     function closeSheet() {
@@ -30,9 +51,40 @@ Item {
         sheetSlideOut.start();
     }
 
-    function submitReport(reason) {
-        sheet.closeSheet();
-        Toast.show(i18n.tr("Report submitted. Thank you."));
+    function submitReport(typeId, typeName) {
+        if (typeId === "" || typeId === undefined || typeId === null) return;
+        if (!Session.isLoggedIn) { Toast.error(i18n.tr("Please log in to report.")); return; }
+        var p = PostActions.post;
+        if (!p) return;
+        sheet.reporting = true;
+        ReportService.submitReport(Config.baseUrl, Session.token,
+            p.id !== undefined ? p.id : p.permlink || "", typeId, typeName || "Report",
+            function () {
+                sheet.reporting = false;
+                sheet.closeSheet();
+                Toast.show(i18n.tr("Report submitted. Thank you."));
+            },
+            function (err) {
+                sheet.reporting = false;
+                Toast.error((err && err.message) ? err.message : i18n.tr("Failed to submit report."));
+            });
+    }
+
+    function doBlock() {
+        var username = sheet.authorName;
+        if (!username) return;
+        sheet.blocking = true;
+        AccountService.toggleBlock(Config.baseUrl, Session.token, username, "ADD",
+            function () {
+                sheet.blocking = false;
+                PostActions.userBlocked(username);
+                sheet.closeSheet();
+                Toast.show(i18n.tr("@%1 blocked.").arg(username));
+            },
+            function (err) {
+                sheet.blocking = false;
+                Toast.error((err && err.message) ? err.message : i18n.tr("Failed to block user."));
+            });
     }
 
     // Delete the viewer's own post, then ask feed pages to prune the row.
@@ -70,8 +122,9 @@ Item {
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: (sheet.step === 0 ? mainCol.height
                  : sheet.step === 1 ? reportCol.height
-                 : deleteCol.height) + units.gu(4)
-        radius: units.gu(1)
+                 : sheet.step === 2 ? deleteCol.height
+                 : blockCol.height) + units.gu(4)
+        radius: units.dp(16)
         color: Style.surface
 
         transform: Translate { id: sheetTranslate; y: 0 }
@@ -213,7 +266,10 @@ Item {
                 onClicked: {
                     var p = PostActions.post;
                     sheet.closeSheet();
-                    if (p) PostActions.hideRequested(p.author || "", p.permlink || "");
+                    if (p) {
+                        HiddenPosts.hide(p.permlink || "");
+                        PostActions.hideRequested(p.author || "", p.permlink || "");
+                    }
                 }
                 Row {
                     anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
@@ -254,11 +310,11 @@ Item {
                 }
             }
 
-            // Block
+            // Block → confirm step
             AbstractButton {
                 width: parent.width; height: units.gu(8)
                 visible: !sheet.isOwn
-                onClicked: { sheet.closeSheet(); Toast.show(i18n.tr("User blocked.")); }
+                onClicked: sheet.step = 3
                 Row {
                     anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
                     spacing: Style.spacingM
@@ -326,21 +382,31 @@ Item {
 
             Item { width: 1; height: Style.spacingS }
 
+            // Loading spinner while fetching report types
+            Item {
+                visible: sheet.reportTypes.length === 0
+                width: reportCol.width; height: units.gu(6)
+                ActivityIndicator { anchors.centerIn: parent; running: parent.visible }
+            }
+
             Repeater {
-                model: [
-                    i18n.tr("Spam"),
-                    i18n.tr("Nudity or sexual activity"),
-                    i18n.tr("Hate speech or symbols"),
-                    i18n.tr("Violence or dangerous organizations"),
-                    i18n.tr("Scam or fraud"),
-                    i18n.tr("False information"),
-                    i18n.tr("Bullying or harassment"),
-                    i18n.tr("Other")
-                ]
+                model: sheet.reportTypes
 
                 delegate: AbstractButton {
                     width: reportCol.width; height: units.gu(5.5)
-                    onClicked: sheet.submitReport(modelData)
+                    enabled: !sheet.reporting
+                    property int delegateIndex: index
+
+                    onClicked: {
+                        var item = sheet.reportTypes[delegateIndex] || {}
+                        var typeId = (item.id !== undefined)             ? item.id
+                                   : (item._id !== undefined)            ? item._id
+                                   : (item.report_type_id !== undefined) ? item.report_type_id
+                                   : (item.type_id !== undefined)        ? item.type_id
+                                   : ""
+                        var typeName = item.name || item.title || item.report_type || item.type || "Report"
+                        sheet.submitReport(String(typeId), typeName)
+                    }
 
                     Row {
                         anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
@@ -348,9 +414,12 @@ Item {
 
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: modelData
+                            text: {
+                                var item = sheet.reportTypes[index] || {}
+                                return item.name || item.title || item.report_type || item.type || ""
+                            }
                             font.pixelSize: Style.fontRegular
-                            color: Style.textPrimary
+                            color: sheet.reporting ? Style.textSecondary : Style.textPrimary
                         }
                     }
 
@@ -358,6 +427,76 @@ Item {
                         anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
                         height: units.dp(1); color: Style.divider
                     }
+                }
+            }
+
+            Item { width: 1; height: Style.spacingM }
+        }
+
+        // ===================== Step 3: Block confirmation =====================
+        Column {
+            id: blockCol
+            anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
+            spacing: 0
+            visible: sheet.step === 3
+
+            Item { width: 1; height: Style.spacingS }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: i18n.tr("Block @%1?").arg(sheet.authorName)
+                font.pixelSize: Style.fontLarge
+                font.weight: Font.DemiBold
+                color: Style.textPrimary
+            }
+            Item { width: 1; height: Style.spacingS }
+            Label {
+                width: parent.width - Style.spacingL * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                text: i18n.tr("Their posts will be hidden from your feeds.")
+                font.pixelSize: Style.fontSmall
+                color: Style.textSecondary
+            }
+            Item { width: 1; height: Style.spacingL }
+
+            AbstractButton {
+                width: parent.width - Style.spacingM * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: units.gu(6)
+                enabled: !sheet.blocking
+                onClicked: sheet.doBlock()
+                Rectangle {
+                    anchors.fill: parent; radius: units.dp(10)
+                    color: Style.danger; opacity: sheet.blocking ? 0.6 : 1
+                }
+                Label {
+                    anchors.centerIn: parent
+                    text: sheet.blocking ? i18n.tr("Blocking…") : i18n.tr("Block")
+                    font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold
+                    color: Style.textOnBrand
+                }
+            }
+
+            Item { width: 1; height: Style.spacingS }
+
+            AbstractButton {
+                width: parent.width - Style.spacingM * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: units.gu(6)
+                enabled: !sheet.blocking
+                onClicked: sheet.step = 0
+                Rectangle {
+                    anchors.fill: parent; radius: units.dp(10)
+                    color: "transparent"
+                    border.width: units.dp(1.5); border.color: Style.divider
+                }
+                Label {
+                    anchors.centerIn: parent
+                    text: i18n.tr("Cancel")
+                    font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold
+                    color: Style.textPrimary
                 }
             }
 

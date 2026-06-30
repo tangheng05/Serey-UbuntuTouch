@@ -1,5 +1,6 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
+import Lomiri.Components.Popups 1.3
 import "../Theme"
 import "../Session"
 import "../components"
@@ -34,6 +35,8 @@ Page {
     })
 
     readonly property bool isSelf: Session.isLoggedIn && username === Session.username
+    property bool isBlocked: false
+    property bool blockLoading: false
     readonly property var curModel: tab === 0 ? m0 : tab === 1 ? m1 : m2
     readonly property bool curLoading: rev >= 0 && st[tab].loading
     readonly property bool curEnd: rev >= 0 && st[tab].end
@@ -57,6 +60,36 @@ Page {
     function loadFollow() {
         if (!Session.isLoggedIn || isSelf) return;
         FollowStore.load(Config.baseUrl, Session.username, username);
+    }
+
+    function loadBlockStatus() {
+        if (!Session.isLoggedIn || isSelf) return;
+        AccountService.listBlocked(Config.baseUrl, Session.token, function (list) {
+            for (var i = 0; i < list.length; i++) {
+                if (list[i] === page.username) { page.isBlocked = true; return; }
+            }
+            page.isBlocked = false;
+        }, function (err) { /* silent */ });
+    }
+
+    function toggleBlock() {
+        if (!Session.isLoggedIn) { page.pageStack.push(Qt.resolvedUrl("LoginPage.qml")); return; }
+        page.blockLoading = true;
+        var action = page.isBlocked ? "REMOVE" : "ADD"
+        AccountService.toggleBlock(Config.baseUrl, Session.token, page.username, action,
+            function () {
+                page.blockLoading = false;
+                page.isBlocked = !page.isBlocked;
+                Toast.show(page.isBlocked
+                    ? i18n.tr("@%1 blocked.").arg(page.username)
+                    : i18n.tr("@%1 unblocked.").arg(page.username));
+                if (page.isBlocked) PostActions.userBlocked(page.username);
+                else PostActions.userUnblocked(page.username);
+            },
+            function (err) {
+                page.blockLoading = false;
+                Toast.error(err.message || i18n.tr("Failed to update block."));
+            });
     }
 
     function toggleFollow() {
@@ -140,7 +173,28 @@ Page {
         }
     }
 
-    Component.onCompleted: { loadProfile(); loadFollow(); loadTab(0); }
+    Component.onCompleted: { loadProfile(); loadFollow(); loadBlockStatus(); loadTab(0); }
+
+    Component {
+        id: blockDialog
+        Dialog {
+            id: dlg
+            title: page.isBlocked ? i18n.tr("Unblock user?") : i18n.tr("Block user?")
+            text: page.isBlocked
+                ? i18n.tr("@%1 will be able to see your posts and interact with you again.").arg(page.username)
+                : i18n.tr("@%1 will no longer be able to see your posts or interact with you.").arg(page.username)
+
+            Button {
+                text: page.isBlocked ? i18n.tr("Unblock") : i18n.tr("Block")
+                color: Style.danger
+                onClicked: { PopupUtils.close(dlg); page.toggleBlock(); }
+            }
+            Button {
+                text: i18n.tr("Cancel")
+                onClicked: PopupUtils.close(dlg)
+            }
+        }
+    }
 
     ListView {
         id: list
@@ -183,6 +237,7 @@ Page {
                     // Block button — top-right corner of cover
                     AbstractButton {
                         visible: !page.isSelf && !!page.profile
+                        enabled: !page.blockLoading
                         anchors {
                             top: parent.top
                             right: parent.right
@@ -191,18 +246,20 @@ Page {
                         }
                         width: units.gu(4); height: units.gu(4)
                         z: 10
-                        onClicked: Toast.show(i18n.tr("@%1 blocked.").arg(page.username))
+                        onClicked: PopupUtils.open(blockDialog)
 
                         Rectangle {
                             anchors.fill: parent
-                            radius: width / 2
-                            color: Qt.rgba(0, 0, 0, 0.4)
+                            radius: units.dp(6)
+                            color: page.isBlocked ? Style.danger : "white"
+                            border.width: units.dp(2)
+                            border.color: Style.danger
                         }
                         Icon {
                             anchors.centerIn: parent
                             width: units.gu(2.2); height: width
                             name: "system-shutdown"
-                            color: "white"
+                            color: page.isBlocked ? "white" : Style.danger
                         }
                     }
                 }

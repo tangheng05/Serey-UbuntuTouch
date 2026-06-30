@@ -213,7 +213,7 @@ Page {
 
                 Label {
                     anchors { left: parent.left; top: parent.top; leftMargin: Style.spacingM; topMargin: Style.spacingM }
-                    visible: captionField.text.length === 0 && !captionField.activeFocus
+                    visible: captionField.text.length === 0 && !captionField.activeFocus && !Qt.inputMethod.visible
                     text: i18n.tr("Write a caption...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular

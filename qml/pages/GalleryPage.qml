@@ -4,6 +4,7 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/PostService.js" as PostService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 /*
  * Gallery feed: image-only posts from the selected regional source
@@ -47,6 +48,12 @@ Page {
                 if (galleryModel.get(i).permlink === permlink) galleryModel.remove(i);
             }
         }
+        function onUserBlocked(username) {
+            for (var i = galleryModel.count - 1; i >= 0; i--) {
+                if (galleryModel.get(i).author === username) galleryModel.remove(i);
+            }
+        }
+        function onUserUnblocked(username) { page.reload(); }
         function onEditRequested(post) {
             if (!page.visible) return;
             var ed = page.pageStack.push(Qt.resolvedUrl("CreateGalleryPostPage.qml"), { editPost: post });
@@ -85,7 +92,8 @@ Page {
                 page.loading = false;
                 galleryModel.clear();
                 for (var i = 0; i < result.length; i++)
-                    galleryModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        galleryModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
             },
@@ -110,7 +118,8 @@ Page {
                 inflight = null;
                 loading = false;
                 for (var i = 0; i < result.length; i++)
-                    galleryModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        galleryModel.append(result[i]);
                 // Advance by RAW server count (not the image-filtered length) so
                 // the next page doesn't re-request already-seen rows.
                 page.offset += rawCount;

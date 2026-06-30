@@ -45,7 +45,7 @@ Rectangle {
         Label {
             anchors.fill: parent
             text: root.placeholder
-            visible: input.text.length === 0 && !input.inputMethodComposing
+            visible: input.text.length === 0 && !input.inputMethodComposing && !input.activeFocus && !Qt.inputMethod.visible
             wrapMode: Text.WordWrap
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFamily

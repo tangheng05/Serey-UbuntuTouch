@@ -9,10 +9,10 @@ QtObject {
     property string kind: "blog"
 
     signal hideRequested(string author, string permlink)
-    // The owner chose Edit on their own post; the active page opens the editor.
     signal editRequested(var post)
-    // A post was deleted; feed pages prune the matching row from their models.
     signal postDeleted(string author, string permlink)
+    signal userBlocked(string username)
+    signal userUnblocked(string username)
 
     function open(postData, postKind) {
         post = postData;

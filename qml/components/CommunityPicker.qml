@@ -316,25 +316,12 @@ Item {
                         property var cats: picker.cache[index] || []
 
                         // Parent row
-                        AbstractButton {
+                        Item {
+                            id: sourceRow
                             width: parent.width
                             height: units.gu(7)
-                            onClicked: {
-                                if (sourceCol.srcIndex === 0) {
-                                    // Global: select directly and close — no sub-community dropdown
-                                    Config.sourceIndex = 0
-                                    Config.selectedSubCommunity = null
-                                    picker.expandedIndex = -1
-                                    picker.closeAnimated()
-                                } else if (picker.expandedIndex === sourceCol.srcIndex) {
-                                    picker.expandedIndex = -1
-                                } else {
-                                    picker.expandedIndex = sourceCol.srcIndex
-                                    picker._fetch(sourceCol.srcIndex)
-                                    Config.sourceIndex = sourceCol.srcIndex
-                                    Config.selectedSubCommunity = null
-                                }
-                            }
+                            // Chevron touch target width — used to split the two hit areas
+                            readonly property int chevronW: sourceCol.srcIndex !== 0 ? units.gu(6) : 0
 
                             Rectangle {
                                 anchors.fill: parent
@@ -370,7 +357,7 @@ Item {
                                 // Name
                                 Label {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - units.gu(5) - units.gu(3) - Style.spacingM * 2
+                                    width: parent.width - units.gu(5) - sourceRow.chevronW - Style.spacingM * 2
                                     text: modelData.name
                                     font.pixelSize: Style.fontMedium
                                     font.weight: sourceCol.isExpanded ? Font.DemiBold : Font.Medium
@@ -378,13 +365,44 @@ Item {
                                     elide: Text.ElideRight
                                 }
 
-                                // Chevron (hidden for Global — it selects directly)
+                                // Chevron icon (NL/US only)
                                 Icon {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: units.gu(2.5); height: width
                                     name: sourceCol.isExpanded ? "go-up" : "go-down"
                                     color: sourceCol.isExpanded ? Style.brand : Style.textSecondary
                                     visible: sourceCol.srcIndex !== 0
+                                }
+                            }
+
+                            // Left zone (flag + name) → select this source and close
+                            MouseArea {
+                                anchors {
+                                    left: parent.left; top: parent.top; bottom: parent.bottom
+                                    right: parent.right; rightMargin: sourceRow.chevronW
+                                }
+                                onClicked: {
+                                    Config.sourceIndex = sourceCol.srcIndex
+                                    Config.selectedSubCommunity = null
+                                    picker.expandedIndex = -1
+                                    picker.closeAnimated()
+                                }
+                            }
+
+                            // Right zone (chevron) → toggle dropdown (NL/US only)
+                            MouseArea {
+                                anchors {
+                                    right: parent.right; top: parent.top; bottom: parent.bottom
+                                }
+                                width: sourceRow.chevronW
+                                visible: sourceCol.srcIndex !== 0
+                                onClicked: {
+                                    if (picker.expandedIndex === sourceCol.srcIndex) {
+                                        picker.expandedIndex = -1
+                                    } else {
+                                        picker.expandedIndex = sourceCol.srcIndex
+                                        picker._fetch(sourceCol.srcIndex)
+                                    }
                                 }
                             }
 

@@ -98,7 +98,7 @@ MainView {
     }
 
     function _registerPushToken(pt) {
-        NotificationService.registerPushToken(Session.username, pt,
+        NotificationService.registerPushToken(Config.baseUrl, Session.token, pt,
             function () { /* fire-and-forget */ },
             function ()  { /* silent — retry on next app launch */ })
     }
@@ -135,34 +135,38 @@ MainView {
             root.pushClient.notificationsChanged.connect(function () {
                 var notifs = root.pushClient.notifications
                 if (notifs.length > 0) {
-                    root.lastUnreadCount = -1   // force re-check on next poll
+                    var msg = notifs.length === 1
+                        ? i18n.tr("You have 1 new notification")
+                        : i18n.tr("You have %1 new notifications").arg(notifs.length)
+                    root._showNotif(msg)
+                    root.lastUnreadCount = -1
                     root.pushClient.clearAll()
                 }
             })
-        } catch (e) { /* Ubuntu.PushNotifications not available on desktop — expected */ }
+        } catch (e) { console.warn("Push: PushClient failed to create:", e) }
     }
 
     // Poll every 60 s while logged in
     Timer {
         id: notifPoller
-        interval: 60000
+        interval: 30000
         repeat: true
         running: Session.isLoggedIn && Session.pushEnabled
         triggeredOnStart: true
         onTriggered: {
             if (!Session.isLoggedIn || !Session.pushEnabled) return
-            NotificationService.countUnread(Config.baseUrl, Session.token,
-                function (count) {
-                    if (root.lastUnreadCount < 0) {
-                        root.lastUnreadCount = count
-                        return
+            NotificationService.listSerey(Config.baseUrl, Session.token, 20, 0,
+                function (items) {
+                    var count = 0
+                    for (var i = 0; i < items.length; i++) {
+                        if (!items[i].is_read) count++
                     }
+                    if (root.lastUnreadCount < 0) { root.lastUnreadCount = count; return }
                     if (count > root.lastUnreadCount) {
                         var diff = count - root.lastUnreadCount
-                        var body = diff === 1
+                        root._showNotif(diff === 1
                             ? i18n.tr("You have 1 new notification")
-                            : i18n.tr("You have %1 new notifications").arg(diff)
-                        root._showNotif(body)
+                            : i18n.tr("You have %1 new notifications").arg(diff))
                     }
                     root.lastUnreadCount = count
                 },
@@ -335,33 +339,12 @@ MainView {
                     height: navBar.height
                     property bool active: root.currentTab === index
 
-                    Item {
+                    Icon {
                         anchors.centerIn: parent
                         width: units.gu(3)
                         height: width
-
-                        Icon {
-                            anchors.fill: parent
-                            name: modelData.icon
-                            color: active ? Style.brand : Style.textSecondary
-                        }
-
-                        // Unread badge — shown on Settings tab when notifications are pending
-                        Rectangle {
-                            visible: index === 3 && root.lastUnreadCount > 0
-                            anchors { top: parent.top; right: parent.right; topMargin: -units.dp(2); rightMargin: -units.dp(2) }
-                            width: units.gu(1.6); height: width
-                            radius: width / 2
-                            color: Style.danger
-
-                            Label {
-                                anchors.centerIn: parent
-                                text: root.lastUnreadCount > 99 ? "99+" : root.lastUnreadCount
-                                font.pixelSize: units.dp(8)
-                                font.weight: Font.Bold
-                                color: "white"
-                            }
-                        }
+                        name: modelData.icon
+                        color: active ? Style.brand : Style.textSecondary
                     }
                     onClicked: root.currentTab = index
                 }

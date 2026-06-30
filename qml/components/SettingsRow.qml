@@ -20,6 +20,7 @@ AbstractButton {
     property bool showSwitch: false
     property bool switchChecked: false
     property bool danger: false
+    property int unreadBadge: 0
     signal switchToggled(bool checked)
 
     width: parent ? parent.width : units.gu(40)
@@ -67,6 +68,22 @@ AbstractButton {
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFamily
             color: Style.textSecondary
+        }
+        Rectangle {
+            visible: root.unreadBadge > 0
+            anchors.verticalCenter: parent.verticalCenter
+            width: badgeLabel.implicitWidth + units.gu(1)
+            height: units.gu(2.2)
+            radius: height / 2
+            color: Style.danger
+            Label {
+                id: badgeLabel
+                anchors.centerIn: parent
+                text: root.unreadBadge > 99 ? "99+" : root.unreadBadge
+                font.pixelSize: units.dp(10)
+                font.weight: Font.Bold
+                color: "white"
+            }
         }
         Icon {
             visible: root.showChevron

@@ -77,7 +77,9 @@ except Exception:
 
 msg = push_data.get("message", "")
 actor = push_data.get("actor", "")
+ntype = push_data.get("type", "")
 count = push_data.get("count", 0)
+notif_id = push_data.get("id", "")
 
 if not msg and count:
     if count == 1:
@@ -88,11 +90,14 @@ if not msg and count:
 if not msg:
     msg = "New activity on Serey"
 
+summary = actor if actor else "Serey"
+tag = "serey-{}".format(notif_id) if notif_id else "serey-{}-{}".format(ntype, actor)
+
 output = {
     "notification": {
-        "tag": "serey-notif",
+        "tag": tag,
         "card": {
-            "summary": "Serey",
+            "summary": summary,
             "body": msg,
             "popup": True,
             "persist": True,

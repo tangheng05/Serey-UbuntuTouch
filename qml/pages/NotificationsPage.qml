@@ -4,6 +4,7 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/NotificationService.js" as NotificationService
+import "../services/PostService.js" as PostService
 
 Page {
     id: page
@@ -14,6 +15,8 @@ Page {
     property int unreadCount: 0
     property string errorMsg: ""
     property var inflight: null
+    property int retryCount: 0
+    property bool markingAllRead: false
 
     header: PageHeader {
         id: pageHeader
@@ -63,20 +66,30 @@ Page {
     Action {
         id: markAllReadAction
         iconName: "select"
-        text: i18n.tr("Mark all read")
+        text: page.markingAllRead ? i18n.tr("Marking…") : i18n.tr("Mark all read")
+        enabled: !page.markingAllRead
         onTriggered: page.markAllRead()
     }
 
     ListModel { id: notifModel; dynamicRoles: true }
 
+    // Auto-retry once on 500 — the notifications endpoint is occasionally flaky.
+    Timer {
+        id: retryTimer
+        interval: 2000
+        onTriggered: page.loadPage()
+    }
+
     function reload() {
         if (page.inflight) { page.inflight.abort(); page.inflight = null; }
+        retryTimer.stop()
         notifModel.clear()
         page.offset = 0
         page.endReached = false
         page.errorMsg = ""
+        page.retryCount = 0
+        page.unreadCount = 0
         page.loadPage()
-        page.fetchUnread()
     }
 
     function loadPage() {
@@ -94,18 +107,18 @@ Page {
                     var ntype = n.type || n.notification_type || ""
                     var postAuthor   = info.post_author || info.voted_on_author || info.commented_on_author || ""
                     var postPermlink = info.post_permlink || info.voted_on_permlink || info.commented_on_permlink || ""
-                    // For REPLY, scroll to the comment that was replied to so the
-                    // new reply is visible right below it.
                     var scrollPermlink = (ntype === "REPLY" || ntype === "COMMENT")
                                         ? (info.commented_on_permlink || "")
                                         : ""
+                    var isRead = !!(n.is_read || n.read || false)
+                    if (!isRead) page.unreadCount++
                     notifModel.append({
                         nid:            String(n.id || n._id || ""),
                         message:        n.actor + " " + (info.description || n.message || n.content || ""),
                         actorName:      n.actor || n.actor_name || n.from_user || "",
                         actorIcon:      n.actor_image_url || n.actor_image || "",
                         timeAgo:        Style.formatTimeAgo(n.created_at || n.createdAt || ""),
-                        isRead:         !!(n.is_read || n.read || false),
+                        isRead:         isRead,
                         ntype:          ntype,
                         postAuthor:     postAuthor,
                         postPermlink:   postPermlink,
@@ -117,26 +130,32 @@ Page {
             function (err) {
                 page.loading = false
                 page.inflight = null
-                page.errorMsg = err.message || i18n.tr("Failed to load notifications.")
+                // Auto-retry once on server errors (500) before showing the error state.
+                if (err.status >= 500 && page.retryCount < 1) {
+                    page.retryCount++
+                    retryTimer.start()
+                } else {
+                    page.errorMsg = err.message || i18n.tr("Failed to load notifications.")
+                }
             }
         )
     }
 
-    function fetchUnread() {
-        NotificationService.countUnread(Config.baseUrl, Session.token,
-            function (count) { page.unreadCount = count },
-            function (err)   { /* silent */ })
-    }
-
     function markAllRead() {
+        page.markingAllRead = true
         NotificationService.markAllRead(Config.baseUrl, Session.token,
             function () {
+                page.markingAllRead = false
                 page.unreadCount = 0
+                if (root) root.lastUnreadCount = 0
                 for (var i = 0; i < notifModel.count; i++)
                     notifModel.setProperty(i, "isRead", true)
                 Toast.show(i18n.tr("All notifications marked as read"))
             },
-            function (err) { Toast.show(err.message || i18n.tr("Failed to mark as read")) })
+            function (err) {
+                page.markingAllRead = false
+                Toast.show(err.message || i18n.tr("Failed to mark as read"))
+            })
     }
 
     function markOneRead(index, nid) {
@@ -144,7 +163,10 @@ Page {
         NotificationService.markOneRead(Config.baseUrl, Session.token, nid,
             function () {
                 notifModel.setProperty(index, "isRead", true)
-                if (page.unreadCount > 0) page.unreadCount--
+                if (page.unreadCount > 0) {
+                    page.unreadCount--
+                    if (root) root.lastUnreadCount = page.unreadCount
+                }
             },
             function (err) { /* silent */ })
     }
@@ -155,6 +177,8 @@ Page {
     ListView {
         id: list
         anchors { top: parent.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        opacity: page.markingAllRead ? 0.4 : 1
+        Behavior on opacity { NumberAnimation { duration: 150 } }
         model: notifModel
         clip: true
         spacing: 0
@@ -184,11 +208,37 @@ Page {
                         page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                             { username: model.actorName })
                     } else if (model.postAuthor !== "" && model.postPermlink !== "") {
-                        page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"), {
-                            author:                model.postAuthor,
-                            permlink:              model.postPermlink,
-                            scrollToCommentPermlink: model.scrollPermlink
-                        })
+                        var capturedAuthor   = model.postAuthor
+                        var capturedPermlink = model.postPermlink
+                        var capturedScroll   = model.scrollPermlink
+                        PostService.detail(Config.baseUrl, capturedAuthor, capturedPermlink,
+                            Session.token,
+                            function (result) {
+                                var cats = (result.post && result.post.categories) || []
+                                var isGallery = false
+                                for (var c = 0; c < cats.length; c++) {
+                                    if (cats[c].toLowerCase() === "gallery") { isGallery = true; break }
+                                }
+                                if (isGallery) {
+                                    page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"), {
+                                        author:   capturedAuthor,
+                                        permlink: capturedPermlink
+                                    })
+                                } else {
+                                    page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"), {
+                                        author:                  capturedAuthor,
+                                        permlink:                capturedPermlink,
+                                        scrollToCommentPermlink: capturedScroll
+                                    })
+                                }
+                            },
+                            function (err) {
+                                // Fallback to blog detail if fetch fails
+                                page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"), {
+                                    author:   capturedAuthor,
+                                    permlink: capturedPermlink
+                                })
+                            })
                     }
                 }
             }
@@ -345,6 +395,16 @@ Page {
                 anchors.centerIn: parent
                 running: page.loading
             }
+        }
+    }
+
+    // Overlay spinner while marking all as read
+    Item {
+        anchors { top: parent.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        visible: page.markingAllRead
+        ActivityIndicator {
+            anchors.centerIn: parent
+            running: page.markingAllRead
         }
     }
 

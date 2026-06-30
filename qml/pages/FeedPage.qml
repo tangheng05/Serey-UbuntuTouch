@@ -5,6 +5,7 @@ import "../Session"
 import "../components"
 import "../services/PostService.js" as PostService
 import "../services/VideoService.js" as VideoService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 /*
  * "My Feed" page: posts from followed users + trending, served by the
@@ -55,7 +56,6 @@ Page {
 
     function feedFn() {
         if (feedIndex === 1) return VideoService.listVideos;
-        if (feedIndex === 2) return PostService.listDrumFeed;
         return PostService.listFeedMixed;
     }
 
@@ -88,7 +88,8 @@ Page {
                 page.loading = false;
                 feedModel.clear();
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
             },
@@ -113,7 +114,8 @@ Page {
                 inflight = null;
                 loading = false;
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        feedModel.append(result[i]);
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
             },
@@ -143,6 +145,12 @@ Page {
                 if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
             }
         }
+        function onUserBlocked(username) {
+            for (var i = feedModel.count - 1; i >= 0; i--) {
+                if (feedModel.get(i).author === username) feedModel.remove(i);
+            }
+        }
+        function onUserUnblocked(username) { page.reload(); }
         function onEditRequested(post) {
             if (!page.visible) return;
             var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { editPost: post });
@@ -153,7 +161,7 @@ Page {
     SectionTabs {
         id: tabs
         anchors { top: topBar.bottom; left: parent.left; right: parent.right }
-        model: [i18n.tr("Blog"), i18n.tr("Video"), i18n.tr("Drum")]
+        model: [i18n.tr("Blog"), i18n.tr("Video")]
         currentIndex: page.feedIndex
         onSelected: {
             page.feedIndex = index;
@@ -198,20 +206,6 @@ Page {
                         { username: postData.author })
                     onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
                     onMoreClicked: PostActions.open(postData, "blog")
-                }
-            }
-
-            Component {
-                id: galleryDelegate
-                GalleryCard {
-                    width: parent ? parent.width : 0
-                    post: postData
-                    onClicked: page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"),
-                        { author: postData.author, permlink: postData.permlink })
-                    onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                        { username: postData.author })
-                    onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
-                    onMoreClicked: PostActions.open(postData, "gallery")
                 }
             }
 

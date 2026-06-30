@@ -4,6 +4,7 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/PostService.js" as PostService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 /*
  * News feed: Trending / New posts, filtered by the selected regional source
@@ -47,13 +48,17 @@ Page {
                 }
             }
         }
-        // Owner deleted a post → drop the row (no-op if it isn't in this feed).
         function onPostDeleted(author, permlink) {
             for (var i = feedModel.count - 1; i >= 0; i--) {
                 if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
             }
         }
-        // Owner chose Edit → only the active page opens the editor; reload on save.
+        function onUserBlocked(username) {
+            for (var i = feedModel.count - 1; i >= 0; i--) {
+                if (feedModel.get(i).author === username) feedModel.remove(i);
+            }
+        }
+        function onUserUnblocked(username) { page.reload(); }
         function onEditRequested(post) {
             if (!page.visible) return;
             var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { editPost: post });
@@ -98,7 +103,8 @@ Page {
                 page.loading = false;
                 feedModel.clear();
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
             },
@@ -123,7 +129,8 @@ Page {
                 inflight = null;
                 loading = false;
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        feedModel.append(result[i]);
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
             },

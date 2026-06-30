@@ -4,6 +4,7 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/VideoService.js" as VideoService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 /*
  * Video section: list of videos. Tapping opens VideoDetailPage, passing the
@@ -45,12 +46,17 @@ Page {
                 }
             }
         }
-        // Video has no in-app editor, so only delete-prune is handled here.
         function onPostDeleted(author, permlink) {
             for (var i = feedModel.count - 1; i >= 0; i--) {
                 if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
             }
         }
+        function onUserBlocked(username) {
+            for (var i = feedModel.count - 1; i >= 0; i--) {
+                if (feedModel.get(i).author === username) feedModel.remove(i);
+            }
+        }
+        function onUserUnblocked(username) { page.reload(); }
     }
 
     function reload() {
@@ -84,7 +90,8 @@ Page {
                 page.loading = false;
                 feedModel.clear();
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
             },
@@ -109,7 +116,8 @@ Page {
                 inflight = null;
                 loading = false;
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        feedModel.append(result[i]);
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
             },

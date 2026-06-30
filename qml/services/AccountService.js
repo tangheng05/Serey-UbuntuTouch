@@ -179,3 +179,19 @@ function resetPassword(baseUrl, username, otp, newPassword, onOk, onErr) {
               { username: username, otp: otp, new_password: newPassword },
               null, onOk, onErr);
 }
+
+// Block/unblock a user. actionType "ADD" blocks, "REMOVE" unblocks.
+function toggleBlock(baseUrl, token, username, actionType, onOk, onErr) {
+    Http.post(baseUrl, "/blocking-user/add-remove",
+              { username: username, action_type: actionType }, token, onOk, onErr);
+}
+
+// Returns the list of usernames the current user has blocked.
+// Response: { blocking_users: [{ username, owner, ... }] }
+function listBlocked(baseUrl, token, onOk, onErr) {
+    Http.get(baseUrl, "/blocking-user/list-by-current-user", null, token, function (data) {
+        var arr = (data && data.blocking_users) || [];
+        onOk(arr.map(function (u) { return u.username || ""; })
+               .filter(function (u) { return u !== ""; }));
+    }, onErr);
+}

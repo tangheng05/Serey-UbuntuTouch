@@ -174,18 +174,53 @@ Page {
             }
         }
 
-        delegate: PostCard {
+        // PostCard wrapped in a Lomiri ListItem for native swipe context actions
+        // (leading = Hide, trailing = Share), mirroring VideoPage. Tap still opens
+        // the detail via PostCard.onClicked, so navigation is unaffected.
+        delegate: ListItem {
             width: list.width
-            post: feedModel.get(index)
-            onClicked: {
-                var p = feedModel.get(index);
-                page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
-                    { author: p.author, permlink: p.permlink, title: p.title });
+            height: card.height
+            divider.visible: false
+
+            leadingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: i18n.tr("Hide")
+                        onTriggered: {
+                            var vm = feedModel.get(index);
+                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                        }
+                    }
+                ]
             }
-            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                { username: feedModel.get(index).author })
-            onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
-            onMoreClicked: PostActions.open(feedModel.get(index), "blog")
+            trailingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: i18n.tr("Share")
+                        onTriggered: {
+                            var vm = feedModel.get(index);
+                            if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
+                        }
+                    }
+                ]
+            }
+
+            PostCard {
+                id: card
+                width: parent.width
+                post: feedModel.get(index)
+                onClicked: {
+                    var p = feedModel.get(index);
+                    page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
+                        { author: p.author, permlink: p.permlink, title: p.title });
+                }
+                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                    { username: feedModel.get(index).author })
+                onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
+                onMoreClicked: PostActions.open(feedModel.get(index), "blog")
+            }
         }
 
         // Constant-height footer: a conditional height feeds back into
@@ -224,32 +259,6 @@ Page {
         message: i18n.tr("No posts in %1").arg(Config.communityName)
     }
 
-    // Floating compose button
-    AbstractButton {
-        visible: Session.isLoggedIn
-        anchors {
-            right: parent.right
-            bottom: parent.bottom
-            rightMargin: Style.spacingM
-            bottomMargin: Style.spacingM
-        }
-        width: units.gu(5.5); height: width
-        z: 10
-        onClicked: {
-            var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"));
-            if (ed && ed.saved) ed.saved.connect(page.reload);   // show the new post immediately
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            radius: units.dp(14)
-            color: Style.brand
-        }
-        Icon {
-            anchors.centerIn: parent
-            width: units.gu(2.5); height: width
-            name: "edit"
-            color: Style.textOnBrand
-        }
-    }
+    // Compose lives in the global header action now (see Main.qml, gated on the
+    // News tab) — Lomiri uses a header action, not a Material floating button.
 }

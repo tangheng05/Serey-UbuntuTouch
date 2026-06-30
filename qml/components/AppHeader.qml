@@ -3,10 +3,14 @@ import Lomiri.Components 1.3
 import "../Theme"
 
 /*
- * Global top navbar: a tappable community-selector pill on the left and the
- * centered Serey logo. The pill shows the active source (Config.communityName)
- * and opens the CommunityPicker when tapped. An optional trailing action slot
- * (e.g. refresh) sits on the right.
+ * Global top bar, Lomiri-style: a flat surface with a LEFT-ALIGNED title that
+ * doubles as the community selector (icon + name + caret), an optional trailing
+ * action slot on the right, and a bottom hairline. This replaces the previous
+ * centered-logo + gray-pill (iOS-ish) header — Lomiri headers put the title on
+ * the left and never center an app logo.
+ *
+ * Public API unchanged: `communityName`, the `trailing` default slot, and the
+ * `communityButtonClicked()` signal, so Main.qml is unaffected.
  */
 Rectangle {
     id: appHeader
@@ -17,80 +21,68 @@ Rectangle {
     signal communityButtonClicked()
 
     height: units.gu(6)
-    color: Style.navigationBg
+    color: Style.surface
 
-    // Left: community selector pill
-    Rectangle {
-        id: pill
+    // Left: title acts as the community selector (Lomiri "title with dropdown").
+    AbstractButton {
+        id: titleBtn
         anchors {
             left: parent.left
             leftMargin: Style.spacingM
+            right: trailingSlot.left
+            rightMargin: Style.spacingS
             verticalCenter: parent.verticalCenter
         }
-        height: units.gu(4.25)
-        width: communityRow.width + Style.spacingM
-        radius: height / 2
-        color: Style.iconBackground
+        height: units.gu(5)
+        onClicked: appHeader.communityButtonClicked()
 
         Row {
-            id: communityRow
+            id: titleRow
             anchors {
                 left: parent.left
-                leftMargin: Style.spacingS
+                right: parent.right
                 verticalCenter: parent.verticalCenter
             }
             spacing: Style.spacingXs
 
             Item {
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(2.6); height: width
+                width: units.gu(2.8); height: width
                 CircleImage {
-                    id: pillIcon
+                    id: cIcon
                     anchors.fill: parent
                     source: Config.currentCommunityIconUrl
                 }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(2.5); height: width
+                    width: units.gu(2.4); height: width
                     name: "language-chooser"
-                    color: Style.textPrimary
-                    visible: !pillIcon.loaded
+                    color: Style.textSecondary
+                    visible: !cIcon.loaded
                 }
             }
+
             Label {
                 anchors.verticalCenter: parent.verticalCenter
-                text: appHeader.communityName.length > 12
-                      ? appHeader.communityName.substring(0, 12)
-                      : appHeader.communityName
-                font.pixelSize: Style.fontRegular
-                font.weight: Font.Medium
+                width: Math.min(implicitWidth, titleRow.width - units.gu(5))
+                text: appHeader.communityName
+                font.pixelSize: Style.fontTitle
+                font.weight: Font.Normal
+                font.family: Style.fontFamily
                 color: Style.textPrimary
+                elide: Text.ElideRight
             }
+
             Label {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "▾"
-                font.pixelSize: Style.fontRegular
-                color: Style.textPrimary
+                font.pixelSize: Style.fontMedium
+                color: Style.textSecondary
             }
         }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: appHeader.communityButtonClicked()
-        }
     }
 
-    // Center: Serey logo
-    Image {
-        anchors.centerIn: parent
-        width: units.gu(5.5)
-        height: width
-        source: Qt.resolvedUrl("../../assets/serey-logo.png")
-        fillMode: Image.PreserveAspectFit
-        asynchronous: true
-    }
-
-    // Right: trailing action slot (e.g. refresh)
+    // Right: trailing action slot (e.g. the feed shortcut from Main.qml).
     Item {
         id: trailingSlot
         anchors {

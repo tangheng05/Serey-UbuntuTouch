@@ -30,7 +30,7 @@ QtObject {
     readonly property color surface: "#FFFFFF"
     readonly property color card: "#FFFFFF"
     readonly property color navigationBg: "#FFFFFF"
-    readonly property color divider: "#EEF1FB"        // hairline borders
+    readonly property color divider: "#E4E4E4"        // neutral Suru hairline
     readonly property color iconBackground: "#F3F3F3" // pills, chips, avatar bg
     readonly property color pressed: "#F0F0F0"
     readonly property color dotInactive: "#CECECE"
@@ -54,13 +54,16 @@ QtObject {
     readonly property int fontLarge: units.dp(16)
     readonly property int fontTitle: units.dp(22)
 
-    // --- Radii (device px) ----------------------------------------------------
-    readonly property real radius: units.gu(1)
-    readonly property real thumbRadius: units.dp(12)
-    readonly property real cardRadius: units.dp(10)
-    readonly property real pillRadius: units.dp(14)
-    readonly property real chipRadius: units.dp(18)
-    readonly property real fabRadius: units.dp(12)
+    // --- Radii ----------------------------------------------------------------
+    // Lomiri/Suru is low-radius and flat — small, consistent rounding instead of
+    // the iOS pill/card look. Full pills (radius: height/2) are avoided in favour
+    // of these subtle rounded-rectangles.
+    readonly property real radius: units.gu(0.6)
+    readonly property real thumbRadius: units.gu(0.8)
+    readonly property real cardRadius: units.gu(0.6)
+    readonly property real pillRadius: units.gu(0.6)
+    readonly property real chipRadius: units.gu(0.6)
+    readonly property real fabRadius: units.gu(0.6)
     readonly property real durationBadgeRadius: units.dp(3)
 
     // --- Sizes ----------------------------------------------------------------

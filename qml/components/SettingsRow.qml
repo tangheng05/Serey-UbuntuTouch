@@ -3,9 +3,12 @@ import Lomiri.Components 1.3
 import "../Theme"
 
 /*
- * One iOS-style settings row: a circular icon badge, a label, and an optional
- * trailing element (value text, a switch, or a chevron). Tappable via clicked().
- * A hairline divider is inset to start after the icon badge.
+ * One Lomiri-style list row: a bare (theme-colorable) Suru icon, a label, and an
+ * optional trailing element (value text, a switch, or a chevron). Tappable via
+ * clicked(). A hairline divider is inset to start after the icon.
+ *
+ * (Was an iOS-style row with a circular tinted icon badge — Lomiri list rows use
+ * a plain icon, no disc.)
  */
 AbstractButton {
     id: root
@@ -27,23 +30,19 @@ AbstractButton {
         color: (root.pressed && root.enabled) ? Style.pressed : "transparent"
     }
 
-    Rectangle {
-        id: badge
+    Icon {
+        id: rowIcon
         anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-        width: units.gu(4.25); height: width
-        radius: width / 2
-        color: root.danger ? Qt.rgba(0.78, 0.09, 0.17, 0.10) : Style.iconBackground
-        Icon {
-            anchors.centerIn: parent
-            width: units.gu(2.4); height: width
-            name: root.iconName
-            color: root.danger ? Style.danger : Style.textSecondary
-        }
+        width: units.gu(2.6); height: width
+        name: root.iconName
+        color: root.danger ? Style.danger : Style.textSecondary
+        visible: root.iconName.length > 0
     }
 
     Label {
         anchors {
-            left: badge.right; leftMargin: Style.spacingM
+            left: rowIcon.visible ? rowIcon.right : parent.left
+            leftMargin: Style.spacingM
             right: trailing.left; rightMargin: Style.spacingS
             verticalCenter: parent.verticalCenter
         }
@@ -85,7 +84,7 @@ AbstractButton {
     }
 
     Rectangle {
-        anchors { left: badge.right; leftMargin: Style.spacingM; right: parent.right; bottom: parent.bottom }
+        anchors { left: rowIcon.visible ? rowIcon.right : parent.left; leftMargin: Style.spacingM; right: parent.right; bottom: parent.bottom }
         height: units.dp(1)
         color: Style.divider
     }

@@ -146,18 +146,53 @@ Page {
             }
         }
 
-        delegate: GalleryCard {
+        // GalleryCard wrapped in a Lomiri ListItem for native swipe context
+        // actions (leading = Hide, trailing = Share), mirroring VideoPage. Tap
+        // still opens the detail via GalleryCard.onClicked.
+        delegate: ListItem {
             width: list.width
-            post: galleryModel.get(index)
-            onClicked: {
-                var p = galleryModel.get(index);
-                page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"),
-                    { author: p.author, permlink: p.permlink });
+            height: card.height
+            divider.visible: false
+
+            leadingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: i18n.tr("Hide")
+                        onTriggered: {
+                            var vm = galleryModel.get(index);
+                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                        }
+                    }
+                ]
             }
-            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                { username: galleryModel.get(index).author })
-            onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
-            onMoreClicked: PostActions.open(galleryModel.get(index), "gallery")
+            trailingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: i18n.tr("Share")
+                        onTriggered: {
+                            var vm = galleryModel.get(index);
+                            if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
+                        }
+                    }
+                ]
+            }
+
+            GalleryCard {
+                id: card
+                width: parent.width
+                post: galleryModel.get(index)
+                onClicked: {
+                    var p = galleryModel.get(index);
+                    page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"),
+                        { author: p.author, permlink: p.permlink });
+                }
+                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                    { username: galleryModel.get(index).author })
+                onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
+                onMoreClicked: PostActions.open(galleryModel.get(index), "gallery")
+            }
         }
 
         // Constant-height footer: a conditional height feeds back into

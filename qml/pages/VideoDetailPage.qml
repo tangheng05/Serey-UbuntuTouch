@@ -556,11 +556,11 @@ Page {
                     visible: (page.video.author || "") !== "" && page.video.author !== Session.username
                     width: followRow.width + Style.spacingM * 2
                     height: units.gu(4.5)
-                    onClicked: page.toggleFollow()
+                    onClicked: page.toggleFollow()  // Follow pill (flat, below)
 
                     Rectangle {
                         anchors.fill: parent
-                        radius: height / 2
+                        radius: Style.pillRadius
                         color: page.isFollowing ? Style.surface : Style.brand
                         border.width: page.isFollowing ? units.dp(1.5) : 0
                         border.color: Style.brand
@@ -594,7 +594,7 @@ Page {
 
                     Rectangle {
                         anchors.fill: parent
-                        radius: height / 2
+                        radius: Style.pillRadius
                         color: "transparent"
                         border.width: units.dp(1.5)
                         border.color: Style.divider
@@ -642,7 +642,7 @@ Page {
 
                     Rectangle {
                         anchors.fill: parent
-                        radius: height / 2
+                        radius: Style.pillRadius
                         color: dlBtn._saved ? Style.brand : "transparent"
                         border.width: dlBtn._saved ? 0 : units.dp(1.5)
                         border.color: Style.divider
@@ -917,7 +917,7 @@ Page {
                     Rectangle {
                         width: parent.width - cmtSendBtn.width - Style.spacingS
                         height: units.gu(5)
-                        radius: height / 2
+                        radius: Style.pillRadius
                         color: Style.iconBackground
 
                         Label {

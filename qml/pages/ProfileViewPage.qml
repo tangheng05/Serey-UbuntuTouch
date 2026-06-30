@@ -362,7 +362,7 @@ Page {
                     visible: !page.isSelf && !page.profile && page.profileLoading
                     width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
                     anchors.horizontalCenter: parent.horizontalCenter
-                    height: units.gu(5); radius: units.gu(2.5)
+                    height: units.gu(5); radius: Style.cardRadius
                     color: Style.divider
                     SequentialAnimation on opacity {
                         running: true; loops: Animation.Infinite

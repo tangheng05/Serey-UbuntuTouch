@@ -198,24 +198,49 @@ MainView {
         visible: root.showHeader
         onCommunityButtonClicked: communityPicker.open()
 
-        AbstractButton {
-            id: feedBtn
-            visible: Session.isLoggedIn
+        Row {
             anchors.verticalCenter: parent.verticalCenter
-            width: units.gu(4); height: width
-            onClicked: {
-                var stack = root.currentTab === 0 ? homeStack
-                          : root.currentTab === 1 ? newsStack
-                          : root.currentTab === 2 ? videoStack
-                          : settingsStack;
-                stack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
+            spacing: Style.spacingS
+
+            // Compose (News tab only) — Lomiri header action, replacing the old
+            // Material floating button. Reloads the feed once a post is saved.
+            AbstractButton {
+                id: composeBtn
+                visible: Session.isLoggedIn && root.currentTab === 1
+                anchors.verticalCenter: parent.verticalCenter
+                width: units.gu(4); height: width
+                onClicked: {
+                    var np = newsStack.currentPage;
+                    var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"));
+                    if (ed && ed.saved && np && np.reload) ed.saved.connect(np.reload);
+                }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.8); height: width
+                    name: "edit"
+                    color: Style.brand
+                }
             }
-            Image {
-                anchors.centerIn: parent
-                width: units.gu(3.5); height: width
-                source: Qt.resolvedUrl("../assets/iconFeed.png")
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
+
+            AbstractButton {
+                id: feedBtn
+                visible: Session.isLoggedIn
+                anchors.verticalCenter: parent.verticalCenter
+                width: units.gu(4); height: width
+                onClicked: {
+                    var stack = root.currentTab === 0 ? homeStack
+                              : root.currentTab === 1 ? newsStack
+                              : root.currentTab === 2 ? videoStack
+                              : settingsStack;
+                    stack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
+                }
+                Image {
+                    anchors.centerIn: parent
+                    width: units.gu(3.5); height: width
+                    source: Qt.resolvedUrl("../assets/iconFeed.png")
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                }
             }
         }
     }

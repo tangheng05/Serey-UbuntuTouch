@@ -13,25 +13,19 @@ import "../services/VoteService.js" as VoteService
  * (directVideo), so at most ONE in-app Chromium surface is ever live (two live
  * WebViews crash the app — see the dual-Chromium memory note).
  *
- * Matching the web (ReelPage/filterByDuration): a reel is a native SEREY-platform
- * video AND duration <= 180s. Duration is probed in a hidden Chromium <video>
- * (VideoDurationProbe); clips whose duration can't be determined are excluded,
- * exactly like the web. Probing runs while `probing` is true, during which the
- * player WebView is NOT mounted, so only one Chromium surface is ever live.
+ * Reels are the native SEREY-platform videos. The web additionally filters to
+ * duration <= 180s, but it probes each clip with a hidden <video> — on Ubuntu
+ * Touch every WebEngine probe spawns a full Chromium renderer (seconds each), so
+ * doing that across a list left this page on a black loading screen for minutes
+ * (and the extra surface risked the dual-Chromium SIGSEGV). We therefore show all
+ * native uploads immediately, without probing — they're short clips in practice.
  */
 Page {
     id: page
 
-    readonly property int maxReelSeconds: 180
-    readonly property int maxCandidates: 30   // cap probing work on a phone
-
     property var reels: []
     property bool loading: true
-    property bool probing: false
     property string errorMsg: ""
-
-    property var _queue: []
-    property var _accum: []
 
     header: Item { height: 0 }
 
@@ -46,45 +40,16 @@ Page {
         VideoService.listVideos(Config.baseUrl, params, Session.token,
             function (result) {
                 if (!page) return;          // popped mid-load — page destroyed
-                var candidates = result
-                    .filter(function (v) { return v.platform === "SEREY" && (v.videoLink || "").length > 0; })
-                    .slice(0, page.maxCandidates);
-                if (candidates.length === 0) { page.reels = []; page.loading = false; return; }
-                page._queue = candidates;
-                page._accum = [];
-                page.probing = true;        // mounts the prober (player stays unmounted)
-                page._probeNext();
+                page.reels = result.filter(function (v) {
+                    return v.platform === "SEREY" && (v.videoLink || "").length > 0;
+                });
+                page.loading = false;
             },
             function (err) {
                 if (!page) return;
                 page.loading = false;
                 page.errorMsg = (err && err.message) ? err.message : i18n.tr("Couldn't load reels.");
             });
-    }
-
-    // Sequentially probe each candidate's duration; keep only shorts (<= 180s).
-    function _probeNext() {
-        if (!page) return;
-        if (page._queue.length === 0) {
-            page.reels = page._accum;
-            page.probing = false;           // unmount prober before the player mounts
-            page.loading = false;
-            return;
-        }
-        var v = page._queue.shift();
-        probeLoader.item.probe(v.videoLink, function (dur) {
-            if (!page) return;
-            if (dur > 0 && dur <= page.maxReelSeconds)
-                page._accum.push(v);
-            page._probeNext();
-        });
-    }
-
-    // Mounted only while probing, so it never coexists with the player WebView.
-    Loader {
-        id: probeLoader
-        active: page.probing
-        sourceComponent: VideoDurationProbe {}
     }
 
     Rectangle { anchors.fill: parent; color: "black" }
@@ -106,7 +71,11 @@ Page {
         highlightMoveDuration: 130          // snappier page-snap (was 200)
         maximumFlickVelocity: units.gu(700) // let a flick page promptly
         boundsBehavior: Flickable.StopAtBounds
-        cacheBuffer: 0            // never mount neighbouring WebViews
+        // Pre-create the neighbouring delegates so their POSTERS decode ahead of
+        // time — scrolling then shows the next thumbnail instantly (smooth, like
+        // Shorts), even though only the current reel mounts a WebView (the player
+        // Loader is gated on isCurrentItem, not on cacheBuffer).
+        cacheBuffer: pager.height
         clip: true
 
         delegate: Item {
@@ -133,35 +102,48 @@ Page {
                 VoteService._updateCache(modelData.author, modelData.permlink,
                                          reel.upvoted, reel.flagged, reel.votes, modelData.payout || "");
             }
-            function _vfail(e) {
-                reel.busy = false;
+            // Vote actions are OPTIMISTIC: the icon/count flip the instant you tap
+            // (Serey signs+broadcasts the vote async, so the server response lags
+            // a couple seconds — waiting for it made the rail look dead). We snapshot
+            // the prior state, apply the change immediately + cache it, fire the
+            // request, and revert only if it fails.
+            function _revert(wasUp, wasFlag, prevVotes, e) {
+                reel.upvoted = wasUp; reel.flagged = wasFlag; reel.votes = prevVotes;
+                reel.busy = false; reel._vcache();
                 Toast.error((e && e.message) ? e.message : i18n.tr("Action failed."));
             }
             function toggleUpvote() {
                 if (!_vguard()) return;
+                var wasUp = reel.upvoted, wasFlag = reel.flagged, prevVotes = reel.votes;
                 reel.busy = true;
-                if (reel.upvoted) {
+                if (wasUp) {
+                    reel.upvoted = false; reel.votes = Math.max(0, reel.votes - 1); reel._vcache();
                     VoteService.removeVote(Config.baseUrl, modelData.author, modelData.permlink, "post", Session.token,
-                        function (r) { reel.busy = false; reel.upvoted = false; reel.votes = Math.max(0, reel.votes - 1);
-                                       reel._vcache(); Toast.show(i18n.tr("Vote removed")); }, _vfail);
+                        function (r) { reel.busy = false; },
+                        function (e) { reel._revert(wasUp, wasFlag, prevVotes, e); });
                 } else {
+                    reel.upvoted = true; reel.flagged = false; reel.votes = reel.votes + 1; reel._vcache();
                     VoteService.upvote(Config.baseUrl, modelData.author, modelData.permlink, "post", 100, Session.token,
-                        function (r) { reel.busy = false; reel.upvoted = true; reel.flagged = false; reel.votes = reel.votes + 1;
-                                       reel._vcache(); Toast.success(i18n.tr("Upvoted")); }, _vfail);
+                        function (r) { reel.busy = false; },
+                        function (e) { reel._revert(wasUp, wasFlag, prevVotes, e); });
                 }
             }
             function toggleFlag() {
                 if (!_vguard()) return;
+                var wasUp = reel.upvoted, wasFlag = reel.flagged, prevVotes = reel.votes;
                 reel.busy = true;
-                if (reel.flagged) {
+                if (wasFlag) {
+                    reel.flagged = false; reel._vcache();
                     VoteService.removeVote(Config.baseUrl, modelData.author, modelData.permlink, "post", Session.token,
-                        function (r) { reel.busy = false; reel.flagged = false;
-                                       reel._vcache(); Toast.show(i18n.tr("Vote removed")); }, _vfail);
+                        function (r) { reel.busy = false; },
+                        function (e) { reel._revert(wasUp, wasFlag, prevVotes, e); });
                 } else {
+                    reel.flagged = true;
+                    if (reel.upvoted) { reel.upvoted = false; reel.votes = Math.max(0, reel.votes - 1); }
+                    reel._vcache();
                     VoteService.flag(Config.baseUrl, modelData.author, modelData.permlink, "post", Session.token,
-                        function (r) { reel.busy = false; reel.flagged = true;
-                                       if (reel.upvoted) { reel.upvoted = false; reel.votes = Math.max(0, reel.votes - 1); }
-                                       reel._vcache(); Toast.show(i18n.tr("Downvoted")); }, _vfail);
+                        function (r) { reel.busy = false; },
+                        function (e) { reel._revert(wasUp, wasFlag, prevVotes, e); });
                 }
             }
 
@@ -182,10 +164,12 @@ Page {
             Loader {
                 id: playerLoader
                 anchors.fill: parent
-                active: current && !page.probing
+                active: current
                 sourceComponent: playerComp
                 onLoaded: item.embedUrl = modelData.videoLink
-                // Reveal over the poster only when the <video> page is up.
+                // Reveal over the poster only when the <video> page is up. The
+                // poster itself IS the loading state — no spinner, so a scrolled-to
+                // reel shows its thumbnail cleanly, then cross-fades to video.
                 opacity: (item && item.ready) ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 180 } }
             }
@@ -306,12 +290,12 @@ Page {
                     }
                 }
 
-                // Comment (opens the thread externally)
+                // Comment — opens the in-app comment sheet (pure QML, no WebView,
+                // so it's safe over the live reel player).
                 AbstractButton {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: units.gu(6); height: cmtCol.height
-                    onClicked: Qt.openUrlExternally(
-                        "https://serey.io/authors/@" + (modelData.author || "") + "/" + (modelData.permlink || ""))
+                    onClicked: commentSheet.open(modelData.author || "", modelData.permlink || "")
                     Column {
                         id: cmtCol
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -358,6 +342,9 @@ Page {
         Rectangle { anchors.fill: parent; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.45) }
         Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: "back"; color: "white" }
     }
+
+    // In-app comment thread (no WebView — safe to overlay the live reel player).
+    CommentsSheet { id: commentSheet }
 
     ActivityIndicator {
         anchors.centerIn: parent

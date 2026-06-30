@@ -91,8 +91,19 @@ Item {
 
         // LoadSucceededStatus == 2. (Enum names aren't reliably exposed to QML on
         // UT's QtWebEngine — same trap as lifecycleState — so compare the int.)
+        // For directVideo we wait for the <video>'s first decoded frame instead
+        // (the __SEREY_READY__ console sentinel below), because page-load fires
+        // before the frame paints — fading the surface in then flashes black.
         onLoadingChanged: function (loadRequest) {
-            if (loadRequest.status === 2)
+            if (loadRequest.status === 2 && !root.directVideo)
+                root.ready = true;
+        }
+
+        // The direct-video page logs __SEREY_READY__ once its <video> has a frame
+        // (loadeddata/playing); flip ready then so the host reveals a painted
+        // surface, not the WebView's blank first frame.
+        onJavaScriptConsoleMessage: function (level, message, lineNumber, sourceID) {
+            if (root.directVideo && message.indexOf("__SEREY_READY__") >= 0)
                 root.ready = true;
         }
     }
@@ -128,7 +139,11 @@ Item {
                '<meta name="viewport" content="width=device-width, initial-scale=1">' +
                '<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}' +
                'video{width:100%;height:100%;object-fit:contain;background:#000}</style></head>' +
-               '<body><video src="' + embedUrl + '" ' + attrs + '></video></body></html>';
+               '<body><video src="' + embedUrl + '" ' + attrs + '></video>' +
+               '<script>(function(){var v=document.querySelector("video");' +
+               'function r(){console.log("__SEREY_READY__");}' +
+               'v.addEventListener("loadeddata",r);v.addEventListener("playing",r);})();</script>' +
+               '</body></html>';
     }
 
     function _load() {

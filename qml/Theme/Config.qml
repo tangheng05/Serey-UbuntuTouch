@@ -49,6 +49,12 @@ QtObject {
     ]
     readonly property var sourceNames: ["Global", "Netherlands", "United States"]
 
+    // The active bottom-nav tab (mirrored from Main.currentTab). Read by
+    // HomepagePage to suspend its WebView's Chromium renderer while another tab
+    // is showing, so it doesn't compete for GPU/shared memory with the video
+    // player's WebView (two live Chromium views crashed the app — see device log).
+    property int currentTab: 0
+
     property int sourceIndex: 0
     // Set when user picks a sub-community from the picker; null = use top-level source.
     property var selectedSubCommunity: null

@@ -71,6 +71,37 @@ function uploadImage(uploadUrl, secret, fileUrl, onOk, onErr) {
     reader.send();
 }
 
+// --- Thumbnail (data URL) upload -----------------------------------------
+// VideoThumbnailGrabber captures a frame as a "data:image/jpeg;base64,…" URL
+// (QtMultimedia can't decode our confined local files, and grabToImage returns
+// black on UT — so we read canvas pixels in-page). QML's JS engine has no atob,
+// so decode base64 by hand into bytes and POST them with the normal `image`
+// multipart envelope. Callbacks: onOk(url), onErr({ message }).
+function _b64decode(s) {
+    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    var lookup = {};
+    for (var i = 0; i < chars.length; i++) lookup[chars.charAt(i)] = i;
+    s = s.replace(/[^A-Za-z0-9+/]/g, "");          // strip padding/whitespace
+    var bytes = new Uint8Array(Math.floor(s.length * 3 / 4));
+    var p = 0, buffer = 0, bits = 0;
+    for (var j = 0; j < s.length; j++) {
+        buffer = (buffer << 6) | lookup[s.charAt(j)];
+        bits += 6;
+        if (bits >= 8) { bits -= 8; bytes[p++] = (buffer >> bits) & 0xff; }
+    }
+    return bytes.subarray(0, p);
+}
+
+function uploadImageData(uploadUrl, secret, dataUrl, onOk, onErr) {
+    var comma = String(dataUrl).indexOf(",");
+    if (comma < 0) { onErr({ message: "Bad image data." }); return; }
+    var bytes;
+    try { bytes = _b64decode(dataUrl.substring(comma + 1)); }
+    catch (e) { onErr({ message: "Couldn't decode the thumbnail." }); return; }
+    if (!bytes || bytes.length === 0) { onErr({ message: "Empty thumbnail." }); return; }
+    _post(uploadUrl, secret, { mime: "image/jpeg", ext: "jpg" }, bytes, onOk, onErr);
+}
+
 // --- Video upload --------------------------------------------------------
 // The simple /uploads/upload_video endpoint accepts the same multipart envelope
 // as images (field name `video`, header `api-secret`, returns { url }). QML's

@@ -163,7 +163,12 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
         desc: params.desc || "",
         body: params.body || params.desc || "",
         videos: [params.videoUrl],
-        images: params.thumbUrl ? [params.thumbUrl] : [],
+        // The backend only persists a SEREY video's thumbnail when images.length
+        // > 1 (createOrUpdatePost: `images.length > 1 ? images[0] : video_thumbnail_url`,
+        // and video_thumbnail_url is undefined for SEREY). So send the captured
+        // thumbnail twice — images[0] becomes the stored thumbnail_url; a single
+        // entry would be dropped and the card would show blank.
+        images: params.thumbUrl ? [params.thumbUrl, params.thumbUrl] : [],
         categories: "video",
         subcategories: [],
         is_video_component_only: true,

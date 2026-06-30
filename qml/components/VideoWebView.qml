@@ -27,6 +27,15 @@ Item {
     property string embedUrl: ""
     property bool wrap: false
     property bool directVideo: false
+    // Direct-video chrome. Detail playback wants the native <video> controls;
+    // the reels viewer hides them (controls:false) and loops (loop:true) for an
+    // immersive, TikTok-style surface.
+    property bool controls: true
+    property bool loop: false
+    // True once the inner page has finished loading (the <video> exists and is
+    // starting). Hosts fade the surface in on this so the WebView's blank first
+    // frame never flashes (the reels scroll-in flicker).
+    property bool ready: false
     signal fullscreenToggled(bool on)
 
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
@@ -34,6 +43,8 @@ Item {
     onEmbedUrlChanged: _load()
     onWrapChanged: _load()
     onDirectVideoChanged: _load()
+    onControlsChanged: _load()
+    onLoopChanged: _load()
     Component.onCompleted: _load()
 
     // Off-the-record: a transient player shouldn't persist streamed-video HTTP
@@ -77,6 +88,13 @@ Item {
             request.accept();
             root.fullscreenToggled(request.toggleOn);
         }
+
+        // LoadSucceededStatus == 2. (Enum names aren't reliably exposed to QML on
+        // UT's QtWebEngine — same trap as lifecycleState — so compare the int.)
+        onLoadingChanged: function (loadRequest) {
+            if (loadRequest.status === 2)
+                root.ready = true;
+        }
     }
 
     // The wrapper document is "served from" serey.io so an embedded player sees a
@@ -103,17 +121,20 @@ Item {
     }
 
     function _videoHtml() {
+        var attrs = 'autoplay playsinline webkit-playsinline preload="auto"';
+        if (controls) attrs += ' controls';
+        if (loop) attrs += ' loop';
         return '<!DOCTYPE html><html><head>' +
                '<meta name="viewport" content="width=device-width, initial-scale=1">' +
                '<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}' +
                'video{width:100%;height:100%;object-fit:contain;background:#000}</style></head>' +
-               '<body><video src="' + embedUrl + '" controls autoplay playsinline ' +
-               'webkit-playsinline preload="auto"></video></body></html>';
+               '<body><video src="' + embedUrl + '" ' + attrs + '></video></body></html>';
     }
 
     function _load() {
         if (embedUrl.length === 0)
             return;
+        root.ready = false;
         if (directVideo)
             wv.loadHtml(_videoHtml(), _baseUrl());
         else if (wrap)

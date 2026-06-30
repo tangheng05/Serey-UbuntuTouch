@@ -117,17 +117,14 @@ Page {
         VideoPicker { onPicked: page.onVideoPicked(fileUrl) }
     }
 
-    // Captures a frame from the picked local video, then uploads it as the
-    // thumbnail image. Best-effort: any failure just leaves thumbUrl empty.
+    // Captures a frame from the picked local video (as a JPEG data URL), then
+    // uploads it as the thumbnail image. Best-effort: any failure just leaves
+    // thumbUrl empty and the post publishes without a custom thumbnail.
     VideoThumbnailGrabber {
         id: thumbGrabber
-        onGrabbed: thumbUploader.upload(fileUrl)
-        onFailed: page.grabbingThumb = false
-    }
-
-    PhotoUploader {
-        id: thumbUploader
-        onUploaded: { page.thumbUrl = url; page.grabbingThumb = false; }
+        onGrabbed: Uploads.uploadImageData(Config.uploadUrl, Config.uploadSecret, dataUrl,
+            function (url) { page.thumbUrl = url; page.grabbingThumb = false; },
+            function () { page.grabbingThumb = false; })
         onFailed: page.grabbingThumb = false
     }
 

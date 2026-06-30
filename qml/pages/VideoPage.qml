@@ -156,9 +156,37 @@ Page {
                 color: Style.textPrimary
             }
 
+            // Reels (short native videos) viewer.
+            AbstractButton {
+                id: reelsBtn
+                anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: headerLabel.verticalCenter }
+                width: reelsRow.width + Style.spacingS * 2
+                height: units.gu(4)
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ReelsPage.qml"))
+
+                Row {
+                    id: reelsRow
+                    anchors.centerIn: parent
+                    spacing: Style.spacingXs
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2); height: width
+                        name: "media-playback-start"
+                        color: Style.brand
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: i18n.tr("Reels")
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.DemiBold
+                        color: Style.brand
+                    }
+                }
+            }
+
             // Offline library shortcut.
             AbstractButton {
-                anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: headerLabel.verticalCenter }
+                anchors { right: reelsBtn.left; rightMargin: Style.spacingM; verticalCenter: headerLabel.verticalCenter }
                 width: dlShortcutRow.width + Style.spacingS * 2
                 height: units.gu(4)
                 onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))

@@ -26,6 +26,11 @@ Page {
     property string permlink: ""
     property string title: ""
 
+    // When opened from the Saved Articles list, the full view-model is passed in
+    // so the article renders instantly and reads offline; load() still runs as a
+    // best-effort refresh (and silently no-ops when there's no connection).
+    property var preloadedPost: null
+
     property var post: null
     property var comments: []
     property int commentCount: 0
@@ -48,6 +53,27 @@ Page {
         BackButton {
             anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             onClicked: page.pageStack.pop()
+        }
+
+        // Save / unsave for offline reading. Enabled once the body is loaded
+        // (so there's content to persist). Filled star = saved.
+        AbstractButton {
+            id: saveBtn
+            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+            width: units.gu(5); height: units.gu(5)
+            enabled: page.post !== null && (page.permlink || "").length > 0
+            readonly property bool isSaved: (SavedPosts.rev, SavedPosts.isSaved(page.permlink))
+            onClicked: {
+                if (saveBtn.isSaved) SavedPosts.remove(page.permlink);
+                else SavedPosts.save(page.post);
+            }
+            Icon {
+                anchors.centerIn: parent
+                width: units.gu(2.6); height: width
+                name: saveBtn.isSaved ? "starred" : "non-starred"
+                color: saveBtn.isSaved ? Style.brand : Style.textSecondary
+                opacity: saveBtn.enabled ? 1 : 0.4
+            }
         }
 
         Rectangle {
@@ -96,7 +122,20 @@ Page {
             },
             function (err) {
                 loading = false;
-                page.errorMsg = err.message;
+                // Offline (or fetch failed): fall back to a saved copy so the
+                // article still reads. If we already have a post (preloaded from
+                // the saved list), keep it and swallow the refresh error.
+                if (page.post === null) {
+                    var saved = SavedPosts.get(page.permlink);
+                    if (saved) {
+                        page.post = saved;
+                        page.commentCount = saved.comments || 0;
+                        page._parseBody();
+                        page.errorMsg = "";
+                    } else {
+                        page.errorMsg = err.message;
+                    }
+                }
             });
     }
 
@@ -290,7 +329,15 @@ Page {
         }
     }
 
-    Component.onCompleted: load()
+    Component.onCompleted: {
+        // Render the saved copy immediately (instant + offline), then refresh.
+        if (page.preloadedPost) {
+            page.post = page.preloadedPost;
+            page.commentCount = page.preloadedPost.comments || 0;
+            page._parseBody();
+        }
+        load();
+    }
 
     // Open a creator's profile (post author or a comment author).
     function openProfile(username) {

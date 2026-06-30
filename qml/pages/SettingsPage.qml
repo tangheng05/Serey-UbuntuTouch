@@ -528,6 +528,13 @@ Page {
                 onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
             }
 
+            SettingsRow {
+                iconName: "starred"
+                label: i18n.tr("Saved articles")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("SavedPostsPage.qml"))
+            }
+
             // ===== About ==================================================
             SettingsSectionHeader { text: i18n.tr("About") }
 

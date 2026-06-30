@@ -107,6 +107,56 @@ Item {
             }
             Item { width: 1; height: Style.spacingL }
 
+            // ----- Save for offline (blog articles only; video has its own
+            // download, gallery reads in its own viewer). The feed view-model
+            // carries only an excerpt, so we fetch the full article first, then
+            // persist it. Toggles to "Remove from saved" when already saved.
+            AbstractButton {
+                id: saveOfflineBtn
+                width: parent.width; height: units.gu(8)
+                visible: PostActions.kind === "blog" && saveOfflineBtn._pl.length > 0
+                readonly property string _pl: PostActions.post ? (PostActions.post.permlink || "") : ""
+                readonly property bool _saved: (SavedPosts.rev, SavedPosts.isSaved(saveOfflineBtn._pl))
+                property bool _saving: false
+                onClicked: {
+                    var p = PostActions.post;
+                    if (!p || saveOfflineBtn._pl.length === 0) return;
+                    if (saveOfflineBtn._saved) { SavedPosts.remove(saveOfflineBtn._pl); sheet.closeSheet(); return; }
+                    saveOfflineBtn._saving = true;
+                    PostService.detail(Config.baseUrl, p.author, saveOfflineBtn._pl, Session.token,
+                        function (result) {
+                            saveOfflineBtn._saving = false;
+                            if (result && result.post) SavedPosts.save(result.post);
+                            sheet.closeSheet();
+                        },
+                        function (err) {
+                            saveOfflineBtn._saving = false;
+                            Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't save for offline."));
+                            sheet.closeSheet();
+                        });
+                }
+                Row {
+                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingM
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(4.5); height: width; radius: width / 2
+                        color: Style.iconBackground
+                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "save"
+                               color: saveOfflineBtn._saved ? Style.brand : Style.textPrimary }
+                    }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
+                        Label { text: saveOfflineBtn._saving ? i18n.tr("Saving…")
+                                      : (saveOfflineBtn._saved ? i18n.tr("Remove from saved") : i18n.tr("Save for offline"))
+                                font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
+                        Label { text: saveOfflineBtn._saved ? i18n.tr("Available offline")
+                                      : i18n.tr("Read this article without a connection")
+                                font.pixelSize: Style.fontSmall; color: Style.textSecondary }
+                    }
+                }
+            }
+
             // ----- Owner actions (your own post): Edit / Delete -----
             // Edit (blog/gallery only — no video editor)
             AbstractButton {

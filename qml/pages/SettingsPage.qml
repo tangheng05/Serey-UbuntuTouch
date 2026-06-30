@@ -529,7 +529,7 @@ Page {
             }
 
             SettingsRow {
-                iconName: "starred"
+                iconName: "save"
                 label: i18n.tr("Saved articles")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("SavedPostsPage.qml"))

@@ -55,31 +55,36 @@ Page {
             onClicked: page.pageStack.pop()
         }
 
-        // Save / unsave for offline reading. Enabled once the body is loaded
-        // (so there's content to persist). Filled star = saved.
-        AbstractButton {
-            id: saveBtn
-            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            width: units.gu(5); height: units.gu(5)
-            enabled: page.post !== null && (page.permlink || "").length > 0
-            readonly property bool isSaved: (SavedPosts.rev, SavedPosts.isSaved(page.permlink))
-            onClicked: {
-                if (saveBtn.isSaved) SavedPosts.remove(page.permlink);
-                else SavedPosts.save(page.post);
-            }
-            Icon {
-                anchors.centerIn: parent
-                width: units.gu(2.6); height: width
-                name: saveBtn.isSaved ? "starred" : "non-starred"
-                color: saveBtn.isSaved ? Style.brand : Style.textSecondary
-                opacity: saveBtn.enabled ? 1 : 0.4
-            }
-        }
-
         Rectangle {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: units.dp(1)
             color: Style.divider
+        }
+    }
+
+    // Save / unsave for offline reading. A sibling overlay (NOT inside the
+    // Page.header item, whose right-anchored children don't lay out reliably on
+    // Lomiri — the codebase's working pattern is a z-stacked overlay). Sits at the
+    // header's top-right; enabled once the body has loaded so there's content to
+    // persist. Filled blue = saved.
+    AbstractButton {
+        id: saveBtn
+        anchors { right: parent.right; rightMargin: Style.spacingM; top: parent.top }
+        height: units.gu(6)
+        width: units.gu(6)
+        z: 50
+        enabled: page.post !== null && (page.permlink || "").length > 0
+        readonly property bool isSaved: (SavedPosts.rev, SavedPosts.isSaved(page.permlink))
+        onClicked: {
+            if (saveBtn.isSaved) SavedPosts.remove(page.permlink);
+            else SavedPosts.save(page.post);
+        }
+        Icon {
+            anchors.centerIn: parent
+            width: units.gu(2.6); height: width
+            name: "save"
+            color: saveBtn.isSaved ? Style.brand : Style.textSecondary
+            opacity: saveBtn.enabled ? 1 : 0.35
         }
     }
 

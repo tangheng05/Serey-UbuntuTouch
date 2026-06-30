@@ -14,8 +14,10 @@ import "../Theme"
  * `items` is reassigned wholesale and `rev` bumped on every change so QML
  * bindings that read isSaved()/get() re-evaluate.
  *
- * Note: body images are remote URLs, so they need a connection to render; the
- * article TEXT reads fully offline.
+ * Images: on save we also download the cover + every <img> in the body to local
+ * files (via the same Lomiri.DownloadManager wrapper the video offline feature
+ * uses), then rewrite the saved copy's URLs to local file:// paths — so the
+ * article renders fully offline, images included.
  */
 QtObject {
     id: store
@@ -23,6 +25,7 @@ QtObject {
     property var items: []   // saved post view-models, newest first
     property int rev: 0
     property var _dbHandle: null
+    property var _dlComp: null
 
     function _db() {
         if (!_dbHandle)
@@ -63,8 +66,7 @@ QtObject {
         return null;
     }
 
-    function save(post) {
-        if (!post || !post.permlink || post.permlink.length === 0) return;
+    function _persist(post) {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT PRIMARY KEY, author TEXT, saved_at INTEGER, data TEXT)");
@@ -72,10 +74,80 @@ QtObject {
                     [post.permlink, post.author || "", Date.now(), JSON.stringify(post)]);
             });
         } catch (e) {
-            console.log("SavedPosts save error: " + e);
+            console.log("SavedPosts persist error: " + e);
         }
+    }
+
+    function save(post) {
+        if (!post || !post.permlink || post.permlink.length === 0) return;
+        // Persist the text immediately (instantly available), then cache images
+        // in the background and rewrite to local paths as they arrive.
+        _persist(post);
         store._load();
         Toast.success("Saved for offline");
+        store._cacheImages(post.permlink, post);
+    }
+
+    // --- Offline image caching ---------------------------------------------
+    function _downloaderComponent() {
+        if (_dlComp === null)
+            _dlComp = Qt.createComponent(Qt.resolvedUrl("../components/VideoDownloader.qml"));
+        return _dlComp;
+    }
+
+    // Collect every remote http(s) image URL referenced by the post: the cover
+    // thumbnail plus each <img src> / data-image-url in the body HTML.
+    function _imageUrls(post) {
+        var urls = [];
+        function add(u) { if (u && u.indexOf("http") === 0 && urls.indexOf(u) < 0) urls.push(u); }
+        add(post.thumbnail || "");
+        var body = post.body || "";
+        var re = /(?:src|data-image-url)=["']([^"']+)["']/g;
+        var m;
+        while ((m = re.exec(body)) !== null) add(m[1]);
+        return urls;
+    }
+
+    function _cacheImages(permlink, post) {
+        var urls = _imageUrls(post);
+        if (urls.length === 0) return;
+        var comp = _downloaderComponent();
+        if (!comp || comp.status === Component.Error) return;
+
+        var map = {};                 // remote URL -> local file:// path
+        var pending = urls.length;
+        function done() { if (--pending === 0) store._applyLocalImages(permlink, map); }
+
+        for (var i = 0; i < urls.length; i++) {
+            (function (u) {
+                var dl = comp.createObject(store, { url: u, title: "image", showInIndicator: false });
+                if (!dl) { done(); return; }
+                dl.finished.connect(function (path) {
+                    map[u] = path.indexOf("file://") === 0 ? path : "file://" + path;
+                    dl.destroy(); done();
+                });
+                dl.failed.connect(function () { dl.destroy(); done(); });   // keep remote URL on failure
+                dl.start(u);
+            })(urls[i]);
+        }
+    }
+
+    // Rewrite the saved copy's image URLs to the downloaded local paths so it
+    // renders offline. Images that failed to download keep their remote URL.
+    function _applyLocalImages(permlink, map) {
+        var post = get(permlink);
+        if (!post) return;
+        var body = post.body || "";
+        var thumb = post.thumbnail || "";
+        for (var remote in map) {
+            var local = map[remote];
+            body = body.split(remote).join(local);     // string (not regex) replace-all
+            if (thumb === remote) thumb = local;
+        }
+        post.body = body;
+        post.thumbnail = thumb;
+        _persist(post);
+        store._load();
     }
 
     function remove(permlink) {

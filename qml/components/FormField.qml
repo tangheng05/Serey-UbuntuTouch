@@ -35,7 +35,7 @@ Rectangle {
         verticalAlignment: TextInput.AlignVCenter
         clip: true
         font.pixelSize: Style.fontRegular
-        font.family: Style.fontFamily
+        font.family: Style.fontFor(text)
         color: Style.textPrimary
         selectionColor: Style.brand
         selectedTextColor: Style.textOnBrand
@@ -53,7 +53,7 @@ Rectangle {
             visible: input.text.length === 0 && !input.inputMethodComposing && !input.activeFocus
             elide: Text.ElideRight
             font.pixelSize: Style.fontRegular
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textSecondary
             opacity: 0.7
         }

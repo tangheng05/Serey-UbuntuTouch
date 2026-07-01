@@ -83,25 +83,14 @@ Page {
                 page.blockLoading = false;
                 page.isBlocked = !page.isBlocked;
                 Toast.show(page.isBlocked
-<<<<<<< Updated upstream
-                    ? i18n.tr("@%1 blocked.").arg(page.username)
-                    : i18n.tr("@%1 unblocked.").arg(page.username));
+                    ? Lang.tr("@%1 blocked.").arg(page.username)
+                    : Lang.tr("@%1 unblocked.").arg(page.username));
                 if (page.isBlocked) { BlockedUsers.add(page.username); PostActions.userBlocked(page.username); }
                 else { BlockedUsers.remove(page.username); PostActions.userUnblocked(page.username); }
             },
             function (err) {
                 page.blockLoading = false;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Failed to update block."));
-=======
-                    ? Lang.tr("@%1 blocked.").arg(page.username)
-                    : Lang.tr("@%1 unblocked.").arg(page.username));
-                if (page.isBlocked) PostActions.userBlocked(page.username);
-                else PostActions.userUnblocked(page.username);
-            },
-            function (err) {
-                page.blockLoading = false;
-                Toast.error(err.message || Lang.tr("Failed to update block."));
->>>>>>> Stashed changes
+                Toast.error((err && err.message) ? err.message : Lang.tr("Failed to update block."));
             });
     }
 
@@ -331,7 +320,7 @@ Page {
                     text: page.profile && page.profile.fullName ? page.profile.fullName : page.username
                     font.pixelSize: Style.fontLarge
                     font.weight: Font.DemiBold
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textTitle
                     elide: Text.ElideRight
                 }
@@ -340,7 +329,7 @@ Page {
                     horizontalAlignment: Text.AlignHCenter
                     text: "@" + page.username
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.brand
                 }
                 Item { width: 1; height: Style.spacingXs; visible: bioLabel.visible }
@@ -360,7 +349,7 @@ Page {
                     }
                     visible: page.profile && (page.profile.bio || "").length > 0
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                     wrapMode: Text.WordWrap
                     onLinkActivated: Qt.openUrlExternally(link)
@@ -416,14 +405,14 @@ Page {
                                 text: modelData.value
                                 font.pixelSize: Style.fontLarge
                                 font.weight: Font.DemiBold
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: Style.textPrimary
                             }
                             Label {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.label
                                 font.pixelSize: Style.fontXSmall
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: Style.textSecondary
                             }
                         }
@@ -489,7 +478,7 @@ Page {
                 text: page.tab === 0 ? Lang.tr("No posts yet")
                     : page.tab === 1 ? Lang.tr("No gallery posts yet")
                     : Lang.tr("No videos yet")
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textSecondary
             }
         }

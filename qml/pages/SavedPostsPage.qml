@@ -52,7 +52,7 @@ Page {
             text: Lang.tr("Saved articles")
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
         }
         Rectangle {
@@ -126,7 +126,7 @@ Page {
                         text: modelData.title || ""
                         font.pixelSize: Style.fontRegular
                         font.weight: Font.DemiBold
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.textPrimary
                         wrapMode: Text.WordWrap
                         maximumLineCount: 2

@@ -340,7 +340,7 @@ Page {
                         color: "white"
                         font.pixelSize: Style.fontRegular
                         font.weight: Font.DemiBold
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         elide: Text.ElideRight
                     }
                     Label {
@@ -348,7 +348,7 @@ Page {
                         text: modelData.title || ""
                         color: "white"
                         font.pixelSize: Style.fontSmall
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         wrapMode: Text.WordWrap
                         maximumLineCount: 2
                         elide: Text.ElideRight

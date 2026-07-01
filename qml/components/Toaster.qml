@@ -35,7 +35,7 @@ Item {
             maximumLineCount: 3
             elide: Text.ElideRight
             color: Style.textOnBrand
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             text: Toast.message
         }
     }

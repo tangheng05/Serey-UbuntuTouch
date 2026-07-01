@@ -261,7 +261,7 @@ Page {
                         leftMargin: Style.spacingM; rightMargin: Style.spacingM
                     }
                     font.pixelSize: Style.fontMedium
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textPrimary
                     clip: true
                     maximumLength: page.titleMaxLength
@@ -276,7 +276,7 @@ Page {
                     text: Lang.tr("Enter title")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontMedium
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                 }
 
                 Label {
@@ -306,7 +306,7 @@ Page {
                         fill: parent
                         margins: Style.spacingM
                     }
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     wrapMode: Text.WordWrap
@@ -321,7 +321,7 @@ Page {
                     text: Lang.tr("Write your article here...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                 }
             }
 
@@ -349,7 +349,7 @@ Page {
                             ? page.selectedCategory
                             : Lang.tr("Select category")
                         font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: page.selectedCategory.length > 0 ? Style.textPrimary : Style.textSecondary
                     }
                     Icon {

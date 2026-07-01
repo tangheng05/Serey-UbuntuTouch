@@ -214,7 +214,7 @@ Page {
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontTitle
                 font.weight: Font.DemiBold
                 color: Style.textTitle
@@ -239,7 +239,7 @@ Page {
             Label {
                 visible: loggedInMode && page.step === 0
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
@@ -268,7 +268,7 @@ Page {
             Label {
                 visible: !loggedInMode && page.step === 1
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
@@ -286,7 +286,7 @@ Page {
             Label {
                 visible: (loggedInMode && page.step === 1) || (!loggedInMode && page.step === 2)
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
@@ -306,7 +306,7 @@ Page {
                     visible: page.resendSeconds > 0
                     text: Lang.tr("Resend code in %1s").arg(page.resendSeconds)
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                 }
                 AbstractButton {
@@ -319,7 +319,7 @@ Page {
                         text: Lang.tr("Resend code")
                         font.pixelSize: Style.fontSmall
                         font.weight: Font.DemiBold
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.brand
                     }
                 }
@@ -351,7 +351,7 @@ Page {
             // Error
             Label {
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 text: page.errorMsg
                 color: Style.danger

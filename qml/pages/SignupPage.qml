@@ -171,7 +171,7 @@ Page {
                 visible: page.step < 3
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 text: page.step === 0 ? Lang.tr("Choose a username")
                     : page.step === 1 ? Lang.tr("Set your email and password")
                     : Lang.tr("Enter the code we emailed you")
@@ -195,7 +195,7 @@ Page {
                 text: Lang.tr("Welcome to Serey!")
                 font.pixelSize: Style.fontTitle
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textTitle
             }
             Label {
@@ -204,7 +204,7 @@ Page {
                 horizontalAlignment: Text.AlignHCenter
                 text: Lang.tr("Your account is ready.")
                 font.pixelSize: Style.fontRegular
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
             }
@@ -254,7 +254,7 @@ Page {
             Label {
                 visible: page.step === 2
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
@@ -276,7 +276,7 @@ Page {
                     visible: page.resendSeconds > 0
                     text: Lang.tr("Resend code in %1s").arg(page.resendSeconds)
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                 }
                 AbstractButton {
@@ -289,7 +289,7 @@ Page {
                         text: Lang.tr("Resend code")
                         font.pixelSize: Style.fontSmall
                         font.weight: Font.DemiBold
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.brand
                     }
                 }
@@ -297,7 +297,7 @@ Page {
 
             Label {
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 text: page.errorMsg
                 color: Style.danger

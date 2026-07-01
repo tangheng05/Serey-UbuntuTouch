@@ -97,7 +97,7 @@ Page {
             anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
             text: Lang.tr("Settings")
             font.pixelSize: Style.fontTitle
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
         }
         AbstractButton {
@@ -161,7 +161,7 @@ Page {
                         anchors.fill: parent
                         verticalAlignment: TextInput.AlignVCenter
                         font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.textPrimary
                         clip: true
                         inputMethodHints: Qt.ImhNoPredictiveText
@@ -183,7 +183,7 @@ Page {
                         verticalAlignment: Text.AlignVCenter
                         text: Lang.tr("Search users...")
                         font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.textSecondary
                         visible: searchField.text.length === 0
                     }
@@ -363,7 +363,7 @@ Page {
                                       : Session.username
                                 font.pixelSize: Style.fontLarge
                                 font.weight: Font.DemiBold
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: Style.textTitle
                                 elide: Text.ElideRight
                             }
@@ -371,7 +371,7 @@ Page {
                                 width: parent.width
                                 text: Lang.tr("See your profile")
                                 font.pixelSize: Style.fontSmall
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: Style.textSecondary
                                 elide: Text.ElideRight
                             }
@@ -417,7 +417,7 @@ Page {
                             text: Lang.tr("Welcome to Serey")
                             font.pixelSize: Style.fontLarge
                             font.weight: Font.DemiBold
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textTitle
                         }
                         Row {
@@ -476,7 +476,7 @@ Page {
                               leftMargin: units.gu(8); rightMargin: Style.spacingM }
                     text: Config.baseUrl
                     font.pixelSize: Style.fontXSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                     elide: Text.ElideRight
                 }
@@ -687,13 +687,13 @@ Page {
                             text: model.username || ""
                             font.pixelSize: Style.fontRegular
                             font.weight: Font.DemiBold
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textPrimary
                         }
                         Label {
                             text: "@" + (model.username || "")
                             font.pixelSize: Style.fontSmall
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textSecondary
                         }
                     }

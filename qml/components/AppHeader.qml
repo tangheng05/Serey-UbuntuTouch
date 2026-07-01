@@ -68,7 +68,7 @@ Rectangle {
                 text: appHeader.communityName
                 font.pixelSize: Style.fontTitle
                 font.weight: Font.Normal
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textPrimary
                 elide: Text.ElideRight
             }

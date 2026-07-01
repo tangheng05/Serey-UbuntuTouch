@@ -162,7 +162,7 @@ Page {
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
                             text: Lang.tr("Edit cover")
-                            font.pixelSize: Style.fontXSmall; font.family: Style.fontFamily
+                            font.pixelSize: Style.fontXSmall; font.family: Style.fontFor(text)
                             color: Style.textOnBrand
                         }
                     }
@@ -233,7 +233,7 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: Lang.tr("Tap photo to change")
                 font.pixelSize: Style.fontSmall
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textSecondary
             }
 
@@ -242,7 +242,7 @@ Page {
             // --- Fields -------------------------------------------------------
             Label {
                 text: Lang.tr("First name")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             FormField {
                 id: firstField
@@ -252,7 +252,7 @@ Page {
 
             Label {
                 text: Lang.tr("Last name")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             FormField {
                 id: lastField
@@ -262,7 +262,7 @@ Page {
 
             Label {
                 text: Lang.tr("Bio")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             MultilineField {
                 id: bioField
@@ -274,12 +274,12 @@ Page {
                 width: parent.width
                 horizontalAlignment: Text.AlignRight
                 text: bioField.length + "/160"
-                font.pixelSize: Style.fontXSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                font.pixelSize: Style.fontXSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
 
             Label {
                 text: Lang.tr("Email")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             FormField {
                 id: emailField
@@ -290,7 +290,7 @@ Page {
 
             Label {
                 text: Lang.tr("Gender")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             Row {
                 width: parent.width
@@ -314,7 +314,7 @@ Page {
                                 text: modelData.label
                                 font.pixelSize: Style.fontRegular
                                 font.weight: Font.DemiBold
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: parent.sel ? Style.textOnBrand : Style.textPrimary
                             }
                         }
@@ -324,7 +324,7 @@ Page {
 
             Label {
                 text: Lang.tr("Date of birth")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             FormField {
                 id: dobField
@@ -335,7 +335,7 @@ Page {
 
             Label {
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 text: page.errorMsg
                 color: Style.danger

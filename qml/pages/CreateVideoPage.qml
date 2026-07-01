@@ -148,7 +148,7 @@ Page {
             anchors { left: parent.left; leftMargin: units.gu(7); right: pubBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             text: Lang.tr("Upload Video")
             font.pixelSize: Style.fontLarge
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
             elide: Text.ElideRight
         }
@@ -219,7 +219,7 @@ Page {
                     anchors { fill: parent; margins: Style.spacingM }
                     text: Lang.tr("Pick a community (not Global) from the top bar to post a video.")
                     wrapMode: Text.WordWrap
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontSmall
                     color: Style.textSecondary
                     verticalAlignment: Text.AlignVCenter
@@ -234,7 +234,7 @@ Page {
                 TextEdit {
                     id: titleField
                     anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: Style.spacingS }
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     wrapMode: Text.WordWrap
@@ -245,7 +245,7 @@ Page {
                     text: Lang.tr("Video title")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                 }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -262,7 +262,7 @@ Page {
                 TextEdit {
                     id: descField
                     anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: Style.spacingS }
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     wrapMode: Text.WordWrap
@@ -273,7 +273,7 @@ Page {
                     text: Lang.tr("Describe your video...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                 }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }

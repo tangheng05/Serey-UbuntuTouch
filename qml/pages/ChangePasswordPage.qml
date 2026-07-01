@@ -64,7 +64,7 @@ Page {
                 text: Lang.tr("Change password")
                 font.pixelSize: Style.fontLarge
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textTitle
             }
 
@@ -86,7 +86,7 @@ Page {
                     anchors.right: parent.right
                     text: Lang.tr("Forgot password?")
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.brand
                     MouseArea {
                         anchors.fill: parent
@@ -118,7 +118,7 @@ Page {
                          newPassField.text !== confirmPassField.text
                 text: Lang.tr("Passwords do not match")
                 font.pixelSize: Style.fontSmall
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.danger
             }
 
@@ -132,7 +132,7 @@ Page {
                 visible: errorMsg.length > 0
                 text: errorMsg
                 font.pixelSize: Style.fontSmall
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.danger
                 wrapMode: Text.WordWrap
             }

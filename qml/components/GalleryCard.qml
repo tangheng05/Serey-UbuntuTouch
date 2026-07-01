@@ -288,7 +288,7 @@ Item {
             x: Style.spacingM
             text: p.caption || ""
             font.pixelSize: Style.fontRegular
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
             wrapMode: Text.WordWrap
             maximumLineCount: 2

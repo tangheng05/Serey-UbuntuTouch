@@ -73,16 +73,11 @@ Item {
     }
 
     function submitReport(typeId, typeName) {
-<<<<<<< Updated upstream
         if (typeId === "" || typeId === undefined || typeId === null) {
-            Toast.error(i18n.tr("Couldn't submit this report reason."));
+            Toast.error(Lang.tr("Couldn't submit this report reason."));
             return;
         }
-        if (!Session.isLoggedIn) { Toast.error(i18n.tr("Please log in to report.")); return; }
-=======
-        if (typeId === "" || typeId === undefined || typeId === null) return;
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in to report.")); return; }
->>>>>>> Stashed changes
         var p = PostActions.post;
         if (!p) return;
         // Backend expects the post id; fall back to permlink only if present.

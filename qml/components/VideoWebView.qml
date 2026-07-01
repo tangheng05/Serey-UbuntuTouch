@@ -39,7 +39,6 @@ Item {
     property bool paused: false
     signal fullscreenToggled(bool on)
 
-<<<<<<< Updated upstream
     // Freeze the Chromium renderer when the whole app is backgrounded/suspended —
     // a live WebEngineView left Active across a long OS suspend loses its GPU/
     // shared-memory context and SIGBUSes on resume. (Same lifecycleState int trap
@@ -66,7 +65,8 @@ Item {
         interval: 300
         onTriggered: if (!root.appActive) wv.lifecycleState = root._lcFrozen
     }
-=======
+
+    // Toggle play/pause of the direct <video> (used by the reels viewer's tap).
     function togglePause() {
         if (root.paused) {
             wv.runJavaScript("document.querySelector('video').play();");
@@ -76,7 +76,6 @@ Item {
             root.paused = true;
         }
     }
->>>>>>> Stashed changes
 
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 

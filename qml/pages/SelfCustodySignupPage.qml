@@ -159,7 +159,7 @@ Page {
                 visible: page.step < 3
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 text: page.step === 0 ? Lang.tr("Choose a username")
                     : page.step === 1 ? Lang.tr("Add your email")
                     : page.step === 2 ? Lang.tr("Enter the code we emailed you")
@@ -196,7 +196,7 @@ Page {
             Label {
                 visible: page.step === 2
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
@@ -217,7 +217,7 @@ Page {
                     visible: page.resendSeconds > 0
                     text: Lang.tr("Resend code in %1s").arg(page.resendSeconds)
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                 }
                 AbstractButton {
@@ -230,7 +230,7 @@ Page {
                         text: Lang.tr("Resend code")
                         font.pixelSize: Style.fontSmall
                         font.weight: Font.DemiBold
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.brand
                     }
                 }
@@ -250,7 +250,7 @@ Page {
                 text: Lang.tr("Account created!")
                 font.pixelSize: Style.fontTitle
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textTitle
             }
             Rectangle {
@@ -265,7 +265,7 @@ Page {
                               leftMargin: Style.spacingM; rightMargin: Style.spacingM }
                     text: Lang.tr("This key is the only way into your account. Save it somewhere safe. It can't be recovered if you lose it.")
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.danger
                     wrapMode: Text.WordWrap
                 }
@@ -293,7 +293,7 @@ Page {
             // Error
             Label {
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 text: page.errorMsg
                 color: Style.danger

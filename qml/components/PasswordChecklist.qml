@@ -35,14 +35,14 @@ Flow {
             Label {
                 text: modelData.ok ? "✓" : "○"   // ✓ : ○
                 textSize: Label.Small
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: root.password.length === 0 ? Style.textSecondary
                                                   : modelData.ok ? Style.success : Style.danger
             }
             Label {
                 text: modelData.label
                 textSize: Label.Small
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: root.password.length === 0 ? Style.textSecondary
                                                   : modelData.ok ? Style.success : Style.danger
             }

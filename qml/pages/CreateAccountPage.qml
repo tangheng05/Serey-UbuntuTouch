@@ -45,7 +45,7 @@ Page {
                     text: Lang.tr("Create account")
                     font.pixelSize: Style.fontTitle
                     font.weight: Font.DemiBold
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textTitle
                 }
                 Label {
@@ -53,7 +53,7 @@ Page {
                     horizontalAlignment: Text.AlignHCenter
                     text: Lang.tr("Choose how you'd like to sign up")
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                     wrapMode: Text.WordWrap
                 }
@@ -71,7 +71,7 @@ Page {
                 horizontalAlignment: Text.AlignHCenter
                 text: Lang.tr("We keep your keys safe — sign in with a password.")
                 font.pixelSize: Style.fontXSmall
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
             }
@@ -86,7 +86,7 @@ Page {
                     anchors.verticalCenter: parent.verticalCenter
                     text: Lang.tr("or")
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                 }
                 Rectangle { anchors.verticalCenter: parent.verticalCenter; width: (parent.width - orLabel.width - Style.spacingS * 2) / 2; height: units.dp(1); color: Style.divider }
@@ -102,7 +102,7 @@ Page {
                 horizontalAlignment: Text.AlignHCenter
                 text: Lang.tr("You hold your own private key. It can't be recovered if lost.")
                 font.pixelSize: Style.fontXSmall
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
             }

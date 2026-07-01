@@ -158,7 +158,7 @@ Item {
                 text: Lang.tr("Comments")
                 font.pixelSize: Style.fontMedium
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textPrimary
             }
             AbstractButton {
@@ -196,7 +196,7 @@ Item {
             anchors.centerIn: cList
             visible: !sheet.loading && sheet.comments.length === 0
             text: Lang.tr("No comments yet")
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textSecondary
         }
 
@@ -216,7 +216,7 @@ Item {
                     anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     text: Lang.tr("Replying to @%1").arg(sheet.replyTarget ? sheet.replyTarget.author : "")
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                 }
                 AbstractButton {
@@ -240,7 +240,7 @@ Item {
                     width: parent.width - sendBtn.width - Style.spacingS
                     anchors.verticalCenter: parent.verticalCenter
                     placeholderText: Lang.tr("Add a comment…")
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     onAccepted: sheet.submit()
                 }
                 AbstractButton {

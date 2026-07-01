@@ -111,7 +111,7 @@ Page {
                     text: model.username || ""
                     font.pixelSize: Style.fontRegular
                     font.weight: Font.DemiBold
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textPrimary
                     elide: Text.ElideRight
                     width: parent.width
@@ -119,7 +119,7 @@ Page {
                 Label {
                     text: "@" + (model.username || "")
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                     elide: Text.ElideRight
                     width: parent.width
@@ -144,7 +144,7 @@ Page {
                     text: model.unblocking ? Lang.tr("Unblocking…") : Lang.tr("Unblock")
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: model.unblocking ? Style.textSecondary : Style.danger
                 }
                 MouseArea {

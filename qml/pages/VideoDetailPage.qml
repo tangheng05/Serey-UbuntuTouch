@@ -588,7 +588,7 @@ Page {
                 text: page.video.title || ""
                 font.pixelSize: Style.fontLarge
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textPrimary
                 wrapMode: Text.WordWrap
             }
@@ -1073,7 +1073,7 @@ Page {
                             }
                             visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
                             text: Session.isLoggedIn ? Lang.tr("Post a comment…") : Lang.tr("Log in to comment…")
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textSecondary
                             elide: Text.ElideRight
                         }
@@ -1090,7 +1090,7 @@ Page {
                                 verticalCenter: parent.verticalCenter
                                 leftMargin: Style.spacingM; rightMargin: Style.spacingM
                             }
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             font.pixelSize: Style.fontRegular
                             color: Style.textPrimary
                             clip: true
@@ -1213,7 +1213,7 @@ Page {
                         text: page.video.title || ""
                         font.pixelSize: Style.fontLarge
                         font.weight: Font.DemiBold
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.textPrimary
                         wrapMode: Text.WordWrap
                     }
@@ -1334,7 +1334,7 @@ Page {
                                 return t.trim();
                             }
                             font.pixelSize: Style.fontRegular
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textPrimary
                             wrapMode: Text.WordWrap
                             textFormat: Text.StyledText

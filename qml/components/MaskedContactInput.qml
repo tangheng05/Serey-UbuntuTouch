@@ -49,10 +49,10 @@ Rectangle {
         }
         spacing: 0
         clip: true
-        Label { text: hidden.text;          font.pixelSize: Style.fontRegular; font.family: Style.fontFamily; color: Style.textPrimary }
-        Label { text: root._dots;           font.pixelSize: Style.fontRegular; font.family: Style.fontFamily; color: Style.dotInactive }
-        Label { text: root.visibleSuffix;   font.pixelSize: Style.fontRegular; font.family: Style.fontFamily; color: Style.textPrimary }
-        Label { text: root.domain.length ? "@" + root.domain : ""; font.pixelSize: Style.fontRegular; font.family: Style.fontFamily; color: Style.textSecondary }
+        Label { text: hidden.text;          font.pixelSize: Style.fontRegular; font.family: Style.fontFor(text); color: Style.textPrimary }
+        Label { text: root._dots;           font.pixelSize: Style.fontRegular; font.family: Style.fontFor(text); color: Style.dotInactive }
+        Label { text: root.visibleSuffix;   font.pixelSize: Style.fontRegular; font.family: Style.fontFor(text); color: Style.textPrimary }
+        Label { text: root.domain.length ? "@" + root.domain : ""; font.pixelSize: Style.fontRegular; font.family: Style.fontFor(text); color: Style.textSecondary }
     }
 
     // Transparent capture field on top (its own glyphs are invisible; the Row
@@ -66,7 +66,7 @@ Rectangle {
         }
         color: "transparent"
         font.pixelSize: Style.fontRegular
-        font.family: Style.fontFamily
+        font.family: Style.fontFor(text)
         maximumLength: root.starCount
         inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
         onAccepted: root.accepted()

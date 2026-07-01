@@ -55,7 +55,7 @@ Page {
             text: Lang.tr("Offline videos")
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
         }
 

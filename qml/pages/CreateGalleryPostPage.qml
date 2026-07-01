@@ -205,7 +205,7 @@ Page {
                 TextEdit {
                     id: captionField
                     anchors { fill: parent; margins: Style.spacingM }
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     wrapMode: Text.WordWrap
@@ -217,7 +217,7 @@ Page {
                     text: Lang.tr("Write a caption...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                 }
             }
 

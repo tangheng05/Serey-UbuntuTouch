@@ -113,11 +113,7 @@ RowLayout {
         VoteService.upvote(Config.baseUrl, author, permlink, voteType, weight, Session.token,
             function (r) { if (!bar.upvoted) bar.votes = bar.votes + 1;   // count this vote now
                            bar.upvoted = true; bar.flagged = false; _apply(r); bar._cache();
-<<<<<<< Updated upstream
-                           Toast.success(bar.voteType === "comment" ? i18n.tr("Liked") : i18n.tr("Upvoted %1%").arg(weight)); }, _failUpvote);
-=======
-                           Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Upvoted %1%").arg(weight)); }, _fail);
->>>>>>> Stashed changes
+                           Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Upvoted %1%").arg(weight)); }, _failUpvote);
     }
 
     Component {

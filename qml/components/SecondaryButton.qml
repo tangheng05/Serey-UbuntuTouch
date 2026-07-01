@@ -29,7 +29,7 @@ AbstractButton {
             text: root.text
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.brand
         }
     }

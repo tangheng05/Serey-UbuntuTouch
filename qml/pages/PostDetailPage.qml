@@ -95,11 +95,11 @@ Page {
     }
 
     function load() {
-        loading = true;
-        errorMsg = "";
+        page.loading = true;
+        page.errorMsg = "";
         PostService.detail(Config.baseUrl, author, permlink, Session.token,
             function (result) {
-                loading = false;
+                page.loading = false;
                 page.post = result.post;
                 page.comments = result.replies || [];
                 page.commentCount = page._countAll(page.comments);
@@ -128,7 +128,7 @@ Page {
                 }
             },
             function (err) {
-                loading = false;
+                page.loading = false;
                 // Offline (or fetch failed): fall back to a saved copy so the
                 // article still reads. If we already have a post (preloaded from
                 // the saved list), keep it and swallow the refresh error.
@@ -429,7 +429,7 @@ Page {
                 text: page.post ? page.post.title : ""
                 textSize: Label.XLarge
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textPrimary
                 wrapMode: Text.WordWrap
             }
@@ -597,7 +597,7 @@ Page {
                                 width: parent.width
                                 text: model.content
                                 font.pixelSize: Style.fontMedium
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: Style.textPrimary
                                 wrapMode: Text.WordWrap
                                 textFormat: Text.StyledText
@@ -755,7 +755,7 @@ Page {
                     text: Session.isLoggedIn
                         ? Lang.tr("Post a comment…")
                         : Lang.tr("Log in to comment…")
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                     elide: Text.ElideRight
                 }
@@ -774,7 +774,7 @@ Page {
                         leftMargin: Style.spacingM
                         rightMargin: Style.spacingM
                     }
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     clip: true

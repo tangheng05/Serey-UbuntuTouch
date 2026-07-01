@@ -58,7 +58,7 @@ Item {
                     text: index < hidden.text.length ? hidden.text.charAt(index) : ""
                     font.pixelSize: Style.fontTitle
                     font.weight: Font.DemiBold
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textPrimary
                 }
             }

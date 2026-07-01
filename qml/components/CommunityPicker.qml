@@ -519,7 +519,7 @@ Item {
                                                         text: catData.name.toUpperCase()
                                                         font.pixelSize: Style.fontXSmall
                                                         font.weight: Font.Bold
-                                                        font.family: Style.fontFamily
+                                                        font.family: Style.fontFor(text)
                                                         font.letterSpacing: units.dp(0.6)
                                                         color: catData.color.length > 0 ? catData.color : Style.brand
                                                     }
@@ -601,7 +601,7 @@ Item {
                                                         text: commBtn.commName
                                                         font.pixelSize: Style.fontRegular
                                                         font.weight: commBtn.isSelected ? Font.DemiBold : Font.Normal
-                                                        font.family: Style.fontFamily
+                                                        font.family: Style.fontFor(text)
                                                         color: commBtn.isSelected ? Style.brand : Style.textPrimary
                                                         elide: Text.ElideRight
                                                     }
@@ -623,7 +623,7 @@ Item {
                                                             text: commBtn.subscribed ? Lang.tr("Subscribed") : Lang.tr("Subscribe")
                                                             font.pixelSize: Style.fontSmall
                                                             font.weight: Font.DemiBold
-                                                            font.family: Style.fontFamily
+                                                            font.family: Style.fontFor(text)
                                                             color: commBtn.subscribed ? Style.brand : Style.textOnBrand
                                                         }
 

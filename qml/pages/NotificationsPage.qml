@@ -44,7 +44,7 @@ Page {
                     anchors.verticalCenter: parent.verticalCenter
                     text: Lang.tr("Background notifications")
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textPrimary
                     width: parent.width - pushSwitch.width - units.gu(2.2) - Style.spacingS * 2
                 }
@@ -313,7 +313,7 @@ Page {
                               (model.isRead ? Style.textSecondary : Style.textPrimary) + ";'>" +
                               ((model.message || "").replace(model.actorName + " ", "")) + "</span>"
                         font.pixelSize: Style.fontSmall
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         wrapMode: Text.WordWrap
                         maximumLineCount: 2
                         elide: Text.ElideRight
@@ -324,14 +324,14 @@ Page {
                         Label {
                             text: model.timeAgo
                             font.pixelSize: Style.fontXSmall
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textSecondary
                         }
                         Label {
                             visible: !model.isRead
                             text: "• " + Lang.tr("New")
                             font.pixelSize: Style.fontXSmall
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             font.weight: Font.DemiBold
                             color: Style.brand
                         }
@@ -358,7 +358,7 @@ Page {
             visible: notifModel.count === 0 && !page.loading && page.errorMsg === ""
             text: Lang.tr("No notifications yet")
             font.pixelSize: Style.fontLarge
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textSecondary
         }
 
@@ -372,7 +372,7 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: page.errorMsg
                 font.pixelSize: Style.fontSmall
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.danger
                 wrapMode: Text.WordWrap
                 width: list.width - Style.spacingM * 2

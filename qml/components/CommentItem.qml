@@ -256,7 +256,7 @@ Item {
             x: units.gu(3.5) + Style.spacingS
             text: c.body || ""
             font.pixelSize: Style.fontRegular
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
             wrapMode: Text.WordWrap
         }

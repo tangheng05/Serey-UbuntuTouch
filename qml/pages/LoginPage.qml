@@ -76,7 +76,7 @@ Page {
                     text: Lang.tr("Welcome back")
                     font.pixelSize: Style.fontTitle
                     font.weight: Font.DemiBold
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textTitle
                 }
                 Label {
@@ -84,7 +84,7 @@ Page {
                     horizontalAlignment: Text.AlignHCenter
                     text: Lang.tr("Sign in to your Serey account")
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                     wrapMode: Text.WordWrap
                 }
@@ -110,7 +110,7 @@ Page {
 
             Label {
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 text: page.errorMsg
                 color: Style.danger

@@ -24,6 +24,7 @@ Item {
     property bool reporting: false
     property var reportTypes: []
     property bool reportTypesLoaded: false
+    property bool reportTypesLoading: false
     property string selectedReportTypeId: ""
     // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm
     property int step: 0
@@ -40,10 +41,23 @@ Item {
     }
 
     function _loadReportTypes() {
-        reportTypesLoaded = true;
+        sheet.reportTypesLoading = true;
         ReportService.getReportTypes(Config.baseUrl,
-            function (arr) { sheet.reportTypes = arr; },
-            function ()    { /* silent — fallback list shown */ });
+            function (arr) {
+                sheet.reportTypesLoading = false;
+                sheet.reportTypes = arr || [];
+                // Only latch as "loaded" on a non-empty result; an empty list
+                // means try again next open rather than showing a dead panel.
+                sheet.reportTypesLoaded = sheet.reportTypes.length > 0;
+            },
+            function (err) {
+                // Leave reportTypesLoaded false so reopening the sheet retries
+                // (there is no hardcoded fallback — the backend owns the ids).
+                sheet.reportTypesLoading = false;
+                sheet.reportTypesLoaded = false;
+                Toast.error((err && err.message) ? err.message
+                            : i18n.tr("Couldn't load report reasons. Please try again."));
+            });
     }
 
     function closeSheet() {
@@ -52,7 +66,10 @@ Item {
     }
 
     function submitReport(typeId, typeName) {
-        if (typeId === "" || typeId === undefined || typeId === null) return;
+        if (typeId === "" || typeId === undefined || typeId === null) {
+            Toast.error(i18n.tr("Couldn't submit this report reason."));
+            return;
+        }
         if (!Session.isLoggedIn) { Toast.error(i18n.tr("Please log in to report.")); return; }
         var p = PostActions.post;
         if (!p) return;
@@ -382,11 +399,25 @@ Item {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Loading spinner while fetching report types
+            // Loading spinner while fetching report types (driven by the
+            // loading flag, not array length, so a failed/empty fetch doesn't
+            // spin forever).
             Item {
-                visible: sheet.reportTypes.length === 0
+                visible: sheet.reportTypesLoading
                 width: reportCol.width; height: units.gu(6)
                 ActivityIndicator { anchors.centerIn: parent; running: parent.visible }
+            }
+
+            // Empty / failed state — reopening the sheet retries the fetch.
+            Label {
+                visible: !sheet.reportTypesLoading && sheet.reportTypes.length === 0
+                width: reportCol.width - Style.spacingM * 2
+                x: Style.spacingM
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                text: i18n.tr("Couldn't load report reasons. Close and try again.")
+                font.pixelSize: Style.fontSmall
+                color: Style.textSecondary
             }
 
             Repeater {

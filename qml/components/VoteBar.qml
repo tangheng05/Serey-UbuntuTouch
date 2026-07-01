@@ -68,9 +68,16 @@ RowLayout {
     }
     function _fail(e) {
         bar.busy = false;
+        Toast.error((e && e.message) ? e.message : i18n.tr("Action failed."));
+    }
+    // Upvote-only failure handler. An "already voted" error means the server
+    // already has our vote and the local UI was out of sync — reconcile it to
+    // the voted state. Must NOT be shared with flag/removeVote, or a failed
+    // dislike/unvote would wrongly flip the item to "liked".
+    function _failUpvote(e) {
+        bar.busy = false;
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
         if (msg.indexOf("already") >= 0) {
-            // UI was out of sync — silently correct it
             if (!bar.upvoted) { bar.votes = bar.votes + 1; bar.upvoted = true; bar._cache(); }
             return;
         }
@@ -96,7 +103,7 @@ RowLayout {
         VoteService.upvote(Config.baseUrl, author, permlink, voteType, weight, Session.token,
             function (r) { if (!bar.upvoted) bar.votes = bar.votes + 1;   // count this vote now
                            bar.upvoted = true; bar.flagged = false; _apply(r); bar._cache();
-                           Toast.success(bar.voteType === "comment" ? i18n.tr("Liked") : i18n.tr("Upvoted %1%").arg(weight)); }, _fail);
+                           Toast.success(bar.voteType === "comment" ? i18n.tr("Liked") : i18n.tr("Upvoted %1%").arg(weight)); }, _failUpvote);
     }
 
     Component {

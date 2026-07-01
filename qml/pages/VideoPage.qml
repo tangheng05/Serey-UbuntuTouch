@@ -94,6 +94,10 @@ Page {
                         feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
+                // A page can be mostly/entirely filtered out (hidden/blocked); keep
+                // paging until there's a screenful or the server runs out, else the
+                // feed stalls or looks empty despite more content on later pages.
+                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -120,6 +124,8 @@ Page {
                         feedModel.append(result[i]);
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
+                // Keep paging if this page was filtered below a screenful (see refresh()).
+                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -284,7 +290,7 @@ Page {
         }
 
         onAtYEndChanged: {
-            if (atYEnd && !page.loading && !page.endReached && feedModel.count > 0)
+            if (atYEnd && !page.loading && !page.endReached)
                 page.loadMore();
         }
     }

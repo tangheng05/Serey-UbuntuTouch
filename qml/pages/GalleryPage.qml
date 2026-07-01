@@ -96,6 +96,10 @@ Page {
                         galleryModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
+                // Gallery filters to image posts (and hidden/blocked), so a page can
+                // yield few or zero rows; keep paging until there's a screenful or the
+                // server runs out, else the grid stalls or looks empty prematurely.
+                if (!page.endReached && galleryModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -124,6 +128,8 @@ Page {
                 // the next page doesn't re-request already-seen rows.
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
+                // Keep paging if this page fell below a screenful (see refresh()).
+                if (!page.endReached && galleryModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -217,7 +223,7 @@ Page {
         }
 
         onAtYEndChanged: {
-            if (atYEnd && !page.loading && !page.endReached && galleryModel.count > 0)
+            if (atYEnd && !page.loading && !page.endReached)
                 page.loadMore();
         }
     }

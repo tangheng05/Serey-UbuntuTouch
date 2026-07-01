@@ -6,7 +6,6 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
-import "../services/NotificationService.js" as NotificationService
 
 /*
  * Settings, in the iOS Serey app's grouped style: a welcome/identity header, then
@@ -217,8 +216,6 @@ Page {
     function doLogout() {
         if (Session.token.length > 0)
             AccountService.logout(Config.baseUrl, Session.token, function () { /* fire-and-forget */ }, function () { /* already clearing locally */ });
-        NotificationService.removeToken(Session.username,
-            function () { /* fire-and-forget */ }, function () { /* silent */ });
         Session.clear();
         FollowStore.reset();
         page.profile = null;

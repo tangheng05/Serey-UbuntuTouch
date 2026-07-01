@@ -696,7 +696,6 @@ Page {
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: upvoteInner.implicitWidth + Style.spacingM
-                    visible: page.onChain
                     enabled: !page.voteBusy
                     onClicked: page.doUpvote()
                     Row {

@@ -19,9 +19,12 @@ Item {
     property var comment: ({})
     readonly property var c: comment ? comment : ({})
     readonly property var replies: c.replies || []
-    property bool repliesExpanded: true
-    property bool topLevel: true
     property int depth: 0
+    // Top-level comments show their direct replies; deeper (nested) replies start
+    // collapsed behind the "N replies" toggle so a deep thread doesn't instantiate
+    // the whole sub-tree eagerly. The toggle flips this per comment.
+    property bool repliesExpanded: depth < 1
+    property bool topLevel: true
 
     // Only the author can edit/delete, and only a comment that exists
     // server-side (optimistic local comments carry an empty permlink).
@@ -64,7 +67,7 @@ Item {
             },
             function (err) {
                 item.saving = false;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't update comment."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update comment."));
             });
     }
 
@@ -78,7 +81,7 @@ Item {
         CommentService.remove(Config.baseUrl, permlinkToDelete, Session.username, Session.token,
             function () { /* already removed from the UI */ },
             function (err) {
-                Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't delete comment."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't delete comment."));
             });
     }
 
@@ -198,7 +201,7 @@ Item {
                         onClicked: { item.menuOpen = false; item.startEdit(); }
                         Label {
                             anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                            text: i18n.tr("Edit")
+                            text: Lang.tr("Edit")
                             color: Style.textPrimary
                         }
                     }
@@ -208,7 +211,7 @@ Item {
                         onClicked: item.confirmingDelete = true
                         Label {
                             anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                            text: i18n.tr("Delete")
+                            text: Lang.tr("Delete")
                             color: Style.danger
                         }
                     }
@@ -223,7 +226,7 @@ Item {
                     Label {
                         width: parent.width - Style.spacingM * 2
                         x: Style.spacingM
-                        text: i18n.tr("Delete this comment?")
+                        text: Lang.tr("Delete this comment?")
                         font.pixelSize: Style.fontSmall
                         color: Style.textPrimary
                         wrapMode: Text.WordWrap
@@ -235,12 +238,12 @@ Item {
                         AbstractButton {
                             width: parent.width / 2; height: units.gu(5)
                             onClicked: { item.menuOpen = false; item.confirmingDelete = false; }
-                            Label { anchors.centerIn: parent; text: i18n.tr("Cancel"); color: Style.textSecondary }
+                            Label { anchors.centerIn: parent; text: Lang.tr("Cancel"); color: Style.textSecondary }
                         }
                         AbstractButton {
                             width: parent.width / 2; height: units.gu(5)
                             onClicked: { item.menuOpen = false; item.confirmingDelete = false; item.doDelete(); }
-                            Label { anchors.centerIn: parent; text: i18n.tr("Delete"); color: Style.danger; font.weight: Font.DemiBold }
+                            Label { anchors.centerIn: parent; text: Lang.tr("Delete"); color: Style.danger; font.weight: Font.DemiBold }
                         }
                     }
                 }
@@ -253,7 +256,7 @@ Item {
             x: units.gu(3.5) + Style.spacingS
             text: c.body || ""
             font.pixelSize: Style.fontRegular
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
             wrapMode: Text.WordWrap
         }
@@ -285,7 +288,7 @@ Item {
                     Label {
                         id: saveLabel
                         anchors.centerIn: parent
-                        text: item.saving ? i18n.tr("Saving…") : i18n.tr("Save")
+                        text: item.saving ? Lang.tr("Saving…") : Lang.tr("Save")
                         color: Style.textOnBrand
                     }
                 }
@@ -296,7 +299,7 @@ Item {
                     Label {
                         id: cancelEditLabel
                         anchors.centerIn: parent
-                        text: i18n.tr("Cancel")
+                        text: Lang.tr("Cancel")
                         color: Style.textSecondary
                     }
                 }
@@ -317,13 +320,17 @@ Item {
                 showShare: false
                 width: units.gu(8)
                 Component.onCompleted: {
-                    var cached = VoteService.getCached(c.author || "", c.permlink || "")
+                    var me = Session.username || ""
+                    var cached = VoteService.getCached(item.c.author || "", item.c.permlink || "")
                     if (cached) {
                         votes   = cached.votes
                         upvoted = cached.upvoted
+                        flagged = cached.flagged
                     } else {
-                        votes   = c.votes || 0
-                        upvoted = (c.voters || []).indexOf(Session.username) >= 0
+                        votes   = item.c.votes || 0
+                        upvoted = me.length > 0 && (item.c.voterStr   || "").indexOf("," + me + ",") >= 0
+                        flagged = me.length > 0 && (item.c.flaggerStr || "").indexOf("," + me + ",") >= 0
+                        loadPersisted()
                     }
                 }
             }
@@ -346,7 +353,7 @@ Item {
                     }
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: i18n.tr("Reply")
+                        text: Lang.tr("Reply")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
@@ -368,8 +375,8 @@ Item {
                 Label {
                     id: toggleLabel
                     text: item.repliesExpanded
-                        ? i18n.tr("Hide replies")
-                        : i18n.tr("%1 replies").arg(item.replies.length)
+                        ? Lang.tr("Hide replies")
+                        : Lang.tr("%1 replies").arg(item.replies.length)
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
                     color: Style.textSecondary
@@ -417,7 +424,9 @@ Item {
                 }
 
                 Repeater {
-                    model: item.replies
+                    // Only instantiate reply rows while expanded — collapsing frees
+                    // them, and nested levels aren't built until the user expands.
+                    model: item.repliesExpanded ? item.replies : []
                     delegate: Loader {
                         id: replyLoader
                         width: repliesCol.width

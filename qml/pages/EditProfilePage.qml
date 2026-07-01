@@ -29,9 +29,9 @@ Page {
     property string pickTarget: "avatar"   // which image the picker is changing
 
     header: PageHeader {
-        title: i18n.tr("Edit profile")
+        title: Lang.tr("Edit profile")
         leadingActionBar.actions: [
-            Action { iconName: "back"; text: i18n.tr("Back"); onTriggered: page.pageStack.pop() }
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
         ]
     }
 
@@ -67,14 +67,14 @@ Page {
                     function () {
                         page.coverUploading = false;
                         page.coverUrl = url;
-                        Toast.success(i18n.tr("Cover updated."));
+                        Toast.success(Lang.tr("Cover updated."));
                     }, page.fail);
             } else {
                 AccountService.setProfilePicture(Config.baseUrl, Session.token, url,
                     function () {
                         page.uploading = false;
                         page.avatarUrl = url;
-                        Toast.success(i18n.tr("Photo updated."));
+                        Toast.success(Lang.tr("Photo updated."));
                     }, page.fail);
             }
         }
@@ -86,7 +86,7 @@ Page {
         if (busy || uploading) return;
         errorMsg = "";
         if (emailField.text.length > 0 && emailField.text.indexOf("@") < 0) {
-            errorMsg = i18n.tr("Please enter a valid email address.");
+            errorMsg = Lang.tr("Please enter a valid email address.");
             return;
         }
         busy = true;
@@ -99,7 +99,7 @@ Page {
             bio: bioField.text
         }, function () {
             busy = false;
-            Toast.success(i18n.tr("Profile updated."));
+            Toast.success(Lang.tr("Profile updated."));
             page.pageStack.pop();
         }, fail);
     }
@@ -161,8 +161,8 @@ Page {
                         }
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: i18n.tr("Edit cover")
-                            font.pixelSize: Style.fontXSmall; font.family: Style.fontFamily
+                            text: Lang.tr("Edit cover")
+                            font.pixelSize: Style.fontXSmall; font.family: Style.fontFor(text)
                             color: Style.textOnBrand
                         }
                     }
@@ -231,9 +231,9 @@ Page {
             }
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: i18n.tr("Tap photo to change")
+                text: Lang.tr("Tap photo to change")
                 font.pixelSize: Style.fontSmall
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textSecondary
             }
 
@@ -241,62 +241,62 @@ Page {
 
             // --- Fields -------------------------------------------------------
             Label {
-                text: i18n.tr("First name")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                text: Lang.tr("First name")
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             FormField {
                 id: firstField
                 width: parent.width
-                placeholder: i18n.tr("First name")
+                placeholder: Lang.tr("First name")
             }
 
             Label {
-                text: i18n.tr("Last name")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                text: Lang.tr("Last name")
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             FormField {
                 id: lastField
                 width: parent.width
-                placeholder: i18n.tr("Last name")
+                placeholder: Lang.tr("Last name")
             }
 
             Label {
-                text: i18n.tr("Bio")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                text: Lang.tr("Bio")
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             MultilineField {
                 id: bioField
                 width: parent.width
-                placeholder: i18n.tr("Tell people a little about yourself")
+                placeholder: Lang.tr("Tell people a little about yourself")
                 maximumLength: 160
             }
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignRight
                 text: bioField.length + "/160"
-                font.pixelSize: Style.fontXSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                font.pixelSize: Style.fontXSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
 
             Label {
-                text: i18n.tr("Email")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                text: Lang.tr("Email")
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             FormField {
                 id: emailField
                 width: parent.width
-                placeholder: i18n.tr("Email")
+                placeholder: Lang.tr("Email")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhEmailCharactersOnly
             }
 
             Label {
-                text: i18n.tr("Gender")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                text: Lang.tr("Gender")
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             Row {
                 width: parent.width
                 spacing: Style.spacingS
                 Repeater {
-                    model: [ { id: 1, label: i18n.tr("Male") }, { id: 2, label: i18n.tr("Female") } ]
+                    model: [ { id: 1, label: Lang.tr("Male") }, { id: 2, label: Lang.tr("Female") } ]
                     delegate: AbstractButton {
                         width: (form.width - Style.spacingS) / 2
                         height: units.gu(5.5)
@@ -314,7 +314,7 @@ Page {
                                 text: modelData.label
                                 font.pixelSize: Style.fontRegular
                                 font.weight: Font.DemiBold
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: parent.sel ? Style.textOnBrand : Style.textPrimary
                             }
                         }
@@ -323,19 +323,19 @@ Page {
             }
 
             Label {
-                text: i18n.tr("Date of birth")
-                font.pixelSize: Style.fontSmall; font.family: Style.fontFamily; color: Style.textSecondary
+                text: Lang.tr("Date of birth")
+                font.pixelSize: Style.fontSmall; font.family: Style.fontFor(text); color: Style.textSecondary
             }
             FormField {
                 id: dobField
                 width: parent.width
-                placeholder: i18n.tr("YYYY-MM-DD")
+                placeholder: Lang.tr("YYYY-MM-DD")
                 inputMethodHints: Qt.ImhDate
             }
 
             Label {
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 text: page.errorMsg
                 color: Style.danger
@@ -349,7 +349,7 @@ Page {
                 width: parent.width
                 busy: page.busy
                 enabled: !page.busy && !page.uploading
-                text: page.busy ? i18n.tr("Saving…") : i18n.tr("Save changes")
+                text: page.busy ? Lang.tr("Saving…") : Lang.tr("Save changes")
                 onClicked: page.save()
             }
         }

@@ -50,12 +50,12 @@ Item {
 
     function toggleFollow() {
         if (!Session.isLoggedIn) {
-            Toast.error(i18n.tr("Please log in first."));
+            Toast.error(Lang.tr("Please log in first."));
             root.requireLogin();
             return;
         }
         var now = FollowStore.toggle(Config.baseUrl, p.author, Session.token);
-        Toast.show(now ? i18n.tr("Following") : i18n.tr("Unfollowed"));
+        Toast.show(now ? Lang.tr("Following") : Lang.tr("Unfollowed"));
     }
 
     function _len(v) {
@@ -184,7 +184,7 @@ Item {
                     Label {
                         id: galFollowLabel
                         anchors.centerIn: parent
-                        text: root.isFollowing ? i18n.tr("Following") : i18n.tr("Follow")
+                        text: root.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
                         font.pixelSize: Style.fontXSmall
                         font.weight: Font.DemiBold
                         color: root.isFollowing ? Style.brand : Style.textOnBrand
@@ -269,6 +269,7 @@ Item {
             author: p.author || ""
             permlink: p.permlink || ""
             voteType: "post"
+            onChain: p.postToBlockchain !== false
             votes: p.votes || 0
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0
@@ -288,7 +289,7 @@ Item {
             x: Style.spacingM
             text: p.caption || ""
             font.pixelSize: Style.fontRegular
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
             wrapMode: Text.WordWrap
             maximumLineCount: 2

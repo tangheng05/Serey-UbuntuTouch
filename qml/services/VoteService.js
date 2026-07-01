@@ -22,10 +22,14 @@ var _cache = {};
 function _key(author, permlink) { return author + "/" + permlink; }
 
 function getCached(author, permlink) {
+    // Optimistic local comments have an empty permlink; they'd all collapse to
+    // the key "author/" and bleed vote state into each other — skip the cache.
+    if (!permlink) return null;
     return _cache[_key(author, permlink)] || null;
 }
 
 function _updateCache(author, permlink, upvoted, flagged, votes, payout) {
+    if (!permlink) return;
     _cache[_key(author, permlink)] = {
         upvoted: upvoted,
         flagged: flagged,

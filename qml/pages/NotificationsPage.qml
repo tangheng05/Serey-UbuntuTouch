@@ -20,9 +20,9 @@ Page {
 
     header: PageHeader {
         id: pageHeader
-        title: i18n.tr("Notifications")
+        title: Lang.tr("Notifications")
         leadingActionBar.actions: [
-            Action { iconName: "back"; text: i18n.tr("Back"); onTriggered: page.pageStack.pop() }
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
         ]
         trailingActionBar.actions: page.unreadCount > 0 ? [markAllReadAction] : []
 
@@ -42,9 +42,9 @@ Page {
                 }
                 Label {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: i18n.tr("Background notifications")
+                    text: Lang.tr("Background notifications")
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textPrimary
                     width: parent.width - pushSwitch.width - units.gu(2.2) - Style.spacingS * 2
                 }
@@ -66,7 +66,7 @@ Page {
     Action {
         id: markAllReadAction
         iconName: "select"
-        text: page.markingAllRead ? i18n.tr("Marking…") : i18n.tr("Mark all read")
+        text: page.markingAllRead ? Lang.tr("Marking…") : Lang.tr("Mark all read")
         enabled: !page.markingAllRead
         onTriggered: page.markAllRead()
     }
@@ -135,7 +135,7 @@ Page {
                     page.retryCount++
                     retryTimer.start()
                 } else {
-                    page.errorMsg = err.message || i18n.tr("Failed to load notifications.")
+                    page.errorMsg = err.message || Lang.tr("Failed to load notifications.")
                 }
             }
         )
@@ -150,11 +150,11 @@ Page {
                 if (root) root.lastUnreadCount = 0
                 for (var i = 0; i < notifModel.count; i++)
                     notifModel.setProperty(i, "isRead", true)
-                Toast.show(i18n.tr("All notifications marked as read"))
+                Toast.show(Lang.tr("All notifications marked as read"))
             },
             function (err) {
                 page.markingAllRead = false
-                Toast.show(err.message || i18n.tr("Failed to mark as read"))
+                Toast.show(err.message || Lang.tr("Failed to mark as read"))
             })
     }
 
@@ -313,7 +313,7 @@ Page {
                               (model.isRead ? Style.textSecondary : Style.textPrimary) + ";'>" +
                               ((model.message || "").replace(model.actorName + " ", "")) + "</span>"
                         font.pixelSize: Style.fontSmall
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         wrapMode: Text.WordWrap
                         maximumLineCount: 2
                         elide: Text.ElideRight
@@ -324,14 +324,14 @@ Page {
                         Label {
                             text: model.timeAgo
                             font.pixelSize: Style.fontXSmall
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textSecondary
                         }
                         Label {
                             visible: !model.isRead
-                            text: "• " + i18n.tr("New")
+                            text: "• " + Lang.tr("New")
                             font.pixelSize: Style.fontXSmall
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             font.weight: Font.DemiBold
                             color: Style.brand
                         }
@@ -356,9 +356,9 @@ Page {
         Label {
             anchors.centerIn: parent
             visible: notifModel.count === 0 && !page.loading && page.errorMsg === ""
-            text: i18n.tr("No notifications yet")
+            text: Lang.tr("No notifications yet")
             font.pixelSize: Style.fontLarge
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textSecondary
         }
 
@@ -372,7 +372,7 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: page.errorMsg
                 font.pixelSize: Style.fontSmall
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.danger
                 wrapMode: Text.WordWrap
                 width: list.width - Style.spacingM * 2
@@ -381,7 +381,7 @@ Page {
             PrimaryButton {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: units.gu(20)
-                text: i18n.tr("Retry")
+                text: Lang.tr("Retry")
                 onClicked: page.reload()
             }
         }

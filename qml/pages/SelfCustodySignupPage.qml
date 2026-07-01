@@ -25,9 +25,9 @@ Page {
     property int resendSeconds: 0
 
     header: PageHeader {
-        title: i18n.tr("Self-custody")
+        title: Lang.tr("Self-custody")
         leadingActionBar.actions: [
-            Action { iconName: "back"; text: i18n.tr("Back"); onTriggered: page.goBack() }
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.goBack() }
         ]
     }
 
@@ -54,7 +54,7 @@ Page {
         errorMsg = "";
         busy = true;
         AccountService.sendSignupOtp(Config.baseUrl, username, email,
-            function () { busy = false; resendSeconds = 90; Toast.show(i18n.tr("New code sent.")); },
+            function () { busy = false; resendSeconds = 90; Toast.show(Lang.tr("New code sent.")); },
             fail);
     }
 
@@ -63,7 +63,7 @@ Page {
         if (busy) return;
         errorMsg = "";
         if (!AccountService.isValidUsername(usernameField.text)) {
-            errorMsg = i18n.tr("Username must be 5–30 characters: lowercase letters, numbers or hyphens.");
+            errorMsg = Lang.tr("Username must be 5–30 characters: lowercase letters, numbers or hyphens.");
             return;
         }
         busy = true;
@@ -77,7 +77,7 @@ Page {
         if (busy) return;
         errorMsg = "";
         if (emailField.text.indexOf("@") < 0) {
-            errorMsg = i18n.tr("Please enter a valid email address.");
+            errorMsg = Lang.tr("Please enter a valid email address.");
             return;
         }
         email = emailField.text;
@@ -92,7 +92,7 @@ Page {
         if (busy) return;
         errorMsg = "";
         if (otpField.text.length === 0) {
-            errorMsg = i18n.tr("Please enter the verification code.");
+            errorMsg = Lang.tr("Please enter the verification code.");
             return;
         }
         busy = true;
@@ -159,11 +159,11 @@ Page {
                 visible: page.step < 3
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                font.family: Style.fontFamily
-                text: page.step === 0 ? i18n.tr("Choose a username")
-                    : page.step === 1 ? i18n.tr("Add your email")
-                    : page.step === 2 ? i18n.tr("Enter the code we emailed you")
-                    : i18n.tr("Save your private key")
+                font.family: Style.fontFor(text)
+                text: page.step === 0 ? Lang.tr("Choose a username")
+                    : page.step === 1 ? Lang.tr("Add your email")
+                    : page.step === 2 ? Lang.tr("Enter the code we emailed you")
+                    : Lang.tr("Save your private key")
                 font.pixelSize: Style.fontTitle
                 font.weight: Font.DemiBold
                 color: Style.textTitle
@@ -177,7 +177,7 @@ Page {
                 id: usernameField
                 visible: page.step === 0
                 width: parent.width
-                placeholder: i18n.tr("Username")
+                placeholder: Lang.tr("Username")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
                 onAccepted: page.checkUsername()
             }
@@ -187,7 +187,7 @@ Page {
                 id: emailField
                 visible: page.step === 1
                 width: parent.width
-                placeholder: i18n.tr("Email")
+                placeholder: Lang.tr("Email")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhEmailCharactersOnly
                 onAccepted: page.sendOtp()
             }
@@ -196,11 +196,11 @@ Page {
             Label {
                 visible: page.step === 2
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
-                text: i18n.tr("We sent a verification code to %1.").arg(page.email)
+                text: Lang.tr("We sent a verification code to %1.").arg(page.email)
             }
             OtpInput {
                 id: otpField
@@ -215,9 +215,9 @@ Page {
                 Label {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: page.resendSeconds > 0
-                    text: i18n.tr("Resend code in %1s").arg(page.resendSeconds)
+                    text: Lang.tr("Resend code in %1s").arg(page.resendSeconds)
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                 }
                 AbstractButton {
@@ -227,10 +227,10 @@ Page {
                     onClicked: page.resend()
                     Label {
                         id: scResendLbl
-                        text: i18n.tr("Resend code")
+                        text: Lang.tr("Resend code")
                         font.pixelSize: Style.fontSmall
                         font.weight: Font.DemiBold
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.brand
                     }
                 }
@@ -247,10 +247,10 @@ Page {
                 visible: page.step === 3
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: i18n.tr("Account created!")
+                text: Lang.tr("Account created!")
                 font.pixelSize: Style.fontTitle
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textTitle
             }
             Rectangle {
@@ -263,9 +263,9 @@ Page {
                     id: warn
                     anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
                               leftMargin: Style.spacingM; rightMargin: Style.spacingM }
-                    text: i18n.tr("This key is the only way into your account. Save it somewhere safe. It can't be recovered if you lose it.")
+                    text: Lang.tr("This key is the only way into your account. Save it somewhere safe. It can't be recovered if you lose it.")
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.danger
                     wrapMode: Text.WordWrap
                 }
@@ -280,20 +280,20 @@ Page {
             SecondaryButton {
                 visible: page.step === 3
                 width: parent.width
-                text: page.keySaved ? i18n.tr("Copied ✓") : i18n.tr("Copy key")
+                text: page.keySaved ? Lang.tr("Copied ✓") : Lang.tr("Copy key")
                 onClicked: {
                     keyField.input.selectAll();
                     keyField.input.copy();
                     keyField.input.deselect();
                     page.keySaved = true;
-                    Toast.success(i18n.tr("Key copied. Store it somewhere safe."));
+                    Toast.success(Lang.tr("Key copied. Store it somewhere safe."));
                 }
             }
 
             // Error
             Label {
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 text: page.errorMsg
                 color: Style.danger
@@ -306,11 +306,11 @@ Page {
                 width: parent.width
                 busy: page.busy
                 enabled: !page.busy && (page.step !== 3 || page.keySaved)
-                text: page.busy ? i18n.tr("Please wait…")
-                    : page.step === 0 ? i18n.tr("Continue")
-                    : page.step === 1 ? i18n.tr("Send code")
-                    : page.step === 2 ? i18n.tr("Create account")
-                    : i18n.tr("I've saved my key")
+                text: page.busy ? Lang.tr("Please wait…")
+                    : page.step === 0 ? Lang.tr("Continue")
+                    : page.step === 1 ? Lang.tr("Send code")
+                    : page.step === 2 ? Lang.tr("Create account")
+                    : Lang.tr("I've saved my key")
                 onClicked: {
                     if (page.step === 0) page.checkUsername();
                     else if (page.step === 1) page.sendOtp();
@@ -319,7 +319,7 @@ Page {
                         // Drop the self-custody page + the chooser beneath it,
                         // then land on the login page (sign in with the saved key).
                         var stack = page.pageStack;
-                        Toast.success(i18n.tr("Account created. Log in with your key."));
+                        Toast.success(Lang.tr("Account created. Log in with your key."));
                         stack.pop();   // this self-custody page
                         stack.pop();   // the Create Account chooser
                         stack.push(Qt.resolvedUrl("LoginPage.qml"));

@@ -50,7 +50,7 @@ AbstractButton {
         text: root.label
         elide: Text.ElideRight
         font.pixelSize: Style.fontRegular
-        font.family: Style.fontFamily
+        font.family: Style.fontFor(text)
         color: root.danger ? Style.danger : Style.textPrimary
     }
 
@@ -66,7 +66,7 @@ AbstractButton {
             anchors.verticalCenter: parent.verticalCenter
             text: root.valueText
             font.pixelSize: Style.fontRegular
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textSecondary
         }
         Rectangle {

@@ -113,7 +113,7 @@ AbstractButton {
                     text: v.title || ""
                     font.pixelSize: Style.fontRegular
                     font.weight: Font.DemiBold
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textPrimary
                     wrapMode: Text.WordWrap
                     maximumLineCount: 2
@@ -125,6 +125,9 @@ AbstractButton {
                     font.pixelSize: Style.fontSmall
                     color: Style.textSecondary
                     elide: Text.ElideRight
+                }
+                OffChainBadge {
+                    onChain: v.postToBlockchain !== false
                 }
             }
 

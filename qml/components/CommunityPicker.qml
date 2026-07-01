@@ -44,7 +44,7 @@ Item {
     }
 
     function _toggleSubscribe(commId, currentlySubscribed) {
-        if (!Session.isLoggedIn) { Toast.show(i18n.tr("Log in to subscribe")); return }
+        if (!Session.isLoggedIn) { Toast.show(Lang.tr("Log in to subscribe")); return }
         var id = String(commId)
         function _newMap(add) {
             var m = {}
@@ -56,12 +56,12 @@ Item {
 
         if (currentlySubscribed) {
             SubscriberService.unsubscribe(Config.baseUrl, Session.token, id,
-                function () { picker.subscribedMap = _newMap(false); picker.subscribedRev++; Toast.show(i18n.tr("Unsubscribed")) },
-                function (err) { Toast.show(err.message || i18n.tr("Failed to unsubscribe")) })
+                function () { picker.subscribedMap = _newMap(false); picker.subscribedRev++; Toast.show(Lang.tr("Unsubscribed")) },
+                function (err) { Toast.show(err.message || Lang.tr("Failed to unsubscribe")) })
         } else {
             SubscriberService.subscribe(Config.baseUrl, Session.token, id,
-                function () { picker.subscribedMap = _newMap(true); picker.subscribedRev++; Toast.show(i18n.tr("Subscribed!")) },
-                function (err) { Toast.show(err.message || i18n.tr("Failed to subscribe")) })
+                function () { picker.subscribedMap = _newMap(true); picker.subscribedRev++; Toast.show(Lang.tr("Subscribed!")) },
+                function (err) { Toast.show(err.message || Lang.tr("Failed to subscribe")) })
         }
     }
 
@@ -290,7 +290,7 @@ Item {
                     x: Style.spacingM
                     Label {
                         width: parent.width - units.gu(4)
-                        text: i18n.tr("Choose community")
+                        text: Lang.tr("Choose community")
                         font.pixelSize: units.dp(17)
                         font.weight: Font.DemiBold
                         color: Style.textTitle
@@ -435,7 +435,7 @@ Item {
                                 width: parent.width; height: units.gu(5)
                                 Label {
                                     anchors.centerIn: parent
-                                    text: i18n.tr("No communities found")
+                                    text: Lang.tr("No communities found")
                                     font.pixelSize: Style.fontSmall
                                     color: Style.textSecondary
                                 }
@@ -519,7 +519,7 @@ Item {
                                                         text: catData.name.toUpperCase()
                                                         font.pixelSize: Style.fontXSmall
                                                         font.weight: Font.Bold
-                                                        font.family: Style.fontFamily
+                                                        font.family: Style.fontFor(text)
                                                         font.letterSpacing: units.dp(0.6)
                                                         color: catData.color.length > 0 ? catData.color : Style.brand
                                                     }
@@ -601,7 +601,7 @@ Item {
                                                         text: commBtn.commName
                                                         font.pixelSize: Style.fontRegular
                                                         font.weight: commBtn.isSelected ? Font.DemiBold : Font.Normal
-                                                        font.family: Style.fontFamily
+                                                        font.family: Style.fontFor(text)
                                                         color: commBtn.isSelected ? Style.brand : Style.textPrimary
                                                         elide: Text.ElideRight
                                                     }
@@ -620,10 +620,10 @@ Item {
                                                         Label {
                                                             id: subLbl
                                                             anchors.centerIn: parent
-                                                            text: commBtn.subscribed ? i18n.tr("Subscribed") : i18n.tr("Subscribe")
+                                                            text: commBtn.subscribed ? Lang.tr("Subscribed") : Lang.tr("Subscribe")
                                                             font.pixelSize: Style.fontSmall
                                                             font.weight: Font.DemiBold
-                                                            font.family: Style.fontFamily
+                                                            font.family: Style.fontFor(text)
                                                             color: commBtn.subscribed ? Style.brand : Style.textOnBrand
                                                         }
 

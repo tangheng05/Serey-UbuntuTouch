@@ -43,9 +43,9 @@ Page {
     readonly property int totalSteps: loggedInMode ? 3 : 4
 
     header: PageHeader {
-        title: i18n.tr("Reset password")
+        title: Lang.tr("Reset password")
         leadingActionBar.actions: [
-            Action { iconName: "back"; text: i18n.tr("Back"); onTriggered: page.goBack() }
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.goBack() }
         ]
     }
 
@@ -54,7 +54,7 @@ Page {
         else page.pageStack.pop();
     }
 
-    function fail(err) { busy = false; page.errorMsg = err.message || i18n.tr("Something went wrong."); }
+    function fail(err) { busy = false; page.errorMsg = err.message || Lang.tr("Something went wrong."); }
 
     Component.onCompleted: {
         if (loggedInMode) emailDirectField.input.forceActiveFocus();
@@ -80,7 +80,7 @@ Page {
         if (busy) return;
         errorMsg = "";
         if (usernameField.text.length === 0) {
-            errorMsg = i18n.tr("Please enter your username."); return;
+            errorMsg = Lang.tr("Please enter your username."); return;
         }
         username = usernameField.text;
         busy = true;
@@ -90,7 +90,7 @@ Page {
                 var d = (resp && resp.data) ? resp.data : {};
                 page.hintEmail = d.email || "";
                 if (page.hintEmail.length === 0) {
-                    page.errorMsg = i18n.tr("No email address found for this account.");
+                    page.errorMsg = Lang.tr("No email address found for this account.");
                     return;
                 }
                 page.step = 1;
@@ -102,7 +102,7 @@ Page {
         if (busy) return;
         errorMsg = "";
         if (!emailMasked.complete) {
-            errorMsg = i18n.tr("Please fill in the hidden part of your email."); return;
+            errorMsg = Lang.tr("Please fill in the hidden part of your email."); return;
         }
         sentEmail = emailMasked.value;
         busy = true;
@@ -116,7 +116,7 @@ Page {
         errorMsg = "";
         var em = emailDirectField.text.trim();
         if (em.length === 0 || em.indexOf("@") < 1) {
-            errorMsg = i18n.tr("Please enter a valid email address."); return;
+            errorMsg = Lang.tr("Please enter a valid email address."); return;
         }
         sentEmail = em;
         busy = true;
@@ -129,7 +129,7 @@ Page {
         if (busy) return;
         errorMsg = "";
         if (otpField.text.length < 6) {
-            errorMsg = i18n.tr("Please enter the 6-digit code."); return;
+            errorMsg = Lang.tr("Please enter the 6-digit code."); return;
         }
         step = loggedInMode ? 2 : 3;
     }
@@ -140,7 +140,7 @@ Page {
         errorMsg = "";
         busy = true;
         AccountService.requestPasswordReset(Config.baseUrl, username, { email: sentEmail },
-            function () { busy = false; resendSeconds = 90; Toast.show(i18n.tr("New code sent.")); }, fail);
+            function () { busy = false; resendSeconds = 90; Toast.show(Lang.tr("New code sent.")); }, fail);
     }
 
     // ── Shared: final submit ─────────────────────────────────────────────────
@@ -148,16 +148,16 @@ Page {
         if (busy) return;
         errorMsg = "";
         if (!AccountService.isValidPassword(passwordField.text)) {
-            errorMsg = i18n.tr("Password must be 8–16 characters with uppercase, lowercase and a number."); return;
+            errorMsg = Lang.tr("Password must be 8–16 characters with uppercase, lowercase and a number."); return;
         }
         if (passwordField.text !== confirmField.text) {
-            errorMsg = i18n.tr("Passwords do not match."); return;
+            errorMsg = Lang.tr("Passwords do not match."); return;
         }
         busy = true;
         AccountService.resetPassword(Config.baseUrl, username, otpField.text, passwordField.text,
             function () {
                 busy = false;
-                Toast.show(i18n.tr("Password reset. Please log in."));
+                Toast.show(Lang.tr("Password reset. Please log in."));
                 page.pageStack.pop();
             },
             function (err) {
@@ -214,21 +214,21 @@ Page {
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontTitle
                 font.weight: Font.DemiBold
                 color: Style.textTitle
                 wrapMode: Text.WordWrap
                 text: {
                     if (loggedInMode) {
-                        if (page.step === 0) return i18n.tr("Enter your email")
-                        if (page.step === 1) return i18n.tr("Enter your code")
-                        return i18n.tr("Create a new password")
+                        if (page.step === 0) return Lang.tr("Enter your email")
+                        if (page.step === 1) return Lang.tr("Enter your code")
+                        return Lang.tr("Create a new password")
                     } else {
-                        if (page.step === 0) return i18n.tr("Find your account")
-                        if (page.step === 1) return i18n.tr("Verify your identity")
-                        if (page.step === 2) return i18n.tr("Enter your code")
-                        return i18n.tr("Create a new password")
+                        if (page.step === 0) return Lang.tr("Find your account")
+                        if (page.step === 1) return Lang.tr("Verify your identity")
+                        if (page.step === 2) return Lang.tr("Enter your code")
+                        return Lang.tr("Create a new password")
                     }
                 }
             }
@@ -239,17 +239,17 @@ Page {
             Label {
                 visible: loggedInMode && page.step === 0
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
-                text: i18n.tr("Enter the email address on your account. We'll send a verification code.")
+                text: Lang.tr("Enter the email address on your account. We'll send a verification code.")
             }
             FormField {
                 id: emailDirectField
                 visible: loggedInMode && page.step === 0
                 width: parent.width
-                placeholder: i18n.tr("Email address")
+                placeholder: Lang.tr("Email address")
                 inputMethodHints: Qt.ImhEmailCharactersOnly
                 onAccepted: page.sendOtpDirect()
             }
@@ -259,7 +259,7 @@ Page {
                 id: usernameField
                 visible: !loggedInMode && page.step === 0
                 width: parent.width
-                placeholder: i18n.tr("Username")
+                placeholder: Lang.tr("Username")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
                 onAccepted: page.lookupHint()
             }
@@ -268,11 +268,11 @@ Page {
             Label {
                 visible: !loggedInMode && page.step === 1
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
-                text: i18n.tr("Fill in the hidden part of your email to receive a code.")
+                text: Lang.tr("Fill in the hidden part of your email to receive a code.")
             }
             MaskedContactInput {
                 id: emailMasked
@@ -286,11 +286,11 @@ Page {
             Label {
                 visible: (loggedInMode && page.step === 1) || (!loggedInMode && page.step === 2)
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
-                text: i18n.tr("We sent a verification code to %1.").arg(page.sentEmail)
+                text: Lang.tr("We sent a verification code to %1.").arg(page.sentEmail)
             }
             OtpInput {
                 id: otpField
@@ -304,9 +304,9 @@ Page {
                 Label {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: page.resendSeconds > 0
-                    text: i18n.tr("Resend code in %1s").arg(page.resendSeconds)
+                    text: Lang.tr("Resend code in %1s").arg(page.resendSeconds)
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                 }
                 AbstractButton {
@@ -316,10 +316,10 @@ Page {
                     onClicked: page.resend()
                     Label {
                         id: resendLbl
-                        text: i18n.tr("Resend code")
+                        text: Lang.tr("Resend code")
                         font.pixelSize: Style.fontSmall
                         font.weight: Font.DemiBold
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.brand
                     }
                 }
@@ -330,7 +330,7 @@ Page {
                 id: passwordField
                 visible: (loggedInMode && page.step === 2) || (!loggedInMode && page.step === 3)
                 width: parent.width
-                placeholder: i18n.tr("New password")
+                placeholder: Lang.tr("New password")
                 echoMode: TextInput.Password
                 onAccepted: confirmField.input.forceActiveFocus()
             }
@@ -343,7 +343,7 @@ Page {
                 id: confirmField
                 visible: (loggedInMode && page.step === 2) || (!loggedInMode && page.step === 3)
                 width: parent.width
-                placeholder: i18n.tr("Confirm new password")
+                placeholder: Lang.tr("Confirm new password")
                 echoMode: TextInput.Password
                 onAccepted: page.submitReset()
             }
@@ -351,7 +351,7 @@ Page {
             // Error
             Label {
                 width: parent.width
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontSmall
                 text: page.errorMsg
                 color: Style.danger
@@ -364,16 +364,16 @@ Page {
                 width: parent.width
                 busy: page.busy
                 text: {
-                    if (page.busy) return i18n.tr("Please wait…")
+                    if (page.busy) return Lang.tr("Please wait…")
                     if (loggedInMode) {
-                        if (page.step === 0) return i18n.tr("Send code")
-                        if (page.step === 1) return i18n.tr("Next")
-                        return i18n.tr("Reset password")
+                        if (page.step === 0) return Lang.tr("Send code")
+                        if (page.step === 1) return Lang.tr("Next")
+                        return Lang.tr("Reset password")
                     } else {
-                        if (page.step === 0) return i18n.tr("Continue")
-                        if (page.step === 1) return i18n.tr("Send code")
-                        if (page.step === 2) return i18n.tr("Next")
-                        return i18n.tr("Reset password")
+                        if (page.step === 0) return Lang.tr("Continue")
+                        if (page.step === 1) return Lang.tr("Send code")
+                        if (page.step === 2) return Lang.tr("Next")
+                        return Lang.tr("Reset password")
                     }
                 }
                 onClicked: {

@@ -1,4 +1,4 @@
-set(DOMAIN serey)
+set(DOMAIN serey.ubuntu)
 set(POT_FILE ${DOMAIN}.pot)
 file(GLOB PO_FILES *.po)
 

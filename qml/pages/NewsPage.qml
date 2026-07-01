@@ -5,6 +5,7 @@ import "../Session"
 import "../components"
 import "../services/PostService.js" as PostService
 import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/BlockedUsers.js" as BlockedUsers
 
 /*
  * News feed: Trending / New posts, filtered by the selected regional source
@@ -43,7 +44,7 @@ Page {
             for (var i = 0; i < feedModel.count; i++) {
                 if (feedModel.get(i).permlink === permlink) {
                     feedModel.remove(i);
-                    Toast.show(i18n.tr("Post hidden"));
+                    Toast.show(Lang.tr("Post hidden"));
                     return;
                 }
             }
@@ -102,11 +103,17 @@ Page {
                 page.refreshing = false;
                 page.loading = false;
                 feedModel.clear();
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
                 for (var i = 0; i < result.length; i++)
-                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
                         feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
+                // A page can be mostly/entirely filtered out (hidden/blocked); keep
+                // paging until there's a screenful or the server runs out, else the
+                // feed stalls or looks empty despite more content on later pages.
+                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -128,11 +135,15 @@ Page {
                 if (epoch !== page.reqEpoch) return;   // stale response — ignore
                 inflight = null;
                 loading = false;
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
                 for (var i = 0; i < result.length; i++)
-                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
                         feedModel.append(result[i]);
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
+                // Keep paging if this page was filtered below a screenful (see refresh()).
+                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -147,7 +158,7 @@ Page {
     SectionTabs {
         id: tabs
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        model: [i18n.tr("Trending"), i18n.tr("New")]
+        model: [Lang.tr("Trending"), Lang.tr("New")]
         currentIndex: page.feedIndex
         onSelected: {
             page.feedIndex = index;
@@ -172,7 +183,7 @@ Page {
             // own state, which would clobber a `visible` binding; it never touches
             // opacity, so this is the reliable lever.
             content: Label {
-                text: i18n.tr("Pull to refresh")
+                text: Lang.tr("Pull to refresh")
                 opacity: list.dragging ? 1 : 0
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
@@ -193,7 +204,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "close"
-                        text: i18n.tr("Hide")
+                        text: Lang.tr("Hide")
                         onTriggered: {
                             var vm = feedModel.get(index);
                             if (vm) PostActions.hideRequested(vm.author, vm.permlink);
@@ -205,7 +216,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: i18n.tr("Share")
+                        text: Lang.tr("Share")
                         onTriggered: {
                             var vm = feedModel.get(index);
                             if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
@@ -244,7 +255,7 @@ Page {
         }
 
         onAtYEndChanged: {
-            if (atYEnd && !page.loading && !page.endReached && feedModel.count > 0)
+            if (atYEnd && !page.loading && !page.endReached)
                 page.loadMore();
         }
     }
@@ -263,7 +274,7 @@ Page {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
         iconName: "stock_note"
-        message: i18n.tr("No posts in %1").arg(Config.communityName)
+        message: Lang.tr("No posts in %1").arg(Config.communityName)
     }
 
     // Compose lives in the global header action now (see Main.qml, gated on the

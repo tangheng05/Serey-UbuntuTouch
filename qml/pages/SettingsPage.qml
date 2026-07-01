@@ -6,7 +6,6 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
-import "../services/NotificationService.js" as NotificationService
 
 /*
  * Settings, in the iOS Serey app's grouped style: a welcome/identity header, then
@@ -96,9 +95,9 @@ Page {
         Label {
             visible: !page.searchActive
             anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            text: i18n.tr("Settings")
+            text: Lang.tr("Settings")
             font.pixelSize: Style.fontTitle
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
         }
         AbstractButton {
@@ -162,7 +161,7 @@ Page {
                         anchors.fill: parent
                         verticalAlignment: TextInput.AlignVCenter
                         font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.textPrimary
                         clip: true
                         inputMethodHints: Qt.ImhNoPredictiveText
@@ -182,9 +181,9 @@ Page {
                     Label {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
-                        text: i18n.tr("Search users...")
+                        text: Lang.tr("Search users...")
                         font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.textSecondary
                         visible: searchField.text.length === 0
                     }
@@ -217,8 +216,6 @@ Page {
     function doLogout() {
         if (Session.token.length > 0)
             AccountService.logout(Config.baseUrl, Session.token, function () { /* fire-and-forget */ }, function () { /* already clearing locally */ });
-        NotificationService.removeToken(Session.username,
-            function () { /* fire-and-forget */ }, function () { /* silent */ });
         Session.clear();
         FollowStore.reset();
         page.profile = null;
@@ -253,16 +250,16 @@ Page {
         id: logoutDialog
         Dialog {
             id: dlg
-            title: i18n.tr("Log out?")
-            text: i18n.tr("You'll need to sign in again to vote, comment, or follow.")
+            title: Lang.tr("Log out?")
+            text: Lang.tr("You'll need to sign in again to vote, comment, or follow.")
 
             Button {
-                text: i18n.tr("Log out")
+                text: Lang.tr("Log out")
                 color: Style.danger
                 onClicked: { PopupUtils.close(dlg); page.doLogout(); }
             }
             Button {
-                text: i18n.tr("Cancel")
+                text: Lang.tr("Cancel")
                 onClicked: PopupUtils.close(dlg)
             }
         }
@@ -366,15 +363,15 @@ Page {
                                       : Session.username
                                 font.pixelSize: Style.fontLarge
                                 font.weight: Font.DemiBold
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: Style.textTitle
                                 elide: Text.ElideRight
                             }
                             Label {
                                 width: parent.width
-                                text: i18n.tr("See your profile")
+                                text: Lang.tr("See your profile")
                                 font.pixelSize: Style.fontSmall
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: Style.textSecondary
                                 elide: Text.ElideRight
                             }
@@ -417,10 +414,10 @@ Page {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: units.dp(3)
                         Label {
-                            text: i18n.tr("Welcome to Serey")
+                            text: Lang.tr("Welcome to Serey")
                             font.pixelSize: Style.fontLarge
                             font.weight: Font.DemiBold
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textTitle
                         }
                         Row {
@@ -430,7 +427,7 @@ Page {
                                 onClicked: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
                                 Label {
                                     id: loginLbl
-                                    text: i18n.tr("Log in")
+                                    text: Lang.tr("Log in")
                                     font.pixelSize: Style.fontRegular
                                     font.weight: Font.DemiBold
                                     color: Style.brand
@@ -446,7 +443,7 @@ Page {
                                 onClicked: page.pageStack.push(Qt.resolvedUrl("CreateAccountPage.qml"))
                                 Label {
                                     id: signupLbl
-                                    text: i18n.tr("Sign up")
+                                    text: Lang.tr("Sign up")
                                     font.pixelSize: Style.fontRegular
                                     font.weight: Font.DemiBold
                                     color: Style.brand
@@ -460,12 +457,12 @@ Page {
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
             // ===== Preferences (dev-only, hidden in production) ===========
-            SettingsSectionHeader { text: i18n.tr("Preferences"); visible: Config.showDevOptions }
+            SettingsSectionHeader { text: Lang.tr("Preferences"); visible: Config.showDevOptions }
 
             SettingsRow {
                 visible: Config.showDevOptions
                 iconName: "settings"
-                label: i18n.tr("Use local dev server")
+                label: Lang.tr("Use local dev server")
                 showSwitch: true
                 switchChecked: Config.useLocalDev
                 onSwitchToggled: Config.useLocalDev = checked
@@ -479,32 +476,75 @@ Page {
                               leftMargin: units.gu(8); rightMargin: Style.spacingM }
                     text: Config.baseUrl
                     font.pixelSize: Style.fontXSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                     elide: Text.ElideRight
                 }
             }
 
+            // ===== Language ===============================================
+            SettingsSectionHeader { text: Lang.tr("Language") }
+            SettingsRow {
+                label: Lang.tr("Language")
+                valueText: Session.language === "nl" ? "Nederlands" : "English"
+                showChevron: true
+                onClicked: PopupUtils.open(langDialog)
+            }
+
+            Component {
+                id: langDialog
+                Dialog {
+                    id: langDlg
+                    title: Lang.tr("Language")
+                    Button {
+                        text: "English"
+                        color: Session.language === "en" ? Style.brand : Style.iconBackground
+                        onClicked: {
+                            PopupUtils.close(langDlg)
+                            if (Session.language !== "en") {
+                                Session.setLanguage("en")
+                                Toast.show(Lang.tr("Language") + ": English")
+                            }
+                        }
+                    }
+                    Button {
+                        text: "Nederlands"
+                        color: Session.language === "nl" ? Style.brand : Style.iconBackground
+                        onClicked: {
+                            PopupUtils.close(langDlg)
+                            if (Session.language !== "nl") {
+                                Session.setLanguage("nl")
+                                Toast.show(Lang.tr("Language") + ": Nederlands")
+                            }
+                        }
+                    }
+                    Button {
+                        text: Lang.tr("Cancel")
+                        onClicked: PopupUtils.close(langDlg)
+                    }
+                }
+            }
+
             // ===== Account ================================================
-            SettingsSectionHeader { text: i18n.tr("Account"); visible: Session.isLoggedIn }
+            SettingsSectionHeader { text: Lang.tr("Account"); visible: Session.isLoggedIn }
             SettingsRow {
                 visible: Session.isLoggedIn
                 iconName: "edit"
-                label: i18n.tr("Edit profile")
+                label: Lang.tr("Edit profile")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("EditProfilePage.qml"), { initial: page.profile })
             }
             SettingsRow {
                 visible: Session.isLoggedIn
                 iconName: "system-lock-screen"
-                label: i18n.tr("Password & Security")
+                label: Lang.tr("Password & Security")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
             }
             SettingsRow {
                 visible: Session.isLoggedIn
                 iconName: "notification"
-                label: i18n.tr("Notifications")
+                label: Lang.tr("Notifications")
                 showChevron: true
                 unreadBadge: root ? root.lastUnreadCount : 0
                 onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
@@ -512,46 +552,46 @@ Page {
             SettingsRow {
                 visible: Session.isLoggedIn
                 iconName: "system-shutdown"
-                label: i18n.tr("Blocked Users")
+                label: Lang.tr("Blocked Users")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
             }
             SettingsRow {
                 visible: Session.isLoggedIn
                 iconName: "system-log-out"
-                label: i18n.tr("Log out")
+                label: Lang.tr("Log out")
                 danger: true
                 onClicked: PopupUtils.open(logoutDialog)
             }
 
             // ===== Library ===============================================
-            SettingsSectionHeader { text: i18n.tr("Library") }
+            SettingsSectionHeader { text: Lang.tr("Library") }
 
             SettingsRow {
                 iconName: "save"
-                label: i18n.tr("Offline videos")
+                label: Lang.tr("Offline videos")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
             }
 
             SettingsRow {
                 iconName: "save"
-                label: i18n.tr("Saved articles")
+                label: Lang.tr("Saved articles")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("SavedPostsPage.qml"))
             }
 
             // ===== About ==================================================
-            SettingsSectionHeader { text: i18n.tr("About") }
+            SettingsSectionHeader { text: Lang.tr("About") }
 
             SettingsRow {
                 iconName: "info"
-                label: i18n.tr("Version")
+                label: Lang.tr("Version")
                 valueText: "0.1.0"
             }
             SettingsRow {
                 iconName: "external-link"
-                label: i18n.tr("Serey website")
+                label: Lang.tr("Serey website")
                 showChevron: true
                 onClicked: Qt.openUrlExternally("https://serey.io")
             }
@@ -647,13 +687,13 @@ Page {
                             text: model.username || ""
                             font.pixelSize: Style.fontRegular
                             font.weight: Font.DemiBold
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textPrimary
                         }
                         Label {
                             text: "@" + (model.username || "")
                             font.pixelSize: Style.fontSmall
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textSecondary
                         }
                     }

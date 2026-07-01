@@ -12,9 +12,9 @@ Page {
     property string errorMsg: ""
 
     header: PageHeader {
-        title: i18n.tr("Password & Security")
+        title: Lang.tr("Password & Security")
         leadingActionBar.actions: [
-            Action { iconName: "back"; text: i18n.tr("Back"); onTriggered: page.pageStack.pop() }
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
         ]
     }
 
@@ -35,12 +35,12 @@ Page {
             currentPassField.text, newPassField.text,
             function () {
                 busy = false
-                Toast.show(i18n.tr("Password changed successfully"))
+                Toast.show(Lang.tr("Password changed successfully"))
                 page.pageStack.pop()
             },
             function (err) {
                 busy = false
-                errorMsg = err.message || i18n.tr("Failed to change password.")
+                errorMsg = err.message || Lang.tr("Failed to change password.")
             }
         )
     }
@@ -61,10 +61,10 @@ Page {
             // ── Change password ──────────────────────────────────────────
             Label {
                 width: parent.width
-                text: i18n.tr("Change password")
+                text: Lang.tr("Change password")
                 font.pixelSize: Style.fontLarge
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textTitle
             }
 
@@ -77,16 +77,16 @@ Page {
                 FormField {
                     id: currentPassField
                     width: parent.width
-                    placeholder: i18n.tr("Current password")
+                    placeholder: Lang.tr("Current password")
                     echoMode: TextInput.Password
                     onAccepted: newPassField.input.forceActiveFocus()
                 }
 
                 Label {
                     anchors.right: parent.right
-                    text: i18n.tr("Forgot password?")
+                    text: Lang.tr("Forgot password?")
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.brand
                     MouseArea {
                         anchors.fill: parent
@@ -99,7 +99,7 @@ Page {
             FormField {
                 id: newPassField
                 width: parent.width
-                placeholder: i18n.tr("New password")
+                placeholder: Lang.tr("New password")
                 echoMode: TextInput.Password
                 onAccepted: confirmPassField.input.forceActiveFocus()
             }
@@ -107,7 +107,7 @@ Page {
             FormField {
                 id: confirmPassField
                 width: parent.width
-                placeholder: i18n.tr("Confirm new password")
+                placeholder: Lang.tr("Confirm new password")
                 echoMode: TextInput.Password
                 onAccepted: page.submit()
             }
@@ -116,9 +116,9 @@ Page {
                 width: parent.width
                 visible: confirmPassField.text.length > 0 &&
                          newPassField.text !== confirmPassField.text
-                text: i18n.tr("Passwords do not match")
+                text: Lang.tr("Passwords do not match")
                 font.pixelSize: Style.fontSmall
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.danger
             }
 
@@ -132,14 +132,14 @@ Page {
                 visible: errorMsg.length > 0
                 text: errorMsg
                 font.pixelSize: Style.fontSmall
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.danger
                 wrapMode: Text.WordWrap
             }
 
             PrimaryButton {
                 width: parent.width
-                text: i18n.tr("Change password")
+                text: Lang.tr("Change password")
                 busy: page.busy
                 enabled: page.canSubmit
                 onClicked: page.submit()

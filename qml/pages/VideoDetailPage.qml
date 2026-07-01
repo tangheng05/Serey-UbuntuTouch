@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Layouts 1.3
 import Lomiri.Components 1.3
 import Lomiri.Components.Popups 1.3
 import "../Theme"
@@ -9,6 +10,7 @@ import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 import "../services/FollowService.js" as FollowService
 import "../services/YouTube.js" as YouTube
+import "../services/VoteService.js" as VoteService
 
 Page {
     id: page
@@ -20,6 +22,17 @@ Page {
     property bool isFullscreen: false   // player reparented to fill the whole screen
     property bool isFollowing: false
     property bool descSheetOpen: false
+
+    // Vote state
+    property int  voteCount:  0
+    property bool upvoted:    false
+    property bool flagged:    false
+    property bool voteBusy:   false
+    property string payout:   ""
+    // Off-chain (DB-only) videos have no curation weight/rewards: the like/dislike
+    // stay (as a plain 100% like — see doUpvote), but the weight popover is skipped
+    // and the award is not shown. Default on-chain unless the saved video says so.
+    readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
     property bool commentSheetOpen: false
     // YouTube stream extraction is in flight (resolving a direct URL before the
     // download daemon can fetch it). Drives the download button's spinner.
@@ -179,7 +192,7 @@ Page {
 
     function toggleFollow() {
         if (!Session.isLoggedIn) {
-            Toast.error(i18n.tr("Please log in first."));
+            Toast.error(Lang.tr("Please log in first."));
             page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"));
             return;
         }
@@ -188,12 +201,116 @@ Page {
         FollowService.toggle(Config.baseUrl, video.author, was, Session.token,
             function (nowFollowing) {
                 page.isFollowing = nowFollowing;
-                Toast.show(nowFollowing ? i18n.tr("Following") : i18n.tr("Unfollowed"));
+                Toast.show(nowFollowing ? Lang.tr("Following") : Lang.tr("Unfollowed"));
             },
             function (err) {
                 page.isFollowing = was;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Action failed."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Action failed."));
             });
+    }
+
+    function _voteCache() {
+        VoteService._updateCache(page.video.author, page.video.permlink, page.upvoted, page.flagged, page.voteCount, page.payout);
+    }
+    function _voteApply(r) {
+        page.voteBusy = false;
+        if (r.payout) page.payout = r.payout;
+    }
+    function _voteFail(e) {
+        page.voteBusy = false;
+        var msg = (e && e.message) ? e.message.toLowerCase() : "";
+        if (msg.indexOf("already") >= 0) {
+            if (!page.upvoted) { page.voteCount++; page.upvoted = true; page._voteCache(); }
+            return;
+        }
+        Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
+    }
+    function _sendUpvote(weight) {
+        page.voteBusy = true;
+        VoteService.upvote(Config.baseUrl, page.video.author, page.video.permlink, "post", weight, Session.token,
+            function (r) {
+                if (!page.upvoted) page.voteCount++;
+                page.upvoted = true; page.flagged = false;
+                page._voteApply(r); page._voteCache();
+                Toast.success(Lang.tr("Upvoted %1%").arg(weight));
+            }, page._voteFail);
+    }
+    function doUpvote() {
+        if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
+        if (page.voteBusy) return;
+        if (page.upvoted) {
+            page.voteBusy = true;
+            VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
+                function (r) { page.upvoted = false; page.voteCount = Math.max(0, page.voteCount - 1); page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
+                page._voteFail);
+        } else if (!page.onChain) {
+            // Off-chain (DB-only) video: plain one-tap like, no weight popover
+            // (matches fe-serey-web's simpleVote).
+            page._sendUpvote(100);
+        } else {
+            PopupUtils.open(voteWeightDialog);
+        }
+    }
+    function doFlag() {
+        if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
+        if (page.voteBusy) return;
+        page.voteBusy = true;
+        if (page.flagged) {
+            VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
+                function (r) { page.flagged = false; page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
+                page._voteFail);
+        } else {
+            VoteService.flag(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
+                function (r) {
+                    if (page.upvoted) page.voteCount = Math.max(0, page.voteCount - 1);
+                    page.flagged = true; page.upvoted = false;
+                    page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Flagged"));
+                }, page._voteFail);
+        }
+    }
+
+    Component {
+        id: voteWeightDialog
+        Dialog {
+            id: vwDlg
+            title: Lang.tr("Vote Weight")
+            property int selectedWeight: 100
+            Label {
+                width: parent.width
+                text: vwDlg.selectedWeight + "%"
+                font.pixelSize: Style.fontTitle
+                font.weight: Font.Bold
+                color: Style.brand
+                horizontalAlignment: Text.AlignHCenter
+            }
+            Slider {
+                id: vwSlider
+                width: parent.width
+                minimumValue: 1; maximumValue: 100; value: 100; live: true
+                onValueChanged: vwDlg.selectedWeight = Math.round(value)
+                function formatValue(v) { return Math.round(v) + "%" }
+            }
+            Row {
+                width: parent.width
+                spacing: Style.spacingS
+                Repeater {
+                    model: [25, 50, 75, 100]
+                    delegate: AbstractButton {
+                        width: (parent.width - Style.spacingS * 3) / 4
+                        height: units.gu(4)
+                        onClicked: { vwSlider.value = modelData; vwDlg.selectedWeight = modelData; }
+                        Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: vwDlg.selectedWeight === modelData ? Style.brand : Style.iconBackground }
+                        Label { anchors.centerIn: parent; text: modelData + "%"; font.pixelSize: Style.fontSmall; font.weight: Font.DemiBold; color: vwDlg.selectedWeight === modelData ? Style.textOnBrand : Style.textPrimary }
+                    }
+                }
+            }
+            Row {
+                width: parent.width
+                spacing: Style.spacingM
+                Button { width: (parent.width - Style.spacingM) / 2; text: Lang.tr("Cancel"); onClicked: PopupUtils.close(vwDlg) }
+                Button { width: (parent.width - Style.spacingM) / 2; text: Lang.tr("Vote"); color: Style.brand; onClicked: { PopupUtils.close(vwDlg); page._sendUpvote(vwDlg.selectedWeight); } }
+            }
+        }
     }
 
     header: Rectangle {
@@ -223,6 +340,12 @@ Page {
                 // the detail fetch came back empty — guard it.)
                 var serverCount = (result.post && result.post.comments) || 0;
                 page.commentCount = Math.max(serverCount, replies.length);
+                // Seed upvoted from the authoritative voters list when no
+                // session-cache entry exists (list API omits the voters array).
+                if (!VoteService.getCached(video.author, video.permlink)) {
+                    var voters = (result.post && result.post.voters) || [];
+                    page.upvoted = voters.indexOf(Session.username) >= 0;
+                }
             },
             function (err) { /* keep empty */ });
     }
@@ -242,7 +365,7 @@ Page {
     function removeComment(permlinkToRemove) {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
-        Toast.success(i18n.tr("Comment deleted"));
+        Toast.success(Lang.tr("Comment deleted"));
     }
 
     function _editIn(list, permlinkToEdit, newBody) {
@@ -260,7 +383,7 @@ Page {
 
     function editComment(permlinkToEdit, newBody) {
         page.comments = page._editIn(page.comments, permlinkToEdit, newBody);
-        Toast.success(i18n.tr("Comment updated"));
+        Toast.success(Lang.tr("Comment updated"));
     }
 
     function _appendReply(list, parentPermlink, reply) {
@@ -288,7 +411,7 @@ Page {
         var text = composer.text.trim();
         if (text.length === 0) return;
         if (!Session.isLoggedIn) {
-            Toast.error(i18n.tr("Please log in first."));
+            Toast.error(Lang.tr("Please log in first."));
             page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"));
             return;
         }
@@ -305,7 +428,7 @@ Page {
                 composer.text = "";
                 var mine = { author: Session.username, permlink: "", body: text,
                              parentAuthor: parentAuthor, parentPermlink: parentPermlink,
-                             date: i18n.tr("just now"), votes: 0, voters: [], replies: [],
+                             date: Lang.tr("just now"), votes: 0, voters: [], replies: [],
                              authorImage: Session.avatarUrl };
                 if (target)
                     page.comments = page._appendReply(page.comments, target.permlink, mine);
@@ -313,12 +436,12 @@ Page {
                     page.comments = [mine].concat(page.comments);
                 page.commentCount = page.commentCount + 1;
                 page.replyTarget = null;
-                Toast.success(i18n.tr("Comment posted"));
+                Toast.success(Lang.tr("Comment posted"));
                 page.loadComments();
             },
             function (err) {
                 page.posting = false;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't post comment."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't post comment."));
             });
     }
 
@@ -328,6 +451,18 @@ Page {
             FollowService.status(Config.baseUrl, Session.username, video.author,
                 function (following) { page.isFollowing = following; },
                 function (err) { /* keep false */ });
+        }
+        // Init vote state
+        var cached = VoteService.getCached(page.video.author || "", page.video.permlink || "")
+        if (cached) {
+            page.voteCount = cached.votes
+            page.upvoted   = cached.upvoted
+            page.flagged   = cached.flagged || false
+            page.payout    = cached.payout  || ""
+        } else {
+            page.voteCount = page.video.votes || 0
+            page.upvoted   = (page.video.voters || []).indexOf(Session.username) >= 0
+            page.payout    = page.video.payout || ""
         }
         // Load comments
         page.loadComments();
@@ -352,16 +487,16 @@ Page {
             // Title carries the video name so the dialog reads clearly on its own
             // (HIG "drop-the-title test"). Falls back when the title is missing.
             title: (page.video && page.video.title)
-                   ? i18n.tr("Remove “%1”?").arg(page.video.title)
-                   : i18n.tr("Remove download?")
-            text: i18n.tr("This video will no longer be available offline.")
+                   ? Lang.tr("Remove “%1”?").arg(page.video.title)
+                   : Lang.tr("Remove download?")
+            text: Lang.tr("This video will no longer be available offline.")
             Button {
-                text: i18n.tr("Remove")
+                text: Lang.tr("Remove")
                 color: Style.danger
                 onClicked: { PopupUtils.close(rdlg); Downloads.remove((page.video && page.video.permlink) || ""); }
             }
             Button {
-                text: i18n.tr("Cancel")
+                text: Lang.tr("Cancel")
                 onClicked: PopupUtils.close(rdlg)
             }
         }
@@ -461,9 +596,14 @@ Page {
                 text: page.video.title || ""
                 font.pixelSize: Style.fontLarge
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textPrimary
                 wrapMode: Text.WordWrap
+            }
+
+            OffChainBadge {
+                x: Style.spacingM
+                onChain: page.onChain
             }
 
             Item { width: 1; height: Style.spacingS }
@@ -537,7 +677,7 @@ Page {
                     Label {
                         id: moreLabel
                         anchors.centerIn: parent
-                        text: i18n.tr("...more")
+                        text: Lang.tr("...more")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
@@ -546,18 +686,89 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Action pills: Follow + Share
-            Row {
+            // Single action row: Upvote | Downvote | Follow | ··· | Share | Download
+            RowLayout {
                 x: Style.spacingM
+                width: parent.width - Style.spacingM * 2
+                height: units.gu(4.5)
                 spacing: Style.spacingS
 
-                // Follow pill
+                // Upvote
+                AbstractButton {
+                    Layout.preferredHeight: units.gu(4.5)
+                    Layout.preferredWidth: upvoteInner.implicitWidth + Style.spacingM
+                    enabled: !page.voteBusy
+                    onClicked: page.doUpvote()
+                    Row {
+                        id: upvoteInner
+                        anchors.centerIn: parent
+                        spacing: Style.spacingXs
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(2.5); height: width
+                            name: "thumb-up"
+                            color: page.upvoted ? Style.brand : Style.textSecondary
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: page.voteCount
+                            font.pixelSize: Style.fontRegular
+                            color: page.upvoted ? Style.brand : Style.textPrimary
+                        }
+                    }
+                }
+
+                // Downvote / flag
+                AbstractButton {
+                    Layout.preferredHeight: units.gu(4.5)
+                    Layout.preferredWidth: units.gu(3.5)
+                    enabled: !page.voteBusy
+                    onClicked: page.doFlag()
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: "thumb-down"
+                        color: page.flagged ? Style.danger : Style.textSecondary
+                    }
+                }
+
+                // Busy spinner while voting
+                ActivityIndicator {
+                    visible: page.voteBusy
+                    running: page.voteBusy
+                    Layout.preferredHeight: units.gu(2.5)
+                    Layout.preferredWidth: units.gu(2.5)
+                }
+
+                Item { Layout.fillWidth: true }
+
+                // Share — icon only with border
+                AbstractButton {
+                    visible: (page.video.author || "").length > 0 && (page.video.permlink || "").length > 0
+                    Layout.preferredHeight: units.gu(4.5)
+                    Layout.preferredWidth: units.gu(4.5)
+                    onClicked: Qt.openUrlExternally("https://serey.io/authors/@" + page.video.author + "/" + page.video.permlink)
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Style.pillRadius
+                        color: "transparent"
+                        border.width: units.dp(1.5)
+                        border.color: Style.divider
+                    }
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: "share"
+                        color: Style.textPrimary
+                    }
+                }
+
+                // Follow — icon only when not following, icon + "Following" when following
                 AbstractButton {
                     visible: (page.video.author || "") !== "" && page.video.author !== Session.username
-                    width: followRow.width + Style.spacingM * 2
-                    height: units.gu(4.5)
-                    onClicked: page.toggleFollow()  // Follow pill (flat, below)
-
+                    Layout.preferredHeight: units.gu(4.5)
+                    Layout.preferredWidth: followInner.implicitWidth + Style.spacingM * 2
+                    onClicked: page.toggleFollow()
                     Rectangle {
                         anchors.fill: parent
                         radius: Style.pillRadius
@@ -566,7 +777,7 @@ Page {
                         border.color: Style.brand
                     }
                     Row {
-                        id: followRow
+                        id: followInner
                         anchors.centerIn: parent
                         spacing: Style.spacingXs
                         Icon {
@@ -577,69 +788,31 @@ Page {
                         }
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: page.isFollowing ? i18n.tr("Following") : i18n.tr("Follow")
+                            visible: page.isFollowing
+                            text: Lang.tr("Following")
                             font.pixelSize: Style.fontSmall
                             font.weight: Font.DemiBold
-                            color: page.isFollowing ? Style.brand : Style.textOnBrand
+                            color: Style.brand
                         }
                     }
                 }
 
-                // Share pill
-                AbstractButton {
-                    visible: (page.video.author || "").length > 0 && (page.video.permlink || "").length > 0
-                    width: shareRow.width + Style.spacingM * 2
-                    height: units.gu(4.5)
-                    onClicked: Qt.openUrlExternally("https://serey.io/authors/@" + page.video.author + "/" + page.video.permlink)
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Style.pillRadius
-                        color: "transparent"
-                        border.width: units.dp(1.5)
-                        border.color: Style.divider
-                    }
-                    Row {
-                        id: shareRow
-                        anchors.centerIn: parent
-                        spacing: Style.spacingXs
-                        Icon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: units.gu(2); height: width
-                            name: "share"
-                            color: Style.textPrimary
-                        }
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: i18n.tr("Share")
-                            font.pixelSize: Style.fontSmall
-                            font.weight: Font.DemiBold
-                            color: Style.textPrimary
-                        }
-                    }
-                }
-
-                // Download pill — Serey/direct files only (hidden for embeds, which
-                // have no downloadable bytes). Tri-state: Download → progress% →
-                // Saved. All reactivity is keyed off Downloads.rev.
+                // Download — icon only with border (tick when saved, spinner when busy)
                 AbstractButton {
                     id: dlBtn
                     visible: page.remoteDirectUrl().length > 0 || page.isYouTube()
                     readonly property string _pl: (page.video && page.video.permlink) || ""
                     readonly property var _active: (Downloads.rev, Downloads.activeFor(_pl))
                     readonly property bool _saved: (Downloads.rev, Downloads.isSaved(_pl))
-                    // Busy = the download daemon is fetching, or (YouTube) we're still
-                    // resolving the stream URL before the daemon can start.
                     readonly property bool _busy: !!_active || page.ytExtracting
-                    width: dlRow.width + Style.spacingM * 2
-                    height: units.gu(4.5)
+                    Layout.preferredHeight: units.gu(4.5)
+                    Layout.preferredWidth: units.gu(4.5)
                     onClicked: {
-                        if (_busy) return;                    // in flight — ignore taps
+                        if (_busy) return;
                         if (_saved) PopupUtils.open(removeDialog);
                         else if (page.remoteDirectUrl().length > 0) Downloads.start(page.video, page.remoteDirectUrl());
                         else if (page.isYouTube()) page.downloadYouTube();
                     }
-
                     Rectangle {
                         anchors.fill: parent
                         radius: Style.pillRadius
@@ -647,33 +820,18 @@ Page {
                         border.width: dlBtn._saved ? 0 : units.dp(1.5)
                         border.color: Style.divider
                     }
-                    Row {
-                        id: dlRow
+                    ActivityIndicator {
                         anchors.centerIn: parent
-                        spacing: Style.spacingXs
-                        Icon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: units.gu(2); height: width
-                            name: dlBtn._saved ? "tick" : "save"
-                            color: dlBtn._saved ? Style.textOnBrand : Style.textPrimary
-                            visible: !dlBtn._busy
-                        }
-                        ActivityIndicator {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: units.gu(2); height: width
-                            running: dlBtn._busy
-                            visible: running
-                        }
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: dlBtn._active
-                                  ? (Math.round(dlBtn._active.progress) + "%")
-                                  : (page.ytExtracting ? i18n.tr("Preparing…")
-                                                       : (dlBtn._saved ? i18n.tr("Saved") : i18n.tr("Download")))
-                            font.pixelSize: Style.fontSmall
-                            font.weight: Font.DemiBold
-                            color: dlBtn._saved ? Style.textOnBrand : Style.textPrimary
-                        }
+                        width: units.gu(2.5); height: width
+                        running: dlBtn._busy
+                        visible: dlBtn._busy
+                    }
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: dlBtn._saved ? "tick" : "save"
+                        color: dlBtn._saved ? Style.textOnBrand : Style.textPrimary
+                        visible: !dlBtn._busy
                     }
                 }
             }
@@ -701,7 +859,7 @@ Page {
                     }
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: i18n.tr("Comments (%1)").arg(page.commentCount)
+                        text: Lang.tr("Comments (%1)").arg(page.commentCount)
                         font.pixelSize: Style.fontMedium
                         font.weight: Font.DemiBold
                         color: Style.textPrimary
@@ -713,7 +871,7 @@ Page {
                     spacing: Style.spacingXs
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: i18n.tr("View all")
+                        text: Lang.tr("View all")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
@@ -733,7 +891,7 @@ Page {
             // More Videos
             Label {
                 x: Style.spacingM
-                text: i18n.tr("More Videos")
+                text: Lang.tr("More Videos")
                 font.pixelSize: Style.fontMedium
                 font.weight: Font.DemiBold
                 color: Style.textPrimary
@@ -812,7 +970,7 @@ Page {
 
                 Label {
                     anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    text: i18n.tr("Comments")
+                    text: Lang.tr("Comments")
                     font.pixelSize: Style.fontMedium
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
@@ -849,7 +1007,7 @@ Page {
                     Label {
                         visible: page.comments.length === 0
                         x: Style.spacingM
-                        text: i18n.tr("No comments yet. Be the first!")
+                        text: Lang.tr("No comments yet. Be the first!")
                         textSize: Label.Small
                         color: Style.textSecondary
                     }
@@ -889,7 +1047,7 @@ Page {
                     Item { width: 1; height: units.gu(3) }
 
                     Label {
-                        text: page.replyTarget ? i18n.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                        text: page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
@@ -899,7 +1057,7 @@ Page {
                         onClicked: page.cancelReply()
                         Label {
                             id: cmtCancelLabel
-                            text: i18n.tr("Cancel")
+                            text: Lang.tr("Cancel")
                             font.pixelSize: Style.fontSmall
                             font.weight: Font.DemiBold
                             color: Style.brand
@@ -927,8 +1085,8 @@ Page {
                                 leftMargin: Style.spacingM; rightMargin: Style.spacingM
                             }
                             visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
-                            text: Session.isLoggedIn ? i18n.tr("Post a comment…") : i18n.tr("Log in to comment…")
-                            font.family: Style.fontFamily
+                            text: Session.isLoggedIn ? Lang.tr("Post a comment…") : Lang.tr("Log in to comment…")
+                            font.family: Style.fontFor(text)
                             color: Style.textSecondary
                             elide: Text.ElideRight
                         }
@@ -945,7 +1103,7 @@ Page {
                                 verticalCenter: parent.verticalCenter
                                 leftMargin: Style.spacingM; rightMargin: Style.spacingM
                             }
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             font.pixelSize: Style.fontRegular
                             color: Style.textPrimary
                             clip: true
@@ -1023,7 +1181,7 @@ Page {
 
                 Label {
                     anchors.centerIn: parent
-                    text: i18n.tr("Description")
+                    text: Lang.tr("Description")
                     font.pixelSize: Style.fontMedium
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
@@ -1068,7 +1226,7 @@ Page {
                         text: page.video.title || ""
                         font.pixelSize: Style.fontLarge
                         font.weight: Font.DemiBold
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: Style.textPrimary
                         wrapMode: Text.WordWrap
                     }
@@ -1096,7 +1254,7 @@ Page {
                                 }
                                 Label {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: i18n.tr("Likes")
+                                    text: Lang.tr("Likes")
                                     font.pixelSize: Style.fontSmall
                                     color: Style.textSecondary
                                 }
@@ -1120,7 +1278,7 @@ Page {
                                 }
                                 Label {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: i18n.tr("Comments")
+                                    text: Lang.tr("Comments")
                                     font.pixelSize: Style.fontSmall
                                     color: Style.textSecondary
                                 }
@@ -1144,7 +1302,7 @@ Page {
                                 }
                                 Label {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: i18n.tr("Date")
+                                    text: Lang.tr("Date")
                                     font.pixelSize: Style.fontSmall
                                     color: Style.textSecondary
                                 }
@@ -1175,11 +1333,21 @@ Page {
                                 t = t.replace(/<(?!\/?(?:b|i|u|a)\b)[^>]+>/g, "");
                                 t = t.replace(/&nbsp;/g, " ");
                                 t = t.replace(/&amp;/g, "&");
+                                // Decode numeric entities (smart quotes etc.) that
+                                // StyledText can't render; keep &,<,> encoded.
+                                t = t.replace(/&#(\d+);/g, function (mm, n) {
+                                    var code = parseInt(n, 10);
+                                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+                                });
+                                t = t.replace(/&#x([0-9a-fA-F]+);/gi, function (mm, n) {
+                                    var code = parseInt(n, 16);
+                                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+                                });
                                 t = t.replace(/\n{3,}/g, "\n\n");
                                 return t.trim();
                             }
                             font.pixelSize: Style.fontRegular
-                            font.family: Style.fontFamily
+                            font.family: Style.fontFor(text)
                             color: Style.textPrimary
                             wrapMode: Text.WordWrap
                             textFormat: Text.StyledText

@@ -28,6 +28,9 @@ Page {
     property string thumbUrl: ""       // hosted thumbnail URL (best-effort)
     property bool uploadingVideo: false
     property bool grabbingThumb: false
+    // "Post to blockchain": on = broadcast on-chain (default), off = save to the
+    // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
+    property bool postToBlockchain: true
 
     readonly property bool hasCommunity: Config.communityId > 0
     readonly property bool canPublish: !page.submitting && !page.uploadingVideo
@@ -43,9 +46,9 @@ Page {
     // --- Actions -----------------------------------------------------------
 
     function pickVideo() {
-        if (!Session.isLoggedIn) { Toast.error(i18n.tr("Please log in first.")); return; }
+        if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
         if (!page.hasCommunity) {
-            Toast.error(i18n.tr("Pick a community (not Global) from the top bar first."));
+            Toast.error(Lang.tr("Pick a community (not Global) from the top bar first."));
             return;
         }
         if (page.uploadingVideo) return;
@@ -62,12 +65,12 @@ Page {
             function (url) {
                 page.uploadingVideo = false;
                 page.videoUrl = url;
-                Toast.success(i18n.tr("Video uploaded"));
+                Toast.success(Lang.tr("Video uploaded"));
             },
             function (err) {
                 page.uploadingVideo = false;
                 page.videoFileUrl = "";
-                Toast.error((err && err.message) ? err.message : i18n.tr("Video upload failed."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Video upload failed."));
             });
 
         page.grabbingThumb = true;
@@ -92,18 +95,19 @@ Page {
             body: descField.text.trim(),
             videoUrl: page.videoUrl,
             thumbUrl: page.thumbUrl,
+            postToBlockchain: page.postToBlockchain,
             communityId: Config.communityId,
             communityName: Config.communityName
         }, Session.token,
         function (data) {
             page.submitting = false;
-            Toast.success(i18n.tr("Video published!"));
+            Toast.success(Lang.tr("Video published!"));
             page.saved();
             page.pageStack.pop();
         },
         function (err) {
             page.submitting = false;
-            Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't publish video."));
+            Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't publish video."));
         });
     }
 
@@ -146,9 +150,9 @@ Page {
 
         Label {
             anchors { left: parent.left; leftMargin: units.gu(7); right: pubBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            text: i18n.tr("Upload Video")
+            text: Lang.tr("Upload Video")
             font.pixelSize: Style.fontLarge
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
             elide: Text.ElideRight
         }
@@ -169,7 +173,7 @@ Page {
             Label {
                 id: pubLabel
                 anchors.centerIn: parent
-                text: page.submitting ? i18n.tr("Posting…") : i18n.tr("Publish")
+                text: page.submitting ? Lang.tr("Posting…") : Lang.tr("Publish")
                 font.pixelSize: Style.fontSmall
                 font.weight: Font.DemiBold
                 color: parent.enabled ? Style.textOnBrand : Style.textSecondary
@@ -217,9 +221,9 @@ Page {
                 Label {
                     id: gateLabel
                     anchors { fill: parent; margins: Style.spacingM }
-                    text: i18n.tr("Pick a community (not Global) from the top bar to post a video.")
+                    text: Lang.tr("Pick a community (not Global) from the top bar to post a video.")
                     wrapMode: Text.WordWrap
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontSmall
                     color: Style.textSecondary
                     verticalAlignment: Text.AlignVCenter
@@ -234,7 +238,7 @@ Page {
                 TextEdit {
                     id: titleField
                     anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: Style.spacingS }
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     wrapMode: Text.WordWrap
@@ -242,10 +246,10 @@ Page {
                 Label {
                     anchors { left: titleField.left; top: titleField.top }
                     visible: titleField.text.length === 0 && !titleField.activeFocus
-                    text: i18n.tr("Video title")
+                    text: Lang.tr("Video title")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                 }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -262,7 +266,7 @@ Page {
                 TextEdit {
                     id: descField
                     anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: Style.spacingS }
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     wrapMode: Text.WordWrap
@@ -270,10 +274,10 @@ Page {
                 Label {
                     anchors { left: descField.left; top: descField.top }
                     visible: descField.text.length === 0 && !descField.activeFocus
-                    text: i18n.tr("Describe your video...")
+                    text: Lang.tr("Describe your video...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                 }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -282,8 +286,47 @@ Page {
                 }
             }
 
+            // Post to blockchain toggle
+            Row {
+                width: parent.width
+                spacing: Style.spacingM
+
+                Column {
+                    width: parent.width - vidChainSwitch.width - Style.spacingM
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: units.dp(2)
+
+                    Label {
+                        text: Lang.tr("Post to blockchain")
+                        font.pixelSize: Style.fontRegular
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                    }
+                    Label {
+                        width: parent.width
+                        text: page.postToBlockchain
+                            ? Lang.tr("Broadcast on-chain — can earn votes and rewards.")
+                            : Lang.tr("Saved to Serey only — no on-chain record, no voting or rewards.")
+                        font.pixelSize: Style.fontXSmall
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                Switch {
+                    id: vidChainSwitch
+                    anchors.verticalCenter: parent.verticalCenter
+                    checked: page.postToBlockchain
+                    onClicked: page.postToBlockchain = !page.postToBlockchain
+                }
+            }
+
+            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
             Label {
-                text: i18n.tr("Video")
+                text: Lang.tr("Video")
                 font.pixelSize: Style.fontSmall
                 font.weight: Font.DemiBold
                 color: Style.textPrimary
@@ -313,13 +356,13 @@ Page {
                     }
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: i18n.tr("Add video")
+                        text: Lang.tr("Add video")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: i18n.tr("MP4, WEBM, MOV · up to 90 MB")
+                        text: Lang.tr("MP4, WEBM, MOV · up to 90 MB")
                         font.pixelSize: Style.fontXSmall
                         color: Style.textSecondary
                     }
@@ -355,7 +398,7 @@ Page {
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
                         visible: page.uploadingVideo
-                        text: i18n.tr("Uploading video…")
+                        text: Lang.tr("Uploading video…")
                         font.pixelSize: Style.fontSmall
                         color: "white"
                     }

@@ -10,6 +10,7 @@ import "services/CommunityService.js" as CommunityService
 import "services/AccountService.js" as AccountService
 import "services/Http.js" as Http
 import "services/NotificationService.js" as NotificationService
+import "services/BlockedUsers.js" as BlockedUsers
 
 /*
  * Application shell: a persistent bottom tab bar with one PageStack per tab so
@@ -47,7 +48,7 @@ MainView {
         Http.setUnauthorizedHandler(function () {
             if (!Session.isLoggedIn) return;
             Session.clear();
-            Toast.error(i18n.tr("Your session expired. Please log in again."));
+            Toast.error(Lang.tr("Your session expired. Please log in again."));
         });
 
         // NOTE: we deliberately do NOT validate the token via /auth/authenticated
@@ -74,6 +75,16 @@ MainView {
                 function (user) { Session.avatarUrl = user.profileUrl; },
                 function (err) { /* keep letter-fallback avatar */ });
         }
+        _syncBlockedUsers();
+    }
+
+    // Keep the local blocked-users set (used to filter feeds) in step with the
+    // server's authoritative list — on launch and whenever the session changes.
+    function _syncBlockedUsers() {
+        if (!Session.isLoggedIn) { BlockedUsers.replaceAll([]); return; }
+        AccountService.listBlocked(Config.baseUrl, Session.token,
+            function (list) { BlockedUsers.replaceAll(list); },
+            function (err) { /* offline / failed — keep last-known local set */ });
     }
 
     // ── Push / local notification handles (created dynamically) ─────────────
@@ -136,8 +147,8 @@ MainView {
                 var notifs = root.pushClient.notifications
                 if (notifs.length > 0) {
                     var msg = notifs.length === 1
-                        ? i18n.tr("You have 1 new notification")
-                        : i18n.tr("You have %1 new notifications").arg(notifs.length)
+                        ? Lang.tr("You have 1 new notification")
+                        : Lang.tr("You have %1 new notifications").arg(notifs.length)
                     root._showNotif(msg)
                     root.lastUnreadCount = -1
                     root.pushClient.clearAll()
@@ -155,7 +166,7 @@ MainView {
         triggeredOnStart: true
         onTriggered: {
             if (!Session.isLoggedIn || !Session.pushEnabled) return
-            NotificationService.listSerey(Config.baseUrl, Session.token, 20, 0,
+            NotificationService.listSerey(Config.baseUrl, Session.token, 50, 0,
                 function (items) {
                     var count = 0
                     for (var i = 0; i < items.length; i++) {
@@ -165,8 +176,8 @@ MainView {
                     if (count > root.lastUnreadCount) {
                         var diff = count - root.lastUnreadCount
                         root._showNotif(diff === 1
-                            ? i18n.tr("You have 1 new notification")
-                            : i18n.tr("You have %1 new notifications").arg(diff))
+                            ? Lang.tr("You have 1 new notification")
+                            : Lang.tr("You have %1 new notifications").arg(diff))
                     }
                     root.lastUnreadCount = count
                 },
@@ -176,7 +187,14 @@ MainView {
 
     Connections {
         target: Session
+        // The blocked set is per-account; resync (or clear) it whenever the auth
+        // token changes. Keying off the token (not isLoggedIn) means switching
+        // accounts reloads the new account's blocks even if the token is swapped
+        // directly, so one account's blocks never leak into another's feed.
+        function onTokenChanged() { root._syncBlockedUsers() }
         function onIsLoggedInChanged() {
+            // Blocked-set sync is handled by onTokenChanged (token always changes
+            // on login/logout/switch), so it isn't repeated here.
             if (!Session.isLoggedIn) {
                 root.lastUnreadCount = -1
             } else if (root.pushToken !== "") {
@@ -329,10 +347,10 @@ MainView {
 
             Repeater {
                 model: [
-                    { label: i18n.tr("Homepage"), icon: "home" },
-                    { label: i18n.tr("News"),     icon: "stock_note" },
-                    { label: i18n.tr("Video"),    icon: "camcorder" },
-                    { label: i18n.tr("Settings"), icon: "settings" }
+                    { label: Lang.tr("Homepage"), icon: "home" },
+                    { label: Lang.tr("News"),     icon: "stock_note" },
+                    { label: Lang.tr("Video"),    icon: "camcorder" },
+                    { label: Lang.tr("Settings"), icon: "settings" }
                 ]
                 delegate: AbstractButton {
                     width: navBar.width / 4

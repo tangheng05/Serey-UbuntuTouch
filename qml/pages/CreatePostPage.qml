@@ -19,6 +19,9 @@ Page {
     readonly property int titleMaxLength: 250
     property string coverImageUrl: ""
     property bool uploading: false
+    // "Post to blockchain": on = broadcast on-chain (default), off = save to the
+    // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
+    property bool postToBlockchain: true
 
     // When set, this page edits an existing post (sends its permlink to update in
     // place) instead of creating a new one. `saved` lets the opener refresh.
@@ -60,6 +63,8 @@ Page {
             // primaryCategory is a scalar (the categories array is wrapped by the
             // feed ListModel and loses [] indexing).
             page.selectedCategory = page.editPost.primaryCategory || "";
+            // Prefill the toggle from the saved post (default on if absent).
+            page.postToBlockchain = (page.editPost.postToBlockchain !== false);
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
@@ -94,7 +99,7 @@ Page {
 
         Label {
             anchors.centerIn: parent
-            text: page.isEdit ? i18n.tr("Edit Post") : i18n.tr("Create Post")
+            text: page.isEdit ? Lang.tr("Edit Post") : Lang.tr("Create Post")
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
             color: Style.textPrimary
@@ -115,8 +120,8 @@ Page {
             Label {
                 id: postPillLabel
                 anchors.centerIn: parent
-                text: page.submitting ? (page.isEdit ? i18n.tr("Saving…") : i18n.tr("Posting…"))
-                                      : (page.isEdit ? i18n.tr("Save") : i18n.tr("Publish"))
+                text: page.submitting ? (page.isEdit ? Lang.tr("Saving…") : Lang.tr("Posting…"))
+                                      : (page.isEdit ? Lang.tr("Save") : Lang.tr("Publish"))
                 font.pixelSize: Style.fontSmall
                 font.weight: Font.DemiBold
                 color: parent.enabled ? Style.textOnBrand : Style.textSecondary
@@ -147,14 +152,14 @@ Page {
         onUploadingChanged: page.uploading = uploading
         onUploaded: {
             page.coverImageUrl = url;
-            Toast.success(i18n.tr("Cover image uploaded"));
+            Toast.success(Lang.tr("Cover image uploaded"));
         }
         onFailed: Toast.error(message)
     }
 
     function publish() {
         if (!Session.isLoggedIn) {
-            Toast.error(i18n.tr("Please log in first."));
+            Toast.error(Lang.tr("Please log in first."));
             return;
         }
         // Prepend cover image to body if one was uploaded
@@ -172,6 +177,7 @@ Page {
             communityName: page.isEdit ? (page.editPost.community || Config.communityName)
                                        : Config.communityName,
             categories: page.selectedCategory || "general",
+            postToBlockchain: page.postToBlockchain,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
             // Also send the cover in `images` (→ json_meta.image), not just the
             // body <img>. The web derives a post's thumbnail from json_meta.image,
@@ -182,15 +188,15 @@ Page {
         }, Session.token,
         function (data) {
             page.submitting = false;
-            Toast.success(page.isEdit ? i18n.tr("Post updated!") : i18n.tr("Post published!"));
+            Toast.success(page.isEdit ? Lang.tr("Post updated!") : Lang.tr("Post published!"));
             page.saved();
             page.pageStack.pop();
         },
         function (err) {
             page.submitting = false;
             Toast.error((err && err.message) ? err.message
-                                             : (page.isEdit ? i18n.tr("Couldn't update post.")
-                                                            : i18n.tr("Couldn't publish post.")));
+                                             : (page.isEdit ? Lang.tr("Couldn't update post.")
+                                                            : Lang.tr("Couldn't publish post.")));
         });
     }
 
@@ -261,7 +267,7 @@ Page {
                         leftMargin: Style.spacingM; rightMargin: Style.spacingM
                     }
                     font.pixelSize: Style.fontMedium
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textPrimary
                     clip: true
                     maximumLength: page.titleMaxLength
@@ -273,10 +279,10 @@ Page {
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
                     visible: titleField.text.length === 0 && !titleField.activeFocus && !Qt.inputMethod.visible
-                    text: i18n.tr("Enter title")
+                    text: Lang.tr("Enter title")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontMedium
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                 }
 
                 Label {
@@ -306,7 +312,7 @@ Page {
                         fill: parent
                         margins: Style.spacingM
                     }
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     wrapMode: Text.WordWrap
@@ -318,10 +324,10 @@ Page {
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
                     visible: bodyArea.text.length === 0 && !bodyArea.activeFocus && !Qt.inputMethod.visible
-                    text: i18n.tr("Write your article here...")
+                    text: Lang.tr("Write your article here...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                 }
             }
 
@@ -347,9 +353,9 @@ Page {
                         anchors.verticalCenter: parent.verticalCenter
                         text: page.selectedCategory.length > 0
                             ? page.selectedCategory
-                            : i18n.tr("Select category")
+                            : Lang.tr("Select category")
                         font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFamily
+                        font.family: Style.fontFor(text)
                         color: page.selectedCategory.length > 0 ? Style.textPrimary : Style.textSecondary
                     }
                     Icon {
@@ -358,6 +364,56 @@ Page {
                         width: units.gu(2); height: width
                         name: "next"
                         color: Style.textSecondary
+                    }
+                }
+            }
+
+            // Post to blockchain toggle
+            Rectangle {
+                width: parent.width
+                height: chainRow.implicitHeight + Style.spacingM * 2
+                radius: Style.cardRadius
+                color: "transparent"
+                border.width: units.dp(1.5)
+                border.color: Style.divider
+
+                Row {
+                    id: chainRow
+                    anchors {
+                        left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
+                        leftMargin: Style.spacingM; rightMargin: Style.spacingM
+                    }
+                    spacing: Style.spacingM
+
+                    Column {
+                        width: parent.width - chainSwitch.width - Style.spacingM
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: units.dp(2)
+
+                        Label {
+                            text: Lang.tr("Post to blockchain")
+                            font.pixelSize: Style.fontRegular
+                            font.weight: Font.DemiBold
+                            font.family: Style.fontFor(text)
+                            color: Style.textPrimary
+                        }
+                        Label {
+                            width: parent.width
+                            text: page.postToBlockchain
+                                ? Lang.tr("Broadcast on-chain — can earn votes and rewards.")
+                                : Lang.tr("Saved to Serey only — no on-chain record, no voting or rewards.")
+                            font.pixelSize: Style.fontXSmall
+                            font.family: Style.fontFor(text)
+                            color: Style.textSecondary
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    Switch {
+                        id: chainSwitch
+                        anchors.verticalCenter: parent.verticalCenter
+                        checked: page.postToBlockchain
+                        onClicked: page.postToBlockchain = !page.postToBlockchain
                     }
                 }
             }
@@ -438,7 +494,7 @@ Page {
 
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: i18n.tr("Add cover image")
+                        text: Lang.tr("Add cover image")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
@@ -594,7 +650,7 @@ Page {
                     width: parent.width; height: units.gu(5)
                     Label {
                         anchors.centerIn: parent
-                        text: i18n.tr("Select Category")
+                        text: Lang.tr("Select Category")
                         font.pixelSize: Style.fontMedium
                         font.weight: Font.DemiBold
                         color: Style.textPrimary
@@ -622,7 +678,7 @@ Page {
                     Label {
                         anchors.centerIn: parent
                         visible: !page.categoriesLoading
-                        text: i18n.tr("No categories for this community")
+                        text: Lang.tr("No categories for this community")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }

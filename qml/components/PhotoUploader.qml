@@ -1,6 +1,7 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
+import "../Session"
 import "../services/Uploads.js" as Uploads
 
 /*
@@ -50,7 +51,7 @@ Item {
     function _uploadFile(fileUrl, gen) {
         Uploads.uploadImage(Config.uploadUrl, Config.uploadSecret, fileUrl,
             function (url) { if (gen === root._gen) root._finishOk(url); },
-            function (err) { if (gen === root._gen) root._finishErr((err && err.message) || i18n.tr("Upload failed.")); });
+            function (err) { if (gen === root._gen) root._finishErr((err && err.message) || Lang.tr("Upload failed.")); });
     }
 
     function _onDecoded() {
@@ -83,7 +84,7 @@ Item {
         interval: root.timeoutMs
         onTriggered: {
             Uploads.abort();
-            root._finishErr(i18n.tr("Upload timed out. Try a smaller image or check your connection."));
+            root._finishErr(Lang.tr("Upload timed out. Try a smaller image or check your connection."));
         }
     }
 

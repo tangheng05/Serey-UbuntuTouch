@@ -12,9 +12,9 @@ Page {
     property string errorMsg: ""
 
     header: PageHeader {
-        title: i18n.tr("Blocked Users")
+        title: Lang.tr("Blocked Users")
         leadingActionBar.actions: [
-            Action { iconName: "back"; text: i18n.tr("Back"); onTriggered: page.pageStack.pop() }
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
         ]
     }
 
@@ -33,7 +33,7 @@ Page {
             },
             function (err) {
                 page.loading = false
-                page.errorMsg = err.message || i18n.tr("Failed to load blocked users.")
+                page.errorMsg = err.message || Lang.tr("Failed to load blocked users.")
             })
     }
 
@@ -42,11 +42,11 @@ Page {
         AccountService.toggleBlock(Config.baseUrl, Session.token, username, "REMOVE",
             function () {
                 blockedModel.remove(index)
-                Toast.show(i18n.tr("@%1 unblocked.").arg(username))
+                Toast.show(Lang.tr("@%1 unblocked.").arg(username))
             },
             function (err) {
                 blockedModel.setProperty(index, "unblocking", false)
-                Toast.error(err.message || i18n.tr("Failed to unblock."))
+                Toast.error(err.message || Lang.tr("Failed to unblock."))
             })
     }
 
@@ -111,7 +111,7 @@ Page {
                     text: model.username || ""
                     font.pixelSize: Style.fontRegular
                     font.weight: Font.DemiBold
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textPrimary
                     elide: Text.ElideRight
                     width: parent.width
@@ -119,7 +119,7 @@ Page {
                 Label {
                     text: "@" + (model.username || "")
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                     elide: Text.ElideRight
                     width: parent.width
@@ -141,10 +141,10 @@ Page {
                 }
                 Label {
                     anchors.centerIn: parent
-                    text: model.unblocking ? i18n.tr("Unblocking…") : i18n.tr("Unblock")
+                    text: model.unblocking ? Lang.tr("Unblocking…") : Lang.tr("Unblock")
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: model.unblocking ? Style.textSecondary : Style.danger
                 }
                 MouseArea {
@@ -172,7 +172,7 @@ Page {
         anchors { top: parent.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: !page.loading && page.errorMsg === "" && blockedModel.count === 0
         iconName: "contact"
-        message: i18n.tr("No blocked users")
+        message: Lang.tr("No blocked users")
     }
 
     ErrorState {

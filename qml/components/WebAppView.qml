@@ -59,6 +59,26 @@ Item {
         }
     }
 
+    // Also freeze on whole-app background/suspend, not just tab-hide: a live
+    // WebEngineView left Active across a long OS suspend loses its GPU/shared-mem
+    // context and SIGBUSes on resume (device log: status=7/BUS moments after a
+    // 54-min suspend). QtWebEngine rejects Active->Frozen while the page is
+    // visible, so hide the view first. This is done IMPERATIVELY and only on an
+    // actual state change — never at startup — so a quirky initial state can't
+    // leave the Homepage blank.
+    property bool appActive: Qt.application.state === Qt.ApplicationActive
+    onAppActiveChanged: {
+        if (!appActive) {
+            webView.visible = false;
+            appFreezeTimer.restart();
+        } else {
+            appFreezeTimer.stop();
+            webView.visible = true;
+            if (!webAppView.suspended)
+                webView.lifecycleState = webAppView._lcActive;
+        }
+    }
+
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
     signal getUserInfoRequested()
@@ -76,6 +96,9 @@ Item {
     WebEngineView {
         id: webView
         anchors.fill: parent
+        // `visible` is left to inherit normally; onAppActiveChanged toggles it
+        // imperatively on app background/foreground so the Active->Frozen
+        // transition (rejected while visible) becomes legal.
         profile: mobileProfile
         zoomFactor: webAppView.width > 0 ? webAppView.width / 412 : 1.0
         settings.showScrollBars: false
@@ -135,6 +158,15 @@ Item {
         interval: 300
         repeat: false
         onTriggered: if (webAppView.suspended) webView.lifecycleState = webAppView._lcFrozen
+    }
+
+    // App-suspend counterpart: freeze once the view has been hidden (see
+    // onAppActiveChanged), guarded in case the app was re-activated within the delay.
+    Timer {
+        id: appFreezeTimer
+        interval: 300
+        repeat: false
+        onTriggered: if (!webAppView.appActive) webView.lifecycleState = webAppView._lcFrozen
     }
 
     Rectangle {

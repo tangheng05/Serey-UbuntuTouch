@@ -95,15 +95,18 @@ Page {
     }
 
     function load() {
-        loading = true;
-        errorMsg = "";
+        page.loading = true;
+        page.errorMsg = "";
         PostService.detail(Config.baseUrl, author, permlink, Session.token,
             function (result) {
-                loading = false;
+                page.loading = false;
                 page.post = result.post;
                 page.comments = result.replies || [];
                 page.commentCount = page._countAll(page.comments);
                 page._parseBody();
+                // Deep-link from a comment/reply notification: scroll to the target
+                // once the comment rows have laid out.
+                if (page.scrollToCommentPermlink !== "") scrollToTimer.start();
 
                 // Sync vote bar: cache wins over API data (the feed may have
                 // recorded a vote the detail endpoint hasn't caught up with).
@@ -125,7 +128,7 @@ Page {
                 }
             },
             function (err) {
-                loading = false;
+                page.loading = false;
                 // Offline (or fetch failed): fall back to a saved copy so the
                 // article still reads. If we already have a post (preloaded from
                 // the saved list), keep it and swallow the refresh error.
@@ -174,7 +177,7 @@ Page {
     function removeComment(permlinkToRemove) {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
-        Toast.success(i18n.tr("Comment deleted"));
+        Toast.success(Lang.tr("Comment deleted"));
     }
 
     function _editIn(list, permlinkToEdit, newBody) {
@@ -192,7 +195,7 @@ Page {
 
     function editComment(permlinkToEdit, newBody) {
         page.comments = page._editIn(page.comments, permlinkToEdit, newBody);
-        Toast.success(i18n.tr("Comment updated"));
+        Toast.success(Lang.tr("Comment updated"));
     }
 
     function startReply(comment) {
@@ -210,7 +213,7 @@ Page {
         if (text.length === 0)
             return;
         if (!Session.isLoggedIn) {
-            Toast.error(i18n.tr("Please log in first."));
+            Toast.error(Lang.tr("Please log in first."));
             page.pushLogin();
             return;
         }
@@ -228,7 +231,7 @@ Page {
                 composer.text = "";
                 var mine = { author: Session.username, permlink: "", body: text,
                              parentAuthor: parentAuthor, parentPermlink: parentPermlink,
-                             date: i18n.tr("just now"), votes: 0, voters: [], replies: [],
+                             date: Lang.tr("just now"), votes: 0, voters: [], replies: [],
                              authorImage: Session.avatarUrl };
                 if (target) {
                     page.comments = page._appendReply(page.comments, target.permlink, mine);
@@ -237,7 +240,7 @@ Page {
                 }
                 page.commentCount = page.commentCount + 1;
                 page.replyTarget = null;
-                Toast.success(i18n.tr("Comment posted"));
+                Toast.success(Lang.tr("Comment posted"));
                 // Reload so the optimistic comment gets its real server
                 // permlink — otherwise replying to it would fail with
                 // "parent_permlink is a required field".
@@ -245,7 +248,7 @@ Page {
             },
             function (err) {
                 page.posting = false;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't post comment."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't post comment."));
             });
     }
 
@@ -317,6 +320,17 @@ Page {
                 text = text.replace(/&lt;/g, "<");
                 text = text.replace(/&gt;/g, ">");
                 text = text.replace(/&quot;/g, "\"");
+                // Decode numeric entities (e.g. &#8220; smart quotes, &#8217;
+                // apostrophes) that Text.StyledText can't render — but leave &,<,>
+                // encoded so they aren't mistaken for markup.
+                text = text.replace(/&#(\d+);/g, function (mm, n) {
+                    var code = parseInt(n, 10);
+                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+                });
+                text = text.replace(/&#x([0-9a-fA-F]+);/gi, function (mm, n) {
+                    var code = parseInt(n, 16);
+                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+                });
                 text = text.replace(/\n{3,}/g, "\n\n");
                 text = text.trim();
                 if (text.length > 0)
@@ -343,15 +357,41 @@ Page {
     }
     function openAuthor() { if (page.post) page.openProfile(page.post.author); }
 
+    // Scroll to a specific comment after the layout settles post-load (deep-link
+    // from a notification). Runs off scrollToCommentPermlink, set by the caller.
+    Timer {
+        id: scrollToTimer
+        interval: 350
+        onTriggered: {
+            for (var i = 0; i < page.comments.length; i++) {
+                if (page.comments[i].permlink === page.scrollToCommentPermlink) {
+                    var it = commentsRepeater.itemAt(i)
+                    if (it) {
+                        var targetY = contentCol.y + it.mapToItem(contentCol, 0, 0).y
+                        scroll.contentY = Math.max(0, Math.min(targetY - units.gu(2),
+                                          scroll.contentHeight - scroll.height))
+                    }
+                    return
+                }
+            }
+        }
+    }
+
     KeyboardAwareFlickable {
         id: scroll
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         anchors.bottomMargin: footer.visible ? footer.height + page.kbHeight : 0
+        // Animate in step with the footer's own bottomMargin so the list and the
+        // docked composer move together when the keyboard shows/hides.
+        Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
         visible: page.post !== null
-        onMovementStarted: Qt.inputMethod.hide()
+        // Dismiss the keyboard on scroll, but only when the docked composer is the
+        // focused input — otherwise scrolling while editing a comment inline would
+        // close its keyboard mid-edit.
+        onMovementStarted: if (composer.activeFocus) Qt.inputMethod.hide()
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
@@ -389,9 +429,14 @@ Page {
                 text: page.post ? page.post.title : ""
                 textSize: Label.XLarge
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textPrimary
                 wrapMode: Text.WordWrap
+            }
+
+            OffChainBadge {
+                anchors.horizontalCenter: parent.horizontalCenter
+                onChain: page.post ? (page.post.postToBlockchain !== false) : true
             }
 
             Row {
@@ -557,7 +602,7 @@ Page {
                                 width: parent.width
                                 text: model.content
                                 font.pixelSize: Style.fontMedium
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: Style.textPrimary
                                 wrapMode: Text.WordWrap
                                 textFormat: Text.StyledText
@@ -575,7 +620,7 @@ Page {
             Label {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: i18n.tr("COMMENTS (%1)").arg(page.commentCount)
+                text: Lang.tr("COMMENTS (%1)").arg(page.commentCount)
                 font.pixelSize: Style.fontSmall
                 font.weight: Font.Bold
                 color: Style.textSecondary
@@ -585,7 +630,7 @@ Page {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: page.comments.length === 0
-                text: i18n.tr("No comments yet. Be the first!")
+                text: Lang.tr("No comments yet. Be the first!")
                 textSize: Label.Small
                 color: Style.textSecondary
             }
@@ -645,6 +690,7 @@ Page {
             author: page.author
             permlink: page.permlink
             voteType: "post"
+            onChain: page.post ? (page.post.postToBlockchain !== false) : true
             showComments: false
             showVotersLabel: false
             onRequireLogin: page.pushLogin()
@@ -673,7 +719,7 @@ Page {
             spacing: Style.spacingS
 
             Label {
-                text: page.replyTarget ? i18n.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                text: page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
             }
@@ -683,7 +729,7 @@ Page {
                 onClicked: page.cancelReply()
                 Label {
                     id: cancelLabel
-                    text: i18n.tr("Cancel")
+                    text: Lang.tr("Cancel")
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
                     color: Style.brand
@@ -713,9 +759,9 @@ Page {
                     }
                     visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
                     text: Session.isLoggedIn
-                        ? i18n.tr("Post a comment…")
-                        : i18n.tr("Log in to comment…")
-                    font.family: Style.fontFamily
+                        ? Lang.tr("Post a comment…")
+                        : Lang.tr("Log in to comment…")
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                     elide: Text.ElideRight
                 }
@@ -734,7 +780,7 @@ Page {
                         leftMargin: Style.spacingM
                         rightMargin: Style.spacingM
                     }
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     clip: true

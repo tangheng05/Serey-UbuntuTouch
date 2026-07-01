@@ -22,6 +22,7 @@ QtObject {
     // real avatar instead of the letter-fallback.
     property string avatarUrl: ""
     property bool pushEnabled: true
+    property string language: "en"   // "en" or "nl"
 
     readonly property bool isLoggedIn: token.length > 0
 
@@ -42,6 +43,7 @@ QtObject {
                     if (row.k === "token") session.token = row.v;
                     else if (row.k === "username") session.username = row.v;
                     else if (row.k === "pushEnabled") session.pushEnabled = (row.v !== "false");
+                    else if (row.k === "language") session.language = row.v;
                 }
             });
         } catch (e) {
@@ -78,6 +80,43 @@ QtObject {
                 tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('pushEnabled', ?)", [enabled ? "true" : "false"]);
             });
         } catch (e) { console.warn("Session save pushEnabled error: " + e); }
+    }
+
+    function setLanguage(lang) {
+        language = lang;
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
+                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('language', ?)", [lang]);
+            });
+        } catch (e) { console.warn("Session save language error: " + e); }
+    }
+
+    function saveVote(author, permlink, upvoted, flagged, votes) {
+        if (!author || !permlink) return;
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS votes(k TEXT PRIMARY KEY, upvoted INTEGER, flagged INTEGER, votes INTEGER)");
+                tx.executeSql("INSERT OR REPLACE INTO votes(k, upvoted, flagged, votes) VALUES(?,?,?,?)",
+                    [author + "/" + permlink, upvoted ? 1 : 0, flagged ? 1 : 0, votes]);
+            });
+        } catch (e) { console.warn("Session saveVote error: " + e); }
+    }
+
+    function loadVote(author, permlink) {
+        if (!author || !permlink) return null;
+        var result = null;
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS votes(k TEXT PRIMARY KEY, upvoted INTEGER, flagged INTEGER, votes INTEGER)");
+                var rs = tx.executeSql("SELECT upvoted, flagged, votes FROM votes WHERE k=?",
+                                       [author + "/" + permlink]);
+                var row = rs.rows.length > 0 ? rs.rows.item(0) : null;
+                if (row)
+                    result = { upvoted: !!row.upvoted, flagged: !!row.flagged, votes: row.votes };
+            });
+        } catch (e) { console.warn("Session loadVote error: " + e); }
+        return result;
     }
 
     function clear() {

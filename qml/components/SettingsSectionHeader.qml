@@ -21,7 +21,7 @@ Item {
         text: root.text
         font.pixelSize: Style.fontSmall
         font.weight: Font.DemiBold
-        font.family: Style.fontFamily
+        font.family: Style.fontFor(text)
         color: Style.textSecondary
     }
 }

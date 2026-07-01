@@ -31,7 +31,7 @@ Rectangle {
         wrapMode: TextEdit.Wrap
         clip: true
         font.pixelSize: Style.fontRegular
-        font.family: Style.fontFamily
+        font.family: Style.fontFor(text)
         color: Style.textPrimary
         selectionColor: Style.brand
         selectedTextColor: Style.textOnBrand
@@ -45,10 +45,12 @@ Rectangle {
         Label {
             anchors.fill: parent
             text: root.placeholder
-            visible: input.text.length === 0 && !input.inputMethodComposing && !input.activeFocus && !Qt.inputMethod.visible
+            // Per-field only: NOT Qt.inputMethod.visible (a global singleton that
+            // would blank every other field's placeholder while any one is focused).
+            visible: input.text.length === 0 && !input.inputMethodComposing && !input.activeFocus
             wrapMode: Text.WordWrap
             font.pixelSize: Style.fontRegular
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textSecondary
             opacity: 0.7
         }

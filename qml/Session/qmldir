@@ -1,3 +1,4 @@
 singleton Session 1.0 Session.qml
 singleton Downloads 1.0 Downloads.qml
 singleton SavedPosts 1.0 SavedPosts.qml
+singleton Lang 1.0 Lang.qml

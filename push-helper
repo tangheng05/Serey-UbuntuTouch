@@ -1,0 +1,118 @@
+#!/usr/bin/python3
+"""
+Ubuntu Touch Push Helper for Serey.
+
+The UBports push server delivers a JSON file to this helper. The helper
+reads it, builds a Notification (postal format), and writes it to the
+output file. The system then displays it as a lock-screen / indicator
+notification and optionally launches the app on tap.
+
+Input JSON (from Serey backend via push.ubports.com):
+{
+  "message": "rex-kibreay started following you.",
+  "actor": "rex-kibreay",
+  "type": "FOLLOW",
+  "count": 3
+}
+
+Output JSON (Ubuntu Touch postal format):
+{
+  "notification": {
+    "tag": "serey-notif",
+    "card": {
+      "summary": "Serey",
+      "body": "rex-kibreay started following you.",
+      "popup": true,
+      "persist": true,
+      "actions": ["appid://serey.ubuntu/serey/current-user-version"]
+    },
+    "sound": true,
+    "vibrate": { "duration": 200 }
+  }
+}
+"""
+
+import sys
+import json
+import os
+import glob
+import sqlite3
+
+if len(sys.argv) < 3:
+    sys.exit(1)
+
+input_path = sys.argv[1]
+output_path = sys.argv[2]
+
+# Check if user disabled push notifications in the app settings.
+# The QML LocalStorage DB is under ~/.local/share/serey.ubuntu/Databases/.
+def is_push_enabled():
+    db_dir = os.path.expanduser("~/.local/share/serey.ubuntu/Databases")
+    if not os.path.isdir(db_dir):
+        return True
+    dbs = glob.glob(os.path.join(db_dir, "*.sqlite"))
+    for db_path in dbs:
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.execute("SELECT v FROM auth WHERE k='pushEnabled'")
+            row = cur.fetchone()
+            conn.close()
+            if row and row[0] == "false":
+                return False
+        except Exception:
+            continue
+    return True
+
+if not is_push_enabled():
+    # Write an empty notification so the system doesn't show anything
+    with open(output_path, "w") as f:
+        json.dump({}, f)
+    sys.exit(0)
+
+try:
+    with open(input_path, "r") as f:
+        push_data = json.load(f)
+except Exception:
+    sys.exit(1)
+
+msg = push_data.get("message", "")
+actor = push_data.get("actor", "")
+ntype = push_data.get("type", "")
+count = push_data.get("count", 0)
+notif_id = push_data.get("id", "")
+
+if not msg and count:
+    if count == 1:
+        msg = "You have 1 new notification"
+    else:
+        msg = "You have {} new notifications".format(count)
+
+if not msg:
+    msg = "New activity on Serey"
+
+summary = actor if actor else "Serey"
+tag = "serey-{}".format(notif_id) if notif_id else "serey-{}-{}".format(ntype, actor)
+
+output = {
+    "notification": {
+        "tag": tag,
+        "card": {
+            "summary": summary,
+            "body": msg,
+            "popup": True,
+            "persist": True,
+            "actions": ["appid://serey.ubuntu/serey/current-user-version"]
+        },
+        "sound": {
+            "file": "/usr/share/sounds/lomiri/notifications/Xylo.ogg",
+            "pulse": True
+        },
+        "vibrate": {
+            "pattern": [100, 50, 100],
+            "repeat": 1
+        }
+    }
+}
+
+with open(output_path, "w") as f:
+    json.dump(output, f)

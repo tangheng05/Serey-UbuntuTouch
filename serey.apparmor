@@ -5,6 +5,7 @@
         "webview",
         "content_exchange",
         "audio",
-        "video"
+        "video",
+        "push-notification-client"
     ]
 }

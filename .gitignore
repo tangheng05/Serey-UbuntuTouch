@@ -11,3 +11,7 @@ __pycache__/
 *.swp
 .DS_Store
 Thumbs.db
+*.md
+/docs/ubports-design-concepts
+/docs/ubports-design
+/docs

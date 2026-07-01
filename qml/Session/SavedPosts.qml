@@ -1,0 +1,166 @@
+pragma Singleton
+import QtQuick 2.7
+import QtQuick.LocalStorage 2.0
+import "../Theme"
+
+/*
+ * Registry of blog/news articles saved for offline reading — the text-content
+ * counterpart of Downloads.qml (which saves video files). An article is just its
+ * already-loaded view-model (title + full body HTML + author/date/thumbnail), so
+ * there's nothing to stream: we persist the view-model JSON in SQLite (commits
+ * synchronously, surviving a swipe-kill, same as Session/Downloads) and the
+ * detail page renders straight from it when offline.
+ *
+ * `items` is reassigned wholesale and `rev` bumped on every change so QML
+ * bindings that read isSaved()/get() re-evaluate.
+ *
+ * Images: on save we also download the cover + every <img> in the body to local
+ * files (via the same Lomiri.DownloadManager wrapper the video offline feature
+ * uses), then rewrite the saved copy's URLs to local file:// paths — so the
+ * article renders fully offline, images included.
+ */
+QtObject {
+    id: store
+
+    property var items: []   // saved post view-models, newest first
+    property int rev: 0
+    property var _dbHandle: null
+    property var _dlComp: null
+
+    function _db() {
+        if (!_dbHandle)
+            _dbHandle = LocalStorage.openDatabaseSync("SereySavedPosts", "1.0", "Serey saved articles", 1000000);
+        return _dbHandle;
+    }
+
+    function _load() {
+        var out = [];
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT PRIMARY KEY, author TEXT, saved_at INTEGER, data TEXT)");
+                var rs = tx.executeSql("SELECT permlink, data FROM saved_posts ORDER BY saved_at DESC");
+                for (var i = 0; i < rs.rows.length; i++) {
+                    var row = rs.rows.item(i);
+                    var vm = {};
+                    try { vm = JSON.parse(row.data); } catch (e) { vm = {}; }
+                    vm.permlink = row.permlink;
+                    out.push(vm);
+                }
+            });
+        } catch (e) {
+            console.log("SavedPosts load error: " + e);
+        }
+        store.items = out;
+        store.rev++;
+    }
+
+    function isSaved(permlink) {
+        for (var i = 0; i < items.length; i++)
+            if (items[i].permlink === permlink) return true;
+        return false;
+    }
+
+    function get(permlink) {
+        for (var i = 0; i < items.length; i++)
+            if (items[i].permlink === permlink) return items[i];
+        return null;
+    }
+
+    function _persist(post) {
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT PRIMARY KEY, author TEXT, saved_at INTEGER, data TEXT)");
+                tx.executeSql("INSERT OR REPLACE INTO saved_posts(permlink, author, saved_at, data) VALUES(?, ?, ?, ?)",
+                    [post.permlink, post.author || "", Date.now(), JSON.stringify(post)]);
+            });
+        } catch (e) {
+            console.log("SavedPosts persist error: " + e);
+        }
+    }
+
+    function save(post) {
+        if (!post || !post.permlink || post.permlink.length === 0) return;
+        // Persist the text immediately (instantly available), then cache images
+        // in the background and rewrite to local paths as they arrive.
+        _persist(post);
+        store._load();
+        Toast.success("Saved for offline");
+        store._cacheImages(post.permlink, post);
+    }
+
+    // --- Offline image caching ---------------------------------------------
+    function _downloaderComponent() {
+        if (_dlComp === null)
+            _dlComp = Qt.createComponent(Qt.resolvedUrl("../components/VideoDownloader.qml"));
+        return _dlComp;
+    }
+
+    // Collect every remote http(s) image URL referenced by the post: the cover
+    // thumbnail plus each <img src> / data-image-url in the body HTML.
+    function _imageUrls(post) {
+        var urls = [];
+        function add(u) { if (u && u.indexOf("http") === 0 && urls.indexOf(u) < 0) urls.push(u); }
+        add(post.thumbnail || "");
+        var body = post.body || "";
+        var re = /(?:src|data-image-url)=["']([^"']+)["']/g;
+        var m;
+        while ((m = re.exec(body)) !== null) add(m[1]);
+        return urls;
+    }
+
+    function _cacheImages(permlink, post) {
+        var urls = _imageUrls(post);
+        if (urls.length === 0) return;
+        var comp = _downloaderComponent();
+        if (!comp || comp.status === Component.Error) return;
+
+        var map = {};                 // remote URL -> local file:// path
+        var pending = urls.length;
+        function done() { if (--pending === 0) store._applyLocalImages(permlink, map); }
+
+        for (var i = 0; i < urls.length; i++) {
+            (function (u) {
+                var dl = comp.createObject(store, { url: u, title: "image", showInIndicator: false });
+                if (!dl) { done(); return; }
+                dl.finished.connect(function (path) {
+                    map[u] = path.indexOf("file://") === 0 ? path : "file://" + path;
+                    dl.destroy(); done();
+                });
+                dl.failed.connect(function () { dl.destroy(); done(); });   // keep remote URL on failure
+                dl.start(u);
+            })(urls[i]);
+        }
+    }
+
+    // Rewrite the saved copy's image URLs to the downloaded local paths so it
+    // renders offline. Images that failed to download keep their remote URL.
+    function _applyLocalImages(permlink, map) {
+        var post = get(permlink);
+        if (!post) return;
+        var body = post.body || "";
+        var thumb = post.thumbnail || "";
+        for (var remote in map) {
+            var local = map[remote];
+            body = body.split(remote).join(local);     // string (not regex) replace-all
+            if (thumb === remote) thumb = local;
+        }
+        post.body = body;
+        post.thumbnail = thumb;
+        _persist(post);
+        store._load();
+    }
+
+    function remove(permlink) {
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("DELETE FROM saved_posts WHERE permlink = ?", [permlink]);
+            });
+        } catch (e) {
+            console.log("SavedPosts delete error: " + e);
+        }
+        store._load();
+        Toast.show("Removed from saved");
+    }
+
+    Component.onCompleted: _load()
+}

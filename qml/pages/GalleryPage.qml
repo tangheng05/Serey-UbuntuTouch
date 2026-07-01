@@ -4,6 +4,8 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/PostService.js" as PostService
+import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/BlockedUsers.js" as BlockedUsers
 
 /*
  * Gallery feed: image-only posts from the selected regional source
@@ -37,7 +39,7 @@ Page {
             for (var i = 0; i < galleryModel.count; i++) {
                 if (galleryModel.get(i).permlink === permlink) {
                     galleryModel.remove(i);
-                    Toast.show(i18n.tr("Post hidden"));
+                    Toast.show(Lang.tr("Post hidden"));
                     return;
                 }
             }
@@ -47,6 +49,12 @@ Page {
                 if (galleryModel.get(i).permlink === permlink) galleryModel.remove(i);
             }
         }
+        function onUserBlocked(username) {
+            for (var i = galleryModel.count - 1; i >= 0; i--) {
+                if (galleryModel.get(i).author === username) galleryModel.remove(i);
+            }
+        }
+        function onUserUnblocked(username) { page.reload(); }
         function onEditRequested(post) {
             if (!page.visible) return;
             var ed = page.pageStack.push(Qt.resolvedUrl("CreateGalleryPostPage.qml"), { editPost: post });
@@ -84,10 +92,17 @@ Page {
                 page.refreshing = false;
                 page.loading = false;
                 galleryModel.clear();
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
                 for (var i = 0; i < result.length; i++)
-                    galleryModel.append(result[i]);
+                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
+                        galleryModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
+                // Gallery filters to image posts (and hidden/blocked), so a page can
+                // yield few or zero rows; keep paging until there's a screenful or the
+                // server runs out, else the grid stalls or looks empty prematurely.
+                if (!page.endReached && galleryModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -109,12 +124,17 @@ Page {
                 if (epoch !== page.reqEpoch) return;   // stale response — ignore
                 inflight = null;
                 loading = false;
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
                 for (var i = 0; i < result.length; i++)
-                    galleryModel.append(result[i]);
+                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
+                        galleryModel.append(result[i]);
                 // Advance by RAW server count (not the image-filtered length) so
                 // the next page doesn't re-request already-seen rows.
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
+                // Keep paging if this page fell below a screenful (see refresh()).
+                if (!page.endReached && galleryModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -137,7 +157,7 @@ Page {
             refreshing: page.refreshing
             onRefresh: page.refresh()
             content: Label {
-                text: i18n.tr("Pull to refresh")
+                text: Lang.tr("Pull to refresh")
                 opacity: list.dragging ? 1 : 0
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
@@ -146,18 +166,53 @@ Page {
             }
         }
 
-        delegate: GalleryCard {
+        // GalleryCard wrapped in a Lomiri ListItem for native swipe context
+        // actions (leading = Hide, trailing = Share), mirroring VideoPage. Tap
+        // still opens the detail via GalleryCard.onClicked.
+        delegate: ListItem {
             width: list.width
-            post: galleryModel.get(index)
-            onClicked: {
-                var p = galleryModel.get(index);
-                page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"),
-                    { author: p.author, permlink: p.permlink });
+            height: card.height
+            divider.visible: false
+
+            leadingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: Lang.tr("Hide")
+                        onTriggered: {
+                            var vm = galleryModel.get(index);
+                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                        }
+                    }
+                ]
             }
-            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                { username: galleryModel.get(index).author })
-            onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
-            onMoreClicked: PostActions.open(galleryModel.get(index), "gallery")
+            trailingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: {
+                            var vm = galleryModel.get(index);
+                            if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
+                        }
+                    }
+                ]
+            }
+
+            GalleryCard {
+                id: card
+                width: parent.width
+                post: galleryModel.get(index)
+                onClicked: {
+                    var p = galleryModel.get(index);
+                    page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"),
+                        { author: p.author, permlink: p.permlink });
+                }
+                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                    { username: galleryModel.get(index).author })
+                onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
+                onMoreClicked: PostActions.open(galleryModel.get(index), "gallery")
+            }
         }
 
         // Constant-height footer: a conditional height feeds back into
@@ -173,7 +228,7 @@ Page {
         }
 
         onAtYEndChanged: {
-            if (atYEnd && !page.loading && !page.endReached && galleryModel.count > 0)
+            if (atYEnd && !page.loading && !page.endReached)
                 page.loadMore();
         }
     }
@@ -193,7 +248,7 @@ Page {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && galleryModel.count === 0
         iconName: "image-x-generic-symbolic"
-        message: i18n.tr("No gallery posts in %1").arg(Config.communityName)
+        message: Lang.tr("No gallery posts in %1").arg(Config.communityName)
     }
 
     // Floating compose button

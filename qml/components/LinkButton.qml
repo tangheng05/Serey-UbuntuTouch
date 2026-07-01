@@ -20,7 +20,7 @@ AbstractButton {
         text: root.label
         font.pixelSize: Style.fontSmall
         font.weight: Font.DemiBold
-        font.family: Style.fontFamily
+        font.family: Style.fontFor(text)
         color: root.pressed ? Style.brandDark : Style.brand
     }
 }

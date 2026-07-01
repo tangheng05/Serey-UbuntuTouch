@@ -27,7 +27,7 @@ Item {
             if (loadRequest.status === WebEngineLoadRequest.LoadSucceededStatus)
                 root._ready = true;
             else if (loadRequest.status === WebEngineLoadRequest.LoadFailedStatus)
-                console.log("KeygenBridge: failed to load keygen.html");
+                console.warn("KeygenBridge: failed to load keygen.html");
         }
     }
 

@@ -13,12 +13,17 @@ set(ICON_FILE assets/serey-logo.png)
 
 # Fill @CLICK_FRAMEWORK@ / $ENV{...} placeholders in manifest.json.in -> manifest.json
 configure_file(manifest.json.in ${CMAKE_CURRENT_BINARY_DIR}/manifest.json)
+configure_file(push-helper.apparmor ${CMAKE_CURRENT_BINARY_DIR}/push-helper.apparmor)
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/manifest.json
     DESTINATION ${CMAKE_INSTALL_PREFIX})
 install(FILES ${APP_NAME}.apparmor
     DESTINATION ${CMAKE_INSTALL_PREFIX})
 install(FILES ${DESKTOP_FILE}
+    DESTINATION ${CMAKE_INSTALL_PREFIX})
+install(FILES push-helper.json ${CMAKE_CURRENT_BINARY_DIR}/push-helper.apparmor
+    DESTINATION ${CMAKE_INSTALL_PREFIX})
+install(PROGRAMS push-helper
     DESTINATION ${CMAKE_INSTALL_PREFIX})
 
 install(DIRECTORY qml

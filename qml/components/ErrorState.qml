@@ -1,11 +1,12 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
+import "../Session"
 
 // Error placeholder with a Retry action. Connect onRetry to re-run the fetch.
 Item {
     id: root
-    property string message: i18n.tr("Something went wrong")
+    property string message: Lang.tr("Something went wrong")
     signal retry()
 
     Column {
@@ -30,7 +31,7 @@ Item {
         }
         Button {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: i18n.tr("Retry")
+            text: Lang.tr("Retry")
             color: Style.brand
             onClicked: root.retry()
         }

@@ -30,7 +30,7 @@ QtObject {
     readonly property color surface: "#FFFFFF"
     readonly property color card: "#FFFFFF"
     readonly property color navigationBg: "#FFFFFF"
-    readonly property color divider: "#EEF1FB"        // hairline borders
+    readonly property color divider: "#E4E4E4"        // neutral Suru hairline
     readonly property color iconBackground: "#F3F3F3" // pills, chips, avatar bg
     readonly property color pressed: "#F0F0F0"
     readonly property color dotInactive: "#CECECE"
@@ -54,13 +54,16 @@ QtObject {
     readonly property int fontLarge: units.dp(16)
     readonly property int fontTitle: units.dp(22)
 
-    // --- Radii (device px) ----------------------------------------------------
-    readonly property real radius: units.gu(1)
-    readonly property real thumbRadius: units.dp(12)
-    readonly property real cardRadius: units.dp(10)
-    readonly property real pillRadius: units.dp(14)
-    readonly property real chipRadius: units.dp(18)
-    readonly property real fabRadius: units.dp(12)
+    // --- Radii ----------------------------------------------------------------
+    // Lomiri/Suru is low-radius and flat — small, consistent rounding instead of
+    // the iOS pill/card look. Full pills (radius: height/2) are avoided in favour
+    // of these subtle rounded-rectangles.
+    readonly property real radius: units.gu(0.6)
+    readonly property real thumbRadius: units.gu(0.8)
+    readonly property real cardRadius: units.gu(0.6)
+    readonly property real pillRadius: units.gu(0.6)
+    readonly property real chipRadius: units.gu(0.6)
+    readonly property real fabRadius: units.gu(0.6)
     readonly property real durationBadgeRadius: units.dp(3)
 
     // --- Sizes ----------------------------------------------------------------
@@ -71,15 +74,42 @@ QtObject {
     readonly property real fabSize: units.gu(7)
 
     // --- Typography / fonts ---------------------------------------------------
-    // The bundled Noto Sans Khmer covers Khmer (and Latin), so labels that can
-    // contain Khmer set `font.family: Style.fontFamily`. (Qt's automatic glyph
-    // fallback ignores app-added fonts on fontconfig platforms, so the family
-    // must be set explicitly.) Falls back to the default sans family if missing.
+    // The bundled Noto Sans Khmer covers Khmer (and Latin) but has NO CJK glyphs,
+    // and the bundled Noto Sans SC covers Chinese (and Latin) but not Khmer. Qt's
+    // automatic glyph fallback ignores app-added fonts on fontconfig platforms, so
+    // a missing glyph does NOT silently borrow from the other bundled font — it
+    // renders as tofu (□). The device has no system CJK font to fall back to
+    // either. So a single `font.family` string can only cover one of the two
+    // non-Latin scripts; pick the right one per label via `fontFor(text)` below.
+    // Content labels (post/comment/video text, inputs) use `font.family:
+    // Style.fontFor(text)`; pure-Latin chrome may still use `Style.fontFamily`.
     property FontLoader fontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansKhmer-Regular.ttf")
     }
     readonly property string fontFamily: fontLoader.status === FontLoader.Ready
                                          ? fontLoader.name : "Ubuntu"
+
+    // Simplified-Chinese (+ Latin) face, used only when a string actually
+    // contains CJK. ~8 MB — the reason it isn't the default family (most content
+    // is Latin/Khmer). Noto Sans SC also covers Latin, so a mixed "Malaysia
+    // Healthcare 马来西亚…" title renders entirely from this one face.
+    property FontLoader cjkFontLoader: FontLoader {
+        source: Qt.resolvedUrl("../../assets/fonts/NotoSansSC-Regular.otf")
+    }
+    readonly property string cjkFamily: cjkFontLoader.status === FontLoader.Ready
+                                        ? cjkFontLoader.name : fontFamily
+
+    // Choose the correct bundled face for a run of text: the CJK face when the
+    // string contains any CJK codepoint (ideographs, kana, fullwidth, compat),
+    // otherwise the Khmer/Latin face. Cheap enough to bind directly on labels
+    // (re-runs only when the text changes). A label mixing Khmer AND Chinese —
+    // very rare here — gets CJK and tofus the Khmer run; single-script and
+    // Latin-mixed labels (the common cases) all resolve correctly.
+    function fontFor(text) {
+        if (text && /[⺀-鿿豈-﫿＀-￯]/.test(text))
+            return cjkFamily;
+        return fontFamily;
+    }
 
     // --- Helpers --------------------------------------------------------------
     // Relative timestamp: "just now / Xm / Xh / Xd ago / DD Mon [YYYY]".

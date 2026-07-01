@@ -1,11 +1,13 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
+import Lomiri.Components.Popups 1.3
 import "../Theme"
 import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 import "../services/PostService.js" as PostService
 import "../services/VideoService.js" as VideoService
+import "../services/BlockedUsers.js" as BlockedUsers
 
 /*
  * Public profile view for any user: a cover banner with an overlapping avatar,
@@ -34,6 +36,8 @@ Page {
     })
 
     readonly property bool isSelf: Session.isLoggedIn && username === Session.username
+    property bool isBlocked: false
+    property bool blockLoading: false
     readonly property var curModel: tab === 0 ? m0 : tab === 1 ? m1 : m2
     readonly property bool curLoading: rev >= 0 && st[tab].loading
     readonly property bool curEnd: rev >= 0 && st[tab].end
@@ -59,10 +63,41 @@ Page {
         FollowStore.load(Config.baseUrl, Session.username, username);
     }
 
+    function loadBlockStatus() {
+        if (!Session.isLoggedIn || isSelf) return;
+        AccountService.listBlocked(Config.baseUrl, Session.token, function (list) {
+            for (var i = 0; i < list.length; i++) {
+                if (list[i] === page.username) { page.isBlocked = true; return; }
+            }
+            page.isBlocked = false;
+        }, function (err) { /* silent */ });
+    }
+
+    function toggleBlock() {
+        if (!Session.isLoggedIn) { page.pageStack.push(Qt.resolvedUrl("LoginPage.qml")); return; }
+        if (page.blockLoading) return;   // ignore a second tap while in flight
+        page.blockLoading = true;
+        var action = page.isBlocked ? "REMOVE" : "ADD"
+        AccountService.toggleBlock(Config.baseUrl, Session.token, page.username, action,
+            function () {
+                page.blockLoading = false;
+                page.isBlocked = !page.isBlocked;
+                Toast.show(page.isBlocked
+                    ? Lang.tr("@%1 blocked.").arg(page.username)
+                    : Lang.tr("@%1 unblocked.").arg(page.username));
+                if (page.isBlocked) { BlockedUsers.add(page.username); PostActions.userBlocked(page.username); }
+                else { BlockedUsers.remove(page.username); PostActions.userUnblocked(page.username); }
+            },
+            function (err) {
+                page.blockLoading = false;
+                Toast.error((err && err.message) ? err.message : Lang.tr("Failed to update block."));
+            });
+    }
+
     function toggleFollow() {
         if (!Session.isLoggedIn) { page.pageStack.push(Qt.resolvedUrl("LoginPage.qml")); return; }
         var now = FollowStore.toggle(Config.baseUrl, username, Session.token);
-        Toast.show(now ? i18n.tr("Following") : i18n.tr("Unfollowed"));
+        Toast.show(now ? Lang.tr("Following") : Lang.tr("Unfollowed"));
         if (page.profile) {
             var pr = page.profile;
             pr.followers = Math.max(0, (pr.followers || 0) + (now ? 1 : -1));
@@ -131,6 +166,11 @@ Page {
         target: PostActions
         function onHideRequested(author, permlink) { page.removeRow(permlink); }
         function onPostDeleted(author, permlink) { page.removeRow(permlink); }
+        // Keep the cover Block button in sync when the same user is blocked/unblocked
+        // elsewhere (e.g. from a post's action sheet), so it doesn't show a stale
+        // state and send a duplicate ADD (which the backend rejects with a 400).
+        function onUserBlocked(username) { if (username === page.username) page.isBlocked = true; }
+        function onUserUnblocked(username) { if (username === page.username) page.isBlocked = false; }
         function onEditRequested(post) {
             if (!page.visible) return;
             var t = page.tab;
@@ -140,7 +180,28 @@ Page {
         }
     }
 
-    Component.onCompleted: { loadProfile(); loadFollow(); loadTab(0); }
+    Component.onCompleted: { loadProfile(); loadFollow(); loadBlockStatus(); loadTab(0); }
+
+    Component {
+        id: blockDialog
+        Dialog {
+            id: dlg
+            title: page.isBlocked ? Lang.tr("Unblock user?") : Lang.tr("Block user?")
+            text: page.isBlocked
+                ? Lang.tr("@%1 will be able to see your posts and interact with you again.").arg(page.username)
+                : Lang.tr("@%1 will no longer be able to see your posts or interact with you.").arg(page.username)
+
+            Button {
+                text: page.isBlocked ? Lang.tr("Unblock") : Lang.tr("Block")
+                color: Style.danger
+                onClicked: { PopupUtils.close(dlg); page.toggleBlock(); }
+            }
+            Button {
+                text: Lang.tr("Cancel")
+                onClicked: PopupUtils.close(dlg)
+            }
+        }
+    }
 
     ListView {
         id: list
@@ -180,6 +241,34 @@ Page {
                         visible: status === Image.Ready
                     }
 
+                    // Block button — top-right corner of cover
+                    AbstractButton {
+                        visible: !page.isSelf && !!page.profile
+                        enabled: !page.blockLoading
+                        anchors {
+                            top: parent.top
+                            right: parent.right
+                            topMargin: Style.spacingS
+                            rightMargin: Style.spacingS
+                        }
+                        width: units.gu(4); height: units.gu(4)
+                        z: 10
+                        onClicked: PopupUtils.open(blockDialog)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: units.dp(6)
+                            color: page.isBlocked ? Style.danger : "white"
+                            border.width: units.dp(2)
+                            border.color: Style.danger
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.2); height: width
+                            name: "system-shutdown"
+                            color: page.isBlocked ? "white" : Style.danger
+                        }
+                    }
                 }
 
                 // --- Avatar (overlaps the cover) -------------------------
@@ -231,7 +320,7 @@ Page {
                     text: page.profile && page.profile.fullName ? page.profile.fullName : page.username
                     font.pixelSize: Style.fontLarge
                     font.weight: Font.DemiBold
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textTitle
                     elide: Text.ElideRight
                 }
@@ -240,34 +329,73 @@ Page {
                     horizontalAlignment: Text.AlignHCenter
                     text: "@" + page.username
                     font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.brand
                 }
                 Item { width: 1; height: Style.spacingXs; visible: bioLabel.visible }
-                Label {
+                Text {
                     id: bioLabel
                     width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
                     anchors.horizontalCenter: parent.horizontalCenter
                     horizontalAlignment: Text.AlignHCenter
-                    text: page.profile ? (page.profile.bio || "") : ""
-                    visible: text.length > 0
+                    textFormat: Text.RichText
+                    text: {
+                        var html = page.profile ? (page.profile.bioHtml || page.profile.bio || "") : ""
+                        return html.replace(/((?:<a\s[^>]*>[\s\S]*?<\/a>)|https?:\/\/[^\s<>"]+)/g,
+                            function(match) {
+                                if (match.charAt(0) === '<') return match
+                                return '<a href="' + match + '" style="color:' + Style.brand + ';">' + match + '</a>'
+                            })
+                    }
+                    visible: page.profile && (page.profile.bio || "").length > 0
                     font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFamily
+                    font.family: Style.fontFor(text)
                     color: Style.textSecondary
                     wrapMode: Text.WordWrap
+                    onLinkActivated: Qt.openUrlExternally(link)
                 }
 
                 Item { width: 1; height: Style.spacingM }
+
+                // --- Stats skeleton (while loading) ----------------------
+                Row {
+                    width: Math.min(parent.width, units.gu(45))
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: !page.profile && page.profileLoading
+                    Repeater {
+                        model: 3
+                        delegate: Column {
+                            width: parent.width / 3
+                            spacing: units.dp(4)
+                            SequentialAnimation on opacity {
+                                running: true; loops: Animation.Infinite
+                                NumberAnimation { to: 0.3; duration: 700; easing.type: Easing.InOutSine }
+                                NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
+                            }
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: units.gu(5); height: units.gu(2.5)
+                                radius: units.dp(4); color: Style.divider
+                            }
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: units.gu(4); height: units.gu(1.5)
+                                radius: units.dp(4); color: Style.divider
+                            }
+                        }
+                    }
+                }
 
                 // --- Stats -----------------------------------------------
                 Row {
                     width: Math.min(parent.width, units.gu(45))
                     anchors.horizontalCenter: parent.horizontalCenter
+                    visible: !!page.profile
                     Repeater {
                         model: page.profile ? [
-                            { label: i18n.tr("Posts"),     value: "" + page.profile.postCount },
-                            { label: i18n.tr("Followers"), value: "" + page.profile.followers },
-                            { label: i18n.tr("Following"), value: "" + page.profile.following }
+                            { label: Lang.tr("Posts"),     value: "" + page.profile.postCount },
+                            { label: Lang.tr("Followers"), value: "" + page.profile.followers },
+                            { label: Lang.tr("Following"), value: "" + page.profile.following }
                         ] : []
                         delegate: Column {
                             width: parent.width / 3
@@ -277,14 +405,14 @@ Page {
                                 text: modelData.value
                                 font.pixelSize: Style.fontLarge
                                 font.weight: Font.DemiBold
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: Style.textPrimary
                             }
                             Label {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.label
                                 font.pixelSize: Style.fontXSmall
-                                font.family: Style.fontFamily
+                                font.family: Style.fontFor(text)
                                 color: Style.textSecondary
                             }
                         }
@@ -293,12 +421,26 @@ Page {
 
                 Item { width: 1; height: Style.spacingM }
 
-                // --- Follow button (hidden on own profile) ---------------
-                PrimaryButton {
-                    visible: !page.isSelf
+                // --- Follow button skeleton ------------------------------
+                Rectangle {
+                    visible: !page.isSelf && !page.profile && page.profileLoading
                     width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: FollowStore.isFollowing(page.username) ? i18n.tr("Following") : i18n.tr("Follow")
+                    height: units.gu(5); radius: Style.cardRadius
+                    color: Style.divider
+                    SequentialAnimation on opacity {
+                        running: true; loops: Animation.Infinite
+                        NumberAnimation { to: 0.3; duration: 700; easing.type: Easing.InOutSine }
+                        NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
+                    }
+                }
+
+                // --- Follow button (hidden on own profile or while loading) ---
+                PrimaryButton {
+                    visible: !page.isSelf && !!page.profile
+                    width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: FollowStore.isFollowing(page.username) ? Lang.tr("Following") : Lang.tr("Follow")
                     onClicked: page.toggleFollow()
                 }
 
@@ -307,7 +449,7 @@ Page {
                 // --- Content tabs ----------------------------------------
                 SectionTabs {
                     width: parent.width
-                    model: [i18n.tr("Posts"), i18n.tr("Gallery"), i18n.tr("Video")]
+                    model: [Lang.tr("Posts"), Lang.tr("Gallery"), Lang.tr("Video")]
                     currentIndex: page.tab
                     onSelected: page.selectTab(index)
                 }
@@ -333,10 +475,10 @@ Page {
             Label {
                 anchors.centerIn: parent
                 visible: page.curLoaded && page.curModel.count === 0 && !page.curLoading
-                text: page.tab === 0 ? i18n.tr("No posts yet")
-                    : page.tab === 1 ? i18n.tr("No gallery posts yet")
-                    : i18n.tr("No videos yet")
-                font.family: Style.fontFamily
+                text: page.tab === 0 ? Lang.tr("No posts yet")
+                    : page.tab === 1 ? Lang.tr("No gallery posts yet")
+                    : Lang.tr("No videos yet")
+                font.family: Style.fontFor(text)
                 color: Style.textSecondary
             }
         }
@@ -380,12 +522,6 @@ Page {
         }
     }
 
-    // Full-page spinner only until the header has its data.
-    ActivityIndicator {
-        anchors.centerIn: parent
-        running: page.profileLoading && page.profile === null
-        visible: running
-    }
 
     // Back button: a FIXED page overlay (not inside the scrolling list header),
     // so it's always visible from the first frame regardless of scroll position

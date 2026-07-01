@@ -4,6 +4,8 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/PostService.js" as PostService
+import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/BlockedUsers.js" as BlockedUsers
 
 /*
  * News feed: Trending / New posts, filtered by the selected regional source
@@ -33,7 +35,7 @@ Page {
     // just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
-        function onSourceIndexChanged() { page.reload(); }
+        function onCommunityIdChanged() { page.reload(); }
     }
 
     Connections {
@@ -42,18 +44,22 @@ Page {
             for (var i = 0; i < feedModel.count; i++) {
                 if (feedModel.get(i).permlink === permlink) {
                     feedModel.remove(i);
-                    Toast.show(i18n.tr("Post hidden"));
+                    Toast.show(Lang.tr("Post hidden"));
                     return;
                 }
             }
         }
-        // Owner deleted a post → drop the row (no-op if it isn't in this feed).
         function onPostDeleted(author, permlink) {
             for (var i = feedModel.count - 1; i >= 0; i--) {
                 if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
             }
         }
-        // Owner chose Edit → only the active page opens the editor; reload on save.
+        function onUserBlocked(username) {
+            for (var i = feedModel.count - 1; i >= 0; i--) {
+                if (feedModel.get(i).author === username) feedModel.remove(i);
+            }
+        }
+        function onUserUnblocked(username) { page.reload(); }
         function onEditRequested(post) {
             if (!page.visible) return;
             var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { editPost: post });
@@ -97,10 +103,17 @@ Page {
                 page.refreshing = false;
                 page.loading = false;
                 feedModel.clear();
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
+                        feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
+                // A page can be mostly/entirely filtered out (hidden/blocked); keep
+                // paging until there's a screenful or the server runs out, else the
+                // feed stalls or looks empty despite more content on later pages.
+                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -122,10 +135,15 @@ Page {
                 if (epoch !== page.reqEpoch) return;   // stale response — ignore
                 inflight = null;
                 loading = false;
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
+                        feedModel.append(result[i]);
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
+                // Keep paging if this page was filtered below a screenful (see refresh()).
+                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -140,7 +158,7 @@ Page {
     SectionTabs {
         id: tabs
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        model: [i18n.tr("Trending"), i18n.tr("New")]
+        model: [Lang.tr("Trending"), Lang.tr("New")]
         currentIndex: page.feedIndex
         onSelected: {
             page.feedIndex = index;
@@ -165,7 +183,7 @@ Page {
             // own state, which would clobber a `visible` binding; it never touches
             // opacity, so this is the reliable lever.
             content: Label {
-                text: i18n.tr("Pull to refresh")
+                text: Lang.tr("Pull to refresh")
                 opacity: list.dragging ? 1 : 0
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
@@ -174,18 +192,53 @@ Page {
             }
         }
 
-        delegate: PostCard {
+        // PostCard wrapped in a Lomiri ListItem for native swipe context actions
+        // (leading = Hide, trailing = Share), mirroring VideoPage. Tap still opens
+        // the detail via PostCard.onClicked, so navigation is unaffected.
+        delegate: ListItem {
             width: list.width
-            post: feedModel.get(index)
-            onClicked: {
-                var p = feedModel.get(index);
-                page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
-                    { author: p.author, permlink: p.permlink, title: p.title });
+            height: card.height
+            divider.visible: false
+
+            leadingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: Lang.tr("Hide")
+                        onTriggered: {
+                            var vm = feedModel.get(index);
+                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                        }
+                    }
+                ]
             }
-            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                { username: feedModel.get(index).author })
-            onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
-            onMoreClicked: PostActions.open(feedModel.get(index), "blog")
+            trailingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: {
+                            var vm = feedModel.get(index);
+                            if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
+                        }
+                    }
+                ]
+            }
+
+            PostCard {
+                id: card
+                width: parent.width
+                post: feedModel.get(index)
+                onClicked: {
+                    var p = feedModel.get(index);
+                    page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
+                        { author: p.author, permlink: p.permlink, title: p.title });
+                }
+                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                    { username: feedModel.get(index).author })
+                onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
+                onMoreClicked: PostActions.open(feedModel.get(index), "blog")
+            }
         }
 
         // Constant-height footer: a conditional height feeds back into
@@ -202,7 +255,7 @@ Page {
         }
 
         onAtYEndChanged: {
-            if (atYEnd && !page.loading && !page.endReached && feedModel.count > 0)
+            if (atYEnd && !page.loading && !page.endReached)
                 page.loadMore();
         }
     }
@@ -221,35 +274,9 @@ Page {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
         iconName: "stock_note"
-        message: i18n.tr("No posts in %1").arg(Config.communityName)
+        message: Lang.tr("No posts in %1").arg(Config.communityName)
     }
 
-    // Floating compose button
-    AbstractButton {
-        visible: Session.isLoggedIn
-        anchors {
-            right: parent.right
-            bottom: parent.bottom
-            rightMargin: Style.spacingM
-            bottomMargin: Style.spacingM
-        }
-        width: units.gu(5.5); height: width
-        z: 10
-        onClicked: {
-            var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"));
-            if (ed && ed.saved) ed.saved.connect(page.reload);   // show the new post immediately
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            radius: units.dp(14)
-            color: Style.brand
-        }
-        Icon {
-            anchors.centerIn: parent
-            width: units.gu(2.5); height: width
-            name: "edit"
-            color: Style.textOnBrand
-        }
-    }
+    // Compose lives in the global header action now (see Main.qml, gated on the
+    // News tab) — Lomiri uses a header action, not a Material floating button.
 }

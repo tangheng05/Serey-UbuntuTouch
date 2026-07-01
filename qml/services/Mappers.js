@@ -12,6 +12,16 @@ function toInt(v) {
     return isNaN(n) ? 0 : n;
 }
 
+// Per-save "post to blockchain" flag. The server returns this on every post/
+// video/gallery read, reflecting what was saved. Default TRUE (on-chain): only
+// an explicit false/"false"/0 means the post was stored in the DB only — such a
+// post has no on-chain record, so it can't be voted on or earn rewards.
+function onChainFlag(raw) {
+    return raw.post_to_blockchain !== false
+        && raw.post_to_blockchain !== "false"
+        && raw.post_to_blockchain !== 0;
+}
+
 function parseList(val) {
     if (!val)
         return [];
@@ -109,7 +119,8 @@ function toPost(raw) {
         flaggers: voterNames(raw.flaggers),
         flaggerStr: "," + voterNames(raw.flaggers).join(",") + ",",
         community: raw.community_title || "",
-        checkmark: raw.checkmark_icon || ""
+        checkmark: raw.checkmark_icon || "",
+        postToBlockchain: onChainFlag(raw)
     };
 }
 
@@ -141,7 +152,8 @@ function toGalleryPost(raw) {
         voterStr: "," + voterNames(raw.voters).join(",") + ",",
         // Post's own community title, so editing keeps it in place.
         community: raw.community_title || "",
-        checkmark: raw.checkmark_icon || ""
+        checkmark: raw.checkmark_icon || "",
+        postToBlockchain: onChainFlag(raw)
     };
 }
 
@@ -164,6 +176,8 @@ function toComment(raw) {
         votes: toInt(raw.voter_count),
         voters: voterNames(raw.voters),
         voterStr: "," + voterNames(raw.voters).join(",") + ",",
+        flaggers: voterNames(raw.flaggers),
+        flaggerStr: "," + voterNames(raw.flaggers).join(",") + ",",
         authorImage: raw.author_image_url || "",
         replies: kids
     };
@@ -182,14 +196,17 @@ function toVideo(raw) {
         authorImage: raw.author_image_url || raw.post_author_image_url || "",
         date: raw.publish_date || "",
         votes: toInt(raw.voter_count),
-        comments: toInt(raw.answer_count),
+        comments: toInt(raw.answer_count || raw.comment_count),
+        voters: voterNames(raw.voters),
+        voterStr: "," + voterNames(raw.voters).join(",") + ",",
         payout: raw.serey_value || "",
         embedUrl: raw.embed_video || "",
         videoLink: raw.video_link || "",
         videoId: raw.video_id || "",
         platform: raw.platform_type || "",
         dimensions: raw.dimensions || "16:9",
-        community: raw.community_title || ""
+        community: raw.community_title || "",
+        postToBlockchain: onChainFlag(raw)
     };
 }
 
@@ -201,7 +218,10 @@ function toCommunity(raw) {
         dns: raw.dns || "",
         icon: raw.icon_url || raw.logo_url || "",
         country: raw.country || "",
-        level: toInt(raw.level)
+        level: toInt(raw.level),
+        // is_allow_post=true → anyone may post; false → owner/managers only.
+        // Drives whether the compose buttons are shown for this community.
+        allowPost: !!raw.is_allow_post
     };
 }
 
@@ -230,7 +250,8 @@ function toUser(username, raw) {
         fullName: full || username,
         // Trim: stored bios often carry trailing newlines/spaces, which a
         // word-wrapped Label renders as blank lines (a big empty gap below it).
-        bio: (raw.bio || "").trim(),
+        bioHtml: (raw.bio || "").trim(),
+        bio: (raw.bio || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").trim(),
         gender: raw.gender_title || "",
         dob: raw.dob || "",
         reputation: raw.reputation,

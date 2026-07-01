@@ -14,7 +14,7 @@ AbstractButton {
     property bool busy: false
 
     width: parent ? parent.width : units.gu(40)
-    height: units.gu(6)
+    height: units.gu(5)
     enabled: !busy
 
     Rectangle {
@@ -41,7 +41,7 @@ AbstractButton {
                 text: root.text
                 font.pixelSize: Style.fontMedium
                 font.weight: Font.DemiBold
-                font.family: Style.fontFamily
+                font.family: Style.fontFor(text)
                 color: Style.textOnBrand
             }
         }

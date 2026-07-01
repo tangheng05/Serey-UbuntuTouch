@@ -4,6 +4,7 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 import "../services/CommentService.js" as CommentService
+import "../services/VoteService.js" as VoteService
 
 /*
  * A single comment row (iOS-style): circular avatar + author + relative time
@@ -18,7 +19,11 @@ Item {
     property var comment: ({})
     readonly property var c: comment ? comment : ({})
     readonly property var replies: c.replies || []
-    property bool repliesExpanded: true
+    property int depth: 0
+    // Top-level comments show their direct replies; deeper (nested) replies start
+    // collapsed behind the "N replies" toggle so a deep thread doesn't instantiate
+    // the whole sub-tree eagerly. The toggle flips this per comment.
+    property bool repliesExpanded: depth < 1
     property bool topLevel: true
 
     // Only the author can edit/delete, and only a comment that exists
@@ -62,7 +67,7 @@ Item {
             },
             function (err) {
                 item.saving = false;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't update comment."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update comment."));
             });
     }
 
@@ -76,7 +81,7 @@ Item {
         CommentService.remove(Config.baseUrl, permlinkToDelete, Session.username, Session.token,
             function () { /* already removed from the UI */ },
             function (err) {
-                Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't delete comment."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't delete comment."));
             });
     }
 
@@ -99,6 +104,7 @@ Item {
         Item {
             width: parent.width
             height: avatar.height
+            z: item.menuOpen ? 20 : 0
 
             Item {
                 id: avatar
@@ -180,7 +186,7 @@ Item {
                 anchors { top: moreButton.bottom; right: moreButton.right; topMargin: Style.spacingXs }
                 width: units.gu(16)
                 height: item.confirmingDelete ? confirmCol.height : menuCol.height
-                radius: units.dp(8)
+                radius: Style.cardRadius
                 color: Style.surface
                 border.width: units.dp(1)
                 border.color: Style.divider
@@ -195,7 +201,7 @@ Item {
                         onClicked: { item.menuOpen = false; item.startEdit(); }
                         Label {
                             anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                            text: i18n.tr("Edit")
+                            text: Lang.tr("Edit")
                             color: Style.textPrimary
                         }
                     }
@@ -205,7 +211,7 @@ Item {
                         onClicked: item.confirmingDelete = true
                         Label {
                             anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                            text: i18n.tr("Delete")
+                            text: Lang.tr("Delete")
                             color: Style.danger
                         }
                     }
@@ -220,7 +226,7 @@ Item {
                     Label {
                         width: parent.width - Style.spacingM * 2
                         x: Style.spacingM
-                        text: i18n.tr("Delete this comment?")
+                        text: Lang.tr("Delete this comment?")
                         font.pixelSize: Style.fontSmall
                         color: Style.textPrimary
                         wrapMode: Text.WordWrap
@@ -232,12 +238,12 @@ Item {
                         AbstractButton {
                             width: parent.width / 2; height: units.gu(5)
                             onClicked: { item.menuOpen = false; item.confirmingDelete = false; }
-                            Label { anchors.centerIn: parent; text: i18n.tr("Cancel"); color: Style.textSecondary }
+                            Label { anchors.centerIn: parent; text: Lang.tr("Cancel"); color: Style.textSecondary }
                         }
                         AbstractButton {
                             width: parent.width / 2; height: units.gu(5)
                             onClicked: { item.menuOpen = false; item.confirmingDelete = false; item.doDelete(); }
-                            Label { anchors.centerIn: parent; text: i18n.tr("Delete"); color: Style.danger; font.weight: Font.DemiBold }
+                            Label { anchors.centerIn: parent; text: Lang.tr("Delete"); color: Style.danger; font.weight: Font.DemiBold }
                         }
                     }
                 }
@@ -250,7 +256,7 @@ Item {
             x: units.gu(3.5) + Style.spacingS
             text: c.body || ""
             font.pixelSize: Style.fontRegular
-            font.family: Style.fontFamily
+            font.family: Style.fontFor(text)
             color: Style.textPrimary
             wrapMode: Text.WordWrap
         }
@@ -278,11 +284,11 @@ Item {
                     height: units.gu(3.5)
                     enabled: !item.saving && item.editText.trim().length > 0
                     onClicked: item.saveEdit()
-                    Rectangle { anchors.fill: parent; radius: height / 2; color: parent.enabled ? Style.brand : Style.iconBackground }
+                    Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: parent.enabled ? Style.brand : Style.iconBackground }
                     Label {
                         id: saveLabel
                         anchors.centerIn: parent
-                        text: item.saving ? i18n.tr("Saving…") : i18n.tr("Save")
+                        text: item.saving ? Lang.tr("Saving…") : Lang.tr("Save")
                         color: Style.textOnBrand
                     }
                 }
@@ -293,7 +299,7 @@ Item {
                     Label {
                         id: cancelEditLabel
                         anchors.centerIn: parent
-                        text: i18n.tr("Cancel")
+                        text: Lang.tr("Cancel")
                         color: Style.textSecondary
                     }
                 }
@@ -312,9 +318,21 @@ Item {
                 voteType: "comment"
                 showComments: false
                 showShare: false
-                votes: c.votes || 0
-                upvoted: (c.voters || []).indexOf(Session.username) >= 0
                 width: units.gu(8)
+                Component.onCompleted: {
+                    var me = Session.username || ""
+                    var cached = VoteService.getCached(item.c.author || "", item.c.permlink || "")
+                    if (cached) {
+                        votes   = cached.votes
+                        upvoted = cached.upvoted
+                        flagged = cached.flagged
+                    } else {
+                        votes   = item.c.votes || 0
+                        upvoted = me.length > 0 && (item.c.voterStr   || "").indexOf("," + me + ",") >= 0
+                        flagged = me.length > 0 && (item.c.flaggerStr || "").indexOf("," + me + ",") >= 0
+                        loadPersisted()
+                    }
+                }
             }
 
             AbstractButton {
@@ -335,7 +353,7 @@ Item {
                     }
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: i18n.tr("Reply")
+                        text: Lang.tr("Reply")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
@@ -357,8 +375,8 @@ Item {
                 Label {
                     id: toggleLabel
                     text: item.repliesExpanded
-                        ? i18n.tr("Hide replies")
-                        : i18n.tr("%1 replies").arg(item.replies.length)
+                        ? Lang.tr("Hide replies")
+                        : Lang.tr("%1 replies").arg(item.replies.length)
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
                     color: Style.textSecondary
@@ -372,13 +390,15 @@ Item {
             }
         }
 
-        // Nested replies, indented with a vertical guide line
+        // Nested replies — only indent one level deep; deeper replies stay flat
         Item {
             visible: item.repliesExpanded && item.replies.length > 0
             width: parent.width
             height: visible ? repliesCol.height : 0
 
+            // Guide line only on the first indent level
             Rectangle {
+                visible: item.depth === 0
                 x: units.gu(1.75) - units.dp(1)
                 width: units.dp(2)
                 height: parent.height
@@ -387,29 +407,36 @@ Item {
 
             Column {
                 id: repliesCol
-                x: units.gu(3.5)
+                // Capture owner depth here — inside a Loader delegate, 'item'
+                // refers to the Loader's loaded object (null at onCompleted time),
+                // shadowing the outer CommentItem id. Reading it on repliesCol
+                // avoids that shadowing.
+                readonly property int ownerDepth: item.depth
+                x: ownerDepth === 0 ? units.gu(3.5) : 0
                 width: parent.width - x
 
-                // A QML type cannot instantiate itself by name within its own
-                // file ("instantiated recursively"), so nested replies are
-                // loaded dynamically instead of via a direct CommentItem {}.
+                function forwardSignals(loaderItem) {
+                    if (!loaderItem) return;
+                    loaderItem.deleted.connect(function(permlink) { item.deleted(permlink) })
+                    loaderItem.edited.connect(function(permlink, newBody) { item.edited(permlink, newBody) })
+                    loaderItem.replyRequested.connect(function(c) { item.replyRequested(c) })
+                    loaderItem.authorClicked.connect(function(author) { item.authorClicked(author) })
+                }
+
                 Repeater {
-                    model: item.replies
+                    // Only instantiate reply rows while expanded — collapsing frees
+                    // them, and nested levels aren't built until the user expands.
+                    model: item.repliesExpanded ? item.replies : []
                     delegate: Loader {
                         id: replyLoader
                         width: repliesCol.width
                         property var replyData: modelData
                         Component.onCompleted: setSource(Qt.resolvedUrl("CommentItem.qml"), {
-                            comment: replyData,
-                            topLevel: false
+                            comment:  replyData,
+                            topLevel: false,
+                            depth:    Math.min(repliesCol.ownerDepth + 1, 1)
                         })
-                        Connections {
-                            target: replyLoader.item
-                            onDeleted: item.deleted(permlink)
-                            onEdited: item.edited(permlink, newBody)
-                            onReplyRequested: item.replyRequested(comment)
-                            onAuthorClicked: item.authorClicked(author)
-                        }
+                        onItemChanged: repliesCol.forwardSignals(replyLoader.item)
                     }
                 }
             }

@@ -5,6 +5,7 @@ import "../Session"
 import "../components"
 import "../services/VideoService.js" as VideoService
 import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/BlockedUsers.js" as BlockedUsers
 
 /*
  * Video section: list of videos. Tapping opens VideoDetailPage, passing the
@@ -89,8 +90,10 @@ Page {
                 page.refreshing = false;
                 page.loading = false;
                 feedModel.clear();
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
                 for (var i = 0; i < result.length; i++)
-                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
                         feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
@@ -119,8 +122,10 @@ Page {
                 if (epoch !== page.reqEpoch) return;   // stale response — ignore
                 inflight = null;
                 loading = false;
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
                 for (var i = 0; i < result.length; i++)
-                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
                         feedModel.append(result[i]);
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;

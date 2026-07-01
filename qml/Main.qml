@@ -10,6 +10,7 @@ import "services/CommunityService.js" as CommunityService
 import "services/AccountService.js" as AccountService
 import "services/Http.js" as Http
 import "services/NotificationService.js" as NotificationService
+import "services/BlockedUsers.js" as BlockedUsers
 
 /*
  * Application shell: a persistent bottom tab bar with one PageStack per tab so
@@ -74,6 +75,16 @@ MainView {
                 function (user) { Session.avatarUrl = user.profileUrl; },
                 function (err) { /* keep letter-fallback avatar */ });
         }
+        _syncBlockedUsers();
+    }
+
+    // Keep the local blocked-users set (used to filter feeds) in step with the
+    // server's authoritative list — on launch and whenever the session changes.
+    function _syncBlockedUsers() {
+        if (!Session.isLoggedIn) { BlockedUsers.replaceAll([]); return; }
+        AccountService.listBlocked(Config.baseUrl, Session.token,
+            function (list) { BlockedUsers.replaceAll(list); },
+            function (err) { /* offline / failed — keep last-known local set */ });
     }
 
     // ── Push / local notification handles (created dynamically) ─────────────
@@ -155,7 +166,7 @@ MainView {
         triggeredOnStart: true
         onTriggered: {
             if (!Session.isLoggedIn || !Session.pushEnabled) return
-            NotificationService.listSerey(Config.baseUrl, Session.token, 20, 0,
+            NotificationService.listSerey(Config.baseUrl, Session.token, 50, 0,
                 function (items) {
                     var count = 0
                     for (var i = 0; i < items.length; i++) {
@@ -177,6 +188,7 @@ MainView {
     Connections {
         target: Session
         function onIsLoggedInChanged() {
+            root._syncBlockedUsers()   // resync (or clear) the blocked set on login/logout
             if (!Session.isLoggedIn) {
                 root.lastUnreadCount = -1
             } else if (root.pushToken !== "") {

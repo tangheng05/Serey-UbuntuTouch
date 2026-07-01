@@ -19,9 +19,12 @@ Item {
     property var comment: ({})
     readonly property var c: comment ? comment : ({})
     readonly property var replies: c.replies || []
-    property bool repliesExpanded: true
-    property bool topLevel: true
     property int depth: 0
+    // Top-level comments show their direct replies; deeper (nested) replies start
+    // collapsed behind the "N replies" toggle so a deep thread doesn't instantiate
+    // the whole sub-tree eagerly. The toggle flips this per comment.
+    property bool repliesExpanded: depth < 1
+    property bool topLevel: true
 
     // Only the author can edit/delete, and only a comment that exists
     // server-side (optimistic local comments carry an empty permlink).
@@ -417,7 +420,9 @@ Item {
                 }
 
                 Repeater {
-                    model: item.replies
+                    // Only instantiate reply rows while expanded — collapsing frees
+                    // them, and nested levels aren't built until the user expands.
+                    model: item.repliesExpanded ? item.replies : []
                     delegate: Loader {
                         id: replyLoader
                         width: repliesCol.width

@@ -104,6 +104,9 @@ Page {
                 page.comments = result.replies || [];
                 page.commentCount = page._countAll(page.comments);
                 page._parseBody();
+                // Deep-link from a comment/reply notification: scroll to the target
+                // once the comment rows have laid out.
+                if (page.scrollToCommentPermlink !== "") scrollToTimer.start();
 
                 // Sync vote bar: cache wins over API data (the feed may have
                 // recorded a vote the detail endpoint hasn't caught up with).
@@ -343,15 +346,41 @@ Page {
     }
     function openAuthor() { if (page.post) page.openProfile(page.post.author); }
 
+    // Scroll to a specific comment after the layout settles post-load (deep-link
+    // from a notification). Runs off scrollToCommentPermlink, set by the caller.
+    Timer {
+        id: scrollToTimer
+        interval: 350
+        onTriggered: {
+            for (var i = 0; i < page.comments.length; i++) {
+                if (page.comments[i].permlink === page.scrollToCommentPermlink) {
+                    var it = commentsRepeater.itemAt(i)
+                    if (it) {
+                        var targetY = contentCol.y + it.mapToItem(contentCol, 0, 0).y
+                        scroll.contentY = Math.max(0, Math.min(targetY - units.gu(2),
+                                          scroll.contentHeight - scroll.height))
+                    }
+                    return
+                }
+            }
+        }
+    }
+
     KeyboardAwareFlickable {
         id: scroll
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         anchors.bottomMargin: footer.visible ? footer.height + page.kbHeight : 0
+        // Animate in step with the footer's own bottomMargin so the list and the
+        // docked composer move together when the keyboard shows/hides.
+        Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
         visible: page.post !== null
-        onMovementStarted: Qt.inputMethod.hide()
+        // Dismiss the keyboard on scroll, but only when the docked composer is the
+        // focused input — otherwise scrolling while editing a comment inline would
+        // close its keyboard mid-edit.
+        onMovementStarted: if (composer.activeFocus) Qt.inputMethod.hide()
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 

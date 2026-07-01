@@ -6,6 +6,7 @@ import "../services/PostService.js" as PostService
 import "../services/AccountService.js" as AccountService
 import "../services/ReportService.js" as ReportService
 import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/BlockedUsers.js" as BlockedUsers
 
 Item {
     id: sheet
@@ -33,10 +34,16 @@ Item {
         if (!visible) {
             step = 0;
             selectedReportTypeId = "";
+            // Clear in-flight busy flags so a sheet dismissed mid-request doesn't
+            // reopen stuck on "Blocking…" / disabled report rows.
+            reporting = false;
+            blocking = false;
         } else {
             backdropFade.start();
             sheetSlide.start();
-            if (!reportTypesLoaded) _loadReportTypes();
+            // Guard on !reportTypesLoading too, so reopening before the first
+            // fetch resolves doesn't fire a duplicate concurrent request.
+            if (!reportTypesLoaded && !reportTypesLoading) _loadReportTypes();
         }
     }
 
@@ -73,9 +80,15 @@ Item {
         if (!Session.isLoggedIn) { Toast.error(i18n.tr("Please log in to report.")); return; }
         var p = PostActions.post;
         if (!p) return;
+        // Backend expects the post id; fall back to permlink only if present.
+        var postId = (p.id !== undefined && p.id !== null) ? p.id : (p.permlink || "");
+        if (postId === "" || postId === null || postId === undefined) {
+            Toast.error(i18n.tr("Failed to submit report."));
+            return;
+        }
         sheet.reporting = true;
         ReportService.submitReport(Config.baseUrl, Session.token,
-            p.id !== undefined ? p.id : p.permlink || "", typeId, typeName || "Report",
+            postId, typeId, typeName || "Report",
             function () {
                 sheet.reporting = false;
                 sheet.closeSheet();
@@ -94,6 +107,7 @@ Item {
         AccountService.toggleBlock(Config.baseUrl, Session.token, username, "ADD",
             function () {
                 sheet.blocking = false;
+                BlockedUsers.add(username);   // persist so feeds stay filtered on reload
                 PostActions.userBlocked(username);
                 sheet.closeSheet();
                 Toast.show(i18n.tr("@%1 blocked.").arg(username));

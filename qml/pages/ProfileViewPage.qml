@@ -7,6 +7,7 @@ import "../components"
 import "../services/AccountService.js" as AccountService
 import "../services/PostService.js" as PostService
 import "../services/VideoService.js" as VideoService
+import "../services/BlockedUsers.js" as BlockedUsers
 
 /*
  * Public profile view for any user: a cover banner with an overlapping avatar,
@@ -74,6 +75,7 @@ Page {
 
     function toggleBlock() {
         if (!Session.isLoggedIn) { page.pageStack.push(Qt.resolvedUrl("LoginPage.qml")); return; }
+        if (page.blockLoading) return;   // ignore a second tap while in flight
         page.blockLoading = true;
         var action = page.isBlocked ? "REMOVE" : "ADD"
         AccountService.toggleBlock(Config.baseUrl, Session.token, page.username, action,
@@ -83,12 +85,12 @@ Page {
                 Toast.show(page.isBlocked
                     ? i18n.tr("@%1 blocked.").arg(page.username)
                     : i18n.tr("@%1 unblocked.").arg(page.username));
-                if (page.isBlocked) PostActions.userBlocked(page.username);
-                else PostActions.userUnblocked(page.username);
+                if (page.isBlocked) { BlockedUsers.add(page.username); PostActions.userBlocked(page.username); }
+                else { BlockedUsers.remove(page.username); PostActions.userUnblocked(page.username); }
             },
             function (err) {
                 page.blockLoading = false;
-                Toast.error(err.message || i18n.tr("Failed to update block."));
+                Toast.error((err && err.message) ? err.message : i18n.tr("Failed to update block."));
             });
     }
 
@@ -164,6 +166,11 @@ Page {
         target: PostActions
         function onHideRequested(author, permlink) { page.removeRow(permlink); }
         function onPostDeleted(author, permlink) { page.removeRow(permlink); }
+        // Keep the cover Block button in sync when the same user is blocked/unblocked
+        // elsewhere (e.g. from a post's action sheet), so it doesn't show a stale
+        // state and send a duplicate ADD (which the backend rejects with a 400).
+        function onUserBlocked(username) { if (username === page.username) page.isBlocked = true; }
+        function onUserUnblocked(username) { if (username === page.username) page.isBlocked = false; }
         function onEditRequested(post) {
             if (!page.visible) return;
             var t = page.tab;

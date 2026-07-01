@@ -35,7 +35,7 @@ RowLayout {
     property bool showShare: true
     property bool showVotersLabel: false
 
-    readonly property bool allowFlag: true
+    readonly property bool allowFlag: author !== Session.username
     readonly property string shareUrl: (author.length > 0 && permlink.length > 0)
         ? ("https://serey.io/authors/@" + author + "/" + permlink) : ""
 
@@ -46,7 +46,7 @@ RowLayout {
 
     function _guard() {
         if (!Session.isLoggedIn) {
-            Toast.error(i18n.tr("Please log in first."));
+            Toast.error(Lang.tr("Please log in first."));
             bar.requireLogin();
             return false;
         }
@@ -65,6 +65,16 @@ RowLayout {
     }
     function _cache() {
         VoteService._updateCache(bar.author, bar.permlink, bar.upvoted, bar.flagged, bar.votes, bar.payout);
+        Session.saveVote(bar.author, bar.permlink, bar.upvoted, bar.flagged, bar.votes);
+    }
+
+    function loadPersisted() {
+        var saved = Session.loadVote(bar.author, bar.permlink);
+        if (saved) {
+            bar.upvoted = saved.upvoted;
+            bar.flagged = saved.flagged;
+            bar.votes   = saved.votes;
+        }
     }
     function _fail(e) {
         bar.busy = false;
@@ -81,7 +91,7 @@ RowLayout {
             if (!bar.upvoted) { bar.votes = bar.votes + 1; bar.upvoted = true; bar._cache(); }
             return;
         }
-        Toast.error((e && e.message) ? e.message : i18n.tr("Action failed."));
+        Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
     }
 
     function doUpvote() {
@@ -90,7 +100,7 @@ RowLayout {
         if (bar.upvoted) {
             bar.busy = true;
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { bar.upvoted = false; bar.votes = Math.max(0, bar.votes - 1); _apply(r); bar._cache(); Toast.show(i18n.tr("Vote removed")); }, _fail);
+                function (r) { bar.upvoted = false; bar.votes = Math.max(0, bar.votes - 1); _apply(r); bar._cache(); Toast.show(Lang.tr("Vote removed")); }, _fail);
         } else if (bar.voteType === "comment") {
             bar._sendUpvote(100);
         } else {
@@ -103,14 +113,18 @@ RowLayout {
         VoteService.upvote(Config.baseUrl, author, permlink, voteType, weight, Session.token,
             function (r) { if (!bar.upvoted) bar.votes = bar.votes + 1;   // count this vote now
                            bar.upvoted = true; bar.flagged = false; _apply(r); bar._cache();
+<<<<<<< Updated upstream
                            Toast.success(bar.voteType === "comment" ? i18n.tr("Liked") : i18n.tr("Upvoted %1%").arg(weight)); }, _failUpvote);
+=======
+                           Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Upvoted %1%").arg(weight)); }, _fail);
+>>>>>>> Stashed changes
     }
 
     Component {
         id: voteWeightDialog
         Dialog {
             id: dialog
-            title: i18n.tr("Vote Weight")
+            title: Lang.tr("Vote Weight")
 
             property int selectedWeight: 100
 
@@ -171,12 +185,12 @@ RowLayout {
 
                 Button {
                     width: (parent.width - Style.spacingM) / 2
-                    text: i18n.tr("Cancel")
+                    text: Lang.tr("Cancel")
                     onClicked: PopupUtils.close(dialog)
                 }
                 Button {
                     width: (parent.width - Style.spacingM) / 2
-                    text: i18n.tr("Vote")
+                    text: Lang.tr("Vote")
                     color: Style.brand
                     onClicked: {
                         PopupUtils.close(dialog);
@@ -192,11 +206,11 @@ RowLayout {
         bar.busy = true;
         if (bar.flagged) {
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { bar.flagged = false; _apply(r); bar._cache(); Toast.show(i18n.tr("Vote removed")); }, _fail);
+                function (r) { bar.flagged = false; _apply(r); bar._cache(); Toast.show(Lang.tr("Vote removed")); }, _fail);
         } else {
             VoteService.flag(Config.baseUrl, author, permlink, voteType, Session.token,
                 function (r) { if (bar.upvoted) bar.votes = Math.max(0, bar.votes - 1);   // flag clears the upvote
-                               bar.flagged = true; bar.upvoted = false; _apply(r); bar._cache(); Toast.show(i18n.tr("Flagged")); }, _fail);
+                               bar.flagged = true; bar.upvoted = false; _apply(r); bar._cache(); Toast.show(Lang.tr("Flagged")); }, _fail);
         }
     }
 
@@ -230,6 +244,7 @@ RowLayout {
     AbstractButton {
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: downRow.implicitWidth
+        visible: bar.allowFlag
         enabled: !bar.busy
         onClicked: bar.doFlag()
         Row {
@@ -251,7 +266,7 @@ RowLayout {
     Label {
         visible: bar.showVotersLabel
         Layout.alignment: Qt.AlignVCenter
-        text: i18n.tr("Voters")
+        text: Lang.tr("Voters")
         font.pixelSize: Style.fontRegular
         color: Style.textPrimary
     }

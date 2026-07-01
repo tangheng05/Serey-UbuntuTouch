@@ -48,7 +48,7 @@ MainView {
         Http.setUnauthorizedHandler(function () {
             if (!Session.isLoggedIn) return;
             Session.clear();
-            Toast.error(i18n.tr("Your session expired. Please log in again."));
+            Toast.error(Lang.tr("Your session expired. Please log in again."));
         });
 
         // NOTE: we deliberately do NOT validate the token via /auth/authenticated
@@ -147,8 +147,8 @@ MainView {
                 var notifs = root.pushClient.notifications
                 if (notifs.length > 0) {
                     var msg = notifs.length === 1
-                        ? i18n.tr("You have 1 new notification")
-                        : i18n.tr("You have %1 new notifications").arg(notifs.length)
+                        ? Lang.tr("You have 1 new notification")
+                        : Lang.tr("You have %1 new notifications").arg(notifs.length)
                     root._showNotif(msg)
                     root.lastUnreadCount = -1
                     root.pushClient.clearAll()
@@ -176,8 +176,8 @@ MainView {
                     if (count > root.lastUnreadCount) {
                         var diff = count - root.lastUnreadCount
                         root._showNotif(diff === 1
-                            ? i18n.tr("You have 1 new notification")
-                            : i18n.tr("You have %1 new notifications").arg(diff))
+                            ? Lang.tr("You have 1 new notification")
+                            : Lang.tr("You have %1 new notifications").arg(diff))
                     }
                     root.lastUnreadCount = count
                 },
@@ -347,10 +347,10 @@ MainView {
 
             Repeater {
                 model: [
-                    { label: i18n.tr("Homepage"), icon: "home" },
-                    { label: i18n.tr("News"),     icon: "stock_note" },
-                    { label: i18n.tr("Video"),    icon: "camcorder" },
-                    { label: i18n.tr("Settings"), icon: "settings" }
+                    { label: Lang.tr("Homepage"), icon: "home" },
+                    { label: Lang.tr("News"),     icon: "stock_note" },
+                    { label: Lang.tr("Video"),    icon: "camcorder" },
+                    { label: Lang.tr("Settings"), icon: "settings" }
                 ]
                 delegate: AbstractButton {
                     width: navBar.width / 4

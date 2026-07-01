@@ -17,7 +17,7 @@ Page {
     property string errorMsg: ""
 
     header: PageHeader {
-        title: i18n.tr("Log in")
+        title: Lang.tr("Log in")
     }
 
     Component.onCompleted: usernameField.input.forceActiveFocus()
@@ -26,7 +26,7 @@ Page {
         if (busy) return;
         errorMsg = "";
         if (usernameField.text.length === 0 || passwordField.text.length === 0) {
-            errorMsg = i18n.tr("Please enter your username and password.");
+            errorMsg = Lang.tr("Please enter your username and password.");
             return;
         }
         busy = true;
@@ -73,7 +73,7 @@ Page {
                 Label {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: i18n.tr("Welcome back")
+                    text: Lang.tr("Welcome back")
                     font.pixelSize: Style.fontTitle
                     font.weight: Font.DemiBold
                     font.family: Style.fontFamily
@@ -82,7 +82,7 @@ Page {
                 Label {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: i18n.tr("Sign in to your Serey account")
+                    text: Lang.tr("Sign in to your Serey account")
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFamily
                     color: Style.textSecondary
@@ -95,7 +95,7 @@ Page {
             FormField {
                 id: usernameField
                 width: parent.width
-                placeholder: i18n.tr("Username")
+                placeholder: Lang.tr("Username")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
                 onAccepted: passwordField.input.forceActiveFocus()
             }
@@ -103,7 +103,7 @@ Page {
             FormField {
                 id: passwordField
                 width: parent.width
-                placeholder: i18n.tr("Password")
+                placeholder: Lang.tr("Password")
                 echoMode: TextInput.Password
                 onAccepted: page.submit()
             }
@@ -120,7 +120,7 @@ Page {
 
             PrimaryButton {
                 width: parent.width
-                text: page.busy ? i18n.tr("Signing in…") : i18n.tr("Log in")
+                text: page.busy ? Lang.tr("Signing in…") : Lang.tr("Log in")
                 busy: page.busy
                 onClicked: page.submit()
             }
@@ -129,13 +129,13 @@ Page {
 
             LinkButton {
                 width: parent.width
-                label: i18n.tr("Forgot password?")
+                label: Lang.tr("Forgot password?")
                 onClicked: page.pageStack.push(Qt.resolvedUrl("ForgotPasswordPage.qml"))
             }
 
             LinkButton {
                 width: parent.width
-                label: i18n.tr("Sign up")
+                label: Lang.tr("Sign up")
                 onClicked: page.pageStack.push(Qt.resolvedUrl("CreateAccountPage.qml"))
             }
         }

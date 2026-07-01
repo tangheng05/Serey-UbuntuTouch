@@ -20,9 +20,9 @@ Page {
 
     header: PageHeader {
         id: pageHeader
-        title: i18n.tr("Notifications")
+        title: Lang.tr("Notifications")
         leadingActionBar.actions: [
-            Action { iconName: "back"; text: i18n.tr("Back"); onTriggered: page.pageStack.pop() }
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
         ]
         trailingActionBar.actions: page.unreadCount > 0 ? [markAllReadAction] : []
 
@@ -42,7 +42,7 @@ Page {
                 }
                 Label {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: i18n.tr("Background notifications")
+                    text: Lang.tr("Background notifications")
                     font.pixelSize: Style.fontSmall
                     font.family: Style.fontFamily
                     color: Style.textPrimary
@@ -66,7 +66,7 @@ Page {
     Action {
         id: markAllReadAction
         iconName: "select"
-        text: page.markingAllRead ? i18n.tr("Marking…") : i18n.tr("Mark all read")
+        text: page.markingAllRead ? Lang.tr("Marking…") : Lang.tr("Mark all read")
         enabled: !page.markingAllRead
         onTriggered: page.markAllRead()
     }
@@ -135,7 +135,7 @@ Page {
                     page.retryCount++
                     retryTimer.start()
                 } else {
-                    page.errorMsg = err.message || i18n.tr("Failed to load notifications.")
+                    page.errorMsg = err.message || Lang.tr("Failed to load notifications.")
                 }
             }
         )
@@ -150,11 +150,11 @@ Page {
                 if (root) root.lastUnreadCount = 0
                 for (var i = 0; i < notifModel.count; i++)
                     notifModel.setProperty(i, "isRead", true)
-                Toast.show(i18n.tr("All notifications marked as read"))
+                Toast.show(Lang.tr("All notifications marked as read"))
             },
             function (err) {
                 page.markingAllRead = false
-                Toast.show(err.message || i18n.tr("Failed to mark as read"))
+                Toast.show(err.message || Lang.tr("Failed to mark as read"))
             })
     }
 
@@ -329,7 +329,7 @@ Page {
                         }
                         Label {
                             visible: !model.isRead
-                            text: "• " + i18n.tr("New")
+                            text: "• " + Lang.tr("New")
                             font.pixelSize: Style.fontXSmall
                             font.family: Style.fontFamily
                             font.weight: Font.DemiBold
@@ -356,7 +356,7 @@ Page {
         Label {
             anchors.centerIn: parent
             visible: notifModel.count === 0 && !page.loading && page.errorMsg === ""
-            text: i18n.tr("No notifications yet")
+            text: Lang.tr("No notifications yet")
             font.pixelSize: Style.fontLarge
             font.family: Style.fontFamily
             color: Style.textSecondary
@@ -381,7 +381,7 @@ Page {
             PrimaryButton {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: units.gu(20)
-                text: i18n.tr("Retry")
+                text: Lang.tr("Retry")
                 onClicked: page.reload()
             }
         }

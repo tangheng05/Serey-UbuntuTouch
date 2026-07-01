@@ -94,7 +94,7 @@ Page {
 
         Label {
             anchors.centerIn: parent
-            text: page.isEdit ? i18n.tr("Edit Post") : i18n.tr("Create Post")
+            text: page.isEdit ? Lang.tr("Edit Post") : Lang.tr("Create Post")
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
             color: Style.textPrimary
@@ -115,8 +115,8 @@ Page {
             Label {
                 id: postPillLabel
                 anchors.centerIn: parent
-                text: page.submitting ? (page.isEdit ? i18n.tr("Saving…") : i18n.tr("Posting…"))
-                                      : (page.isEdit ? i18n.tr("Save") : i18n.tr("Publish"))
+                text: page.submitting ? (page.isEdit ? Lang.tr("Saving…") : Lang.tr("Posting…"))
+                                      : (page.isEdit ? Lang.tr("Save") : Lang.tr("Publish"))
                 font.pixelSize: Style.fontSmall
                 font.weight: Font.DemiBold
                 color: parent.enabled ? Style.textOnBrand : Style.textSecondary
@@ -147,14 +147,14 @@ Page {
         onUploadingChanged: page.uploading = uploading
         onUploaded: {
             page.coverImageUrl = url;
-            Toast.success(i18n.tr("Cover image uploaded"));
+            Toast.success(Lang.tr("Cover image uploaded"));
         }
         onFailed: Toast.error(message)
     }
 
     function publish() {
         if (!Session.isLoggedIn) {
-            Toast.error(i18n.tr("Please log in first."));
+            Toast.error(Lang.tr("Please log in first."));
             return;
         }
         // Prepend cover image to body if one was uploaded
@@ -182,15 +182,15 @@ Page {
         }, Session.token,
         function (data) {
             page.submitting = false;
-            Toast.success(page.isEdit ? i18n.tr("Post updated!") : i18n.tr("Post published!"));
+            Toast.success(page.isEdit ? Lang.tr("Post updated!") : Lang.tr("Post published!"));
             page.saved();
             page.pageStack.pop();
         },
         function (err) {
             page.submitting = false;
             Toast.error((err && err.message) ? err.message
-                                             : (page.isEdit ? i18n.tr("Couldn't update post.")
-                                                            : i18n.tr("Couldn't publish post.")));
+                                             : (page.isEdit ? Lang.tr("Couldn't update post.")
+                                                            : Lang.tr("Couldn't publish post.")));
         });
     }
 
@@ -273,7 +273,7 @@ Page {
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
                     visible: titleField.text.length === 0 && !titleField.activeFocus && !Qt.inputMethod.visible
-                    text: i18n.tr("Enter title")
+                    text: Lang.tr("Enter title")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontMedium
                     font.family: Style.fontFamily
@@ -318,7 +318,7 @@ Page {
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
                     visible: bodyArea.text.length === 0 && !bodyArea.activeFocus && !Qt.inputMethod.visible
-                    text: i18n.tr("Write your article here...")
+                    text: Lang.tr("Write your article here...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFamily
@@ -347,7 +347,7 @@ Page {
                         anchors.verticalCenter: parent.verticalCenter
                         text: page.selectedCategory.length > 0
                             ? page.selectedCategory
-                            : i18n.tr("Select category")
+                            : Lang.tr("Select category")
                         font.pixelSize: Style.fontRegular
                         font.family: Style.fontFamily
                         color: page.selectedCategory.length > 0 ? Style.textPrimary : Style.textSecondary
@@ -438,7 +438,7 @@ Page {
 
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: i18n.tr("Add cover image")
+                        text: Lang.tr("Add cover image")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
@@ -594,7 +594,7 @@ Page {
                     width: parent.width; height: units.gu(5)
                     Label {
                         anchors.centerIn: parent
-                        text: i18n.tr("Select Category")
+                        text: Lang.tr("Select Category")
                         font.pixelSize: Style.fontMedium
                         font.weight: Font.DemiBold
                         color: Style.textPrimary
@@ -622,7 +622,7 @@ Page {
                     Label {
                         anchors.centerIn: parent
                         visible: !page.categoriesLoading
-                        text: i18n.tr("No categories for this community")
+                        text: Lang.tr("No categories for this community")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }

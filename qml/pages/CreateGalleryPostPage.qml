@@ -53,7 +53,7 @@ Page {
 
         Label {
             anchors.centerIn: parent
-            text: page.isEdit ? i18n.tr("Edit Gallery Post") : i18n.tr("Create Gallery Post")
+            text: page.isEdit ? Lang.tr("Edit Gallery Post") : Lang.tr("Create Gallery Post")
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
             color: Style.textPrimary
@@ -74,8 +74,8 @@ Page {
             Label {
                 id: galPostLabel
                 anchors.centerIn: parent
-                text: page.submitting ? (page.isEdit ? i18n.tr("Saving…") : i18n.tr("Posting…"))
-                                      : (page.isEdit ? i18n.tr("Save") : i18n.tr("Publish"))
+                text: page.submitting ? (page.isEdit ? Lang.tr("Saving…") : Lang.tr("Posting…"))
+                                      : (page.isEdit ? Lang.tr("Save") : Lang.tr("Publish"))
                 font.pixelSize: Style.fontSmall
                 font.weight: Font.DemiBold
                 color: parent.enabled ? Style.textOnBrand : Style.textSecondary
@@ -90,11 +90,11 @@ Page {
 
     function publish() {
         if (!Session.isLoggedIn) {
-            Toast.error(i18n.tr("Please log in first."));
+            Toast.error(Lang.tr("Please log in first."));
             return;
         }
         if (page.imageUrls.length === 0) {
-            Toast.error(i18n.tr("Add at least one photo."));
+            Toast.error(Lang.tr("Add at least one photo."));
             return;
         }
         page.submitting = true;
@@ -110,21 +110,21 @@ Page {
         }, Session.token,
         function (data) {
             page.submitting = false;
-            Toast.success(page.isEdit ? i18n.tr("Gallery post updated!") : i18n.tr("Gallery post published!"));
+            Toast.success(page.isEdit ? Lang.tr("Gallery post updated!") : Lang.tr("Gallery post published!"));
             page.saved();
             page.pageStack.pop();
         },
         function (err) {
             page.submitting = false;
             Toast.error((err && err.message) ? err.message
-                                             : (page.isEdit ? i18n.tr("Couldn't update post.")
-                                                            : i18n.tr("Couldn't publish post.")));
+                                             : (page.isEdit ? Lang.tr("Couldn't update post.")
+                                                            : Lang.tr("Couldn't publish post.")));
         });
     }
 
     function addImage() {
         if (page.imageUrls.length >= page.maxImages) {
-            Toast.show(i18n.tr("Maximum %1 images allowed").arg(page.maxImages));
+            Toast.show(Lang.tr("Maximum %1 images allowed").arg(page.maxImages));
             return;
         }
         if (page.uploading) return;
@@ -146,7 +146,7 @@ Page {
             var copy = page.imageUrls.slice();
             copy.push(url);
             page.imageUrls = copy;
-            Toast.success(i18n.tr("Photo uploaded"));
+            Toast.success(Lang.tr("Photo uploaded"));
         }
         onFailed: Toast.error(message)
     }
@@ -214,7 +214,7 @@ Page {
                 Label {
                     anchors { left: parent.left; top: parent.top; leftMargin: Style.spacingM; topMargin: Style.spacingM }
                     visible: captionField.text.length === 0 && !captionField.activeFocus && !Qt.inputMethod.visible
-                    text: i18n.tr("Write a caption...")
+                    text: Lang.tr("Write a caption...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFamily
@@ -223,7 +223,7 @@ Page {
 
             // Photos header
             Label {
-                text: i18n.tr("Photos (%1/%2)").arg(page.imageUrls.length).arg(page.maxImages)
+                text: Lang.tr("Photos (%1/%2)").arg(page.imageUrls.length).arg(page.maxImages)
                 font.pixelSize: Style.fontSmall
                 font.weight: Font.DemiBold
                 color: Style.textPrimary
@@ -309,7 +309,7 @@ Page {
                             }
                             Label {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: i18n.tr("Add photo")
+                                text: Lang.tr("Add photo")
                                 font.pixelSize: Style.fontXSmall
                                 color: Style.textSecondary
                             }
@@ -322,7 +322,7 @@ Page {
                             ActivityIndicator { anchors.horizontalCenter: parent.horizontalCenter; running: page.uploading }
                             Label {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: i18n.tr("Uploading…")
+                                text: Lang.tr("Uploading…")
                                 font.pixelSize: Style.fontXSmall
                                 color: Style.textSecondary
                             }

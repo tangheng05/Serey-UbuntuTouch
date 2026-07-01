@@ -146,7 +146,7 @@ Page {
             for (var i = 0; i < feedModel.count; i++) {
                 if (feedModel.get(i).permlink === permlink) {
                     feedModel.remove(i);
-                    Toast.show(i18n.tr("Post hidden"));
+                    Toast.show(Lang.tr("Post hidden"));
                     return;
                 }
             }
@@ -172,7 +172,7 @@ Page {
     SectionTabs {
         id: tabs
         anchors { top: topBar.bottom; left: parent.left; right: parent.right }
-        model: [i18n.tr("Blog"), i18n.tr("Video")]
+        model: [Lang.tr("Blog"), Lang.tr("Video")]
         currentIndex: page.feedIndex
         onSelected: {
             page.feedIndex = index;
@@ -191,7 +191,7 @@ Page {
             refreshing: page.refreshing
             onRefresh: page.refresh()
             content: Label {
-                text: i18n.tr("Pull to refresh")
+                text: Lang.tr("Pull to refresh")
                 opacity: list.dragging ? 1 : 0
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
@@ -264,6 +264,6 @@ Page {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
         iconName: "stock_note"
-        message: i18n.tr("Follow people to see their posts here")
+        message: Lang.tr("Follow people to see their posts here")
     }
 }

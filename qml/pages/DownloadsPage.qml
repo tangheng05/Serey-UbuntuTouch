@@ -24,15 +24,15 @@ Page {
         id: removeDialog
         Dialog {
             id: rdlg
-            title: i18n.tr("Remove download?")
-            text: i18n.tr("This video will no longer be available offline.")
+            title: Lang.tr("Remove download?")
+            text: Lang.tr("This video will no longer be available offline.")
             Button {
-                text: i18n.tr("Remove")
+                text: Lang.tr("Remove")
                 color: Style.danger
                 onClicked: { PopupUtils.close(rdlg); Downloads.remove(page._pendingRemove); }
             }
             Button {
-                text: i18n.tr("Cancel")
+                text: Lang.tr("Cancel")
                 onClicked: PopupUtils.close(rdlg)
             }
         }
@@ -52,7 +52,7 @@ Page {
 
         Label {
             anchors.centerIn: parent
-            text: i18n.tr("Offline videos")
+            text: Lang.tr("Offline videos")
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
             font.family: Style.fontFamily
@@ -87,6 +87,6 @@ Page {
         anchors.fill: list
         visible: Downloads.items.length === 0
         iconName: "save"
-        message: i18n.tr("No downloaded videos yet")
+        message: Lang.tr("No downloaded videos yet")
     }
 }

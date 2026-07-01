@@ -73,11 +73,16 @@ Item {
     }
 
     function submitReport(typeId, typeName) {
+<<<<<<< Updated upstream
         if (typeId === "" || typeId === undefined || typeId === null) {
             Toast.error(i18n.tr("Couldn't submit this report reason."));
             return;
         }
         if (!Session.isLoggedIn) { Toast.error(i18n.tr("Please log in to report.")); return; }
+=======
+        if (typeId === "" || typeId === undefined || typeId === null) return;
+        if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in to report.")); return; }
+>>>>>>> Stashed changes
         var p = PostActions.post;
         if (!p) return;
         // Backend expects the post id; fall back to permlink only if present.
@@ -92,11 +97,11 @@ Item {
             function () {
                 sheet.reporting = false;
                 sheet.closeSheet();
-                Toast.show(i18n.tr("Report submitted. Thank you."));
+                Toast.show(Lang.tr("Report submitted. Thank you."));
             },
             function (err) {
                 sheet.reporting = false;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Failed to submit report."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Failed to submit report."));
             });
     }
 
@@ -110,11 +115,11 @@ Item {
                 BlockedUsers.add(username);   // persist so feeds stay filtered on reload
                 PostActions.userBlocked(username);
                 sheet.closeSheet();
-                Toast.show(i18n.tr("@%1 blocked.").arg(username));
+                Toast.show(Lang.tr("@%1 blocked.").arg(username));
             },
             function (err) {
                 sheet.blocking = false;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Failed to block user."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Failed to block user."));
             });
     }
 
@@ -128,11 +133,11 @@ Item {
                 sheet.deleting = false;
                 PostActions.postDeleted(p.author || "", p.permlink || "");
                 sheet.closeSheet();
-                Toast.success(i18n.tr("Post deleted."));
+                Toast.success(Lang.tr("Post deleted."));
             },
             function (err) {
                 sheet.deleting = false;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't delete the post."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't delete the post."));
             });
     }
 
@@ -184,7 +189,8 @@ Item {
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: sheet.isOwn ? i18n.tr("Post options") : i18n.tr("How can we help?")
+                visible: sheet.isOwn
+                text: Lang.tr("Post options")
                 font.pixelSize: Style.fontLarge
                 font.weight: Font.DemiBold
                 color: Style.textPrimary
@@ -215,7 +221,7 @@ Item {
                         },
                         function (err) {
                             saveOfflineBtn._saving = false;
-                            Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't save for offline."));
+                            Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't save for offline."));
                             sheet.closeSheet();
                         });
                 }
@@ -231,11 +237,11 @@ Item {
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
-                        Label { text: saveOfflineBtn._saving ? i18n.tr("Saving…")
-                                      : (saveOfflineBtn._saved ? i18n.tr("Remove from saved") : i18n.tr("Save for offline"))
+                        Label { text: saveOfflineBtn._saving ? Lang.tr("Saving…")
+                                      : (saveOfflineBtn._saved ? Lang.tr("Remove from saved") : Lang.tr("Save for offline"))
                                 font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
-                        Label { text: saveOfflineBtn._saved ? i18n.tr("Available offline")
-                                      : i18n.tr("Read this article without a connection")
+                        Label { text: saveOfflineBtn._saved ? Lang.tr("Available offline")
+                                      : Lang.tr("Read this article without a connection")
                                 font.pixelSize: Style.fontSmall; color: Style.textSecondary }
                     }
                 }
@@ -262,8 +268,8 @@ Item {
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
-                        Label { text: i18n.tr("Edit post"); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
-                        Label { text: i18n.tr("Update your post"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
+                        Label { text: Lang.tr("Edit post"); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
+                        Label { text: Lang.tr("Update your post"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
                     }
                 }
             }
@@ -284,8 +290,8 @@ Item {
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
-                        Label { text: i18n.tr("Delete post"); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.danger }
-                        Label { text: i18n.tr("Permanently remove this post"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
+                        Label { text: Lang.tr("Delete post"); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.danger }
+                        Label { text: Lang.tr("Permanently remove this post"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
                     }
                 }
             }
@@ -313,8 +319,8 @@ Item {
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
-                        Label { text: i18n.tr("Hide this post"); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
-                        Label { text: i18n.tr("I'm not feeling good seeing this post"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
+                        Label { text: Lang.tr("Hide this post"); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
+                        Label { text: Lang.tr("I'm not feeling good seeing this post"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
                     }
                 }
             }
@@ -335,8 +341,8 @@ Item {
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
-                        Label { text: i18n.tr("Report Post"); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
-                        Label { text: i18n.tr("I'm concerned about this post"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
+                        Label { text: Lang.tr("Report Post"); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
+                        Label { text: Lang.tr("I'm concerned about this post"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
                     }
                 }
             }
@@ -357,8 +363,8 @@ Item {
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
-                        Label { text: i18n.tr("Block %1").arg(sheet.authorName); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
-                        Label { text: i18n.tr("You won't be able to see any posts from this person"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
+                        Label { text: Lang.tr("Block %1").arg(sheet.authorName); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
+                        Label { text: Lang.tr("You won't be able to see any posts from this person"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
                     }
                 }
             }
@@ -386,7 +392,7 @@ Item {
 
                 Label {
                     anchors.centerIn: parent
-                    text: i18n.tr("Report")
+                    text: Lang.tr("Report")
                     font.pixelSize: Style.fontMedium
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
@@ -406,7 +412,7 @@ Item {
 
             Label {
                 x: Style.spacingM
-                text: i18n.tr("Why are you reporting this post?")
+                text: Lang.tr("Why are you reporting this post?")
                 font.pixelSize: Style.fontRegular
                 color: Style.textSecondary
             }
@@ -489,7 +495,7 @@ Item {
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: i18n.tr("Block @%1?").arg(sheet.authorName)
+                text: Lang.tr("Block @%1?").arg(sheet.authorName)
                 font.pixelSize: Style.fontLarge
                 font.weight: Font.DemiBold
                 color: Style.textPrimary
@@ -500,7 +506,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: i18n.tr("Their posts will be hidden from your feeds.")
+                text: Lang.tr("Their posts will be hidden from your feeds.")
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
             }
@@ -518,7 +524,7 @@ Item {
                 }
                 Label {
                     anchors.centerIn: parent
-                    text: sheet.blocking ? i18n.tr("Blocking…") : i18n.tr("Block")
+                    text: sheet.blocking ? Lang.tr("Blocking…") : Lang.tr("Block")
                     font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold
                     color: Style.textOnBrand
                 }
@@ -539,7 +545,7 @@ Item {
                 }
                 Label {
                     anchors.centerIn: parent
-                    text: i18n.tr("Cancel")
+                    text: Lang.tr("Cancel")
                     font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold
                     color: Style.textPrimary
                 }
@@ -559,7 +565,7 @@ Item {
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: i18n.tr("Delete this post?")
+                text: Lang.tr("Delete this post?")
                 font.pixelSize: Style.fontLarge
                 font.weight: Font.DemiBold
                 color: Style.textPrimary
@@ -570,7 +576,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: i18n.tr("This permanently removes the post and can't be undone.")
+                text: Lang.tr("This permanently removes the post and can't be undone.")
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
             }
@@ -591,7 +597,7 @@ Item {
                 }
                 Label {
                     anchors.centerIn: parent
-                    text: sheet.deleting ? i18n.tr("Deleting…") : i18n.tr("Delete post")
+                    text: sheet.deleting ? Lang.tr("Deleting…") : Lang.tr("Delete post")
                     font.pixelSize: Style.fontMedium
                     font.weight: Font.DemiBold
                     color: Style.textOnBrand
@@ -616,7 +622,7 @@ Item {
                 }
                 Label {
                     anchors.centerIn: parent
-                    text: i18n.tr("Cancel")
+                    text: Lang.tr("Cancel")
                     font.pixelSize: Style.fontMedium
                     font.weight: Font.DemiBold
                     color: Style.textPrimary

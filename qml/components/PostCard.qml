@@ -92,12 +92,12 @@ Item {
 
     function toggleFollow() {
         if (!Session.isLoggedIn) {
-            Toast.error(i18n.tr("Please log in first."));
+            Toast.error(Lang.tr("Please log in first."));
             root.requireLogin();
             return;
         }
         var now = FollowStore.toggle(Config.baseUrl, p.author, Session.token);
-        Toast.show(now ? i18n.tr("Following") : i18n.tr("Unfollowed"));
+        Toast.show(now ? Lang.tr("Following") : Lang.tr("Unfollowed"));
     }
 
     Column {
@@ -185,7 +185,7 @@ Item {
                 Label {
                     id: followLabel
                     anchors.centerIn: parent
-                    text: root.isFollowing ? i18n.tr("Following") : i18n.tr("Follow")
+                    text: root.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
                     font.pixelSize: Style.fontXSmall
                     font.weight: Font.DemiBold
                     color: root.isFollowing ? Style.brand : Style.textOnBrand

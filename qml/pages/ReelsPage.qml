@@ -1,5 +1,6 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
+import Lomiri.Components.Popups 1.3
 import "../Theme"
 import "../Session"
 import "../components"
@@ -27,6 +28,72 @@ Page {
     property bool loading: true
     property string errorMsg: ""
 
+    // Pending vote — set by the delegate before opening the weight dialog.
+    property var    _voteReel:    null
+    property string _voteAuthor:  ""
+    property string _votePermlink: ""
+
+    function _sendUpvote(weight) {
+        var reel = page._voteReel;
+        if (!reel) return;
+        reel.busy = true;
+        VoteService.upvote(Config.baseUrl, page._voteAuthor, page._votePermlink, "post", weight, Session.token,
+            function (r) {
+                if (!reel.upvoted) reel.votes = reel.votes + 1;
+                reel.upvoted = true; reel.flagged = false; reel.busy = false;
+                VoteService._updateCache(page._voteAuthor, page._votePermlink, true, false, reel.votes, "");
+                Toast.success(Lang.tr("Upvoted %1%").arg(weight));
+            },
+            function (e) {
+                reel.busy = false;
+                Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
+            });
+    }
+
+    Component {
+        id: voteWeightDialog
+        Dialog {
+            id: vwDlg
+            title: Lang.tr("Vote Weight")
+            property int selectedWeight: 100
+            Label {
+                width: parent.width
+                text: vwDlg.selectedWeight + "%"
+                font.pixelSize: Style.fontTitle
+                font.weight: Font.Bold
+                color: Style.brand
+                horizontalAlignment: Text.AlignHCenter
+            }
+            Slider {
+                id: vwSlider
+                width: parent.width
+                minimumValue: 1; maximumValue: 100; value: 100; live: true
+                onValueChanged: vwDlg.selectedWeight = Math.round(value)
+                function formatValue(v) { return Math.round(v) + "%" }
+            }
+            Row {
+                width: parent.width
+                spacing: Style.spacingS
+                Repeater {
+                    model: [25, 50, 75, 100]
+                    delegate: AbstractButton {
+                        width: (parent.width - Style.spacingS * 3) / 4
+                        height: units.gu(4)
+                        onClicked: { vwSlider.value = modelData; vwDlg.selectedWeight = modelData; }
+                        Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: vwDlg.selectedWeight === modelData ? Style.brand : Style.iconBackground }
+                        Label { anchors.centerIn: parent; text: modelData + "%"; font.pixelSize: Style.fontSmall; font.weight: Font.DemiBold; color: vwDlg.selectedWeight === modelData ? Style.textOnBrand : Style.textPrimary }
+                    }
+                }
+            }
+            Row {
+                width: parent.width
+                spacing: Style.spacingM
+                Button { width: (parent.width - Style.spacingM) / 2; text: Lang.tr("Cancel"); onClicked: PopupUtils.close(vwDlg) }
+                Button { width: (parent.width - Style.spacingM) / 2; text: Lang.tr("Vote"); color: Style.brand; onClicked: { PopupUtils.close(vwDlg); page._sendUpvote(vwDlg.selectedWeight); } }
+            }
+        }
+    }
+
     header: Item { height: 0 }
 
     Component.onCompleted: load()
@@ -48,7 +115,7 @@ Page {
             function (err) {
                 if (!page) return;
                 page.loading = false;
-                page.errorMsg = (err && err.message) ? err.message : i18n.tr("Couldn't load reels.");
+                page.errorMsg = (err && err.message) ? err.message : Lang.tr("Couldn't load reels.");
             });
     }
 
@@ -84,18 +151,16 @@ Page {
             height: pager.height
             readonly property bool current: ListView.isCurrentItem
 
-            // Vote state, seeded from the session vote cache (a reel the user
-            // already upvoted stays blue across navigation). Voting is signed
-            // server-side via XHR — no second Chromium surface — so it's safe to
-            // do here, on top of the live reel WebView.
+            // Vote state — prefer the session cache (reflects votes cast this
+            // session), fall back to the voters list the API returned.
             readonly property var _vc: VoteService.getCached(modelData.author || "", modelData.permlink || "")
-            property bool upvoted: _vc ? _vc.upvoted : false
+            property bool upvoted: _vc ? _vc.upvoted : (modelData.voters || []).indexOf(Session.username) >= 0
             property bool flagged: _vc ? _vc.flagged : false
             property int  votes:   _vc ? _vc.votes : (modelData.votes || 0)
             property bool busy: false
 
             function _vguard() {
-                if (!Session.isLoggedIn) { Toast.error(i18n.tr("Please log in first.")); return false; }
+                if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return false; }
                 return !reel.busy;
             }
             function _vcache() {
@@ -110,22 +175,22 @@ Page {
             function _revert(wasUp, wasFlag, prevVotes, e) {
                 reel.upvoted = wasUp; reel.flagged = wasFlag; reel.votes = prevVotes;
                 reel.busy = false; reel._vcache();
-                Toast.error((e && e.message) ? e.message : i18n.tr("Action failed."));
+                Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
             }
             function toggleUpvote() {
                 if (!_vguard()) return;
-                var wasUp = reel.upvoted, wasFlag = reel.flagged, prevVotes = reel.votes;
-                reel.busy = true;
-                if (wasUp) {
+                if (reel.upvoted) {
+                    var wasUp = reel.upvoted, wasFlag = reel.flagged, prevVotes = reel.votes;
+                    reel.busy = true;
                     reel.upvoted = false; reel.votes = Math.max(0, reel.votes - 1); reel._vcache();
                     VoteService.removeVote(Config.baseUrl, modelData.author, modelData.permlink, "post", Session.token,
                         function (r) { reel.busy = false; },
                         function (e) { reel._revert(wasUp, wasFlag, prevVotes, e); });
                 } else {
-                    reel.upvoted = true; reel.flagged = false; reel.votes = reel.votes + 1; reel._vcache();
-                    VoteService.upvote(Config.baseUrl, modelData.author, modelData.permlink, "post", 100, Session.token,
-                        function (r) { reel.busy = false; },
-                        function (e) { reel._revert(wasUp, wasFlag, prevVotes, e); });
+                    page._voteReel     = reel;
+                    page._voteAuthor   = modelData.author   || "";
+                    page._votePermlink = modelData.permlink || "";
+                    PopupUtils.open(voteWeightDialog);
                 }
             }
             function toggleFlag() {
@@ -174,6 +239,43 @@ Page {
                 Behavior on opacity { NumberAnimation { duration: 180 } }
             }
 
+            // Tap-to-pause overlay — sits above the video but below the action rail
+            // and caption so taps on those still reach their targets.
+            MouseArea {
+                anchors.fill: parent
+                z: 1
+                onClicked: {
+                    if (playerLoader.item) {
+                        playerLoader.item.togglePause();
+                        pauseIcon.opacity = 1;
+                        pauseIconTimer.restart();
+                    }
+                }
+            }
+
+            // Brief play/pause icon flash on tap.
+            Rectangle {
+                id: pauseIcon
+                anchors.centerIn: parent
+                z: 2
+                width: units.gu(8); height: width
+                radius: width / 2
+                color: Qt.rgba(0, 0, 0, 0.5)
+                opacity: 0
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(4); height: width
+                    name: (playerLoader.item && playerLoader.item.paused) ? "media-playback-start" : "media-playback-pause"
+                    color: "white"
+                }
+                Timer {
+                    id: pauseIconTimer
+                    interval: 800
+                    onTriggered: pauseIcon.opacity = 0
+                }
+            }
+
             // Bottom gradient + caption.
             Rectangle {
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -218,13 +320,28 @@ Page {
                 Column {
                     width: parent.width - units.gu(4.5) - Style.spacingS
                     anchors.bottom: parent.bottom
-                    spacing: units.dp(2)
+                    spacing: units.dp(3)
                     Label {
-                        text: "@" + (modelData.author || "")
+                        width: parent.width
+                        text: {
+                            var handle = "@" + (modelData.author || "");
+                            var d = modelData.date ? new Date(modelData.date) : null;
+                            if (!d || isNaN(d.getTime())) return handle;
+                            var diff = (Date.now() - d.getTime()) / 1000;
+                            var rel;
+                            if      (diff < 60)       rel = Math.floor(diff) + "s";
+                            else if (diff < 3600)     rel = Math.floor(diff / 60) + "m";
+                            else if (diff < 86400)    rel = Math.floor(diff / 3600) + "h";
+                            else if (diff < 2592000)  rel = Math.floor(diff / 86400) + "d";
+                            else if (diff < 31536000) rel = Math.floor(diff / 2592000) + "mo";
+                            else                      rel = Math.floor(diff / 31536000) + "y";
+                            return handle + "  ·  " + rel;
+                        }
                         color: "white"
                         font.pixelSize: Style.fontRegular
                         font.weight: Font.DemiBold
                         font.family: Style.fontFamily
+                        elide: Text.ElideRight
                     }
                     Label {
                         width: parent.width
@@ -243,90 +360,112 @@ Page {
             // votes via XHR (no WebView). Comment/share open the thread in the
             // system browser (mounting the detail page's WebView over this live
             // reel would crash — see the dual-Chromium note).
-            Column {
+            Rectangle {
                 id: actionRail
                 anchors { right: parent.right; rightMargin: Style.spacingS
                           bottom: parent.bottom; bottomMargin: units.gu(3) }
-                spacing: units.gu(2)
+                width: units.gu(7)
+                height: railCol.height + units.gu(2)
+                radius: units.gu(2)
+                color: Qt.rgba(0, 0, 0, 0.4)
+                z: 5
 
-                // Upvote
-                AbstractButton {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: units.gu(6); height: upCol.height
-                    enabled: !reel.busy
-                    onClicked: reel.toggleUpvote()
-                    Column {
-                        id: upCol
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: units.dp(2)
+                Column {
+                    id: railCol
+                    anchors { top: parent.top; topMargin: units.gu(1)
+                              horizontalCenter: parent.horizontalCenter }
+                    spacing: units.gu(0.5)
+
+                    // Upvote
+                    AbstractButton {
+                        width: units.gu(7); height: units.gu(7)
+                        enabled: !reel.busy
+                        onClicked: reel.toggleUpvote()
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: units.dp(2)
+                            Icon {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: units.gu(3.4); height: width
+                                name: "thumb-up"
+                                color: reel.upvoted ? Style.brand : "white"
+                            }
+                            Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: reel.votes
+                                color: "white"
+                                font.pixelSize: Style.fontSmall
+                                font.weight: Font.DemiBold
+                            }
+                        }
+                    }
+
+                    // Downvote
+                    AbstractButton {
+                        width: units.gu(7); height: units.gu(7)
+                        enabled: !reel.busy
+                        onClicked: reel.toggleFlag()
                         Icon {
-                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.centerIn: parent
                             width: units.gu(3.4); height: width
-                            name: "thumb-up"
-                            color: reel.upvoted ? Style.brand : "white"
-                        }
-                        Label {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: reel.votes
-                            color: "white"
-                            font.pixelSize: Style.fontSmall
-                            font.weight: Font.DemiBold
+                            name: "thumb-down"
+                            color: reel.flagged ? Style.accentRed : "white"
                         }
                     }
-                }
 
-                // Downvote
-                AbstractButton {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: units.gu(6); height: downIcon.height
-                    enabled: !reel.busy
-                    onClicked: reel.toggleFlag()
-                    Icon {
-                        id: downIcon
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: units.gu(3.4); height: width
-                        name: "thumb-down"
-                        color: reel.flagged ? Style.accentRed : "white"
+                    // Comment
+                    AbstractButton {
+                        width: units.gu(7); height: units.gu(7)
+                        onClicked: commentSheet.open(modelData.author || "", modelData.permlink || "")
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: units.dp(2)
+                            Icon {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: units.gu(3.4); height: width
+                                name: "message"
+                                color: "white"
+                            }
+                            Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: modelData.comments || 0
+                                color: "white"
+                                font.pixelSize: Style.fontSmall
+                                font.weight: Font.DemiBold
+                            }
+                        }
                     }
-                }
 
-                // Comment — opens the in-app comment sheet (pure QML, no WebView,
-                // so it's safe over the live reel player).
-                AbstractButton {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: units.gu(6); height: cmtCol.height
-                    onClicked: commentSheet.open(modelData.author || "", modelData.permlink || "")
-                    Column {
-                        id: cmtCol
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: units.dp(2)
+                    // Share
+                    AbstractButton {
+                        width: units.gu(7); height: units.gu(7)
+                        onClicked: Qt.openUrlExternally(
+                            "https://serey.io/authors/@" + (modelData.author || "") + "/" + (modelData.permlink || ""))
                         Icon {
-                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.centerIn: parent
                             width: units.gu(3.4); height: width
-                            name: "message"
+                            name: "share"
                             color: "white"
-                        }
-                        Label {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: modelData.comments || 0
-                            color: "white"
-                            font.pixelSize: Style.fontSmall
-                            font.weight: Font.DemiBold
                         }
                     }
-                }
 
-                // Share
-                AbstractButton {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: units.gu(6); height: units.gu(3.4)
-                    onClicked: Qt.openUrlExternally(
-                        "https://serey.io/authors/@" + (modelData.author || "") + "/" + (modelData.permlink || ""))
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(3.4); height: width
-                        name: "share"
-                        color: "white"
+                    // More (3-dot)
+                    AbstractButton {
+                        width: units.gu(7); height: units.gu(7)
+                        onClicked: PostActions.open(modelData, "video")
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: units.dp(3)
+                            Repeater {
+                                model: 3
+                                Rectangle {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: units.dp(4); height: width
+                                    radius: width / 2
+                                    color: "white"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -334,13 +473,11 @@ Page {
     }
 
     // Back button (the app header/nav are hidden on this pushed page).
-    AbstractButton {
-        anchors { top: parent.top; left: parent.left; topMargin: Style.spacingM; leftMargin: Style.spacingM }
-        width: units.gu(5); height: width
-        z: 20
+    BackButton {
+        anchors { left: parent.left; top: parent.top; leftMargin: Style.spacingS; topMargin: Style.spacingS }
+        z: 100
+        overlay: true
         onClicked: page.pageStack.pop()
-        Rectangle { anchors.fill: parent; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.45) }
-        Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: "back"; color: "white" }
     }
 
     // In-app comment thread (no WebView — safe to overlay the live reel player).
@@ -356,6 +493,6 @@ Page {
         anchors.fill: parent
         visible: !page.loading && page.reels.length === 0
         iconName: "camcorder"
-        message: page.errorMsg !== "" ? page.errorMsg : i18n.tr("No reels yet")
+        message: page.errorMsg !== "" ? page.errorMsg : Lang.tr("No reels yet")
     }
 }

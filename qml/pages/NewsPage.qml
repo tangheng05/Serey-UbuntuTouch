@@ -44,7 +44,7 @@ Page {
             for (var i = 0; i < feedModel.count; i++) {
                 if (feedModel.get(i).permlink === permlink) {
                     feedModel.remove(i);
-                    Toast.show(i18n.tr("Post hidden"));
+                    Toast.show(Lang.tr("Post hidden"));
                     return;
                 }
             }
@@ -158,7 +158,7 @@ Page {
     SectionTabs {
         id: tabs
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        model: [i18n.tr("Trending"), i18n.tr("New")]
+        model: [Lang.tr("Trending"), Lang.tr("New")]
         currentIndex: page.feedIndex
         onSelected: {
             page.feedIndex = index;
@@ -183,7 +183,7 @@ Page {
             // own state, which would clobber a `visible` binding; it never touches
             // opacity, so this is the reliable lever.
             content: Label {
-                text: i18n.tr("Pull to refresh")
+                text: Lang.tr("Pull to refresh")
                 opacity: list.dragging ? 1 : 0
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
@@ -204,7 +204,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "close"
-                        text: i18n.tr("Hide")
+                        text: Lang.tr("Hide")
                         onTriggered: {
                             var vm = feedModel.get(index);
                             if (vm) PostActions.hideRequested(vm.author, vm.permlink);
@@ -216,7 +216,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: i18n.tr("Share")
+                        text: Lang.tr("Share")
                         onTriggered: {
                             var vm = feedModel.get(index);
                             if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
@@ -274,7 +274,7 @@ Page {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
         iconName: "stock_note"
-        message: i18n.tr("No posts in %1").arg(Config.communityName)
+        message: Lang.tr("No posts in %1").arg(Config.communityName)
     }
 
     // Compose lives in the global header action now (see Main.qml, gated on the

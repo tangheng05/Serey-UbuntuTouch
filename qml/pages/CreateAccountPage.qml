@@ -12,7 +12,7 @@ Page {
     id: page
 
     header: PageHeader {
-        title: i18n.tr("Create account")
+        title: Lang.tr("Create account")
     }
 
     Flickable {
@@ -42,7 +42,7 @@ Page {
                 Label {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: i18n.tr("Create account")
+                    text: Lang.tr("Create account")
                     font.pixelSize: Style.fontTitle
                     font.weight: Font.DemiBold
                     font.family: Style.fontFamily
@@ -51,7 +51,7 @@ Page {
                 Label {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: i18n.tr("Choose how you'd like to sign up")
+                    text: Lang.tr("Choose how you'd like to sign up")
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFamily
                     color: Style.textSecondary
@@ -63,13 +63,13 @@ Page {
 
             PrimaryButton {
                 width: parent.width
-                text: i18n.tr("Create Serey account")
+                text: Lang.tr("Create Serey account")
                 onClicked: page.pageStack.push(Qt.resolvedUrl("SignupPage.qml"))
             }
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: i18n.tr("We keep your keys safe — sign in with a password.")
+                text: Lang.tr("We keep your keys safe — sign in with a password.")
                 font.pixelSize: Style.fontXSmall
                 font.family: Style.fontFamily
                 color: Style.textSecondary
@@ -84,7 +84,7 @@ Page {
                 Label {
                     id: orLabel
                     anchors.verticalCenter: parent.verticalCenter
-                    text: i18n.tr("or")
+                    text: Lang.tr("or")
                     font.pixelSize: Style.fontSmall
                     font.family: Style.fontFamily
                     color: Style.textSecondary
@@ -94,13 +94,13 @@ Page {
 
             SecondaryButton {
                 width: parent.width
-                text: i18n.tr("Self-custody")
+                text: Lang.tr("Self-custody")
                 onClicked: page.pageStack.push(Qt.resolvedUrl("SelfCustodySignupPage.qml"))
             }
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: i18n.tr("You hold your own private key. It can't be recovered if lost.")
+                text: Lang.tr("You hold your own private key. It can't be recovered if lost.")
                 font.pixelSize: Style.fontXSmall
                 font.family: Style.fontFamily
                 color: Style.textSecondary

@@ -177,7 +177,7 @@ Page {
     function removeComment(permlinkToRemove) {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
-        Toast.success(i18n.tr("Comment deleted"));
+        Toast.success(Lang.tr("Comment deleted"));
     }
 
     function _editIn(list, permlinkToEdit, newBody) {
@@ -195,7 +195,7 @@ Page {
 
     function editComment(permlinkToEdit, newBody) {
         page.comments = page._editIn(page.comments, permlinkToEdit, newBody);
-        Toast.success(i18n.tr("Comment updated"));
+        Toast.success(Lang.tr("Comment updated"));
     }
 
     function startReply(comment) {
@@ -213,7 +213,7 @@ Page {
         if (text.length === 0)
             return;
         if (!Session.isLoggedIn) {
-            Toast.error(i18n.tr("Please log in first."));
+            Toast.error(Lang.tr("Please log in first."));
             page.pushLogin();
             return;
         }
@@ -231,7 +231,7 @@ Page {
                 composer.text = "";
                 var mine = { author: Session.username, permlink: "", body: text,
                              parentAuthor: parentAuthor, parentPermlink: parentPermlink,
-                             date: i18n.tr("just now"), votes: 0, voters: [], replies: [],
+                             date: Lang.tr("just now"), votes: 0, voters: [], replies: [],
                              authorImage: Session.avatarUrl };
                 if (target) {
                     page.comments = page._appendReply(page.comments, target.permlink, mine);
@@ -240,7 +240,7 @@ Page {
                 }
                 page.commentCount = page.commentCount + 1;
                 page.replyTarget = null;
-                Toast.success(i18n.tr("Comment posted"));
+                Toast.success(Lang.tr("Comment posted"));
                 // Reload so the optimistic comment gets its real server
                 // permlink — otherwise replying to it would fail with
                 // "parent_permlink is a required field".
@@ -248,7 +248,7 @@ Page {
             },
             function (err) {
                 page.posting = false;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't post comment."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't post comment."));
             });
     }
 
@@ -615,7 +615,7 @@ Page {
             Label {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: i18n.tr("COMMENTS (%1)").arg(page.commentCount)
+                text: Lang.tr("COMMENTS (%1)").arg(page.commentCount)
                 font.pixelSize: Style.fontSmall
                 font.weight: Font.Bold
                 color: Style.textSecondary
@@ -625,7 +625,7 @@ Page {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: page.comments.length === 0
-                text: i18n.tr("No comments yet. Be the first!")
+                text: Lang.tr("No comments yet. Be the first!")
                 textSize: Label.Small
                 color: Style.textSecondary
             }
@@ -713,7 +713,7 @@ Page {
             spacing: Style.spacingS
 
             Label {
-                text: page.replyTarget ? i18n.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                text: page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
             }
@@ -723,7 +723,7 @@ Page {
                 onClicked: page.cancelReply()
                 Label {
                     id: cancelLabel
-                    text: i18n.tr("Cancel")
+                    text: Lang.tr("Cancel")
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
                     color: Style.brand
@@ -753,8 +753,8 @@ Page {
                     }
                     visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
                     text: Session.isLoggedIn
-                        ? i18n.tr("Post a comment…")
-                        : i18n.tr("Log in to comment…")
+                        ? Lang.tr("Post a comment…")
+                        : Lang.tr("Log in to comment…")
                     font.family: Style.fontFamily
                     color: Style.textSecondary
                     elide: Text.ElideRight

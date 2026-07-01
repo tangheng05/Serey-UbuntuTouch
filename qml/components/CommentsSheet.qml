@@ -93,7 +93,7 @@ Item {
     function submit() {
         var text = composer.text.trim();
         if (text.length === 0) return;
-        if (!Session.isLoggedIn) { Toast.error(i18n.tr("Please log in first.")); return; }
+        if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
         var target = sheet.replyTarget;
         var pa = target ? target.author : sheet.author;
         var pp = target ? target.permlink : sheet.permlink;
@@ -103,18 +103,18 @@ Item {
             function () {
                 sheet.posting = false; composer.text = "";
                 var mine = { author: Session.username, permlink: "", body: text,
-                             parentAuthor: pa, parentPermlink: pp, date: i18n.tr("just now"),
+                             parentAuthor: pa, parentPermlink: pp, date: Lang.tr("just now"),
                              votes: 0, voters: [], replies: [], authorImage: Session.avatarUrl };
                 sheet.comments = target ? _appendReply(sheet.comments, target.permlink, mine)
                                         : [mine].concat(sheet.comments);
                 sheet.replyTarget = null;
                 sheet.countChanged(1);
-                Toast.success(i18n.tr("Comment posted"));
+                Toast.success(Lang.tr("Comment posted"));
                 sheet.load();
             },
             function (err) {
                 sheet.posting = false;
-                Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't post comment."));
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't post comment."));
             });
     }
 
@@ -155,7 +155,7 @@ Item {
             color: "transparent"
             Label {
                 anchors.centerIn: parent
-                text: i18n.tr("Comments")
+                text: Lang.tr("Comments")
                 font.pixelSize: Style.fontMedium
                 font.weight: Font.DemiBold
                 font.family: Style.fontFamily
@@ -195,7 +195,7 @@ Item {
         Label {
             anchors.centerIn: cList
             visible: !sheet.loading && sheet.comments.length === 0
-            text: i18n.tr("No comments yet")
+            text: Lang.tr("No comments yet")
             font.family: Style.fontFamily
             color: Style.textSecondary
         }
@@ -214,7 +214,7 @@ Item {
                 color: Style.iconBackground
                 Label {
                     anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    text: i18n.tr("Replying to @%1").arg(sheet.replyTarget ? sheet.replyTarget.author : "")
+                    text: Lang.tr("Replying to @%1").arg(sheet.replyTarget ? sheet.replyTarget.author : "")
                     font.pixelSize: Style.fontSmall
                     font.family: Style.fontFamily
                     color: Style.textSecondary
@@ -239,7 +239,7 @@ Item {
                     id: composer
                     width: parent.width - sendBtn.width - Style.spacingS
                     anchors.verticalCenter: parent.verticalCenter
-                    placeholderText: i18n.tr("Add a comment…")
+                    placeholderText: Lang.tr("Add a comment…")
                     font.family: Style.fontFamily
                     onAccepted: sheet.submit()
                 }
@@ -256,7 +256,7 @@ Item {
                     }
                     Label {
                         anchors.centerIn: parent
-                        text: sheet.posting ? i18n.tr("…") : i18n.tr("Send")
+                        text: sheet.posting ? Lang.tr("…") : Lang.tr("Send")
                         font.pixelSize: Style.fontSmall
                         font.weight: Font.DemiBold
                         color: parent.enabled ? Style.textOnBrand : Style.textSecondary

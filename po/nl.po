@@ -1,0 +1,914 @@
+# Dutch translation for Serey Ubuntu Touch
+# Copyright (C) 2026
+# This file is distributed under the same license as the serey package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: serey.ubuntu 0.1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-01 00:00+0000\n"
+"PO-Revision-Date: 2026-07-01 00:00+0000\n"
+"Last-Translator: Serey Team\n"
+"Language-Team: Dutch\n"
+"Language: nl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "%1 replies"
+msgstr "%1 reacties"
+
+msgid "...more"
+msgstr "...meer"
+
+msgid "8–16 characters"
+msgstr "8–16 tekens"
+
+msgid "@%1 blocked."
+msgstr "@%1 geblokkeerd."
+
+msgid "@%1 unblocked."
+msgstr "@%1 gedeblokkeerd."
+
+msgid "@%1 will be able to see your posts and interact with you again."
+msgstr "@%1 kan uw berichten weer zien en met u omgaan."
+
+msgid "@%1 will no longer be able to see your posts or interact with you."
+msgstr "@%1 kan dan uw berichten niet meer zien of beantwoorden."
+
+msgid "About"
+msgstr "Over"
+
+msgid "Account"
+msgstr "Account"
+
+msgid "Account created!"
+msgstr "Account aangemaakt!"
+
+msgid "Account created. Log in with your key."
+msgstr "Account aangemaakt. Log in met uw sleutel."
+
+msgid "Action failed."
+msgstr "Actie mislukt."
+
+msgid "Add a comment…"
+msgstr "Voeg een reactie toe…"
+
+msgid "Add at least one photo."
+msgstr "Voeg minimaal één foto toe."
+
+msgid "Add cover image"
+msgstr "Omslagafbeelding toevoegen"
+
+msgid "Add photo"
+msgstr "Foto toevoegen"
+
+msgid "Add video"
+msgstr "Video toevoegen"
+
+msgid "Add your email"
+msgstr "Voeg uw e-mail toe"
+
+msgid "All notifications marked as read"
+msgstr "Alle meldingen als gelezen gemarkeerd"
+
+msgid "Available offline"
+msgstr "Beschikbaar offline"
+
+msgid "Back"
+msgstr "Terug"
+
+msgid "Background notifications"
+msgstr "Achtergrondmeldingen"
+
+msgid "Bio"
+msgstr "Bio"
+
+msgid "Block"
+msgstr "Blokkeren"
+
+msgid "Block %1"
+msgstr "%1 blokkeren"
+
+msgid "Block @%1?"
+msgstr "@%1 blokkeren?"
+
+msgid "Block user?"
+msgstr "Gebruiker blokkeren?"
+
+msgid "Blocked Users"
+msgstr "Geblokkeerde gebruikers"
+
+msgid "Blocking…"
+msgstr "Blokkeren…"
+
+msgid "Blog"
+msgstr "Blog"
+
+msgid "COMMENTS (%1)"
+msgstr "REACTIES (%1)"
+
+msgid "Cancel"
+msgstr "Annuleren"
+
+msgid "Change password"
+msgstr "Wachtwoord wijzigen"
+
+msgid "Choose a username"
+msgstr "Kies een gebruikersnaam"
+
+msgid "Choose community"
+msgstr "Kies gemeenschap"
+
+msgid "Choose how you'd like to sign up"
+msgstr "Kies hoe u zich wilt aanmelden"
+
+msgid "Comment deleted"
+msgstr "Reactie verwijderd"
+
+msgid "Comment posted"
+msgstr "Reactie geplaatst"
+
+msgid "Comment updated"
+msgstr "Reactie bijgewerkt"
+
+msgid "Comments"
+msgstr "Reacties"
+
+msgid "Comments (%1)"
+msgstr "Reacties (%1)"
+
+msgid "Confirm new password"
+msgstr "Nieuw wachtwoord bevestigen"
+
+msgid "Confirm password"
+msgstr "Wachtwoord bevestigen"
+
+msgid "Continue"
+msgstr "Doorgaan"
+
+msgid "Copied ✓"
+msgstr "Gekopieerd ✓"
+
+msgid "Copy key"
+msgstr "Sleutel kopiëren"
+
+msgid "Couldn't delete comment."
+msgstr "Kon reactie niet verwijderen."
+
+msgid "Couldn't delete the post."
+msgstr "Kon het bericht niet verwijderen."
+
+msgid "Couldn't load reels."
+msgstr "Kon reels niet laden."
+
+msgid "Couldn't post comment."
+msgstr "Kon reactie niet plaatsen."
+
+msgid "Couldn't publish post."
+msgstr "Kon bericht niet publiceren."
+
+msgid "Couldn't publish video."
+msgstr "Kon video niet publiceren."
+
+msgid "Couldn't save for offline."
+msgstr "Kon niet opslaan voor offline gebruik."
+
+msgid "Couldn't update comment."
+msgstr "Kon reactie niet bijwerken."
+
+msgid "Couldn't update post."
+msgstr "Kon bericht niet bijwerken."
+
+msgid "Cover image uploaded"
+msgstr "Omslagafbeelding geüpload"
+
+msgid "Cover updated."
+msgstr "Omslag bijgewerkt."
+
+msgid "Create Gallery Post"
+msgstr "Galeriebericht maken"
+
+msgid "Create Post"
+msgstr "Bericht maken"
+
+msgid "Create Serey account"
+msgstr "Serey-account aanmaken"
+
+msgid "Create a new password"
+msgstr "Een nieuw wachtwoord aanmaken"
+
+msgid "Create account"
+msgstr "Account aanmaken"
+
+msgid "Current password"
+msgstr "Huidig wachtwoord"
+
+msgid "Date"
+msgstr "Datum"
+
+msgid "Date of birth"
+msgstr "Geboortedatum"
+
+msgid "Delete"
+msgstr "Verwijderen"
+
+msgid "Delete post"
+msgstr "Bericht verwijderen"
+
+msgid "Delete this comment?"
+msgstr "Deze reactie verwijderen?"
+
+msgid "Delete this post?"
+msgstr "Dit bericht verwijderen?"
+
+msgid "Deleting…"
+msgstr "Verwijderen…"
+
+msgid "Describe your video..."
+msgstr "Beschrijf uw video..."
+
+msgid "Description"
+msgstr "Beschrijving"
+
+msgid "Download"
+msgstr "Downloaden"
+
+msgid "Downloaded"
+msgstr "Gedownload"
+
+msgid "Edit"
+msgstr "Bewerken"
+
+msgid "Edit Gallery Post"
+msgstr "Galeriebericht bewerken"
+
+msgid "Edit Post"
+msgstr "Bericht bewerken"
+
+msgid "Edit cover"
+msgstr "Omslag bewerken"
+
+msgid "Edit post"
+msgstr "Bericht bewerken"
+
+msgid "Edit profile"
+msgstr "Profiel bewerken"
+
+msgid "Email"
+msgstr "E-mail"
+
+msgid "Email address"
+msgstr "E-mailadres"
+
+msgid "Enter the code we emailed you"
+msgstr "Voer de code in die we u hebben gemaild"
+
+msgid "Enter the email address on your account. We'll send a verification code."
+msgstr "Voer het e-mailadres van uw account in. We sturen een verificatiecode."
+
+msgid "Enter title"
+msgstr "Titel invoeren"
+
+msgid "Enter your code"
+msgstr "Voer uw code in"
+
+msgid "Enter your email"
+msgstr "Voer uw e-mail in"
+
+msgid "Failed to block user."
+msgstr "Kon gebruiker niet blokkeren."
+
+msgid "Failed to change password."
+msgstr "Kon wachtwoord niet wijzigen."
+
+msgid "Failed to load blocked users."
+msgstr "Kon geblokkeerde gebruikers niet laden."
+
+msgid "Failed to load notifications."
+msgstr "Kon meldingen niet laden."
+
+msgid "Failed to mark as read"
+msgstr "Kon niet als gelezen markeren"
+
+msgid "Failed to submit report."
+msgstr "Kon rapport niet indienen."
+
+msgid "Failed to subscribe"
+msgstr "Abonneren mislukt"
+
+msgid "Failed to unblock."
+msgstr "Deblokkeren mislukt."
+
+msgid "Failed to unsubscribe"
+msgstr "Afmelden mislukt"
+
+msgid "Failed to update block."
+msgstr "Blokkering bijwerken mislukt."
+
+msgid "Female"
+msgstr "Vrouw"
+
+msgid "Fill in the hidden part of your email to receive a code."
+msgstr "Vul het verborgen deel van uw e-mail in om een code te ontvangen."
+
+msgid "Find your account"
+msgstr "Uw account vinden"
+
+msgid "First name"
+msgstr "Voornaam"
+
+msgid "Flagged"
+msgstr "Gemarkeerd"
+
+msgid "Follow"
+msgstr "Volgen"
+
+msgid "Follow people to see their posts here"
+msgstr "Volg mensen om hun berichten hier te zien"
+
+msgid "Followers"
+msgstr "Volgers"
+
+msgid "Following"
+msgstr "Volgend"
+
+msgid "Forgot password?"
+msgstr "Wachtwoord vergeten?"
+
+msgid "Gallery"
+msgstr "Galerij"
+
+msgid "Gallery post published!"
+msgstr "Galeriebericht gepubliceerd!"
+
+msgid "Gallery post updated!"
+msgstr "Galeriebericht bijgewerkt!"
+
+msgid "Gender"
+msgstr "Geslacht"
+
+msgid "Hide"
+msgstr "Verbergen"
+
+msgid "Hide replies"
+msgstr "Reacties verbergen"
+
+msgid "Hide this post"
+msgstr "Dit bericht verbergen"
+
+msgid "Homepage"
+msgstr "Startpagina"
+
+msgid "How can we help?"
+msgstr "Hoe kunnen we helpen?"
+
+msgid "I'm concerned about this post"
+msgstr "Ik maak me zorgen over dit bericht"
+
+msgid "I'm not feeling good seeing this post"
+msgstr "Ik voel me niet goed bij het zien van dit bericht"
+
+msgid "I've saved my key"
+msgstr "Ik heb mijn sleutel opgeslagen"
+
+msgid "It will no longer be available offline."
+msgstr "Het zal niet langer offline beschikbaar zijn."
+
+msgid "Key copied. Store it somewhere safe."
+msgstr "Sleutel gekopieerd. Bewaar hem op een veilige plek."
+
+msgid "Language"
+msgstr "Taal"
+
+msgid "Last name"
+msgstr "Achternaam"
+
+msgid "Latest Videos"
+msgstr "Nieuwste video's"
+
+msgid "Library"
+msgstr "Bibliotheek"
+
+msgid "Liked"
+msgstr "Geliked"
+
+msgid "Likes"
+msgstr "Likes"
+
+msgid "Log in"
+msgstr "Inloggen"
+
+msgid "Log in to comment…"
+msgstr "Log in om te reageren…"
+
+msgid "Log in to subscribe"
+msgstr "Log in om u aan te melden"
+
+msgid "Log out"
+msgstr "Uitloggen"
+
+msgid "Log out?"
+msgstr "Uitloggen?"
+
+msgid "Lowercase"
+msgstr "Kleine letters"
+
+msgid "MP4, WEBM, MOV · up to 90 MB"
+msgstr "MP4, WEBM, MOV · tot 90 MB"
+
+msgid "Male"
+msgstr "Man"
+
+msgid "Mark all read"
+msgstr "Alles als gelezen markeren"
+
+msgid "Marking…"
+msgstr "Markeren…"
+
+msgid "Maximum %1 images allowed"
+msgstr "Maximaal %1 afbeeldingen toegestaan"
+
+msgid "More Videos"
+msgstr "Meer video's"
+
+msgid "New"
+msgstr "Nieuw"
+
+msgid "New code sent."
+msgstr "Nieuwe code verzonden."
+
+msgid "New password"
+msgstr "Nieuw wachtwoord"
+
+msgid "News"
+msgstr "Nieuws"
+
+msgid "Next"
+msgstr "Volgende"
+
+msgid "No blocked users"
+msgstr "Geen geblokkeerde gebruikers"
+
+msgid "No categories for this community"
+msgstr "Geen categorieën voor deze gemeenschap"
+
+msgid "No comments yet"
+msgstr "Nog geen reacties"
+
+msgid "No comments yet. Be the first!"
+msgstr "Nog geen reacties. Wees de eerste!"
+
+msgid "No communities found"
+msgstr "Geen gemeenschappen gevonden"
+
+msgid "No downloaded videos yet"
+msgstr "Nog geen gedownloade video's"
+
+msgid "No email address found for this account."
+msgstr "Geen e-mailadres gevonden voor dit account."
+
+msgid "No gallery posts in %1"
+msgstr "Geen galerieberichten in %1"
+
+msgid "No gallery posts yet"
+msgstr "Nog geen galerieberichten"
+
+msgid "No notifications yet"
+msgstr "Nog geen meldingen"
+
+msgid "No posts in %1"
+msgstr "Geen berichten in %1"
+
+msgid "No posts yet"
+msgstr "Nog geen berichten"
+
+msgid "No reels yet"
+msgstr "Nog geen reels"
+
+msgid "No saved articles yet"
+msgstr "Nog geen opgeslagen artikelen"
+
+msgid "No videos to show"
+msgstr "Geen video's om weer te geven"
+
+msgid "No videos yet"
+msgstr "Nog geen video's"
+
+msgid "Nothing here yet"
+msgstr "Hier is nog niets"
+
+msgid "Notifications"
+msgstr "Meldingen"
+
+msgid "Number"
+msgstr "Nummer"
+
+msgid "Offline videos"
+msgstr "Offlinevideo's"
+
+msgid "Password"
+msgstr "Wachtwoord"
+
+msgid "Password & Security"
+msgstr "Wachtwoord & beveiliging"
+
+msgid "Password changed successfully"
+msgstr "Wachtwoord succesvol gewijzigd"
+
+msgid "Password must be 8–16 characters and include an uppercase letter, a lowercase letter and a number."
+msgstr "Wachtwoord moet 8–16 tekens bevatten en een hoofdletter, kleine letter en cijfer."
+
+msgid "Password must be 8–16 characters with uppercase, lowercase and a number."
+msgstr "Wachtwoord moet 8–16 tekens zijn met hoofdletter, kleine letter en cijfer."
+
+msgid "Password reset. Please log in."
+msgstr "Wachtwoord opnieuw ingesteld. Log in."
+
+msgid "Passwords do not match"
+msgstr "Wachtwoorden komen niet overeen"
+
+msgid "Passwords do not match."
+msgstr "Wachtwoorden komen niet overeen."
+
+msgid "Permanently remove this post"
+msgstr "Dit bericht definitief verwijderen"
+
+msgid "Photo updated."
+msgstr "Foto bijgewerkt."
+
+msgid "Photo uploaded"
+msgstr "Foto geüpload"
+
+msgid "Photos (%1/%2)"
+msgstr "Foto's (%1/%2)"
+
+msgid "Pick a community (not Global) from the top bar first."
+msgstr "Kies eerst een gemeenschap (niet Globaal) in de bovenste balk."
+
+msgid "Pick a community (not Global) from the top bar to post a video."
+msgstr "Kies een gemeenschap (niet Globaal) in de bovenste balk om een video te plaatsen."
+
+msgid "Please enter a valid email address."
+msgstr "Voer een geldig e-mailadres in."
+
+msgid "Please enter the 6-digit code."
+msgstr "Voer de 6-cijferige code in."
+
+msgid "Please enter the verification code."
+msgstr "Voer de verificatiecode in."
+
+msgid "Please enter your username and password."
+msgstr "Voer uw gebruikersnaam en wachtwoord in."
+
+msgid "Please enter your username."
+msgstr "Voer uw gebruikersnaam in."
+
+msgid "Please fill in the hidden part of your email."
+msgstr "Vul het verborgen deel van uw e-mail in."
+
+msgid "Please log in first."
+msgstr "Log eerst in."
+
+msgid "Please log in to report."
+msgstr "Log in om te rapporteren."
+
+msgid "Please wait…"
+msgstr "Even geduld…"
+
+msgid "Post a comment…"
+msgstr "Plaats een reactie…"
+
+msgid "Post deleted."
+msgstr "Bericht verwijderd."
+
+msgid "Post hidden"
+msgstr "Bericht verborgen"
+
+msgid "Post options"
+msgstr "Berichtopties"
+
+msgid "Post published!"
+msgstr "Bericht gepubliceerd!"
+
+msgid "Post updated!"
+msgstr "Bericht bijgewerkt!"
+
+msgid "Posting…"
+msgstr "Plaatsen…"
+
+msgid "Posts"
+msgstr "Berichten"
+
+msgid "Preferences"
+msgstr "Voorkeuren"
+
+msgid "Preparing…"
+msgstr "Voorbereiden…"
+
+msgid "Profile updated."
+msgstr "Profiel bijgewerkt."
+
+msgid "Publish"
+msgstr "Publiceren"
+
+msgid "Pull to refresh"
+msgstr "Trek om te vernieuwen"
+
+msgid "Read this article without a connection"
+msgstr "Lees dit artikel zonder verbinding"
+
+msgid "Reels"
+msgstr "Reels"
+
+msgid "Remove"
+msgstr "Verwijderen"
+
+msgid "Remove download?"
+msgstr "Download verwijderen?"
+
+msgid "Remove from saved"
+msgstr "Verwijderen uit opgeslagen"
+
+msgid "Remove saved article?"
+msgstr "Opgeslagen artikel verwijderen?"
+
+msgid "Remove \"%1\"?"
+msgstr "\"%1\" verwijderen?"
+
+msgid "Reply"
+msgstr "Beantwoorden"
+
+msgid "Replying to @%1"
+msgstr "Beantwoorden aan @%1"
+
+msgid "Report"
+msgstr "Rapporteren"
+
+msgid "Report Post"
+msgstr "Bericht rapporteren"
+
+msgid "Report submitted. Thank you."
+msgstr "Rapport ingediend. Dank u."
+
+msgid "Resend code"
+msgstr "Code opnieuw verzenden"
+
+msgid "Resend code in %1s"
+msgstr "Code opnieuw verzenden in %1s"
+
+msgid "Reset password"
+msgstr "Wachtwoord opnieuw instellen"
+
+msgid "Retry"
+msgstr "Opnieuw proberen"
+
+msgid "Save"
+msgstr "Opslaan"
+
+msgid "Save changes"
+msgstr "Wijzigingen opslaan"
+
+msgid "Save for offline"
+msgstr "Opslaan voor offline gebruik"
+
+msgid "Save your private key"
+msgstr "Sla uw privésleutel op"
+
+msgid "Saved"
+msgstr "Opgeslagen"
+
+msgid "Saved articles"
+msgstr "Opgeslagen artikelen"
+
+msgid "Saving…"
+msgstr "Opslaan…"
+
+msgid "Search users..."
+msgstr "Gebruikers zoeken..."
+
+msgid "See your profile"
+msgstr "Bekijk uw profiel"
+
+msgid "Select Category"
+msgstr "Selecteer categorie"
+
+msgid "Select category"
+msgstr "Selecteer categorie"
+
+msgid "Self-custody"
+msgstr "Zelfbeheer"
+
+msgid "Send"
+msgstr "Verzenden"
+
+msgid "Send code"
+msgstr "Code verzenden"
+
+msgid "Serey website"
+msgstr "Serey-website"
+
+msgid "Set your email and password"
+msgstr "Stel uw e-mail en wachtwoord in"
+
+msgid "Settings"
+msgstr "Instellingen"
+
+msgid "Share"
+msgstr "Delen"
+
+msgid "Sign in to your Serey account"
+msgstr "Inloggen bij uw Serey-account"
+
+msgid "Sign up"
+msgstr "Aanmelden"
+
+msgid "Signing in…"
+msgstr "Inloggen…"
+
+msgid "Something went wrong"
+msgstr "Er is iets misgegaan"
+
+msgid "Something went wrong."
+msgstr "Er is iets misgegaan."
+
+msgid "Start exploring"
+msgstr "Begin met verkennen"
+
+msgid "Subscribe"
+msgstr "Abonneren"
+
+msgid "Subscribed"
+msgstr "Geabonneerd"
+
+msgid "Subscribed!"
+msgstr "Geabonneerd!"
+
+msgid "Tap photo to change"
+msgstr "Tik op foto om te wijzigen"
+
+msgid "Tell people a little about yourself"
+msgstr "Vertel mensen iets over uzelf"
+
+msgid "Their posts will be hidden from your feeds."
+msgstr "Hun berichten worden verborgen in uw feeds."
+
+msgid "This key is the only way into your account. Save it somewhere safe. It can't be recovered if you lose it."
+msgstr "Deze sleutel is de enige toegang tot uw account. Bewaar hem op een veilige plek. Hij kan niet worden hersteld als u hem verliest."
+
+msgid "This permanently removes the post and can't be undone."
+msgstr "Dit verwijdert het bericht permanent en kan niet ongedaan worden gemaakt."
+
+msgid "This video will no longer be available offline."
+msgstr "Deze video is niet langer offline beschikbaar."
+
+msgid "Trending"
+msgstr "Trending"
+
+msgid "Unblock"
+msgstr "Deblokkeren"
+
+msgid "Unblock user?"
+msgstr "Gebruiker deblokkeren?"
+
+msgid "Unblocking…"
+msgstr "Deblokkeren…"
+
+msgid "Unfollowed"
+msgstr "Gevolgd gestopt"
+
+msgid "Unsubscribed"
+msgstr "Afgemeld"
+
+msgid "Update your post"
+msgstr "Uw bericht bijwerken"
+
+msgid "Upload Video"
+msgstr "Video uploaden"
+
+msgid "Upload failed."
+msgstr "Upload mislukt."
+
+msgid "Upload timed out. Try a smaller image or check your connection."
+msgstr "Upload time-out. Probeer een kleinere afbeelding of controleer uw verbinding."
+
+msgid "Uploading video…"
+msgstr "Video uploaden…"
+
+msgid "Uploading…"
+msgstr "Uploaden…"
+
+msgid "Uppercase"
+msgstr "Hoofdletters"
+
+msgid "Upvoted %1%"
+msgstr "%1% omhoog gestemd"
+
+msgid "Use local dev server"
+msgstr "Lokale dev-server gebruiken"
+
+msgid "Username"
+msgstr "Gebruikersnaam"
+
+msgid "Username must be 5–30 characters: lowercase letters, numbers or hyphens."
+msgstr "Gebruikersnaam moet 5–30 tekens zijn: kleine letters, cijfers of koppeltekens."
+
+msgid "Verify your identity"
+msgstr "Verifieer uw identiteit"
+
+msgid "Version"
+msgstr "Versie"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Video published!"
+msgstr "Video gepubliceerd!"
+
+msgid "Video title"
+msgstr "Videotitel"
+
+msgid "Video upload failed."
+msgstr "Video-upload mislukt."
+
+msgid "Video uploaded"
+msgstr "Video geüpload"
+
+msgid "View all"
+msgstr "Alles bekijken"
+
+msgid "Vote"
+msgstr "Stemmen"
+
+msgid "Vote Weight"
+msgstr "Stemgewicht"
+
+msgid "Vote removed"
+msgstr "Stem verwijderd"
+
+msgid "Voters"
+msgstr "Stemmers"
+
+msgid "We keep your keys safe — sign in with a password."
+msgstr "We bewaren uw sleutels veilig — log in met een wachtwoord."
+
+msgid "We sent a verification code to %1."
+msgstr "We hebben een verificatiecode gestuurd naar %1."
+
+msgid "Welcome back"
+msgstr "Welkom terug"
+
+msgid "Welcome to Serey"
+msgstr "Welkom bij Serey"
+
+msgid "Welcome to Serey!"
+msgstr "Welkom bij Serey!"
+
+msgid "Why are you reporting this post?"
+msgstr "Waarom rapporteert u dit bericht?"
+
+msgid "Write a caption..."
+msgstr "Schrijf een bijschrift..."
+
+msgid "Write your article here..."
+msgstr "Schrijf hier uw artikel..."
+
+msgid "YYYY-MM-DD"
+msgstr "JJJJ-MM-DD"
+
+msgid "You have %1 new notifications"
+msgstr "U heeft %1 nieuwe meldingen"
+
+msgid "You have 1 new notification"
+msgstr "U heeft 1 nieuwe melding"
+
+msgid "You hold your own private key. It can't be recovered if lost."
+msgstr "U beheert uw eigen privésleutel. Hij kan niet worden hersteld als hij verloren gaat."
+
+msgid "You won't be able to see any posts from this person"
+msgstr "U kunt geen berichten meer zien van deze persoon"
+
+msgid "You'll need to sign in again to vote, comment, or follow."
+msgstr "U moet opnieuw inloggen om te kunnen voten, te reageren en te volgen."
+
+msgid "Your account is ready."
+msgstr "Uw account is klaar."
+
+msgid "Your session expired. Please log in again."
+msgstr "Uw sessie is verlopen. Log opnieuw in."
+
+msgid "just now"
+msgstr "zojuist"
+
+msgid "or"
+msgstr "of"
+
+msgid "…"
+msgstr "…"
+
+msgid "Dislike is not available for comments."
+msgstr "Afkeuren is niet beschikbaar voor reacties."
+
+msgid "Language saved. Restart the app to apply."
+msgstr "Taal opgeslagen. Herstart de app om toe te passen."

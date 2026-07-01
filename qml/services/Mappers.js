@@ -164,6 +164,8 @@ function toComment(raw) {
         votes: toInt(raw.voter_count),
         voters: voterNames(raw.voters),
         voterStr: "," + voterNames(raw.voters).join(",") + ",",
+        flaggers: voterNames(raw.flaggers),
+        flaggerStr: "," + voterNames(raw.flaggers).join(",") + ",",
         authorImage: raw.author_image_url || "",
         replies: kids
     };
@@ -182,7 +184,9 @@ function toVideo(raw) {
         authorImage: raw.author_image_url || raw.post_author_image_url || "",
         date: raw.publish_date || "",
         votes: toInt(raw.voter_count),
-        comments: toInt(raw.answer_count),
+        comments: toInt(raw.answer_count || raw.comment_count),
+        voters: voterNames(raw.voters),
+        voterStr: "," + voterNames(raw.voters).join(",") + ",",
         payout: raw.serey_value || "",
         embedUrl: raw.embed_video || "",
         videoLink: raw.video_link || "",

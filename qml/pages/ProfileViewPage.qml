@@ -83,6 +83,7 @@ Page {
                 page.blockLoading = false;
                 page.isBlocked = !page.isBlocked;
                 Toast.show(page.isBlocked
+<<<<<<< Updated upstream
                     ? i18n.tr("@%1 blocked.").arg(page.username)
                     : i18n.tr("@%1 unblocked.").arg(page.username));
                 if (page.isBlocked) { BlockedUsers.add(page.username); PostActions.userBlocked(page.username); }
@@ -91,13 +92,23 @@ Page {
             function (err) {
                 page.blockLoading = false;
                 Toast.error((err && err.message) ? err.message : i18n.tr("Failed to update block."));
+=======
+                    ? Lang.tr("@%1 blocked.").arg(page.username)
+                    : Lang.tr("@%1 unblocked.").arg(page.username));
+                if (page.isBlocked) PostActions.userBlocked(page.username);
+                else PostActions.userUnblocked(page.username);
+            },
+            function (err) {
+                page.blockLoading = false;
+                Toast.error(err.message || Lang.tr("Failed to update block."));
+>>>>>>> Stashed changes
             });
     }
 
     function toggleFollow() {
         if (!Session.isLoggedIn) { page.pageStack.push(Qt.resolvedUrl("LoginPage.qml")); return; }
         var now = FollowStore.toggle(Config.baseUrl, username, Session.token);
-        Toast.show(now ? i18n.tr("Following") : i18n.tr("Unfollowed"));
+        Toast.show(now ? Lang.tr("Following") : Lang.tr("Unfollowed"));
         if (page.profile) {
             var pr = page.profile;
             pr.followers = Math.max(0, (pr.followers || 0) + (now ? 1 : -1));
@@ -186,18 +197,18 @@ Page {
         id: blockDialog
         Dialog {
             id: dlg
-            title: page.isBlocked ? i18n.tr("Unblock user?") : i18n.tr("Block user?")
+            title: page.isBlocked ? Lang.tr("Unblock user?") : Lang.tr("Block user?")
             text: page.isBlocked
-                ? i18n.tr("@%1 will be able to see your posts and interact with you again.").arg(page.username)
-                : i18n.tr("@%1 will no longer be able to see your posts or interact with you.").arg(page.username)
+                ? Lang.tr("@%1 will be able to see your posts and interact with you again.").arg(page.username)
+                : Lang.tr("@%1 will no longer be able to see your posts or interact with you.").arg(page.username)
 
             Button {
-                text: page.isBlocked ? i18n.tr("Unblock") : i18n.tr("Block")
+                text: page.isBlocked ? Lang.tr("Unblock") : Lang.tr("Block")
                 color: Style.danger
                 onClicked: { PopupUtils.close(dlg); page.toggleBlock(); }
             }
             Button {
-                text: i18n.tr("Cancel")
+                text: Lang.tr("Cancel")
                 onClicked: PopupUtils.close(dlg)
             }
         }
@@ -393,9 +404,9 @@ Page {
                     visible: !!page.profile
                     Repeater {
                         model: page.profile ? [
-                            { label: i18n.tr("Posts"),     value: "" + page.profile.postCount },
-                            { label: i18n.tr("Followers"), value: "" + page.profile.followers },
-                            { label: i18n.tr("Following"), value: "" + page.profile.following }
+                            { label: Lang.tr("Posts"),     value: "" + page.profile.postCount },
+                            { label: Lang.tr("Followers"), value: "" + page.profile.followers },
+                            { label: Lang.tr("Following"), value: "" + page.profile.following }
                         ] : []
                         delegate: Column {
                             width: parent.width / 3
@@ -440,7 +451,7 @@ Page {
                     visible: !page.isSelf && !!page.profile
                     width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: FollowStore.isFollowing(page.username) ? i18n.tr("Following") : i18n.tr("Follow")
+                    text: FollowStore.isFollowing(page.username) ? Lang.tr("Following") : Lang.tr("Follow")
                     onClicked: page.toggleFollow()
                 }
 
@@ -449,7 +460,7 @@ Page {
                 // --- Content tabs ----------------------------------------
                 SectionTabs {
                     width: parent.width
-                    model: [i18n.tr("Posts"), i18n.tr("Gallery"), i18n.tr("Video")]
+                    model: [Lang.tr("Posts"), Lang.tr("Gallery"), Lang.tr("Video")]
                     currentIndex: page.tab
                     onSelected: page.selectTab(index)
                 }
@@ -475,9 +486,9 @@ Page {
             Label {
                 anchors.centerIn: parent
                 visible: page.curLoaded && page.curModel.count === 0 && !page.curLoading
-                text: page.tab === 0 ? i18n.tr("No posts yet")
-                    : page.tab === 1 ? i18n.tr("No gallery posts yet")
-                    : i18n.tr("No videos yet")
+                text: page.tab === 0 ? Lang.tr("No posts yet")
+                    : page.tab === 1 ? Lang.tr("No gallery posts yet")
+                    : Lang.tr("No videos yet")
                 font.family: Style.fontFamily
                 color: Style.textSecondary
             }

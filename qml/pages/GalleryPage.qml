@@ -39,7 +39,7 @@ Page {
             for (var i = 0; i < galleryModel.count; i++) {
                 if (galleryModel.get(i).permlink === permlink) {
                     galleryModel.remove(i);
-                    Toast.show(i18n.tr("Post hidden"));
+                    Toast.show(Lang.tr("Post hidden"));
                     return;
                 }
             }
@@ -157,7 +157,7 @@ Page {
             refreshing: page.refreshing
             onRefresh: page.refresh()
             content: Label {
-                text: i18n.tr("Pull to refresh")
+                text: Lang.tr("Pull to refresh")
                 opacity: list.dragging ? 1 : 0
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
@@ -178,7 +178,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "close"
-                        text: i18n.tr("Hide")
+                        text: Lang.tr("Hide")
                         onTriggered: {
                             var vm = galleryModel.get(index);
                             if (vm) PostActions.hideRequested(vm.author, vm.permlink);
@@ -190,7 +190,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: i18n.tr("Share")
+                        text: Lang.tr("Share")
                         onTriggered: {
                             var vm = galleryModel.get(index);
                             if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
@@ -248,7 +248,7 @@ Page {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && galleryModel.count === 0
         iconName: "image-x-generic-symbolic"
-        message: i18n.tr("No gallery posts in %1").arg(Config.communityName)
+        message: Lang.tr("No gallery posts in %1").arg(Config.communityName)
     }
 
     // Floating compose button

@@ -42,7 +42,7 @@ Page {
             for (var i = 0; i < feedModel.count; i++) {
                 if (feedModel.get(i).permlink === permlink) {
                     feedModel.remove(i);
-                    Toast.show(i18n.tr("Post hidden"));
+                    Toast.show(Lang.tr("Post hidden"));
                     return;
                 }
             }
@@ -153,7 +153,7 @@ Page {
             refreshing: page.refreshing
             onRefresh: page.refresh()
             content: Label {
-                text: i18n.tr("Pull to refresh")
+                text: Lang.tr("Pull to refresh")
                 opacity: list.dragging ? 1 : 0
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
@@ -169,47 +169,26 @@ Page {
                 id: headerLabel
                 x: Style.spacingM
                 y: Style.spacingM
-                text: i18n.tr("Latest Videos")
+                text: Lang.tr("Latest Videos")
                 font.pixelSize: Style.fontMedium
                 font.weight: Font.DemiBold
                 color: Style.textPrimary
             }
 
-            // Reels (short native videos) viewer.
-            AbstractButton {
-                id: reelsBtn
-                anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: headerLabel.verticalCenter }
-                width: reelsRow.width + Style.spacingS * 2
-                height: units.gu(4)
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ReelsPage.qml"))
-
-                Row {
-                    id: reelsRow
-                    anchors.centerIn: parent
-                    spacing: Style.spacingXs
-                    Icon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: units.gu(2); height: width
-                        name: "media-playback-start"
-                        color: Style.brand
-                    }
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: i18n.tr("Reels")
-                        font.pixelSize: Style.fontSmall
-                        font.weight: Font.DemiBold
-                        color: Style.brand
-                    }
-                }
-            }
-
             // Offline library shortcut.
             AbstractButton {
-                anchors { right: reelsBtn.left; rightMargin: Style.spacingM; verticalCenter: headerLabel.verticalCenter }
-                width: dlShortcutRow.width + Style.spacingS * 2
+                id: dlBtn
+                anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: headerLabel.verticalCenter }
+                width: dlShortcutRow.width + Style.spacingM * 2
                 height: units.gu(4)
                 onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
-
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.height / 2
+                    color: "transparent"
+                    border.width: units.dp(1.5)
+                    border.color: Style.brand
+                }
                 Row {
                     id: dlShortcutRow
                     anchors.centerIn: parent
@@ -222,7 +201,41 @@ Page {
                     }
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: i18n.tr("Downloaded")
+                        text: Lang.tr("Downloaded")
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.DemiBold
+                        color: Style.brand
+                    }
+                }
+            }
+
+            // Reels (short native videos) viewer.
+            AbstractButton {
+                id: reelsBtn
+                anchors { right: dlBtn.left; rightMargin: Style.spacingS; verticalCenter: headerLabel.verticalCenter }
+                width: reelsRow.width + Style.spacingM * 2
+                height: units.gu(4)
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ReelsPage.qml"))
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.height / 2
+                    color: "transparent"
+                    border.width: units.dp(1.5)
+                    border.color: Style.brand
+                }
+                Row {
+                    id: reelsRow
+                    anchors.centerIn: parent
+                    spacing: Style.spacingXs
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2); height: width
+                        name: "media-playback-start"
+                        color: Style.brand
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Lang.tr("Reels")
                         font.pixelSize: Style.fontSmall
                         font.weight: Font.DemiBold
                         color: Style.brand
@@ -249,7 +262,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "close"
-                        text: i18n.tr("Hide")
+                        text: Lang.tr("Hide")
                         onTriggered: {
                             var vm = feedModel.get(index);
                             if (vm) PostActions.hideRequested(vm.author, vm.permlink);
@@ -261,7 +274,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: i18n.tr("Share")
+                        text: Lang.tr("Share")
                         onTriggered: {
                             var vm = feedModel.get(index);
                             if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
@@ -315,7 +328,7 @@ Page {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
         iconName: "camcorder"
-        message: i18n.tr("No videos to show")
+        message: Lang.tr("No videos to show")
     }
 
     // Upload lives in the global header action now (see Main.qml, gated on the

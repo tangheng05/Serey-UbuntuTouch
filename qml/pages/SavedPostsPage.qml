@@ -22,15 +22,15 @@ Page {
         id: removeDialog
         Dialog {
             id: rdlg
-            title: i18n.tr("Remove saved article?")
-            text: i18n.tr("It will no longer be available offline.")
+            title: Lang.tr("Remove saved article?")
+            text: Lang.tr("It will no longer be available offline.")
             Button {
-                text: i18n.tr("Remove")
+                text: Lang.tr("Remove")
                 color: Style.danger
                 onClicked: { PopupUtils.close(rdlg); SavedPosts.remove(page._pendingRemove); }
             }
             Button {
-                text: i18n.tr("Cancel")
+                text: Lang.tr("Cancel")
                 onClicked: PopupUtils.close(rdlg)
             }
         }
@@ -49,7 +49,7 @@ Page {
         }
         Label {
             anchors.centerIn: parent
-            text: i18n.tr("Saved articles")
+            text: Lang.tr("Saved articles")
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
             font.family: Style.fontFamily
@@ -84,7 +84,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "delete"
-                        text: i18n.tr("Remove")
+                        text: Lang.tr("Remove")
                         onTriggered: SavedPosts.remove(modelData.permlink)
                     }
                 ]
@@ -148,6 +148,6 @@ Page {
         anchors.fill: list
         visible: SavedPosts.items.length === 0
         iconName: "save"
-        message: i18n.tr("No saved articles yet")
+        message: Lang.tr("No saved articles yet")
     }
 }

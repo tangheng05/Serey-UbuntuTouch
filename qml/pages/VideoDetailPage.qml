@@ -29,8 +29,9 @@ Page {
     property bool flagged:    false
     property bool voteBusy:   false
     property string payout:   ""
-    // Off-chain (DB-only) videos have no chain record, so hide the vote controls
-    // and payout. Default on-chain unless the saved video says otherwise.
+    // Off-chain (DB-only) videos have no curation weight/rewards: the like/dislike
+    // stay (as a plain 100% like — see doUpvote), but the weight popover is skipped
+    // and the award is not shown. Default on-chain unless the saved video says so.
     readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
     property bool commentSheetOpen: false
     // YouTube stream extraction is in flight (resolving a direct URL before the
@@ -721,7 +722,6 @@ Page {
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: units.gu(3.5)
-                    visible: page.onChain
                     enabled: !page.voteBusy
                     onClicked: page.doFlag()
                     Icon {

@@ -68,7 +68,7 @@ Page {
 
             Rectangle {
                 anchors.fill: parent
-                radius: height / 2
+                radius: Style.cardRadius
                 color: parent.enabled ? Style.brand : Style.iconBackground
             }
             Label {
@@ -197,7 +197,7 @@ Page {
             Rectangle {
                 width: parent.width
                 height: Math.max(units.gu(12), captionField.contentHeight + Style.spacingM * 2)
-                radius: units.dp(8)
+                radius: Style.cardRadius
                 color: "transparent"
                 border.width: units.dp(1.5)
                 border.color: captionField.activeFocus ? Style.brand : Style.divider
@@ -213,7 +213,7 @@ Page {
 
                 Label {
                     anchors { left: parent.left; top: parent.top; leftMargin: Style.spacingM; topMargin: Style.spacingM }
-                    visible: captionField.text.length === 0 && !captionField.activeFocus
+                    visible: captionField.text.length === 0 && !captionField.activeFocus && !Qt.inputMethod.visible
                     text: i18n.tr("Write a caption...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
@@ -242,7 +242,7 @@ Page {
 
                         Rectangle {
                             anchors.fill: parent
-                            radius: units.dp(10)
+                            radius: Style.cardRadius
                             color: Style.iconBackground
                             clip: true
                             Image {
@@ -285,7 +285,7 @@ Page {
 
                         Rectangle {
                             anchors.fill: parent
-                            radius: units.dp(10)
+                            radius: Style.cardRadius
                             color: Style.iconBackground
                         }
 

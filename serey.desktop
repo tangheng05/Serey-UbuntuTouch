@@ -7,4 +7,4 @@ Terminal=false
 Type=Application
 X-Lomiri-Touch=true
 X-Lomiri-StageHint=SideStage
-X-Lomiri-Gettext-Domain=serey.draxler
+X-Lomiri-Gettext-Domain=serey.ubuntu

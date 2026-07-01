@@ -1,0 +1,394 @@
+import QtQuick 2.7
+import Lomiri.Components 1.3
+import Lomiri.Components.Popups 1.3 as Popups
+import "../Theme"
+import "../Session"
+import "../components"
+import "../services/PostService.js" as PostService
+import "../services/Uploads.js" as Uploads
+
+/*
+ * Create a video post: pick a local video → upload it to the Serey media server,
+ * auto-capture a thumbnail in-app (best-effort), then publish via
+ * PostService.createVideoPost. The thumbnail is generated for the user (no
+ * picker) and the upload never blocks on it. AI-generated flagging is omitted.
+ *
+ * A video requires a concrete community (Config.communityId > 0): "Global" is
+ * rejected server-side, so publishing is gated until a real community is picked
+ * from the global AppHeader pill.
+ */
+Page {
+    id: page
+
+    property bool submitting: false
+
+    // Local picked file + hosted results.
+    property string videoFileUrl: ""   // file:// of the picked video
+    property string videoUrl: ""       // hosted video URL (upload done)
+    property string thumbUrl: ""       // hosted thumbnail URL (best-effort)
+    property bool uploadingVideo: false
+    property bool grabbingThumb: false
+
+    readonly property bool hasCommunity: Config.communityId > 0
+    readonly property bool canPublish: !page.submitting && !page.uploadingVideo
+                                       && page.videoUrl.length > 0
+                                       && titleField.text.trim().length > 0
+                                       && descField.text.trim().length > 0
+                                       && page.hasCommunity
+
+    signal saved()
+
+    header: Item { height: 0 }
+
+    // --- Actions -----------------------------------------------------------
+
+    function pickVideo() {
+        if (!Session.isLoggedIn) { Toast.error(i18n.tr("Please log in first.")); return; }
+        if (!page.hasCommunity) {
+            Toast.error(i18n.tr("Pick a community (not Global) from the top bar first."));
+            return;
+        }
+        if (page.uploadingVideo) return;
+        Popups.PopupUtils.open(videoPickerComp);
+    }
+
+    function onVideoPicked(fileUrl) {
+        page.videoFileUrl = fileUrl;
+        page.videoUrl = "";
+        page.thumbUrl = "";
+        // Start the upload and the (optional) thumbnail capture in parallel.
+        page.uploadingVideo = true;
+        Uploads.uploadVideo(Config.uploadVideoUrl, Config.uploadSecret, fileUrl,
+            function (url) {
+                page.uploadingVideo = false;
+                page.videoUrl = url;
+                Toast.success(i18n.tr("Video uploaded"));
+            },
+            function (err) {
+                page.uploadingVideo = false;
+                page.videoFileUrl = "";
+                Toast.error((err && err.message) ? err.message : i18n.tr("Video upload failed."));
+            });
+
+        page.grabbingThumb = true;
+        thumbGrabber.grab(fileUrl);
+    }
+
+    function clearVideo() {
+        Uploads.abort();
+        page.videoFileUrl = "";
+        page.videoUrl = "";
+        page.thumbUrl = "";
+        page.uploadingVideo = false;
+        page.grabbingThumb = false;
+    }
+
+    function publish() {
+        if (!page.canPublish) return;
+        page.submitting = true;
+        PostService.createVideoPost(Config.baseUrl, {
+            title: titleField.text.trim(),
+            desc: descField.text.trim(),
+            body: descField.text.trim(),
+            videoUrl: page.videoUrl,
+            thumbUrl: page.thumbUrl,
+            communityId: Config.communityId,
+            communityName: Config.communityName
+        }, Session.token,
+        function (data) {
+            page.submitting = false;
+            Toast.success(i18n.tr("Video published!"));
+            page.saved();
+            page.pageStack.pop();
+        },
+        function (err) {
+            page.submitting = false;
+            Toast.error((err && err.message) ? err.message : i18n.tr("Couldn't publish video."));
+        });
+    }
+
+    Item { id: focusSink }
+    function dismissKeyboard() { focusSink.forceActiveFocus(); Qt.inputMethod.hide(); }
+
+    // --- Picker + helpers --------------------------------------------------
+
+    Component {
+        id: videoPickerComp
+        VideoPicker { onPicked: page.onVideoPicked(fileUrl) }
+    }
+
+    // Captures a frame from the picked local video (as a JPEG data URL), then
+    // uploads it as the thumbnail image. Best-effort: any failure just leaves
+    // thumbUrl empty and the post publishes without a custom thumbnail.
+    VideoThumbnailGrabber {
+        id: thumbGrabber
+        onGrabbed: Uploads.uploadImageData(Config.uploadUrl, Config.uploadSecret, dataUrl,
+            function (url) { page.thumbUrl = url; page.grabbingThumb = false; },
+            function () { page.grabbingThumb = false; })
+        onFailed: page.grabbingThumb = false
+    }
+
+    // --- Header ------------------------------------------------------------
+
+    Rectangle {
+        id: hdr
+        anchors { left: parent.left; right: parent.right; top: parent.top }
+        height: units.gu(6)
+        color: Style.surface
+        z: 10
+
+        AbstractButton {
+            anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: width
+            onClicked: page.pageStack.pop()
+            Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: "close"; color: Style.textPrimary }
+        }
+
+        Label {
+            anchors { left: parent.left; leftMargin: units.gu(7); right: pubBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            text: i18n.tr("Upload Video")
+            font.pixelSize: Style.fontLarge
+            font.family: Style.fontFamily
+            color: Style.textPrimary
+            elide: Text.ElideRight
+        }
+
+        AbstractButton {
+            id: pubBtn
+            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+            width: pubLabel.implicitWidth + Style.spacingM * 2
+            height: units.gu(4)
+            enabled: page.canPublish
+            onClicked: page.publish()
+
+            Rectangle {
+                anchors.fill: parent
+                radius: Style.cardRadius
+                color: parent.enabled ? Style.brand : Style.iconBackground
+            }
+            Label {
+                id: pubLabel
+                anchors.centerIn: parent
+                text: page.submitting ? i18n.tr("Posting…") : i18n.tr("Publish")
+                font.pixelSize: Style.fontSmall
+                font.weight: Font.DemiBold
+                color: parent.enabled ? Style.textOnBrand : Style.textSecondary
+            }
+        }
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: units.dp(1); color: Style.divider
+        }
+    }
+
+    // --- Form --------------------------------------------------------------
+
+    Flickable {
+        id: scroll
+        anchors { top: hdr.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        contentHeight: col.height + Style.spacingL
+        clip: true
+        opacity: 0
+        NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
+
+        MouseArea {
+            width: scroll.width
+            height: Math.max(scroll.height, col.height + Style.spacingL)
+            z: -1
+            onClicked: page.dismissKeyboard()
+        }
+
+        Column {
+            id: col
+            width: parent.width - Style.spacingM * 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: Style.spacingM
+
+            Item { width: 1; height: Style.spacingS }
+
+            // Community gate notice.
+            Rectangle {
+                width: parent.width
+                visible: !page.hasCommunity
+                height: gateLabel.implicitHeight + Style.spacingM * 2
+                radius: Style.cardRadius
+                color: Style.iconBackground
+                Label {
+                    id: gateLabel
+                    anchors { fill: parent; margins: Style.spacingM }
+                    text: i18n.tr("Pick a community (not Global) from the top bar to post a video.")
+                    wrapMode: Text.WordWrap
+                    font.family: Style.fontFamily
+                    font.pixelSize: Style.fontSmall
+                    color: Style.textSecondary
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+
+            // Title field (Lomiri underline input — bottom border, no box).
+            Item {
+                width: parent.width
+                height: Math.max(units.gu(5), titleField.contentHeight + Style.spacingM)
+
+                TextEdit {
+                    id: titleField
+                    anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: Style.spacingS }
+                    font.family: Style.fontFamily
+                    font.pixelSize: Style.fontRegular
+                    color: Style.textPrimary
+                    wrapMode: Text.WordWrap
+                }
+                Label {
+                    anchors { left: titleField.left; top: titleField.top }
+                    visible: titleField.text.length === 0 && !titleField.activeFocus
+                    text: i18n.tr("Video title")
+                    color: Style.textSecondary
+                    font.pixelSize: Style.fontRegular
+                    font.family: Style.fontFamily
+                }
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: titleField.activeFocus ? units.dp(2) : units.dp(1)
+                    color: titleField.activeFocus ? Style.brand : Style.divider
+                }
+            }
+
+            // Description field (Lomiri underline input).
+            Item {
+                width: parent.width
+                height: Math.max(units.gu(10), descField.contentHeight + Style.spacingM)
+
+                TextEdit {
+                    id: descField
+                    anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: Style.spacingS }
+                    font.family: Style.fontFamily
+                    font.pixelSize: Style.fontRegular
+                    color: Style.textPrimary
+                    wrapMode: Text.WordWrap
+                }
+                Label {
+                    anchors { left: descField.left; top: descField.top }
+                    visible: descField.text.length === 0 && !descField.activeFocus
+                    text: i18n.tr("Describe your video...")
+                    color: Style.textSecondary
+                    font.pixelSize: Style.fontRegular
+                    font.family: Style.fontFamily
+                }
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: descField.activeFocus ? units.dp(2) : units.dp(1)
+                    color: descField.activeFocus ? Style.brand : Style.divider
+                }
+            }
+
+            Label {
+                text: i18n.tr("Video")
+                font.pixelSize: Style.fontSmall
+                font.weight: Font.DemiBold
+                color: Style.textPrimary
+            }
+
+            // Empty state: pick a video.
+            AbstractButton {
+                width: parent.width
+                height: units.gu(16)
+                visible: page.videoFileUrl.length === 0
+                enabled: !page.uploadingVideo
+                onClicked: page.pickVideo()
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Style.cardRadius
+                    color: Style.iconBackground
+                }
+                Column {
+                    anchors.centerIn: parent
+                    spacing: Style.spacingXs
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: units.gu(5); height: width; radius: width / 2
+                        color: Style.brand
+                        Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: "add"; color: Style.textOnBrand }
+                    }
+                    Label {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: i18n.tr("Add video")
+                        font.pixelSize: Style.fontSmall
+                        color: Style.textSecondary
+                    }
+                    Label {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: i18n.tr("MP4, WEBM, MOV · up to 90 MB")
+                        font.pixelSize: Style.fontXSmall
+                        color: Style.textSecondary
+                    }
+                }
+            }
+
+            // Picked state: thumbnail preview + status.
+            Rectangle {
+                width: parent.width
+                height: units.gu(20)
+                visible: page.videoFileUrl.length > 0
+                radius: Style.cardRadius
+                color: "black"
+                clip: true
+
+                Image {
+                    anchors.fill: parent
+                    source: page.thumbUrl
+                    visible: page.thumbUrl.length > 0
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                }
+
+                // Center status: spinner while uploading / capturing, check when done.
+                Column {
+                    anchors.centerIn: parent
+                    spacing: Style.spacingXs
+                    ActivityIndicator {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        running: page.uploadingVideo || (page.grabbingThumb && page.thumbUrl.length === 0)
+                        visible: running
+                    }
+                    Label {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: page.uploadingVideo
+                        text: i18n.tr("Uploading video…")
+                        font.pixelSize: Style.fontSmall
+                        color: "white"
+                    }
+                    Icon {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        visible: !page.uploadingVideo && page.videoUrl.length > 0
+                        width: units.gu(4); height: width
+                        name: "tick"
+                        color: "white"
+                    }
+                }
+
+                // Remove button.
+                AbstractButton {
+                    anchors { top: parent.top; right: parent.right; topMargin: units.dp(6); rightMargin: units.dp(6) }
+                    width: units.gu(3); height: width
+                    enabled: !page.submitting
+                    onClicked: page.clearVideo()
+                    Rectangle { anchors.fill: parent; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.6) }
+                    Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "close"; color: "white" }
+                }
+            }
+
+            Item { width: 1; height: Style.spacingL }
+        }
+    }
+
+    // Submit overlay.
+    Rectangle {
+        anchors.fill: parent
+        color: Qt.rgba(1, 1, 1, 0.7)
+        visible: page.submitting
+        z: 100
+        ActivityIndicator { anchors.centerIn: parent; running: page.submitting }
+    }
+}

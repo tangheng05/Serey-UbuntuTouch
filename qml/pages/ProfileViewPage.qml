@@ -1,5 +1,6 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
+import Lomiri.Components.Popups 1.3
 import "../Theme"
 import "../Session"
 import "../components"
@@ -34,6 +35,8 @@ Page {
     })
 
     readonly property bool isSelf: Session.isLoggedIn && username === Session.username
+    property bool isBlocked: false
+    property bool blockLoading: false
     readonly property var curModel: tab === 0 ? m0 : tab === 1 ? m1 : m2
     readonly property bool curLoading: rev >= 0 && st[tab].loading
     readonly property bool curEnd: rev >= 0 && st[tab].end
@@ -57,6 +60,36 @@ Page {
     function loadFollow() {
         if (!Session.isLoggedIn || isSelf) return;
         FollowStore.load(Config.baseUrl, Session.username, username);
+    }
+
+    function loadBlockStatus() {
+        if (!Session.isLoggedIn || isSelf) return;
+        AccountService.listBlocked(Config.baseUrl, Session.token, function (list) {
+            for (var i = 0; i < list.length; i++) {
+                if (list[i] === page.username) { page.isBlocked = true; return; }
+            }
+            page.isBlocked = false;
+        }, function (err) { /* silent */ });
+    }
+
+    function toggleBlock() {
+        if (!Session.isLoggedIn) { page.pageStack.push(Qt.resolvedUrl("LoginPage.qml")); return; }
+        page.blockLoading = true;
+        var action = page.isBlocked ? "REMOVE" : "ADD"
+        AccountService.toggleBlock(Config.baseUrl, Session.token, page.username, action,
+            function () {
+                page.blockLoading = false;
+                page.isBlocked = !page.isBlocked;
+                Toast.show(page.isBlocked
+                    ? i18n.tr("@%1 blocked.").arg(page.username)
+                    : i18n.tr("@%1 unblocked.").arg(page.username));
+                if (page.isBlocked) PostActions.userBlocked(page.username);
+                else PostActions.userUnblocked(page.username);
+            },
+            function (err) {
+                page.blockLoading = false;
+                Toast.error(err.message || i18n.tr("Failed to update block."));
+            });
     }
 
     function toggleFollow() {
@@ -140,7 +173,28 @@ Page {
         }
     }
 
-    Component.onCompleted: { loadProfile(); loadFollow(); loadTab(0); }
+    Component.onCompleted: { loadProfile(); loadFollow(); loadBlockStatus(); loadTab(0); }
+
+    Component {
+        id: blockDialog
+        Dialog {
+            id: dlg
+            title: page.isBlocked ? i18n.tr("Unblock user?") : i18n.tr("Block user?")
+            text: page.isBlocked
+                ? i18n.tr("@%1 will be able to see your posts and interact with you again.").arg(page.username)
+                : i18n.tr("@%1 will no longer be able to see your posts or interact with you.").arg(page.username)
+
+            Button {
+                text: page.isBlocked ? i18n.tr("Unblock") : i18n.tr("Block")
+                color: Style.danger
+                onClicked: { PopupUtils.close(dlg); page.toggleBlock(); }
+            }
+            Button {
+                text: i18n.tr("Cancel")
+                onClicked: PopupUtils.close(dlg)
+            }
+        }
+    }
 
     ListView {
         id: list
@@ -180,6 +234,34 @@ Page {
                         visible: status === Image.Ready
                     }
 
+                    // Block button — top-right corner of cover
+                    AbstractButton {
+                        visible: !page.isSelf && !!page.profile
+                        enabled: !page.blockLoading
+                        anchors {
+                            top: parent.top
+                            right: parent.right
+                            topMargin: Style.spacingS
+                            rightMargin: Style.spacingS
+                        }
+                        width: units.gu(4); height: units.gu(4)
+                        z: 10
+                        onClicked: PopupUtils.open(blockDialog)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: units.dp(6)
+                            color: page.isBlocked ? Style.danger : "white"
+                            border.width: units.dp(2)
+                            border.color: Style.danger
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.2); height: width
+                            name: "system-shutdown"
+                            color: page.isBlocked ? "white" : Style.danger
+                        }
+                    }
                 }
 
                 // --- Avatar (overlaps the cover) -------------------------
@@ -244,25 +326,64 @@ Page {
                     color: Style.brand
                 }
                 Item { width: 1; height: Style.spacingXs; visible: bioLabel.visible }
-                Label {
+                Text {
                     id: bioLabel
                     width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
                     anchors.horizontalCenter: parent.horizontalCenter
                     horizontalAlignment: Text.AlignHCenter
-                    text: page.profile ? (page.profile.bio || "") : ""
-                    visible: text.length > 0
+                    textFormat: Text.RichText
+                    text: {
+                        var html = page.profile ? (page.profile.bioHtml || page.profile.bio || "") : ""
+                        return html.replace(/((?:<a\s[^>]*>[\s\S]*?<\/a>)|https?:\/\/[^\s<>"]+)/g,
+                            function(match) {
+                                if (match.charAt(0) === '<') return match
+                                return '<a href="' + match + '" style="color:' + Style.brand + ';">' + match + '</a>'
+                            })
+                    }
+                    visible: page.profile && (page.profile.bio || "").length > 0
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFamily
                     color: Style.textSecondary
                     wrapMode: Text.WordWrap
+                    onLinkActivated: Qt.openUrlExternally(link)
                 }
 
                 Item { width: 1; height: Style.spacingM }
+
+                // --- Stats skeleton (while loading) ----------------------
+                Row {
+                    width: Math.min(parent.width, units.gu(45))
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: !page.profile && page.profileLoading
+                    Repeater {
+                        model: 3
+                        delegate: Column {
+                            width: parent.width / 3
+                            spacing: units.dp(4)
+                            SequentialAnimation on opacity {
+                                running: true; loops: Animation.Infinite
+                                NumberAnimation { to: 0.3; duration: 700; easing.type: Easing.InOutSine }
+                                NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
+                            }
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: units.gu(5); height: units.gu(2.5)
+                                radius: units.dp(4); color: Style.divider
+                            }
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: units.gu(4); height: units.gu(1.5)
+                                radius: units.dp(4); color: Style.divider
+                            }
+                        }
+                    }
+                }
 
                 // --- Stats -----------------------------------------------
                 Row {
                     width: Math.min(parent.width, units.gu(45))
                     anchors.horizontalCenter: parent.horizontalCenter
+                    visible: !!page.profile
                     Repeater {
                         model: page.profile ? [
                             { label: i18n.tr("Posts"),     value: "" + page.profile.postCount },
@@ -293,9 +414,23 @@ Page {
 
                 Item { width: 1; height: Style.spacingM }
 
-                // --- Follow button (hidden on own profile) ---------------
+                // --- Follow button skeleton ------------------------------
+                Rectangle {
+                    visible: !page.isSelf && !page.profile && page.profileLoading
+                    width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    height: units.gu(5); radius: Style.cardRadius
+                    color: Style.divider
+                    SequentialAnimation on opacity {
+                        running: true; loops: Animation.Infinite
+                        NumberAnimation { to: 0.3; duration: 700; easing.type: Easing.InOutSine }
+                        NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
+                    }
+                }
+
+                // --- Follow button (hidden on own profile or while loading) ---
                 PrimaryButton {
-                    visible: !page.isSelf
+                    visible: !page.isSelf && !!page.profile
                     width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: FollowStore.isFollowing(page.username) ? i18n.tr("Following") : i18n.tr("Follow")
@@ -380,12 +515,6 @@ Page {
         }
     }
 
-    // Full-page spinner only until the header has its data.
-    ActivityIndicator {
-        anchors.centerIn: parent
-        running: page.profileLoading && page.profile === null
-        visible: running
-    }
 
     // Back button: a FIXED page overlay (not inside the scrolling list header),
     // so it's always visible from the first frame regardless of scroll position

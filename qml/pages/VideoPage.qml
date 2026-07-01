@@ -4,6 +4,7 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/VideoService.js" as VideoService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 /*
  * Video section: list of videos. Tapping opens VideoDetailPage, passing the
@@ -31,7 +32,7 @@ Page {
     // just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
-        function onSourceIndexChanged() { page.reload(); }
+        function onCommunityIdChanged() { page.reload(); }
     }
 
     Connections {
@@ -45,12 +46,17 @@ Page {
                 }
             }
         }
-        // Video has no in-app editor, so only delete-prune is handled here.
         function onPostDeleted(author, permlink) {
             for (var i = feedModel.count - 1; i >= 0; i--) {
                 if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
             }
         }
+        function onUserBlocked(username) {
+            for (var i = feedModel.count - 1; i >= 0; i--) {
+                if (feedModel.get(i).author === username) feedModel.remove(i);
+            }
+        }
+        function onUserUnblocked(username) { page.reload(); }
     }
 
     function reload() {
@@ -84,7 +90,8 @@ Page {
                 page.loading = false;
                 feedModel.clear();
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
             },
@@ -109,7 +116,8 @@ Page {
                 inflight = null;
                 loading = false;
                 for (var i = 0; i < result.length; i++)
-                    feedModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        feedModel.append(result[i]);
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
             },
@@ -155,16 +163,112 @@ Page {
                 font.weight: Font.DemiBold
                 color: Style.textPrimary
             }
+
+            // Reels (short native videos) viewer.
+            AbstractButton {
+                id: reelsBtn
+                anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: headerLabel.verticalCenter }
+                width: reelsRow.width + Style.spacingS * 2
+                height: units.gu(4)
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ReelsPage.qml"))
+
+                Row {
+                    id: reelsRow
+                    anchors.centerIn: parent
+                    spacing: Style.spacingXs
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2); height: width
+                        name: "media-playback-start"
+                        color: Style.brand
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: i18n.tr("Reels")
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.DemiBold
+                        color: Style.brand
+                    }
+                }
+            }
+
+            // Offline library shortcut.
+            AbstractButton {
+                anchors { right: reelsBtn.left; rightMargin: Style.spacingM; verticalCenter: headerLabel.verticalCenter }
+                width: dlShortcutRow.width + Style.spacingS * 2
+                height: units.gu(4)
+                onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
+
+                Row {
+                    id: dlShortcutRow
+                    anchors.centerIn: parent
+                    spacing: Style.spacingXs
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2); height: width
+                        name: "save"
+                        color: Style.brand
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: i18n.tr("Downloaded")
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.DemiBold
+                        color: Style.brand
+                    }
+                }
+            }
         }
 
-        delegate: VideoCard {
+        // VideoCard wrapped in a Lomiri ListItem so the row gains native swipe
+        // context actions (and the same actions via pointer right-click / keyboard
+        // MENU — convergence). Leading = negative (Hide), trailing = positive
+        // (Share), mirroring the ••• sheet. Tap still opens the detail through
+        // VideoCard.onClicked, so navigation is unchanged even if the swipe
+        // gesture is unavailable.
+        delegate: ListItem {
+            id: videoRow
             width: list.width
-            video: feedModel.get(index)
-            onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
-                { video: feedModel.get(index) })
-            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                { username: feedModel.get(index).author })
-            onMoreClicked: PostActions.open(feedModel.get(index), "video")
+            height: card.height
+            // VideoCard draws its own bottom divider — suppress ListItem's to
+            // avoid a double hairline.
+            divider.visible: false
+
+            leadingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: i18n.tr("Hide")
+                        onTriggered: {
+                            var vm = feedModel.get(index);
+                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                        }
+                    }
+                ]
+            }
+            trailingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: i18n.tr("Share")
+                        onTriggered: {
+                            var vm = feedModel.get(index);
+                            if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
+                        }
+                    }
+                ]
+            }
+
+            VideoCard {
+                id: card
+                width: parent.width
+                video: feedModel.get(index)
+                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
+                    { video: feedModel.get(index) })
+                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                    { username: feedModel.get(index).author })
+                onMoreClicked: PostActions.open(feedModel.get(index), "video")
+            }
         }
 
         // Constant-height footer: a conditional height feeds back into
@@ -202,4 +306,7 @@ Page {
         iconName: "camcorder"
         message: i18n.tr("No videos to show")
     }
+
+    // Upload lives in the global header action now (see Main.qml, gated on the
+    // Video tab) — Lomiri uses a header action, not a Material floating button.
 }

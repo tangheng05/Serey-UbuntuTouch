@@ -4,6 +4,7 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 import "../services/CommentService.js" as CommentService
+import "../services/VoteService.js" as VoteService
 
 /*
  * A single comment row (iOS-style): circular avatar + author + relative time
@@ -20,6 +21,7 @@ Item {
     readonly property var replies: c.replies || []
     property bool repliesExpanded: true
     property bool topLevel: true
+    property int depth: 0
 
     // Only the author can edit/delete, and only a comment that exists
     // server-side (optimistic local comments carry an empty permlink).
@@ -99,6 +101,7 @@ Item {
         Item {
             width: parent.width
             height: avatar.height
+            z: item.menuOpen ? 20 : 0
 
             Item {
                 id: avatar
@@ -180,7 +183,7 @@ Item {
                 anchors { top: moreButton.bottom; right: moreButton.right; topMargin: Style.spacingXs }
                 width: units.gu(16)
                 height: item.confirmingDelete ? confirmCol.height : menuCol.height
-                radius: units.dp(8)
+                radius: Style.cardRadius
                 color: Style.surface
                 border.width: units.dp(1)
                 border.color: Style.divider
@@ -278,7 +281,7 @@ Item {
                     height: units.gu(3.5)
                     enabled: !item.saving && item.editText.trim().length > 0
                     onClicked: item.saveEdit()
-                    Rectangle { anchors.fill: parent; radius: height / 2; color: parent.enabled ? Style.brand : Style.iconBackground }
+                    Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: parent.enabled ? Style.brand : Style.iconBackground }
                     Label {
                         id: saveLabel
                         anchors.centerIn: parent
@@ -312,9 +315,17 @@ Item {
                 voteType: "comment"
                 showComments: false
                 showShare: false
-                votes: c.votes || 0
-                upvoted: (c.voters || []).indexOf(Session.username) >= 0
                 width: units.gu(8)
+                Component.onCompleted: {
+                    var cached = VoteService.getCached(c.author || "", c.permlink || "")
+                    if (cached) {
+                        votes   = cached.votes
+                        upvoted = cached.upvoted
+                    } else {
+                        votes   = c.votes || 0
+                        upvoted = (c.voters || []).indexOf(Session.username) >= 0
+                    }
+                }
             }
 
             AbstractButton {
@@ -372,13 +383,15 @@ Item {
             }
         }
 
-        // Nested replies, indented with a vertical guide line
+        // Nested replies — only indent one level deep; deeper replies stay flat
         Item {
             visible: item.repliesExpanded && item.replies.length > 0
             width: parent.width
             height: visible ? repliesCol.height : 0
 
+            // Guide line only on the first indent level
             Rectangle {
+                visible: item.depth === 0
                 x: units.gu(1.75) - units.dp(1)
                 width: units.dp(2)
                 height: parent.height
@@ -387,12 +400,22 @@ Item {
 
             Column {
                 id: repliesCol
-                x: units.gu(3.5)
+                // Capture owner depth here — inside a Loader delegate, 'item'
+                // refers to the Loader's loaded object (null at onCompleted time),
+                // shadowing the outer CommentItem id. Reading it on repliesCol
+                // avoids that shadowing.
+                readonly property int ownerDepth: item.depth
+                x: ownerDepth === 0 ? units.gu(3.5) : 0
                 width: parent.width - x
 
-                // A QML type cannot instantiate itself by name within its own
-                // file ("instantiated recursively"), so nested replies are
-                // loaded dynamically instead of via a direct CommentItem {}.
+                function forwardSignals(loaderItem) {
+                    if (!loaderItem) return;
+                    loaderItem.deleted.connect(function(permlink) { item.deleted(permlink) })
+                    loaderItem.edited.connect(function(permlink, newBody) { item.edited(permlink, newBody) })
+                    loaderItem.replyRequested.connect(function(c) { item.replyRequested(c) })
+                    loaderItem.authorClicked.connect(function(author) { item.authorClicked(author) })
+                }
+
                 Repeater {
                     model: item.replies
                     delegate: Loader {
@@ -400,16 +423,11 @@ Item {
                         width: repliesCol.width
                         property var replyData: modelData
                         Component.onCompleted: setSource(Qt.resolvedUrl("CommentItem.qml"), {
-                            comment: replyData,
-                            topLevel: false
+                            comment:  replyData,
+                            topLevel: false,
+                            depth:    Math.min(repliesCol.ownerDepth + 1, 1)
                         })
-                        Connections {
-                            target: replyLoader.item
-                            onDeleted: item.deleted(permlink)
-                            onEdited: item.edited(permlink, newBody)
-                            onReplyRequested: item.replyRequested(comment)
-                            onAuthorClicked: item.authorClicked(author)
-                        }
+                        onItemChanged: repliesCol.forwardSignals(replyLoader.item)
                     }
                 }
             }

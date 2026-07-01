@@ -1,36 +1,46 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
+import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
 /*
- * Password reset for standard (custodial) accounts, mirroring the web flow:
- *   step 0 — username; we fetch the account's MASKED contact hint from the API
- *   step 1 — show the hint (e.g. ****ith@gmail.com), pick email/phone if both,
- *            enter the contact → sends an OTP
- *   step 2 — OTP + new password
- * The masked hint comes from GET /accounts/contact-hint. The header steps back
- * through the wizard; the OTP step has a resend countdown.
+ * Password reset — two modes:
+ *
+ * Logged-in (prefillUsername set by caller):
+ *   step 0 — email → send OTP immediately (username already known)
+ *   step 1 — enter OTP
+ *   step 2 — new password
+ *
+ * Not logged-in (prefillUsername empty):
+ *   step 0 — username → fetch masked email hint
+ *   step 1 — fill masked email → send OTP
+ *   step 2 — enter OTP
+ *   step 3 — new password
+ *
+ * Phone support removed — email only.
  */
 Page {
     id: page
+
+    // Caller sets this when the user is already signed in so we can skip
+    // the username lookup and go straight to the email entry step.
+    property string prefillUsername: ""
 
     property int step: 0
     property bool busy: false
     property string errorMsg: ""
     property int resendSeconds: 0
 
-    property string username: ""
-    // Masked hints from the backend (either may be empty).
+    property string username: prefillUsername
     property string hintEmail: ""
-    property string hintPhone: ""
-    // The method actually used to send the OTP ("email" | "phone") + its value,
-    // kept for resend.
-    property string method: "email"
-    property string sentContact: ""
+    property string sentEmail: ""
 
-    readonly property bool hasBoth: hintEmail.length > 0 && hintPhone.length > 0
+    // In logged-in mode we have 3 steps (0=email, 1=OTP, 2=newPW).
+    // In guest mode we have 4 (0=username, 1=maskedEmail, 2=OTP, 3=newPW).
+    readonly property bool loggedInMode: prefillUsername.length > 0
+    readonly property int totalSteps: loggedInMode ? 3 : 4
 
     header: PageHeader {
         title: i18n.tr("Reset password")
@@ -44,37 +54,33 @@ Page {
         else page.pageStack.pop();
     }
 
-    function fail(err) { busy = false; page.errorMsg = err.message; }
+    function fail(err) { busy = false; page.errorMsg = err.message || i18n.tr("Something went wrong."); }
 
-    Component.onCompleted: usernameField.input.forceActiveFocus()
+    Component.onCompleted: {
+        if (loggedInMode) emailDirectField.input.forceActiveFocus();
+        else              usernameField.input.forceActiveFocus();
+    }
 
     onStepChanged: {
-        if (step === 0) usernameField.input.forceActiveFocus();
-        else if (step === 1) (method === "email" ? emailMasked.input : phoneField.input).forceActiveFocus();
-        else if (step === 2) otpField.input.forceActiveFocus();
-        else if (step === 3) passwordField.input.forceActiveFocus();
-    }
-
-    // step 2 -> 3: there is no standalone verify endpoint, so we just check the
-    // code is the right length here; correctness is confirmed when the new
-    // password is submitted (a bad code sends the user back to this step).
-    function verifyCode() {
-        if (busy) return;
-        errorMsg = "";
-        if (otpField.text.length < 6) {
-            errorMsg = i18n.tr("Please enter the 6-digit code.");
-            return;
+        page.errorMsg = "";
+        if (loggedInMode) {
+            if (step === 0) emailDirectField.input.forceActiveFocus();
+            else if (step === 1) otpField.input.forceActiveFocus();
+            else if (step === 2) passwordField.input.forceActiveFocus();
+        } else {
+            if (step === 0) usernameField.input.forceActiveFocus();
+            else if (step === 1) emailMasked.input.forceActiveFocus();
+            else if (step === 2) otpField.input.forceActiveFocus();
+            else if (step === 3) passwordField.input.forceActiveFocus();
         }
-        step = 3;
     }
 
-    // step 0 -> 1: fetch the masked contact hint for this username.
+    // ── Guest mode: step 0 → 1 ──────────────────────────────────────────────
     function lookupHint() {
         if (busy) return;
         errorMsg = "";
         if (usernameField.text.length === 0) {
-            errorMsg = i18n.tr("Please enter your username.");
-            return;
+            errorMsg = i18n.tr("Please enter your username."); return;
         }
         username = usernameField.text;
         busy = true;
@@ -83,81 +89,88 @@ Page {
                 busy = false;
                 var d = (resp && resp.data) ? resp.data : {};
                 page.hintEmail = d.email || "";
-                page.hintPhone = d.phone || "";
-                page.method = page.hintEmail.length > 0 ? "email" : "phone";
+                if (page.hintEmail.length === 0) {
+                    page.errorMsg = i18n.tr("No email address found for this account.");
+                    return;
+                }
                 page.step = 1;
-            },
-            fail);
+            }, fail);
     }
 
-    // step 1 -> 2: send the OTP to the entered contact.
-    function sendOtp() {
+    // ── Guest mode: step 1 → 2  (send OTP to masked email) ─────────────────
+    function sendOtpMasked() {
         if (busy) return;
         errorMsg = "";
-        var contact = {};
-        if (method === "email") {
-            if (!emailMasked.complete) {
-                errorMsg = i18n.tr("Please fill in the hidden part of your email.");
-                return;
-            }
-            contact.email = emailMasked.value;
-            sentContact = emailMasked.value;
-        } else {
-            if (phoneField.text.replace(/\D/g, "").length < 6) {
-                errorMsg = i18n.tr("Please enter the phone number on your account.");
-                return;
-            }
-            contact.phone = phoneField.text;
-            sentContact = phoneField.text;
+        if (!emailMasked.complete) {
+            errorMsg = i18n.tr("Please fill in the hidden part of your email."); return;
         }
+        sentEmail = emailMasked.value;
         busy = true;
-        AccountService.requestPasswordReset(Config.baseUrl, username, contact,
-            function () { busy = false; resendSeconds = 90; step = 2; },
-            fail);
+        AccountService.requestPasswordReset(Config.baseUrl, username, { email: sentEmail },
+            function () { busy = false; resendSeconds = 90; step = 2; }, fail);
     }
 
-    // Re-send the OTP to the same contact once the countdown reaches zero.
+    // ── Logged-in mode: step 0 → 1 (send OTP to typed email directly) ───────
+    function sendOtpDirect() {
+        if (busy) return;
+        errorMsg = "";
+        var em = emailDirectField.text.trim();
+        if (em.length === 0 || em.indexOf("@") < 1) {
+            errorMsg = i18n.tr("Please enter a valid email address."); return;
+        }
+        sentEmail = em;
+        busy = true;
+        AccountService.requestPasswordReset(Config.baseUrl, username, { email: sentEmail },
+            function () { busy = false; resendSeconds = 90; step = 1; }, fail);
+    }
+
+    // ── Shared: verify OTP length ────────────────────────────────────────────
+    function verifyCode() {
+        if (busy) return;
+        errorMsg = "";
+        if (otpField.text.length < 6) {
+            errorMsg = i18n.tr("Please enter the 6-digit code."); return;
+        }
+        step = loggedInMode ? 2 : 3;
+    }
+
+    // ── Shared: resend ───────────────────────────────────────────────────────
     function resend() {
         if (busy || resendSeconds > 0) return;
         errorMsg = "";
-        var contact = method === "email" ? { email: sentContact } : { phone: sentContact };
         busy = true;
-        AccountService.requestPasswordReset(Config.baseUrl, username, contact,
-            function () { busy = false; resendSeconds = 90; Toast.show(i18n.tr("New code sent.")); },
-            fail);
+        AccountService.requestPasswordReset(Config.baseUrl, username, { email: sentEmail },
+            function () { busy = false; resendSeconds = 90; Toast.show(i18n.tr("New code sent.")); }, fail);
     }
 
-    // step 3: set the new password (this is also where the OTP is actually
-    // verified server-side). On a bad/expired code, send the user back to step 2.
+    // ── Shared: final submit ─────────────────────────────────────────────────
     function submitReset() {
         if (busy) return;
         errorMsg = "";
         if (!AccountService.isValidPassword(passwordField.text)) {
-            errorMsg = i18n.tr("Password must be 8–16 characters and include an uppercase letter, a lowercase letter and a number.");
-            return;
+            errorMsg = i18n.tr("Password must be 8–16 characters with uppercase, lowercase and a number."); return;
         }
         if (passwordField.text !== confirmField.text) {
-            errorMsg = i18n.tr("Passwords do not match.");
-            return;
+            errorMsg = i18n.tr("Passwords do not match."); return;
         }
         busy = true;
         AccountService.resetPassword(Config.baseUrl, username, otpField.text, passwordField.text,
             function () {
                 busy = false;
-                Toast.success(i18n.tr("Password reset. Please log in."));
+                Toast.show(i18n.tr("Password reset. Please log in."));
                 page.pageStack.pop();
             },
             function (err) {
                 busy = false;
                 page.errorMsg = err.message;
                 if (err.message && /otp|code/i.test(err.message))
-                    page.step = 2;   // bad code — go re-enter it
+                    page.step = loggedInMode ? 1 : 2;
             });
     }
 
     Timer {
         interval: 1000; repeat: true
-        running: page.step === 2 && page.resendSeconds > 0
+        running: page.resendSeconds > 0
         onTriggered: page.resendSeconds = Math.max(0, page.resendSeconds - 1)
     }
 
@@ -174,7 +187,7 @@ Page {
             y: Style.spacingL
             spacing: Style.spacingM
 
-            // Logo hero
+            // Logo
             Image {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: units.gu(9); height: width
@@ -183,12 +196,12 @@ Page {
                 asynchronous: true
             }
 
-            // Step dots (3 steps)
+            // Step dots
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: Style.spacingS
                 Repeater {
-                    model: 4
+                    model: page.totalSteps
                     delegate: Rectangle {
                         width: units.gu(1); height: units.gu(1); radius: width / 2
                         color: index <= page.step ? Style.brand : Style.dotInactive
@@ -197,111 +210,97 @@ Page {
                 }
             }
 
+            // Step title
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 font.family: Style.fontFamily
-                text: page.step === 0 ? i18n.tr("Find your account")
-                    : page.step === 1 ? i18n.tr("Verify your identity")
-                    : page.step === 2 ? i18n.tr("Enter your code")
-                    : i18n.tr("Create a new password")
                 font.pixelSize: Style.fontTitle
                 font.weight: Font.DemiBold
                 color: Style.textTitle
                 wrapMode: Text.WordWrap
+                text: {
+                    if (loggedInMode) {
+                        if (page.step === 0) return i18n.tr("Enter your email")
+                        if (page.step === 1) return i18n.tr("Enter your code")
+                        return i18n.tr("Create a new password")
+                    } else {
+                        if (page.step === 0) return i18n.tr("Find your account")
+                        if (page.step === 1) return i18n.tr("Verify your identity")
+                        if (page.step === 2) return i18n.tr("Enter your code")
+                        return i18n.tr("Create a new password")
+                    }
+                }
             }
 
             Item { width: 1; height: Style.spacingXs }
 
-            // --- Step 0: username -------------------------------------------
+            // ── Logged-in mode step 0: direct email entry ──────────────────
+            Label {
+                visible: loggedInMode && page.step === 0
+                width: parent.width
+                font.family: Style.fontFamily
+                font.pixelSize: Style.fontSmall
+                color: Style.textSecondary
+                wrapMode: Text.WordWrap
+                text: i18n.tr("Enter the email address on your account. We'll send a verification code.")
+            }
+            FormField {
+                id: emailDirectField
+                visible: loggedInMode && page.step === 0
+                width: parent.width
+                placeholder: i18n.tr("Email address")
+                inputMethodHints: Qt.ImhEmailCharactersOnly
+                onAccepted: page.sendOtpDirect()
+            }
+
+            // ── Guest mode step 0: username ────────────────────────────────
             FormField {
                 id: usernameField
-                visible: page.step === 0
+                visible: !loggedInMode && page.step === 0
                 width: parent.width
                 placeholder: i18n.tr("Username")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
                 onAccepted: page.lookupHint()
             }
 
-            // --- Step 1: hint + contact -------------------------------------
+            // ── Guest mode step 1: masked email ────────────────────────────
             Label {
-                visible: page.step === 1
+                visible: !loggedInMode && page.step === 1
                 width: parent.width
                 font.family: Style.fontFamily
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
-                text: page.method === "email"
-                      ? i18n.tr("Fill in the hidden part of your email to receive a code.")
-                      : i18n.tr("We'll send a code to your phone %1.").arg(page.hintPhone)
+                text: i18n.tr("Fill in the hidden part of your email to receive a code.")
             }
-            // Method toggle (only when the account has both an email and a phone)
-            Row {
-                visible: page.step === 1 && page.hasBoth
-                width: parent.width
-                spacing: Style.spacingS
-                Repeater {
-                    model: [ { m: "email", label: i18n.tr("Email") }, { m: "phone", label: i18n.tr("Phone") } ]
-                    delegate: AbstractButton {
-                        width: (parent.width - Style.spacingS) / 2
-                        height: units.gu(5)
-                        onClicked: { page.method = modelData.m; page.errorMsg = ""; emailMasked.input.text = ""; phoneField.text = ""; }
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: Style.cardRadius
-                            color: page.method === modelData.m ? Style.brand : Style.surface
-                            border.width: units.dp(1.5)
-                            border.color: page.method === modelData.m ? Style.brand : Style.divider
-                            Label {
-                                anchors.centerIn: parent
-                                text: modelData.label
-                                font.pixelSize: Style.fontRegular
-                                font.weight: Font.DemiBold
-                                font.family: Style.fontFamily
-                                color: page.method === modelData.m ? Style.textOnBrand : Style.textPrimary
-                            }
-                        }
-                    }
-                }
-            }
-            // Email: masked-retype input (fill the hidden front; suffix revealed).
             MaskedContactInput {
                 id: emailMasked
-                visible: page.step === 1 && page.method === "email"
+                visible: !loggedInMode && page.step === 1
                 width: parent.width
                 maskedEmail: page.hintEmail
-                onAccepted: page.sendOtp()
-            }
-            // Phone: plain entry (the masked hint is shown in the line above).
-            FormField {
-                id: phoneField
-                visible: page.step === 1 && page.method === "phone"
-                width: parent.width
-                placeholder: i18n.tr("Phone on your account")
-                inputMethodHints: Qt.ImhDigitsOnly
-                onAccepted: page.sendOtp()
+                onAccepted: page.sendOtpMasked()
             }
 
-            // --- Step 2: enter the code -------------------------------------
+            // ── Shared step: OTP ───────────────────────────────────────────
             Label {
-                visible: page.step === 2
+                visible: (loggedInMode && page.step === 1) || (!loggedInMode && page.step === 2)
                 width: parent.width
                 font.family: Style.fontFamily
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
-                text: i18n.tr("We sent a verification code to %1.").arg(page.sentContact)
+                text: i18n.tr("We sent a verification code to %1.").arg(page.sentEmail)
             }
             OtpInput {
                 id: otpField
-                visible: page.step === 2
+                visible: (loggedInMode && page.step === 1) || (!loggedInMode && page.step === 2)
                 width: parent.width
                 onAccepted: page.verifyCode()
             }
             Item {
-                visible: page.step === 2
-                width: parent.width
-                height: units.gu(3)
+                visible: (loggedInMode && page.step === 1) || (!loggedInMode && page.step === 2)
+                width: parent.width; height: units.gu(3)
                 Label {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: page.resendSeconds > 0
@@ -313,10 +312,10 @@ Page {
                 AbstractButton {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: page.resendSeconds === 0
-                    width: fpResendLbl.width; height: fpResendLbl.height
+                    width: resendLbl.width; height: resendLbl.height
                     onClicked: page.resend()
                     Label {
-                        id: fpResendLbl
+                        id: resendLbl
                         text: i18n.tr("Resend code")
                         font.pixelSize: Style.fontSmall
                         font.weight: Font.DemiBold
@@ -325,28 +324,31 @@ Page {
                     }
                 }
             }
-            // --- Step 3: new password --------------------------------------
+
+            // ── Shared step: new password ──────────────────────────────────
             FormField {
                 id: passwordField
-                visible: page.step === 3
+                visible: (loggedInMode && page.step === 2) || (!loggedInMode && page.step === 3)
                 width: parent.width
                 placeholder: i18n.tr("New password")
                 echoMode: TextInput.Password
+                onAccepted: confirmField.input.forceActiveFocus()
             }
             PasswordChecklist {
-                visible: page.step === 3
+                visible: (loggedInMode && page.step === 2) || (!loggedInMode && page.step === 3)
                 width: parent.width
                 password: passwordField.text
             }
             FormField {
                 id: confirmField
-                visible: page.step === 3
+                visible: (loggedInMode && page.step === 2) || (!loggedInMode && page.step === 3)
                 width: parent.width
                 placeholder: i18n.tr("Confirm new password")
                 echoMode: TextInput.Password
                 onAccepted: page.submitReset()
             }
 
+            // Error
             Label {
                 width: parent.width
                 font.family: Style.fontFamily
@@ -357,19 +359,34 @@ Page {
                 visible: text.length > 0
             }
 
+            // Primary action button
             PrimaryButton {
                 width: parent.width
                 busy: page.busy
-                text: page.busy ? i18n.tr("Please wait…")
-                    : page.step === 0 ? i18n.tr("Continue")
-                    : page.step === 1 ? i18n.tr("Send code")
-                    : page.step === 2 ? i18n.tr("Next")
-                    : i18n.tr("Reset password")
+                text: {
+                    if (page.busy) return i18n.tr("Please wait…")
+                    if (loggedInMode) {
+                        if (page.step === 0) return i18n.tr("Send code")
+                        if (page.step === 1) return i18n.tr("Next")
+                        return i18n.tr("Reset password")
+                    } else {
+                        if (page.step === 0) return i18n.tr("Continue")
+                        if (page.step === 1) return i18n.tr("Send code")
+                        if (page.step === 2) return i18n.tr("Next")
+                        return i18n.tr("Reset password")
+                    }
+                }
                 onClicked: {
-                    if (page.step === 0) page.lookupHint();
-                    else if (page.step === 1) page.sendOtp();
-                    else if (page.step === 2) page.verifyCode();
-                    else page.submitReset();
+                    if (loggedInMode) {
+                        if (page.step === 0) page.sendOtpDirect();
+                        else if (page.step === 1) page.verifyCode();
+                        else page.submitReset();
+                    } else {
+                        if (page.step === 0) page.lookupHint();
+                        else if (page.step === 1) page.sendOtpMasked();
+                        else if (page.step === 2) page.verifyCode();
+                        else page.submitReset();
+                    }
                 }
             }
         }

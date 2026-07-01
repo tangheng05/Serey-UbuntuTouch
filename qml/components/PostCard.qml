@@ -177,7 +177,7 @@ Item {
                 Layout.preferredHeight: units.gu(3.75)
                 Layout.fillHeight: false
                 Layout.alignment: Qt.AlignVCenter
-                radius: height / 2
+                radius: Style.pillRadius
                 color: root.isFollowing ? Style.surface : Style.brand
                 border.width: root.isFollowing ? units.dp(1.5) : 0
                 border.color: Style.brand

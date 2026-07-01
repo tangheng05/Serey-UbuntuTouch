@@ -12,7 +12,7 @@ AbstractButton {
     signal moreClicked()
 
     width: parent ? parent.width : units.gu(40)
-    implicitHeight: column.height + Style.spacingM + units.dp(1)
+    implicitHeight: column.height + Style.spacingM + Style.spacingM + units.dp(1)
     height: implicitHeight
 
     Column {
@@ -35,17 +35,21 @@ AbstractButton {
             Rectangle {
                 id: thumbBg
                 anchors.fill: parent
-                radius: units.dp(12)
+                radius: Style.thumbRadius
                 color: Style.iconBackground
             }
 
             Image {
                 id: thumbImg
                 anchors.fill: parent
-                source: v.thumbnail || ""
+                source: v.localThumb || v.thumbnail || ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
-                sourceSize.width: parent.width * 2
+                // HIG scaling: snap the decode size to a breakpoint instead of a
+                // continuous `width * N`, so the image isn't re-rasterized on every
+                // width change (only when crossing the threshold). See
+                // docs/ubports-other-considerations/02-scaling-images.md.
+                sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
                 Behavior on opacity { NumberAnimation { duration: 200 } }
                 opacity: status === Image.Ready ? 1.0 : 0.0
@@ -54,7 +58,7 @@ AbstractButton {
             Rectangle {
                 id: thumbMask
                 anchors.fill: parent
-                radius: units.dp(12)
+                radius: Style.thumbRadius
                 visible: false
             }
 

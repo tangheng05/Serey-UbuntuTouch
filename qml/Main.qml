@@ -1,11 +1,15 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
+// Lomiri.Notifications and Ubuntu.PushNotifications are only available on a
+// real Ubuntu Touch device, not in the clickable desktop container. We load
+// them dynamically so the desktop build doesn't crash.
 import "Theme"
 import "Session"
 import "components"
 import "services/CommunityService.js" as CommunityService
 import "services/AccountService.js" as AccountService
 import "services/Http.js" as Http
+import "services/NotificationService.js" as NotificationService
 
 /*
  * Application shell: a persistent bottom tab bar with one PageStack per tab so
@@ -15,24 +19,23 @@ import "services/Http.js" as Http
 MainView {
     id: root
     objectName: "mainView"
-    applicationName: "serey.draxler"
+    applicationName: "serey.ubuntu"
     automaticOrientation: true
 
     width: units.gu(45)
     height: units.gu(80)
 
     property int currentTab: 0
-    onCurrentTabChanged: { body.opacity = 0; tabFadeIn.start(); }
+    onCurrentTabChanged: { Config.currentTab = currentTab; body.opacity = 0; tabFadeIn.start(); }
     NumberAnimation { id: tabFadeIn; target: body; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
 
     // Depth of the active tab's stack. The global header only shows at a tab's
     // root (depth 1); pushed sub-pages (detail/login) bring their own back-bar.
     property int activeDepth: currentTab === 0 ? homeStack.depth
                             : currentTab === 1 ? newsStack.depth
-                            : currentTab === 2 ? galleryStack.depth
-                            : currentTab === 3 ? videoStack.depth
+                            : currentTab === 2 ? videoStack.depth
                             : settingsStack.depth
-    readonly property bool showHeader: activeDepth <= 1 && currentTab !== 4
+    readonly property bool showHeader: activeDepth <= 1 && currentTab !== 3
     readonly property bool showNavBar: activeDepth <= 1
 
     Component.onCompleted: {
@@ -55,8 +58,13 @@ MainView {
         // stored token is trusted; it works for every endpoint the app uses
         // (those need only isJwtAuthenticated). A genuinely stale token simply
         // surfaces as a normal API error when used.
+        _initNotifications()
+
         CommunityService.listAll(Config.baseUrl,
-            function (list) { Config.iconByDns = CommunityService.iconMap(list); },
+            function (list) {
+                Config.iconByDns = CommunityService.iconMap(list);
+                Config.allowPostByDns = CommunityService.allowPostMap(list);
+            },
             function (err) { /* keep globe fallback */ });
 
         // A persisted session only carries token + username (see Session.qml);
@@ -65,6 +73,115 @@ MainView {
             AccountService.profile(Config.baseUrl, Session.username, Session.token,
                 function (user) { Session.avatarUrl = user.profileUrl; },
                 function (err) { /* keep letter-fallback avatar */ });
+        }
+    }
+
+    // ── Push / local notification handles (created dynamically) ─────────────
+    property var  sysNotif:   null   // Lomiri.Notifications Notification
+    property var  pushClient: null   // Ubuntu.PushNotifications PushClient
+    property string pushToken: ""
+    property int  lastUnreadCount: -1
+    property var  notifSound: null
+
+    function _showNotif(body) {
+        // Play sound
+        if (root.notifSound) root.notifSound.play()
+
+        // System notification (lock screen / indicator)
+        if (root.sysNotif) {
+            root.sysNotif.body = body
+            root.sysNotif.show()
+        }
+
+        // In-app toast (always works)
+        Toast.show(body)
+    }
+
+    function _registerPushToken(pt) {
+        NotificationService.registerPushToken(Config.baseUrl, Session.token, pt,
+            function () { /* fire-and-forget */ },
+            function ()  { /* silent — retry on next app launch */ })
+    }
+
+    function _initNotifications() {
+        // Notification sound (QtMultimedia Audio for ogg support)
+        try {
+            root.notifSound = Qt.createQmlObject(
+                'import QtMultimedia 5.6; Audio { source: "/usr/share/sounds/lomiri/notifications/Xylo.ogg"; autoPlay: false }',
+                root, "notifSound")
+        } catch (e) { /* QtMultimedia not available — silent */ }
+
+        // System notification (indicator + lock screen)
+        try {
+            root.sysNotif = Qt.createQmlObject(
+                'import Lomiri.Notifications 1.0; Notification { summary: "Serey" }',
+                root, "sysNotif")
+        } catch (e) { /* Lomiri.Notifications not available on desktop — expected */ }
+
+        // Push client for background delivery
+        try {
+            root.pushClient = Qt.createQmlObject(
+                'import Ubuntu.PushNotifications 0.1; PushClient {' +
+                '  appId: "serey.ubuntu_serey"; }',
+                root, "pushClient")
+
+            root.pushClient.tokenChanged.connect(function () {
+                var t = root.pushClient.token
+                if (t === "" || t === root.pushToken) return
+                root.pushToken = t
+                if (Session.isLoggedIn) root._registerPushToken(t)
+            })
+
+            root.pushClient.notificationsChanged.connect(function () {
+                var notifs = root.pushClient.notifications
+                if (notifs.length > 0) {
+                    var msg = notifs.length === 1
+                        ? i18n.tr("You have 1 new notification")
+                        : i18n.tr("You have %1 new notifications").arg(notifs.length)
+                    root._showNotif(msg)
+                    root.lastUnreadCount = -1
+                    root.pushClient.clearAll()
+                }
+            })
+        } catch (e) { console.warn("Push: PushClient failed to create:", e) }
+    }
+
+    // Poll every 60 s while logged in
+    Timer {
+        id: notifPoller
+        interval: 30000
+        repeat: true
+        running: Session.isLoggedIn && Session.pushEnabled
+        triggeredOnStart: true
+        onTriggered: {
+            if (!Session.isLoggedIn || !Session.pushEnabled) return
+            NotificationService.listSerey(Config.baseUrl, Session.token, 20, 0,
+                function (items) {
+                    var count = 0
+                    for (var i = 0; i < items.length; i++) {
+                        if (!items[i].is_read) count++
+                    }
+                    if (root.lastUnreadCount < 0) { root.lastUnreadCount = count; return }
+                    if (count > root.lastUnreadCount) {
+                        var diff = count - root.lastUnreadCount
+                        root._showNotif(diff === 1
+                            ? i18n.tr("You have 1 new notification")
+                            : i18n.tr("You have %1 new notifications").arg(diff))
+                    }
+                    root.lastUnreadCount = count
+                },
+                function (err) { /* silent */ })
+        }
+    }
+
+    Connections {
+        target: Session
+        function onIsLoggedInChanged() {
+            if (!Session.isLoggedIn) {
+                root.lastUnreadCount = -1
+            } else if (root.pushToken !== "") {
+                root._registerPushToken(root.pushToken)
+            }
         }
     }
 
@@ -87,6 +204,74 @@ MainView {
         height: root.showHeader ? units.gu(6) : 0
         visible: root.showHeader
         onCommunityButtonClicked: communityPicker.open()
+
+        Row {
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.spacingS
+
+            // Compose (News tab only) — Lomiri header action, replacing the old
+            // Material floating button. Reloads the feed once a post is saved.
+            AbstractButton {
+                id: composeBtn
+                visible: Session.isLoggedIn && root.currentTab === 1
+                anchors.verticalCenter: parent.verticalCenter
+                width: units.gu(4); height: width
+                onClicked: {
+                    var np = newsStack.currentPage;
+                    var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"));
+                    if (ed && ed.saved && np && np.reload) ed.saved.connect(np.reload);
+                }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.8); height: width
+                    name: "edit"
+                    color: Style.brand
+                }
+            }
+
+            // Upload video (Video tab only) — Lomiri header action, replacing the
+            // old Material floating button on VideoPage.
+            AbstractButton {
+                id: uploadBtn
+                // Only when the selected community allows posting (is_allow_post);
+                // hidden for Global and owner-only communities.
+                visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostCurrent
+                anchors.verticalCenter: parent.verticalCenter
+                width: units.gu(4); height: width
+                onClicked: {
+                    var vp = videoStack.currentPage;
+                    var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
+                    if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);
+                }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.8); height: width
+                    name: "add"
+                    color: Style.brand
+                }
+            }
+
+            AbstractButton {
+                id: feedBtn
+                visible: Session.isLoggedIn
+                anchors.verticalCenter: parent.verticalCenter
+                width: units.gu(4); height: width
+                onClicked: {
+                    var stack = root.currentTab === 0 ? homeStack
+                              : root.currentTab === 1 ? newsStack
+                              : root.currentTab === 2 ? videoStack
+                              : settingsStack;
+                    stack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
+                }
+                Image {
+                    anchors.centerIn: parent
+                    width: units.gu(3.5); height: width
+                    source: Qt.resolvedUrl("../assets/iconFeed.png")
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                }
+            }
+        }
     }
 
     // --- Content area: four stacks, only the active one visible ----------
@@ -112,21 +297,15 @@ MainView {
             Component.onCompleted: push(Qt.resolvedUrl("pages/NewsPage.qml"))
         }
         PageStack {
-            id: galleryStack
-            anchors.fill: parent
-            visible: root.currentTab === 2
-            Component.onCompleted: push(Qt.resolvedUrl("pages/GalleryPage.qml"))
-        }
-        PageStack {
             id: videoStack
             anchors.fill: parent
-            visible: root.currentTab === 3
+            visible: root.currentTab === 2
             Component.onCompleted: push(Qt.resolvedUrl("pages/VideoPage.qml"))
         }
         PageStack {
             id: settingsStack
             anchors.fill: parent
-            visible: root.currentTab === 4
+            visible: root.currentTab === 3
             Component.onCompleted: push(Qt.resolvedUrl("pages/SettingsPage.qml"))
         }
     }
@@ -152,12 +331,11 @@ MainView {
                 model: [
                     { label: i18n.tr("Homepage"), icon: "home" },
                     { label: i18n.tr("News"),     icon: "stock_note" },
-                    { label: i18n.tr("Gallery"),  icon: "image-x-generic-symbolic" },
                     { label: i18n.tr("Video"),    icon: "camcorder" },
                     { label: i18n.tr("Settings"), icon: "settings" }
                 ]
                 delegate: AbstractButton {
-                    width: navBar.width / 5
+                    width: navBar.width / 4
                     height: navBar.height
                     property bool active: root.currentTab === index
 

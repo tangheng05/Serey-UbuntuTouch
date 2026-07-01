@@ -25,6 +25,7 @@ Page {
     property bool posting: false
     property string errorMsg: ""
     property var replyTarget: null
+    readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
     readonly property var imgs: post && post.images ? post.images : []
 
@@ -104,6 +105,7 @@ Page {
     function startReply(comment) {
         page.replyTarget = comment;
         composer.forceActiveFocus();
+        Qt.inputMethod.show();
     }
 
     function cancelReply() {
@@ -171,9 +173,10 @@ Page {
 
     Component.onCompleted: load()
 
-    Flickable {
+    KeyboardAwareFlickable {
         id: scroll
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: footer.visible ? footer.top : parent.bottom }
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.bottomMargin: footer.visible ? footer.height + page.kbHeight : 0
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
@@ -319,6 +322,7 @@ Page {
                     onDeleted: page.removeComment(permlink)
                     onEdited: page.editComment(permlink, newBody)
                     onReplyRequested: page.startReply(comment)
+                    onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: author })
                 }
             }
 
@@ -343,6 +347,8 @@ Page {
     Rectangle {
         id: footer
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.bottomMargin: page.kbHeight
+        Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
         height: footerCol.height
         visible: page.post !== null
         color: Style.surface
@@ -363,12 +369,12 @@ Page {
             permlink: page.permlink
             voteType: "post"
             votes: page.post ? page.post.votes : 0
-            flaggers: page.post ? page.post.flaggers.length : 0
+            flaggers: page.post && page.post.flaggers ? page.post.flaggers.length : 0
             showComments: false
-            showVotersLabel: true
+            showVotersLabel: false
             payout: page.post ? page.post.payout : ""
-            upvoted: page.post && page.post.voters.indexOf(Session.username) >= 0
-            flagged: page.post && page.post.flaggers.indexOf(Session.username) >= 0
+            upvoted: page.post && page.post.voters ? page.post.voters.indexOf(Session.username) >= 0 : false
+            flagged: page.post && page.post.flaggers ? page.post.flaggers.indexOf(Session.username) >= 0 : false
             onRequireLogin: page.pushLogin()
         }
 
@@ -407,7 +413,7 @@ Page {
             Rectangle {
                 width: parent.width - sendButton.width - Style.spacingS
                 height: units.gu(5)
-                radius: height / 2
+                radius: Style.cardRadius
                 color: Style.iconBackground
 
                 Label {
@@ -418,13 +424,18 @@ Page {
                         leftMargin: Style.spacingM
                         rightMargin: Style.spacingM
                     }
-                    visible: composer.text.length === 0
+                    visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
                     text: Session.isLoggedIn
                         ? i18n.tr("Post a comment…")
                         : i18n.tr("Log in to comment…")
                     font.family: Style.fontFamily
                     color: Style.textSecondary
                     elide: Text.ElideRight
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: { composer.forceActiveFocus(); Qt.inputMethod.show(); }
                 }
 
                 TextInput {

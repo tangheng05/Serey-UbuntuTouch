@@ -65,7 +65,10 @@ Page {
     }
     // The community can't change while this page is up (header is collapsed), but
     // react anyway so the list is always correct for the active source.
-    Connections { target: Config; function onSourceIndexChanged() { page.loadCategories() } }
+    Connections {
+        target: Config
+        function onCommunityIdChanged() { page.loadCategories() }
+    }
 
     header: Item { height: 0 }
 
@@ -106,7 +109,7 @@ Page {
 
             Rectangle {
                 anchors.fill: parent
-                radius: height / 2
+                radius: Style.cardRadius
                 color: parent.enabled ? Style.brand : Style.iconBackground
             }
             Label {
@@ -245,7 +248,7 @@ Page {
             Rectangle {
                 width: parent.width
                 height: titleField.height + Style.spacingM * 2 + counterLabel.height + Style.spacingXs
-                radius: units.dp(8)
+                radius: Style.cardRadius
                 color: "transparent"
                 border.width: units.dp(1.5)
                 border.color: titleField.activeFocus ? Style.brand : Style.divider
@@ -269,7 +272,7 @@ Page {
                         left: parent.left; top: parent.top
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
-                    visible: titleField.text.length === 0 && !titleField.activeFocus
+                    visible: titleField.text.length === 0 && !titleField.activeFocus && !Qt.inputMethod.visible
                     text: i18n.tr("Enter title")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontMedium
@@ -292,7 +295,7 @@ Page {
             Rectangle {
                 width: parent.width
                 height: Math.max(units.gu(25), bodyArea.contentHeight + Style.spacingM * 2)
-                radius: units.dp(8)
+                radius: Style.cardRadius
                 color: "transparent"
                 border.width: units.dp(1.5)
                 border.color: bodyArea.activeFocus ? Style.brand : Style.divider
@@ -314,7 +317,7 @@ Page {
                         left: parent.left; top: parent.top
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
-                    visible: bodyArea.text.length === 0 && !bodyArea.activeFocus
+                    visible: bodyArea.text.length === 0 && !bodyArea.activeFocus && !Qt.inputMethod.visible
                     text: i18n.tr("Write your article here...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
@@ -330,7 +333,7 @@ Page {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: units.dp(8)
+                    radius: Style.cardRadius
                     color: "transparent"
                     border.width: units.dp(1.5)
                     border.color: Style.divider
@@ -363,7 +366,7 @@ Page {
             Rectangle {
                 width: parent.width
                 height: units.gu(20)
-                radius: units.dp(12)
+                radius: Style.thumbRadius
                 color: Style.iconBackground
                 clip: true
 
@@ -485,7 +488,7 @@ Page {
                     Rectangle {
                         anchors.fill: parent
                         anchors.margins: units.dp(4)
-                        radius: units.dp(6)
+                        radius: Style.cardRadius
                         color: "transparent"
                         border.width: units.dp(1)
                         border.color: Style.divider
@@ -509,7 +512,7 @@ Page {
                 onClicked: page.wrapSelection("<a href=\"\">", "</a>")
                 Rectangle {
                     anchors.fill: parent; anchors.margins: units.dp(4)
-                    radius: units.dp(6); color: "transparent"
+                    radius: Style.cardRadius; color: "transparent"
                     border.width: units.dp(1); border.color: Style.divider
                 }
                 Icon {
@@ -525,7 +528,7 @@ Page {
                 onClicked: page.pickCoverImage()
                 Rectangle {
                     anchors.fill: parent; anchors.margins: units.dp(4)
-                    radius: units.dp(6); color: "transparent"
+                    radius: Style.cardRadius; color: "transparent"
                     border.width: units.dp(1); border.color: Style.divider
                 }
                 Icon {
@@ -570,7 +573,7 @@ Page {
             id: catSheetRect
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: catSheetCol.height + units.gu(4)
-            radius: units.dp(16)
+            radius: units.gu(1)
             color: Style.surface
             transform: Translate { id: catSlideT; y: 0 }
             NumberAnimation { id: catSlideAnim; target: catSlideT; property: "y"; from: catSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }

@@ -143,6 +143,20 @@ function setCoverPhoto(baseUrl, token, imageUrl, onOk, onErr) {
     Http.post(baseUrl, "/user-cover-photo/add", { image_url: imageUrl }, token, onOk, onErr);
 }
 
+function searchUser(baseUrl, token, query, onOk, onErr) {
+    Http.get(baseUrl, "/accounts/search-user", { search_text: query }, token, function (data) {
+        var arr = Array.isArray(data) ? data : [];
+        onOk(arr.map(function(u) { return { username: u, name: u }; }));
+    }, onErr);
+}
+
+// Change password while authenticated (POST /accounts/change-password, Bearer).
+function changePassword(baseUrl, token, currentPassword, newPassword, onOk, onErr) {
+    Http.post(baseUrl, "/accounts/change-password",
+              { current_password: currentPassword, new_password: newPassword },
+              token, onOk, onErr);
+}
+
 // Step 0 of password reset: look up the account's masked contact hint so the UI
 // can tell the user which email/phone the code will go to. onOk receives the
 // parsed response; the masked values are at data.data.{email,phone}.
@@ -164,4 +178,20 @@ function resetPassword(baseUrl, username, otp, newPassword, onOk, onErr) {
     Http.post(baseUrl, "/accounts/reset-password",
               { username: username, otp: otp, new_password: newPassword },
               null, onOk, onErr);
+}
+
+// Block/unblock a user. actionType "ADD" blocks, "REMOVE" unblocks.
+function toggleBlock(baseUrl, token, username, actionType, onOk, onErr) {
+    Http.post(baseUrl, "/blocking-user/add-remove",
+              { username: username, action_type: actionType }, token, onOk, onErr);
+}
+
+// Returns the list of usernames the current user has blocked.
+// Response: { blocking_users: [{ username, owner, ... }] }
+function listBlocked(baseUrl, token, onOk, onErr) {
+    Http.get(baseUrl, "/blocking-user/list-by-current-user", null, token, function (data) {
+        var arr = (data && data.blocking_users) || [];
+        onOk(arr.map(function (u) { return u.username || ""; })
+               .filter(function (u) { return u !== ""; }));
+    }, onErr);
 }

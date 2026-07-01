@@ -14,7 +14,7 @@ AbstractButton {
     property bool busy: false
 
     width: parent ? parent.width : units.gu(40)
-    height: units.gu(6)
+    height: units.gu(5)
     enabled: !busy
 
     Rectangle {

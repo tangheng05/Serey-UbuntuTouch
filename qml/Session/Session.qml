@@ -21,6 +21,7 @@ QtObject {
     // via AccountService.profile() so optimistic local comments can show a
     // real avatar instead of the letter-fallback.
     property string avatarUrl: ""
+    property bool pushEnabled: true
 
     readonly property bool isLoggedIn: token.length > 0
 
@@ -40,10 +41,11 @@ QtObject {
                     var row = rs.rows.item(i);
                     if (row.k === "token") session.token = row.v;
                     else if (row.k === "username") session.username = row.v;
+                    else if (row.k === "pushEnabled") session.pushEnabled = (row.v !== "false");
                 }
             });
         } catch (e) {
-            console.log("Session load error: " + e);
+            console.warn("Session load error: " + e);
         }
     }
 
@@ -55,7 +57,7 @@ QtObject {
                 tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('username', ?)", [session.username]);
             });
         } catch (e) {
-            console.log("Session save error: " + e);
+            console.warn("Session save error: " + e);
         }
     }
 
@@ -66,6 +68,16 @@ QtObject {
         username = newUsername;
         token = newToken;
         _save();
+    }
+
+    function setPushEnabled(enabled) {
+        pushEnabled = enabled;
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
+                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('pushEnabled', ?)", [enabled ? "true" : "false"]);
+            });
+        } catch (e) { console.warn("Session save pushEnabled error: " + e); }
     }
 
     function clear() {

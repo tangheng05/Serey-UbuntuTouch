@@ -35,7 +35,7 @@ RowLayout {
     property bool showShare: true
     property bool showVotersLabel: false
 
-    readonly property bool allowFlag: voteType !== "comment"
+    readonly property bool allowFlag: true
     readonly property string shareUrl: (author.length > 0 && permlink.length > 0)
         ? ("https://serey.io/authors/@" + author + "/" + permlink) : ""
 
@@ -68,6 +68,12 @@ RowLayout {
     }
     function _fail(e) {
         bar.busy = false;
+        var msg = (e && e.message) ? e.message.toLowerCase() : "";
+        if (msg.indexOf("already") >= 0) {
+            // UI was out of sync — silently correct it
+            if (!bar.upvoted) { bar.votes = bar.votes + 1; bar.upvoted = true; bar._cache(); }
+            return;
+        }
         Toast.error((e && e.message) ? e.message : i18n.tr("Action failed."));
     }
 
@@ -78,6 +84,8 @@ RowLayout {
             bar.busy = true;
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
                 function (r) { bar.upvoted = false; bar.votes = Math.max(0, bar.votes - 1); _apply(r); bar._cache(); Toast.show(i18n.tr("Vote removed")); }, _fail);
+        } else if (bar.voteType === "comment") {
+            bar._sendUpvote(100);
         } else {
             PopupUtils.open(voteWeightDialog);
         }
@@ -88,7 +96,7 @@ RowLayout {
         VoteService.upvote(Config.baseUrl, author, permlink, voteType, weight, Session.token,
             function (r) { if (!bar.upvoted) bar.votes = bar.votes + 1;   // count this vote now
                            bar.upvoted = true; bar.flagged = false; _apply(r); bar._cache();
-                           Toast.success(voteType === "comment" ? i18n.tr("Liked") : i18n.tr("Upvoted %1%").arg(weight)); }, _fail);
+                           Toast.success(bar.voteType === "comment" ? i18n.tr("Liked") : i18n.tr("Upvoted %1%").arg(weight)); }, _fail);
     }
 
     Component {
@@ -136,7 +144,7 @@ RowLayout {
 
                         Rectangle {
                             anchors.fill: parent
-                            radius: units.dp(8)
+                            radius: Style.cardRadius
                             color: dialog.selectedWeight === modelData ? Style.brand : Style.iconBackground
                         }
                         Label {
@@ -212,13 +220,10 @@ RowLayout {
         }
     }
 
-    // Downvote / flag — always visible (icon-only for comments, icon+count
-    // for posts). Tapping on a comment dislike is a no-op (backend rejects it)
-    // but the icon is shown for visual consistency with the iOS design.
     AbstractButton {
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: downRow.implicitWidth
-        enabled: !bar.busy && bar.allowFlag
+        enabled: !bar.busy
         onClicked: bar.doFlag()
         Row {
             id: downRow
@@ -293,7 +298,7 @@ RowLayout {
         Layout.preferredWidth: units.gu(2.5)
     }
     CoinValue {
-        visible: !bar.busy && bar.payout.length > 0
+        visible: !bar.busy && bar.payout.length > 0 && bar.voteType !== "comment"
         value: bar.payout
     }
 }

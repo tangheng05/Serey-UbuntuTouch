@@ -18,6 +18,24 @@ function _list(baseUrl, path, params, token, onOk, onErr) {
     }, onErr);
 }
 
+function listFeedMixed(baseUrl, params, token, onOk, onErr) {
+    return _list(baseUrl, "/serey-web/list-by-feed-mixed", params, token, onOk, onErr);
+}
+
+function listDrumFeed(baseUrl, params, token, onOk, onErr) {
+    return _list(baseUrl, "/serey-web/list-drum-post-by-feed", params, token, onOk, onErr);
+}
+
+function listGalleryFeed(baseUrl, params, token, onOk, onErr) {
+    return Http.get(baseUrl, "/serey-web/list-gallery-post-by-feed", params, token, function (data) {
+        var raw = data.posts || [];
+        var posts = raw.map(M.toGalleryPost).filter(function (p) {
+            return p.images.length > 0;
+        });
+        onOk(posts, raw.length);
+    }, onErr);
+}
+
 function listTrending(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-trending", params, token, onOk, onErr);
 }
@@ -118,6 +136,48 @@ function createPost(baseUrl, params, token, onOk, onErr) {
     // The server resolves the target community by id when present, otherwise by
     // title (country_name). Sending the name lets "Global" (sentinel id 0) and
     // any source whose id we don't hold still resolve server-side.
+    if (params.communityName)
+        body.country_name = params.communityName;
+    Http.post(baseUrl, "/serey-web/create-or-update-post", body,
+              token, function (data) { onOk(data || {}); }, onErr);
+}
+
+// POST /serey-web/create-or-update-post — create a VIDEO post. A "video" is a
+// normal Post carrying the uploaded media URL plus the video-component flags;
+// the backend's createOrUpdatePost also creates the YoutubeComponent row (so it
+// surfaces in the curated video feed) and broadcasts on-chain.
+//
+// Backend contract (verified against serey-api):
+//   - `categories` MUST be the literal "video".
+//   - `subcategories` MUST be an array (the service calls .forEach on it).
+//   - `community_id` must resolve to a real community > 0 — "Global" (id 0) is
+//     rejected for videos (it's also used to allocate the html_section_id), so
+//     the caller must pick a concrete community first.
+//   - `videos` is [hostedVideoUrl]; the URL must be on a Serey upload host or the
+//     server can't classify it as platform SEREY.
+//   - `images` is [thumbnailUrl] (optional; the post's card thumbnail).
+//   - Rate limited to 10 videos / 48h per author (enforced server-side).
+function createVideoPost(baseUrl, params, token, onOk, onErr) {
+    var body = {
+        title: params.title,
+        desc: params.desc || "",
+        body: params.body || params.desc || "",
+        videos: [params.videoUrl],
+        // The backend only persists a SEREY video's thumbnail when images.length
+        // > 1 (createOrUpdatePost: `images.length > 1 ? images[0] : video_thumbnail_url`,
+        // and video_thumbnail_url is undefined for SEREY). So send the captured
+        // thumbnail twice — images[0] becomes the stored thumbnail_url; a single
+        // entry would be dropped and the card would show blank.
+        images: params.thumbUrl ? [params.thumbUrl, params.thumbUrl] : [],
+        categories: "video",
+        subcategories: [],
+        is_video_component_only: true,
+        is_post_video_component: true,
+        is_ai_generated: false,
+        site_credit: '<p>This was posted using <a href="https://serey.io" rel="nofollow noopener">Serey.io</a></p>'
+    };
+    if (params.communityId)
+        body.community_id = Number(params.communityId);
     if (params.communityName)
         body.country_name = params.communityName;
     Http.post(baseUrl, "/serey-web/create-or-update-post", body,

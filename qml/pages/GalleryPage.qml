@@ -4,6 +4,7 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/PostService.js" as PostService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 /*
  * Gallery feed: image-only posts from the selected regional source
@@ -47,6 +48,12 @@ Page {
                 if (galleryModel.get(i).permlink === permlink) galleryModel.remove(i);
             }
         }
+        function onUserBlocked(username) {
+            for (var i = galleryModel.count - 1; i >= 0; i--) {
+                if (galleryModel.get(i).author === username) galleryModel.remove(i);
+            }
+        }
+        function onUserUnblocked(username) { page.reload(); }
         function onEditRequested(post) {
             if (!page.visible) return;
             var ed = page.pageStack.push(Qt.resolvedUrl("CreateGalleryPostPage.qml"), { editPost: post });
@@ -85,7 +92,8 @@ Page {
                 page.loading = false;
                 galleryModel.clear();
                 for (var i = 0; i < result.length; i++)
-                    galleryModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        galleryModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
             },
@@ -110,7 +118,8 @@ Page {
                 inflight = null;
                 loading = false;
                 for (var i = 0; i < result.length; i++)
-                    galleryModel.append(result[i]);
+                    if (!HiddenPosts.isHidden(result[i].permlink || ""))
+                        galleryModel.append(result[i]);
                 // Advance by RAW server count (not the image-filtered length) so
                 // the next page doesn't re-request already-seen rows.
                 page.offset += rawCount;
@@ -146,18 +155,53 @@ Page {
             }
         }
 
-        delegate: GalleryCard {
+        // GalleryCard wrapped in a Lomiri ListItem for native swipe context
+        // actions (leading = Hide, trailing = Share), mirroring VideoPage. Tap
+        // still opens the detail via GalleryCard.onClicked.
+        delegate: ListItem {
             width: list.width
-            post: galleryModel.get(index)
-            onClicked: {
-                var p = galleryModel.get(index);
-                page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"),
-                    { author: p.author, permlink: p.permlink });
+            height: card.height
+            divider.visible: false
+
+            leadingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: i18n.tr("Hide")
+                        onTriggered: {
+                            var vm = galleryModel.get(index);
+                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                        }
+                    }
+                ]
             }
-            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                { username: galleryModel.get(index).author })
-            onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
-            onMoreClicked: PostActions.open(galleryModel.get(index), "gallery")
+            trailingActions: ListItemActions {
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: i18n.tr("Share")
+                        onTriggered: {
+                            var vm = galleryModel.get(index);
+                            if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
+                        }
+                    }
+                ]
+            }
+
+            GalleryCard {
+                id: card
+                width: parent.width
+                post: galleryModel.get(index)
+                onClicked: {
+                    var p = galleryModel.get(index);
+                    page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"),
+                        { author: p.author, permlink: p.permlink });
+                }
+                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                    { username: galleryModel.get(index).author })
+                onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
+                onMoreClicked: PostActions.open(galleryModel.get(index), "gallery")
+            }
         }
 
         // Constant-height footer: a conditional height feeds back into

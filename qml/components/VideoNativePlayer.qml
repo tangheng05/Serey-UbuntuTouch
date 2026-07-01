@@ -4,27 +4,41 @@ import Lomiri.Components 1.3
 import "../Theme"
 
 /*
- * Native player for Serey-hosted videos (platform_type === "SEREY"), whose
- * `video_link` is a direct media file (mp4 on s3.serey.io / upload.serey.io /
- * fsgw.sabay.com). Third-party embeds use VideoWebView instead. Loaded lazily by
- * VideoDetailPage. On a playback error it emits `failed()` and the caller falls
- * back to a Chromium <video> (broader codec support) instead.
+ * QtMultimedia (media-hub) player. VideoDetailPage routes only *remote* .mov here
+ * — Chromium's <video> decodes the QuickTime audio but not the video track, while
+ * media-hub's GStreamer/qtdemux renders it. Everything else (mp4 and all local
+ * downloads) plays in VideoWebView instead, because media-hub's AppArmor profile
+ * can't read the app's downloaded files. On a playback error it emits `failed()`;
+ * the caller then retries in the Chromium <video> as a last resort.
  */
 Item {
     id: root
     property string source: ""
 
+    // True only when the user tapped to pause. media-hub reports the initial
+    // buffering pre-roll as "paused" too, so we can't tell loading from a real
+    // pause by playbackState alone — without this flag the play glyph appears
+    // over the loading frame and the user taps play twice.
+    property bool _userPaused: false
+
     // Emitted when GStreamer can't play the file (decode error or watchdog
-    // timeout — typically a .mov). The caller decides what to do; VideoDetailPage
-    // retries in-app via a Chromium <video> rather than the external browser.
+    // timeout). The caller retries in-app via a Chromium <video> rather than the
+    // external browser.
     signal failed()
 
     onSourceChanged: {
+        // Set the player source explicitly (not via a binding + autoPlay) so the
+        // file is loaded exactly once. Doing both let autoPlay start a load that
+        // this handler's stop() immediately killed, then play() restarted it —
+        // doubling time-to-first-frame and leaving the stage black meanwhile.
         player.stop();
+        root._userPaused = false;
         if (source.length > 0) {
+            player.source = source;
             watchdog.restart();
             player.play();
         } else {
+            player.source = "";
             watchdog.stop();
         }
     }
@@ -35,8 +49,8 @@ Item {
 
     MediaPlayer {
         id: player
-        source: root.source
-        autoPlay: true
+        // source is assigned in onSourceChanged (single load — see above), not
+        // bound here, and autoPlay is off so it can't race that explicit load.
         onError: {
             watchdog.stop();
             root.failed();
@@ -51,7 +65,10 @@ Item {
     // (Chromium <video>) instead of leaving the UI frozen on a spinner.
     Timer {
         id: watchdog
-        interval: 6000
+        // Generous: non-faststart .mov streams buffer ~7-10 s before the first
+        // frame on media-hub. A short timeout would abort them into the Chromium
+        // fallback, which can't render .mov at all — worse than waiting.
+        interval: 20000
         repeat: false
         onTriggered: {
             if (player.playbackState !== MediaPlayer.PlayingState
@@ -69,31 +86,46 @@ Item {
         fillMode: VideoOutput.PreserveAspectFit
     }
 
-    // Tap to toggle play / pause.
+    // Tap to toggle play / pause. Track an *explicit* user pause so the overlay
+    // can tell it apart from media-hub's buffering "paused".
     MouseArea {
         anchors.fill: parent
-        onClicked: player.playbackState === MediaPlayer.PlayingState
-                   ? player.pause() : player.play()
+        onClicked: {
+            if (player.playbackState === MediaPlayer.PlayingState) {
+                player.pause();
+                root._userPaused = true;
+            } else {
+                player.play();
+                root._userPaused = false;
+            }
+        }
     }
 
-    // Buffering / loading spinner.
+    // Loading spinner: shown for the whole "play requested but no frames yet"
+    // window — including media-hub's buffering pre-roll, which reports as paused.
+    // Hidden only once actually playing, ended, or deliberately paused by the user.
     ActivityIndicator {
         anchors.centerIn: parent
-        running: player.status === MediaPlayer.Loading
-                 || player.status === MediaPlayer.Buffering
+        running: root.source.length > 0
+                 && !root._userPaused
+                 && player.playbackState !== MediaPlayer.PlayingState
+                 && player.status !== MediaPlayer.EndOfMedia
+                 && player.status !== MediaPlayer.InvalidMedia
         visible: running
     }
 
-    // Centre play glyph while paused.
+    // Centre play glyph: only on a real user pause (or at end for replay) — never
+    // over the loading frame, where the spinner owns the stage.
     Icon {
         anchors.centerIn: parent
         width: units.gu(7)
         height: width
         name: "media-playback-start"
         color: Style.textOnBrand
-        visible: player.playbackState !== MediaPlayer.PlayingState
-                 && player.status !== MediaPlayer.Loading
-                 && player.status !== MediaPlayer.Buffering
-        MouseArea { anchors.fill: parent; onClicked: player.play() }
+        visible: root._userPaused || player.status === MediaPlayer.EndOfMedia
+        MouseArea {
+            anchors.fill: parent
+            onClicked: { player.play(); root._userPaused = false; }
+        }
     }
 }

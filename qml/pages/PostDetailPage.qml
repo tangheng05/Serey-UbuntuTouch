@@ -26,12 +26,19 @@ Page {
     property string permlink: ""
     property string title: ""
 
+    // When opened from the Saved Articles list, the full view-model is passed in
+    // so the article renders instantly and reads offline; load() still runs as a
+    // best-effort refresh (and silently no-ops when there's no connection).
+    property var preloadedPost: null
+
     property var post: null
     property var comments: []
     property int commentCount: 0
     property bool loading: false
     property bool posting: false
     property string errorMsg: ""
+    // When opened from a notification, scroll to this comment permlink after load.
+    property string scrollToCommentPermlink: ""
     // On-screen-keyboard height; the docked comment composer rides above it.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     // Set while replying to a specific comment (rather than the post itself);
@@ -51,7 +58,33 @@ Page {
         Rectangle {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: units.dp(1)
-            color: "#CCCCCC"
+            color: Style.divider
+        }
+    }
+
+    // Save / unsave for offline reading. A sibling overlay (NOT inside the
+    // Page.header item, whose right-anchored children don't lay out reliably on
+    // Lomiri — the codebase's working pattern is a z-stacked overlay). Sits at the
+    // header's top-right; enabled once the body has loaded so there's content to
+    // persist. Filled blue = saved.
+    AbstractButton {
+        id: saveBtn
+        anchors { right: parent.right; rightMargin: Style.spacingM; top: parent.top }
+        height: units.gu(6)
+        width: units.gu(6)
+        z: 50
+        enabled: page.post !== null && (page.permlink || "").length > 0
+        readonly property bool isSaved: (SavedPosts.rev, SavedPosts.isSaved(page.permlink))
+        onClicked: {
+            if (saveBtn.isSaved) SavedPosts.remove(page.permlink);
+            else SavedPosts.save(page.post);
+        }
+        Icon {
+            anchors.centerIn: parent
+            width: units.gu(2.6); height: width
+            name: "save"
+            color: saveBtn.isSaved ? Style.brand : Style.textSecondary
+            opacity: saveBtn.enabled ? 1 : 0.35
         }
     }
 
@@ -68,8 +101,8 @@ Page {
             function (result) {
                 loading = false;
                 page.post = result.post;
-                page.commentCount = result.post.comments;
                 page.comments = result.replies || [];
+                page.commentCount = page._countAll(page.comments);
                 page._parseBody();
 
                 // Sync vote bar: cache wins over API data (the feed may have
@@ -93,12 +126,35 @@ Page {
             },
             function (err) {
                 loading = false;
-                page.errorMsg = err.message;
+                // Offline (or fetch failed): fall back to a saved copy so the
+                // article still reads. If we already have a post (preloaded from
+                // the saved list), keep it and swallow the refresh error.
+                if (page.post === null) {
+                    var saved = SavedPosts.get(page.permlink);
+                    if (saved) {
+                        page.post = saved;
+                        page.commentCount = saved.comments || 0;
+                        page._parseBody();
+                        page.errorMsg = "";
+                    } else {
+                        page.errorMsg = err.message;
+                    }
+                }
             });
     }
 
     function pushLogin() {
         page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"));
+    }
+
+    function _countAll(list) {
+        var n = 0;
+        for (var i = 0; i < list.length; i++) {
+            n++;
+            if (list[i].replies && list[i].replies.length)
+                n += page._countAll(list[i].replies);
+        }
+        return n;
     }
 
     // Recursively drop a comment by permlink, wherever it sits in the tree.
@@ -142,6 +198,7 @@ Page {
     function startReply(comment) {
         page.replyTarget = comment;
         composer.forceActiveFocus();
+        Qt.inputMethod.show();
     }
 
     function cancelReply() {
@@ -268,7 +325,16 @@ Page {
         }
     }
 
-    Component.onCompleted: load()
+
+    Component.onCompleted: {
+        // Render the saved copy immediately (instant + offline), then refresh.
+        if (page.preloadedPost) {
+            page.post = page.preloadedPost;
+            page.commentCount = page.preloadedPost.comments || 0;
+            page._parseBody();
+        }
+        load();
+    }
 
     // Open a creator's profile (post author or a comment author).
     function openProfile(username) {
@@ -279,11 +345,13 @@ Page {
 
     KeyboardAwareFlickable {
         id: scroll
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: footer.visible ? footer.top : parent.bottom }
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.bottomMargin: footer.visible ? footer.height + page.kbHeight : 0
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
         visible: page.post !== null
+        onMovementStarted: Qt.inputMethod.hide()
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
@@ -403,7 +471,7 @@ Page {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: units.dp(25)
+                    radius: Style.thumbRadius
                     color: Style.iconBackground
                 }
                 Image {
@@ -420,7 +488,7 @@ Page {
                 Rectangle {
                     id: coverMask
                     anchors.fill: parent
-                    radius: units.dp(25)
+                    radius: Style.thumbRadius
                     visible: false
                 }
                 OpacityMask {
@@ -454,7 +522,7 @@ Page {
 
                                 Rectangle {
                                     anchors.fill: parent
-                                    radius: units.dp(25)
+                                    radius: Style.thumbRadius
                                     color: Style.iconBackground
                                 }
                                 Image {
@@ -471,7 +539,7 @@ Page {
                                 Rectangle {
                                     id: bImgMask
                                     anchors.fill: parent
-                                    radius: units.dp(25)
+                                    radius: Style.thumbRadius
                                     visible: false
                                 }
                                 OpacityMask {
@@ -523,6 +591,7 @@ Page {
             }
 
             Repeater {
+                id: commentsRepeater
                 model: page.comments
                 delegate: CommentItem {
                     width: contentCol.width
@@ -631,7 +700,7 @@ Page {
             Rectangle {
                 width: parent.width - sendButton.width - Style.spacingS
                 height: units.gu(5)
-                radius: height / 2
+                radius: Style.cardRadius
                 color: Style.iconBackground
 
                 Label {
@@ -642,13 +711,18 @@ Page {
                         leftMargin: Style.spacingM
                         rightMargin: Style.spacingM
                     }
-                    visible: composer.text.length === 0 && !composer.inputMethodComposing
+                    visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
                     text: Session.isLoggedIn
                         ? i18n.tr("Post a comment…")
                         : i18n.tr("Log in to comment…")
                     font.family: Style.fontFamily
                     color: Style.textSecondary
                     elide: Text.ElideRight
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: { composer.forceActiveFocus(); Qt.inputMethod.show(); }
                 }
 
                 TextInput {

@@ -12,6 +12,16 @@ function toInt(v) {
     return isNaN(n) ? 0 : n;
 }
 
+// Per-save "post to blockchain" flag. The server returns this on every post/
+// video/gallery read, reflecting what was saved. Default TRUE (on-chain): only
+// an explicit false/"false"/0 means the post was stored in the DB only — such a
+// post has no on-chain record, so it can't be voted on or earn rewards.
+function onChainFlag(raw) {
+    return raw.post_to_blockchain !== false
+        && raw.post_to_blockchain !== "false"
+        && raw.post_to_blockchain !== 0;
+}
+
 function parseList(val) {
     if (!val)
         return [];
@@ -109,7 +119,8 @@ function toPost(raw) {
         flaggers: voterNames(raw.flaggers),
         flaggerStr: "," + voterNames(raw.flaggers).join(",") + ",",
         community: raw.community_title || "",
-        checkmark: raw.checkmark_icon || ""
+        checkmark: raw.checkmark_icon || "",
+        postToBlockchain: onChainFlag(raw)
     };
 }
 
@@ -141,7 +152,8 @@ function toGalleryPost(raw) {
         voterStr: "," + voterNames(raw.voters).join(",") + ",",
         // Post's own community title, so editing keeps it in place.
         community: raw.community_title || "",
-        checkmark: raw.checkmark_icon || ""
+        checkmark: raw.checkmark_icon || "",
+        postToBlockchain: onChainFlag(raw)
     };
 }
 
@@ -193,7 +205,8 @@ function toVideo(raw) {
         videoId: raw.video_id || "",
         platform: raw.platform_type || "",
         dimensions: raw.dimensions || "16:9",
-        community: raw.community_title || ""
+        community: raw.community_title || "",
+        postToBlockchain: onChainFlag(raw)
     };
 }
 

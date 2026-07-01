@@ -434,6 +434,11 @@ Page {
                 wrapMode: Text.WordWrap
             }
 
+            OffChainBadge {
+                anchors.horizontalCenter: parent.horizontalCenter
+                onChain: page.post ? (page.post.postToBlockchain !== false) : true
+            }
+
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width - Style.spacingM * 2
@@ -685,6 +690,7 @@ Page {
             author: page.author
             permlink: page.permlink
             voteType: "post"
+            onChain: page.post ? (page.post.postToBlockchain !== false) : true
             showComments: false
             showVotersLabel: false
             onRequireLogin: page.pushLogin()

@@ -163,10 +163,18 @@ Item {
                     elide: Text.ElideRight
                     MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
                 }
-                Label {
-                    text: Style.formatTimeAgo(p.date || "")
-                    font.pixelSize: Style.fontXSmall
-                    color: Style.textSecondary
+                Row {
+                    spacing: Style.spacingS
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Style.formatTimeAgo(p.date || "")
+                        font.pixelSize: Style.fontXSmall
+                        color: Style.textSecondary
+                    }
+                    OffChainBadge {
+                        anchors.verticalCenter: parent.verticalCenter
+                        onChain: p.postToBlockchain !== false
+                    }
                 }
             }
 
@@ -319,6 +327,7 @@ Item {
             author: p.author || ""
             permlink: p.permlink || ""
             voteType: "post"
+            onChain: p.postToBlockchain !== false
             votes: p.votes || 0
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0

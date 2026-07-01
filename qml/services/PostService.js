@@ -131,6 +131,10 @@ function createPost(baseUrl, params, token, onOk, onErr) {
     // the token, so only your own post can be updated.
     if (params.permlink)
         body.permlink = params.permlink;
+    // "Post to blockchain" toggle. Sent explicitly (as a bool) so an edit can
+    // switch it either way — the backend re-evaluates it per save. Omitting it
+    // would default to true on-chain, so only `false` changes behaviour.
+    body.post_to_blockchain = (params.postToBlockchain !== false);
     if (params.communityId)            // omit when 0/empty so we don't post a falsy id
         body.community_id = Number(params.communityId);
     // The server resolves the target community by id when present, otherwise by
@@ -176,6 +180,8 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
         is_ai_generated: false,
         site_credit: '<p>This was posted using <a href="https://serey.io" rel="nofollow noopener">Serey.io</a></p>'
     };
+    // "Post to blockchain" toggle (see createPost): explicit bool, false = DB-only.
+    body.post_to_blockchain = (params.postToBlockchain !== false);
     if (params.communityId)
         body.community_id = Number(params.communityId);
     if (params.communityName)

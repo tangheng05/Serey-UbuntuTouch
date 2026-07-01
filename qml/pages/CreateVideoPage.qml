@@ -28,6 +28,9 @@ Page {
     property string thumbUrl: ""       // hosted thumbnail URL (best-effort)
     property bool uploadingVideo: false
     property bool grabbingThumb: false
+    // "Post to blockchain": on = broadcast on-chain (default), off = save to the
+    // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
+    property bool postToBlockchain: true
 
     readonly property bool hasCommunity: Config.communityId > 0
     readonly property bool canPublish: !page.submitting && !page.uploadingVideo
@@ -92,6 +95,7 @@ Page {
             body: descField.text.trim(),
             videoUrl: page.videoUrl,
             thumbUrl: page.thumbUrl,
+            postToBlockchain: page.postToBlockchain,
             communityId: Config.communityId,
             communityName: Config.communityName
         }, Session.token,
@@ -281,6 +285,45 @@ Page {
                     color: descField.activeFocus ? Style.brand : Style.divider
                 }
             }
+
+            // Post to blockchain toggle
+            Row {
+                width: parent.width
+                spacing: Style.spacingM
+
+                Column {
+                    width: parent.width - vidChainSwitch.width - Style.spacingM
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: units.dp(2)
+
+                    Label {
+                        text: Lang.tr("Post to blockchain")
+                        font.pixelSize: Style.fontRegular
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                    }
+                    Label {
+                        width: parent.width
+                        text: page.postToBlockchain
+                            ? Lang.tr("Broadcast on-chain — can earn votes and rewards.")
+                            : Lang.tr("Saved to Serey only — no on-chain record, no voting or rewards.")
+                        font.pixelSize: Style.fontXSmall
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                Switch {
+                    id: vidChainSwitch
+                    anchors.verticalCenter: parent.verticalCenter
+                    checked: page.postToBlockchain
+                    onClicked: page.postToBlockchain = !page.postToBlockchain
+                }
+            }
+
+            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
             Label {
                 text: Lang.tr("Video")

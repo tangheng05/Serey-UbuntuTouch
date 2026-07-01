@@ -31,6 +31,11 @@ RowLayout {
     property bool upvoted: false
     property bool flagged: false
     property bool busy: false
+    // When false the post is DB-only (off-chain): no curation weight or rewards.
+    // The like/dislike buttons stay (a plain DB-only like — see doUpvote), but the
+    // weight popover and the SEREY payout pill are suppressed. Mirrors the web's
+    // simpleVote + showCoins=false for off-chain posts.
+    property bool onChain: true
     property bool showComments: true
     property bool showShare: true
     property bool showVotersLabel: false
@@ -101,7 +106,10 @@ RowLayout {
             bar.busy = true;
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
                 function (r) { bar.upvoted = false; bar.votes = Math.max(0, bar.votes - 1); _apply(r); bar._cache(); Toast.show(Lang.tr("Vote removed")); }, _fail);
-        } else if (bar.voteType === "comment") {
+        } else if (bar.voteType === "comment" || !bar.onChain) {
+            // Simple one-tap like: comments, and off-chain (DB-only) posts. Off-
+            // chain posts have no curation weight, so skip the weight popover and
+            // record a plain 100% like — matches fe-serey-web's simpleVote.
             bar._sendUpvote(100);
         } else {
             PopupUtils.open(voteWeightDialog);
@@ -316,7 +324,7 @@ RowLayout {
         Layout.preferredWidth: units.gu(2.5)
     }
     CoinValue {
-        visible: !bar.busy && bar.payout.length > 0 && bar.voteType !== "comment"
+        visible: !bar.busy && bar.onChain && bar.payout.length > 0 && bar.voteType !== "comment"
         value: bar.payout
     }
 }

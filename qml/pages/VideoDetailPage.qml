@@ -29,6 +29,9 @@ Page {
     property bool flagged:    false
     property bool voteBusy:   false
     property string payout:   ""
+    // Off-chain (DB-only) videos have no chain record, so hide the vote controls
+    // and payout. Default on-chain unless the saved video says otherwise.
+    readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
     property bool commentSheetOpen: false
     // YouTube stream extraction is in flight (resolving a direct URL before the
     // download daemon can fetch it). Drives the download button's spinner.
@@ -239,6 +242,10 @@ Page {
             VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
                 function (r) { page.upvoted = false; page.voteCount = Math.max(0, page.voteCount - 1); page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
                 page._voteFail);
+        } else if (!page.onChain) {
+            // Off-chain (DB-only) video: plain one-tap like, no weight popover
+            // (matches fe-serey-web's simpleVote).
+            page._sendUpvote(100);
         } else {
             PopupUtils.open(voteWeightDialog);
         }
@@ -593,6 +600,11 @@ Page {
                 wrapMode: Text.WordWrap
             }
 
+            OffChainBadge {
+                x: Style.spacingM
+                onChain: page.onChain
+            }
+
             Item { width: 1; height: Style.spacingS }
 
             // Author row: avatar + @name + date + "...more"
@@ -684,6 +696,7 @@ Page {
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: upvoteInner.implicitWidth + Style.spacingM
+                    visible: page.onChain
                     enabled: !page.voteBusy
                     onClicked: page.doUpvote()
                     Row {
@@ -709,6 +722,7 @@ Page {
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: units.gu(3.5)
+                    visible: page.onChain
                     enabled: !page.voteBusy
                     onClicked: page.doFlag()
                     Icon {

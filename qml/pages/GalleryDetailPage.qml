@@ -368,6 +368,7 @@ Page {
             author: page.author
             permlink: page.permlink
             voteType: "post"
+            onChain: page.post ? (page.post.postToBlockchain !== false) : true
             votes: page.post ? page.post.votes : 0
             flaggers: page.post && page.post.flaggers ? page.post.flaggers.length : 0
             showComments: false

@@ -269,6 +269,7 @@ Item {
             author: p.author || ""
             permlink: p.permlink || ""
             voteType: "post"
+            onChain: p.postToBlockchain !== false
             votes: p.votes || 0
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0

@@ -19,6 +19,9 @@ Page {
     readonly property int titleMaxLength: 250
     property string coverImageUrl: ""
     property bool uploading: false
+    // "Post to blockchain": on = broadcast on-chain (default), off = save to the
+    // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
+    property bool postToBlockchain: true
 
     // When set, this page edits an existing post (sends its permlink to update in
     // place) instead of creating a new one. `saved` lets the opener refresh.
@@ -60,6 +63,8 @@ Page {
             // primaryCategory is a scalar (the categories array is wrapped by the
             // feed ListModel and loses [] indexing).
             page.selectedCategory = page.editPost.primaryCategory || "";
+            // Prefill the toggle from the saved post (default on if absent).
+            page.postToBlockchain = (page.editPost.postToBlockchain !== false);
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
@@ -172,6 +177,7 @@ Page {
             communityName: page.isEdit ? (page.editPost.community || Config.communityName)
                                        : Config.communityName,
             categories: page.selectedCategory || "general",
+            postToBlockchain: page.postToBlockchain,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
             // Also send the cover in `images` (→ json_meta.image), not just the
             // body <img>. The web derives a post's thumbnail from json_meta.image,
@@ -358,6 +364,56 @@ Page {
                         width: units.gu(2); height: width
                         name: "next"
                         color: Style.textSecondary
+                    }
+                }
+            }
+
+            // Post to blockchain toggle
+            Rectangle {
+                width: parent.width
+                height: chainRow.implicitHeight + Style.spacingM * 2
+                radius: Style.cardRadius
+                color: "transparent"
+                border.width: units.dp(1.5)
+                border.color: Style.divider
+
+                Row {
+                    id: chainRow
+                    anchors {
+                        left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
+                        leftMargin: Style.spacingM; rightMargin: Style.spacingM
+                    }
+                    spacing: Style.spacingM
+
+                    Column {
+                        width: parent.width - chainSwitch.width - Style.spacingM
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: units.dp(2)
+
+                        Label {
+                            text: Lang.tr("Post to blockchain")
+                            font.pixelSize: Style.fontRegular
+                            font.weight: Font.DemiBold
+                            font.family: Style.fontFor(text)
+                            color: Style.textPrimary
+                        }
+                        Label {
+                            width: parent.width
+                            text: page.postToBlockchain
+                                ? Lang.tr("Broadcast on-chain — can earn votes and rewards.")
+                                : Lang.tr("Saved to Serey only — no on-chain record, no voting or rewards.")
+                            font.pixelSize: Style.fontXSmall
+                            font.family: Style.fontFor(text)
+                            color: Style.textSecondary
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    Switch {
+                        id: chainSwitch
+                        anchors.verticalCenter: parent.verticalCenter
+                        checked: page.postToBlockchain
+                        onClicked: page.postToBlockchain = !page.postToBlockchain
                     }
                 }
             }

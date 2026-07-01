@@ -320,6 +320,17 @@ Page {
                 text = text.replace(/&lt;/g, "<");
                 text = text.replace(/&gt;/g, ">");
                 text = text.replace(/&quot;/g, "\"");
+                // Decode numeric entities (e.g. &#8220; smart quotes, &#8217;
+                // apostrophes) that Text.StyledText can't render — but leave &,<,>
+                // encoded so they aren't mistaken for markup.
+                text = text.replace(/&#(\d+);/g, function (mm, n) {
+                    var code = parseInt(n, 10);
+                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+                });
+                text = text.replace(/&#x([0-9a-fA-F]+);/gi, function (mm, n) {
+                    var code = parseInt(n, 16);
+                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+                });
                 text = text.replace(/\n{3,}/g, "\n\n");
                 text = text.trim();
                 if (text.length > 0)

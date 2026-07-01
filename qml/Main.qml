@@ -187,8 +187,14 @@ MainView {
 
     Connections {
         target: Session
+        // The blocked set is per-account; resync (or clear) it whenever the auth
+        // token changes. Keying off the token (not isLoggedIn) means switching
+        // accounts reloads the new account's blocks even if the token is swapped
+        // directly, so one account's blocks never leak into another's feed.
+        function onTokenChanged() { root._syncBlockedUsers() }
         function onIsLoggedInChanged() {
-            root._syncBlockedUsers()   // resync (or clear) the blocked set on login/logout
+            // Blocked-set sync is handled by onTokenChanged (token always changes
+            // on login/logout/switch), so it isn't repeated here.
             if (!Session.isLoggedIn) {
                 root.lastUnreadCount = -1
             } else if (root.pushToken !== "") {

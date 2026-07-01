@@ -38,6 +38,33 @@ Item {
     property bool ready: false
     signal fullscreenToggled(bool on)
 
+    // Freeze the Chromium renderer when the whole app is backgrounded/suspended —
+    // a live WebEngineView left Active across a long OS suspend loses its GPU/
+    // shared-memory context and SIGBUSes on resume. (Same lifecycleState int trap
+    // as WebAppView: enum names aren't exposed on UT, so use the ints.) Frozen is
+    // only legal while hidden, so wv binds `visible` to appActive and we defer the
+    // freeze a tick; resuming to Active is always legal.
+    readonly property int _lcActive: 0
+    readonly property int _lcFrozen: 1
+    // Imperative (only on an actual state change, never at startup) so a quirky
+    // initial application state can't leave the player blank.
+    property bool appActive: Qt.application.state === Qt.ApplicationActive
+    onAppActiveChanged: {
+        if (appActive) {
+            vwFreezeTimer.stop();
+            wv.visible = true;
+            wv.lifecycleState = root._lcActive;
+        } else {
+            wv.visible = false;
+            vwFreezeTimer.restart();
+        }
+    }
+    Timer {
+        id: vwFreezeTimer
+        interval: 300
+        onTriggered: if (!root.appActive) wv.lifecycleState = root._lcFrozen
+    }
+
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
     onEmbedUrlChanged: _load()
@@ -59,6 +86,10 @@ Item {
     WebEngineView {
         id: wv
         anchors.fill: parent
+        // `visible` is toggled imperatively in onAppActiveChanged on app
+        // background/foreground so the Active->Frozen transition (rejected while
+        // visible) becomes legal — not a declarative binding, to avoid blanking
+        // the player if the initial application state is ever reported non-active.
         profile: videoProfile
 
         // Autoplay without an in-page tap (our overlay tap is the gesture);

@@ -1175,6 +1175,16 @@ Page {
                                 t = t.replace(/<(?!\/?(?:b|i|u|a)\b)[^>]+>/g, "");
                                 t = t.replace(/&nbsp;/g, " ");
                                 t = t.replace(/&amp;/g, "&");
+                                // Decode numeric entities (smart quotes etc.) that
+                                // StyledText can't render; keep &,<,> encoded.
+                                t = t.replace(/&#(\d+);/g, function (mm, n) {
+                                    var code = parseInt(n, 10);
+                                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+                                });
+                                t = t.replace(/&#x([0-9a-fA-F]+);/gi, function (mm, n) {
+                                    var code = parseInt(n, 16);
+                                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+                                });
                                 t = t.replace(/\n{3,}/g, "\n\n");
                                 return t.trim();
                             }

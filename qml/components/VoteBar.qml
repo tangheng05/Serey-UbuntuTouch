@@ -42,7 +42,7 @@ RowLayout {
 
     readonly property bool allowFlag: author !== Session.username
     readonly property string shareUrl: (author.length > 0 && permlink.length > 0)
-        ? ("https://serey.io/authors/@" + author + "/" + permlink) : ""
+        ? ("https://serey.io/authors/" + author + "/" + permlink) : ""
 
     signal requireLogin()
     signal commentRequested()

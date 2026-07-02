@@ -233,15 +233,22 @@ MainView {
                 id: composeBtn
                 visible: Session.isLoggedIn && root.currentTab === 1
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(4); height: width
+                width: units.gu(3.2); height: width
                 onClicked: {
                     var np = newsStack.currentPage;
                     var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"));
                     if (ed && ed.saved && np && np.reload) ed.saved.connect(np.reload);
                 }
+                Rectangle {
+                    anchors.fill: parent
+                    radius: units.gu(0.8)
+                    color: "transparent"
+                    border.width: units.dp(1.5)
+                    border.color: Style.brand
+                }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(2.8); height: width
+                    width: units.gu(2.2); height: width
                     name: "edit"
                     color: Style.brand
                 }
@@ -255,15 +262,22 @@ MainView {
                 // hidden for Global and owner-only communities.
                 visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostCurrent
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(4); height: width
+                width: units.gu(3.2); height: width
                 onClicked: {
                     var vp = videoStack.currentPage;
                     var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
                     if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);
                 }
+                Rectangle {
+                    anchors.fill: parent
+                    radius: units.gu(0.8)
+                    color: "transparent"
+                    border.width: units.dp(1.5)
+                    border.color: Style.brand
+                }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(2.8); height: width
+                    width: units.gu(2.2); height: width
                     name: "add"
                     color: Style.brand
                 }

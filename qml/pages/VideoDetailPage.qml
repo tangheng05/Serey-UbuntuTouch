@@ -48,6 +48,17 @@ Page {
     // "More Videos" feed
     property var moreVideos: []
 
+    // A caption edit elsewhere (action sheet) changed this video's title or
+    // description — swap in a fresh object so bindings re-evaluate. The player
+    // source strings are unchanged, so playback isn't disturbed.
+    Connections {
+        target: PostActions
+        function onPostUpdated(author, permlink, title, body) {
+            if (page.video && page.video.permlink === permlink)
+                page.video = Object.assign({}, page.video, { title: title, body: body });
+        }
+    }
+
     function isDirectFile(u) {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
@@ -333,18 +344,22 @@ Page {
         PostService.detail(Config.baseUrl, video.author, video.permlink, Session.token,
             function (result) {
                 if (!result) return;   // empty/failed detail fetch — keep current state
-                var replies = result.replies || [];
+                var replies, serverCount, voters, me2;
+                replies = result.replies || [];
                 page.comments = replies;
                 // The backend's answer_count can be stale; trust the actual
                 // replies array when it's larger. (result.post can be absent if
                 // the detail fetch came back empty — guard it.)
-                var serverCount = (result.post && result.post.comments) || 0;
+                serverCount = (result.post && result.post.comments) || 0;
                 page.commentCount = Math.max(serverCount, replies.length);
-                // Seed upvoted from the authoritative voters list when no
-                // session-cache entry exists (list API omits the voters array).
-                if (!VoteService.getCached(video.author, video.permlink)) {
-                    var voters = (result.post && result.post.voters) || [];
-                    page.upvoted = voters.indexOf(Session.username) >= 0;
+                // Confirm upvoted from the authoritative voters list when no
+                // session-cache entry exists. Only set true — never override to
+                // false, since the detail API may return an incomplete voters list.
+                if (!VoteService.getCached(video.author, video.permlink) && !page.upvoted) {
+                    voters = (result.post && result.post.voters) || [];
+                    me2 = Session.username || "";
+                    if (me2.length > 0 && voters.indexOf(me2) >= 0)
+                        page.upvoted = true;
                 }
             },
             function (err) { /* keep empty */ });
@@ -454,15 +469,25 @@ Page {
         }
         // Init vote state
         var cached = VoteService.getCached(page.video.author || "", page.video.permlink || "")
+        var me, saved
         if (cached) {
             page.voteCount = cached.votes
             page.upvoted   = cached.upvoted
             page.flagged   = cached.flagged || false
             page.payout    = cached.payout  || ""
         } else {
+            me = Session.username || ""
             page.voteCount = page.video.votes || 0
-            page.upvoted   = (page.video.voters || []).indexOf(Session.username) >= 0
+            page.upvoted   = me.length > 0 && (page.video.voterStr   || "").indexOf("," + me + ",") >= 0
+            page.flagged   = me.length > 0 && (page.video.flaggerStr || "").indexOf("," + me + ",") >= 0
             page.payout    = page.video.payout || ""
+            // SQLite fallback for cross-session persistence
+            saved = Session.loadVote(page.video.author || "", page.video.permlink || "")
+            if (saved) {
+                page.upvoted   = saved.upvoted
+                page.flagged   = saved.flagged
+                page.voteCount = saved.votes
+            }
         }
         // Load comments
         page.loadComments();
@@ -635,7 +660,7 @@ Page {
                             anchors.fill: parent
                             radius: width / 2
                             color: Style.avatarTint(page.video.author || "")
-                            visible: (page.video.authorImage || "") === ""
+                            visible: !authorAvatar.loaded
                             Label {
                                 anchors.centerIn: parent
                                 text: (page.video.author || "?").charAt(0).toUpperCase()
@@ -645,10 +670,11 @@ Page {
                             }
                         }
                         CircleImage {
+                            id: authorAvatar
                             anchors.fill: parent
                             source: page.video.authorImage || ""
                             decode: units.gu(7)
-                            visible: (page.video.authorImage || "") !== ""
+                            visible: loaded
                         }
                     }
 
@@ -742,28 +768,7 @@ Page {
 
                 Item { Layout.fillWidth: true }
 
-                // Share — icon only with border
-                AbstractButton {
-                    visible: (page.video.author || "").length > 0 && (page.video.permlink || "").length > 0
-                    Layout.preferredHeight: units.gu(4.5)
-                    Layout.preferredWidth: units.gu(4.5)
-                    onClicked: Qt.openUrlExternally("https://serey.io/authors/@" + page.video.author + "/" + page.video.permlink)
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Style.pillRadius
-                        color: "transparent"
-                        border.width: units.dp(1.5)
-                        border.color: Style.divider
-                    }
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: "share"
-                        color: Style.textPrimary
-                    }
-                }
-
-                // Follow — icon only when not following, icon + "Following" when following
+                // Follow — pill with icon + Follow/Following text
                 AbstractButton {
                     visible: (page.video.author || "") !== "" && page.video.author !== Session.username
                     Layout.preferredHeight: units.gu(4.5)
@@ -788,16 +793,37 @@ Page {
                         }
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            visible: page.isFollowing
-                            text: Lang.tr("Following")
+                            text: page.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
                             font.pixelSize: Style.fontSmall
                             font.weight: Font.DemiBold
-                            color: Style.brand
+                            color: page.isFollowing ? Style.brand : Style.textOnBrand
                         }
                     }
                 }
 
-                // Download — icon only with border (tick when saved, spinner when busy)
+                // Share — icon only with border
+                AbstractButton {
+                    visible: (page.video.author || "").length > 0 && (page.video.permlink || "").length > 0
+                    Layout.preferredHeight: units.gu(4.5)
+                    Layout.preferredWidth: units.gu(4.5)
+                    onClicked: Qt.openUrlExternally("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink)
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Style.pillRadius
+                        color: "transparent"
+                        border.width: units.dp(1.5)
+                        border.color: Style.divider
+                    }
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: "share"
+                        color: Style.textPrimary
+                    }
+                }
+
+                // Download — icon with border; spinner + percentage while downloading,
+                // tick when saved.
                 AbstractButton {
                     id: dlBtn
                     visible: page.remoteDirectUrl().length > 0 || page.isYouTube()
@@ -805,8 +831,9 @@ Page {
                     readonly property var _active: (Downloads.rev, Downloads.activeFor(_pl))
                     readonly property bool _saved: (Downloads.rev, Downloads.isSaved(_pl))
                     readonly property bool _busy: !!_active || page.ytExtracting
+                    readonly property int _pct: _active ? Math.round(_active.progress || 0) : 0
                     Layout.preferredHeight: units.gu(4.5)
-                    Layout.preferredWidth: units.gu(4.5)
+                    Layout.preferredWidth: _busy ? dlBusyRow.implicitWidth + Style.spacingM : units.gu(4.5)
                     onClicked: {
                         if (_busy) return;
                         if (_saved) PopupUtils.open(removeDialog);
@@ -820,11 +847,24 @@ Page {
                         border.width: dlBtn._saved ? 0 : units.dp(1.5)
                         border.color: Style.divider
                     }
-                    ActivityIndicator {
+                    Row {
+                        id: dlBusyRow
                         anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        running: dlBtn._busy
+                        spacing: Style.spacingXs
                         visible: dlBtn._busy
+                        ActivityIndicator {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(2.5); height: width
+                            running: dlBtn._busy
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !!dlBtn._active
+                            text: dlBtn._pct + "%"
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            color: Style.textPrimary
+                        }
                     }
                     Icon {
                         anchors.centerIn: parent

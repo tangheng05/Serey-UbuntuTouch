@@ -119,6 +119,29 @@ Page {
             });
     }
 
+    // A caption edit (action sheet on a reel) changed a title/description. The
+    // model is a plain JS array, so mutating in place won't refresh delegates —
+    // reassign it and restore the pager position. The current reel remounts
+    // (video restarts), which is acceptable right after an edit.
+    Connections {
+        target: PostActions
+        function onPostUpdated(author, permlink, title, body) {
+            var idx = -1;
+            var rows = page.reels.slice();
+            for (var i = 0; i < rows.length; i++) {
+                if (rows[i].permlink === permlink) {
+                    rows[i] = Object.assign({}, rows[i], { title: title, body: body });
+                    idx = i;
+                }
+            }
+            if (idx < 0) return;
+            var keep = pager.currentIndex;
+            page.reels = rows;
+            pager.positionViewAtIndex(keep, ListView.Beginning);
+            pager.currentIndex = keep;
+        }
+    }
+
     Rectangle { anchors.fill: parent; color: "black" }
 
     // One reel per page; only the current page plays.
@@ -300,7 +323,7 @@ Page {
                         anchors.fill: parent
                         radius: width / 2
                         color: Style.avatarTint(modelData.author || "")
-                        visible: (modelData.authorImage || "") === ""
+                        visible: !reelAvatar.loaded
                         Label {
                             anchors.centerIn: parent
                             text: (modelData.author || "?").charAt(0).toUpperCase()
@@ -310,10 +333,11 @@ Page {
                         }
                     }
                     CircleImage {
+                        id: reelAvatar
                         anchors.fill: parent
                         source: modelData.authorImage || ""
                         decode: units.gu(9)
-                        visible: (modelData.authorImage || "") !== ""
+                        visible: loaded
                     }
                 }
 
@@ -440,7 +464,7 @@ Page {
                     AbstractButton {
                         width: units.gu(7); height: units.gu(7)
                         onClicked: Qt.openUrlExternally(
-                            "https://serey.io/authors/@" + (modelData.author || "") + "/" + (modelData.permlink || ""))
+                            "https://serey.io/video-component/watch?author=" + (modelData.author || "") + "&permalink=" + (modelData.permlink || ""))
                         Icon {
                             anchors.centerIn: parent
                             width: units.gu(3.4); height: width

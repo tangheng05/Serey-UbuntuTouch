@@ -14,8 +14,6 @@ import "../components"
 Page {
     id: page
 
-    // Zero-height header: this is a pushed sub-page, so the global AppHeader is
-    // collapsed and topBar below is the real bar (same as FeedPage).
     header: Item { height: 0 }
 
     property string _pendingRemove: ""
@@ -73,13 +71,61 @@ Page {
         model: Downloads.items
         cacheBuffer: units.gu(16)
 
-        delegate: VideoCard {
+        delegate: ListItem {
             width: list.width
-            video: modelData
-            onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: modelData })
-            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                { username: modelData.author })
-            onMoreClicked: { page._pendingRemove = modelData.permlink || ""; PopupUtils.open(removeDialog); }
+            height: videoCard.implicitHeight
+
+            leadingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: Qt.openUrlExternally(
+                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Rectangle {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    color: Style.danger
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "white"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "delete"
+                        text: Lang.tr("Remove")
+                        onTriggered: Downloads.remove(modelData.permlink)
+                    }
+                ]
+            }
+
+            VideoCard {
+                id: videoCard
+                width: parent.width
+                video: modelData
+                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: modelData })
+                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                    { username: modelData.author })
+                onMoreClicked: { page._pendingRemove = modelData.permlink || ""; PopupUtils.open(removeDialog); }
+            }
         }
     }
 

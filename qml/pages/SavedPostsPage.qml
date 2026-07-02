@@ -80,7 +80,38 @@ Page {
             height: row.height + Style.spacingM * 2
             onClicked: page.open(modelData)
 
+            leadingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: Qt.openUrlExternally("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
+                    }
+                ]
+            }
+
             trailingActions: ListItemActions {
+                delegate: Rectangle {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    color: Style.danger
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "white"
+                    }
+                }
                 actions: [
                     Action {
                         iconName: "delete"

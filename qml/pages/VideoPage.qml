@@ -52,6 +52,15 @@ Page {
                 if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
             }
         }
+        function onPostUpdated(author, permlink, title, body) {
+            for (var i = 0; i < feedModel.count; i++) {
+                if (feedModel.get(i).permlink === permlink) {
+                    feedModel.setProperty(i, "title", title);
+                    feedModel.setProperty(i, "body", body);
+                    break;
+                }
+            }
+        }
         function onUserBlocked(username) {
             for (var i = feedModel.count - 1; i >= 0; i--) {
                 if (feedModel.get(i).author === username) feedModel.remove(i);
@@ -277,7 +286,7 @@ Page {
                         text: Lang.tr("Share")
                         onTriggered: {
                             var vm = feedModel.get(index);
-                            if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
+                            if (vm) Qt.openUrlExternally("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
                         }
                     }
                 ]

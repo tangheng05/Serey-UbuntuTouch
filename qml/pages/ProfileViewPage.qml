@@ -166,6 +166,19 @@ Page {
         target: PostActions
         function onHideRequested(author, permlink) { page.removeRow(permlink); }
         function onPostDeleted(author, permlink) { page.removeRow(permlink); }
+        function onPostUpdated(author, permlink, title, body) {
+            var models = [m0, m1, m2];
+            for (var k = 0; k < models.length; k++) {
+                var mdl = models[k];
+                for (var i = 0; i < mdl.count; i++) {
+                    if (mdl.get(i).permlink === permlink) {
+                        mdl.setProperty(i, "title", title);
+                        mdl.setProperty(i, "body", body);
+                        break;
+                    }
+                }
+            }
+        }
         // Keep the cover Block button in sync when the same user is blocked/unblocked
         // elsewhere (e.g. from a post's action sheet), so it doesn't show a stale
         // state and send a duplicate ADD (which the backend rejects with a 400).

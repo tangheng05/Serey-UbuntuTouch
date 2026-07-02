@@ -1,4 +1,4 @@
-import QtQuick 2.7
+import QtQuick 2.12
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
@@ -192,34 +192,52 @@ Page {
             }
         }
 
-        // PostCard wrapped in a Lomiri ListItem for native swipe context actions
-        // (leading = Hide, trailing = Share), mirroring VideoPage. Tap still opens
-        // the detail via PostCard.onClicked, so navigation is unaffected.
         delegate: ListItem {
             width: list.width
-            height: card.height
-            divider.visible: false
+            height: card.implicitHeight
 
             leadingActions: ListItemActions {
-                actions: [
-                    Action {
-                        iconName: "close"
-                        text: Lang.tr("Hide")
-                        onTriggered: {
-                            var vm = feedModel.get(index);
-                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
-                        }
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
                     }
-                ]
-            }
-            trailingActions: ListItemActions {
+                }
                 actions: [
                     Action {
                         iconName: "share"
                         text: Lang.tr("Share")
                         onTriggered: {
-                            var vm = feedModel.get(index);
-                            if (vm) Qt.openUrlExternally("https://serey.io/authors/@" + vm.author + "/" + vm.permlink);
+                            var p = feedModel.get(index)
+                            if (p) Qt.openUrlExternally("https://serey.io/authors/" + p.author + "/" + p.permlink)
+                        }
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Rectangle {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    color: Style.danger
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "white"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: Lang.tr("Hide")
+                        onTriggered: {
+                            var p = feedModel.get(index)
+                            if (p) PostActions.hideRequested(p.author, p.permlink)
                         }
                     }
                 ]
@@ -230,9 +248,9 @@ Page {
                 width: parent.width
                 post: feedModel.get(index)
                 onClicked: {
-                    var p = feedModel.get(index);
+                    var p = feedModel.get(index)
                     page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
-                        { author: p.author, permlink: p.permlink, title: p.title });
+                        { author: p.author, permlink: p.permlink, title: p.title })
                 }
                 onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                     { username: feedModel.get(index).author })

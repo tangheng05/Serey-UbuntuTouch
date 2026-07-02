@@ -27,8 +27,10 @@ Item {
     property bool reportTypesLoaded: false
     property bool reportTypesLoading: false
     property string selectedReportTypeId: ""
-    // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm
+    // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm,
+    // 4 = edit video caption
     property int step: 0
+    property bool savingCaption: false
 
     onVisibleChanged: {
         if (!visible) {
@@ -118,6 +120,62 @@ Item {
             });
     }
 
+    // The stored description is HTML; the caption editor is plain text. Strip
+    // tags (paragraph/line breaks become newlines) for editing, and rebuild
+    // <p> paragraphs — with the text re-escaped — when saving.
+    function _htmlToPlain(html) {
+        return (html || "")
+            .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<[^>]+>/g, "")
+            .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+            .replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&nbsp;/g, " ")
+            .trim();
+    }
+    function _plainToHtml(text) {
+        var lines = (text || "").split(/\n+/);
+        var out = [];
+        for (var i = 0; i < lines.length; i++) {
+            var t = lines[i].trim();
+            if (t.length === 0) continue;
+            t = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            out.push("<p>" + t + "</p>");
+        }
+        return out.join("");
+    }
+
+    // Update a video post's caption (title + description) in place. Reuses the
+    // create-or-update endpoint: sending the existing permlink updates rather
+    // than creates. All other fields are resent unchanged from the view-model.
+    function doSaveCaption() {
+        var p = PostActions.post;
+        if (!p || sheet.savingCaption) return;
+        var newTitle = captionTitleField.text.trim();
+        if (newTitle.length === 0) { Toast.error(Lang.tr("Title can't be empty.")); return; }
+        var newBody = sheet._plainToHtml(captionDescField.text);
+        sheet.savingCaption = true;
+        PostService.createVideoPost(Config.baseUrl, {
+            title: newTitle,
+            desc: newBody,
+            permlink: p.permlink || "",
+            videoUrl: p.videoLink || "",
+            thumbUrl: p.thumbnail || "",
+            communityId: p.communityId || 0,
+            communityName: p.community || "",
+            postToBlockchain: p.postToBlockchain !== false
+        }, Session.token,
+            function () {
+                sheet.savingCaption = false;
+                PostActions.postUpdated(p.author || "", p.permlink || "", newTitle, newBody);
+                sheet.closeSheet();
+                Toast.success(Lang.tr("Post updated!"));
+            },
+            function (err) {
+                sheet.savingCaption = false;
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update post."));
+            });
+    }
+
     // Delete the viewer's own post, then ask feed pages to prune the row.
     function doDelete() {
         var p = PostActions.post;
@@ -154,6 +212,7 @@ Item {
         height: (sheet.step === 0 ? mainCol.height
                  : sheet.step === 1 ? reportCol.height
                  : sheet.step === 2 ? deleteCol.height
+                 : sheet.step === 4 ? editCol.height
                  : blockCol.height) + units.gu(4)
         radius: units.dp(16)
         color: Style.surface
@@ -265,6 +324,34 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
                         Label { text: Lang.tr("Edit post"); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
                         Label { text: Lang.tr("Update your post"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
+                    }
+                }
+            }
+
+            // Edit caption (own video — title/description only; the media
+            // itself can't be re-uploaded)
+            AbstractButton {
+                width: parent.width; height: units.gu(8)
+                visible: sheet.isOwn && PostActions.kind === "video"
+                onClicked: {
+                    var p = PostActions.post;
+                    captionTitleField.text = (p && p.title) || "";
+                    captionDescField.text = sheet._htmlToPlain((p && p.body) || "");
+                    sheet.step = 4;
+                }
+                Row {
+                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingM
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(4.5); height: width; radius: width / 2
+                        color: Style.iconBackground
+                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "edit"; color: Style.textPrimary }
+                    }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
+                        Label { text: Lang.tr("Edit caption"); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
+                        Label { text: Lang.tr("Change the title and description"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
                     }
                 }
             }
@@ -621,6 +708,100 @@ Item {
                     font.pixelSize: Style.fontMedium
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
+                }
+            }
+
+            Item { width: 1; height: Style.spacingM }
+        }
+
+        // ===================== Step 4: Edit video caption =====================
+        Column {
+            id: editCol
+            anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
+            spacing: 0
+            visible: sheet.step === 4
+
+            // Header: back + title
+            Item {
+                width: parent.width; height: units.gu(5)
+
+                AbstractButton {
+                    anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    width: units.gu(3.5); height: units.gu(3.5)
+                    enabled: !sheet.savingCaption
+                    onClicked: sheet.step = 0
+                    Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "back"; color: Style.textPrimary }
+                }
+
+                Label {
+                    anchors.centerIn: parent
+                    text: Lang.tr("Edit caption")
+                    font.pixelSize: Style.fontMedium
+                    font.weight: Font.DemiBold
+                    color: Style.textPrimary
+                }
+            }
+
+            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+            Item { width: 1; height: Style.spacingM }
+
+            Label {
+                x: Style.spacingM
+                text: Lang.tr("Title")
+                font.pixelSize: Style.fontSmall
+                font.weight: Font.DemiBold
+                color: Style.textSecondary
+            }
+            Item { width: 1; height: Style.spacingXs }
+            TextField {
+                id: captionTitleField
+                width: parent.width - Style.spacingM * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                enabled: !sheet.savingCaption
+                placeholderText: Lang.tr("Title")
+            }
+
+            Item { width: 1; height: Style.spacingM }
+
+            Label {
+                x: Style.spacingM
+                text: Lang.tr("Description")
+                font.pixelSize: Style.fontSmall
+                font.weight: Font.DemiBold
+                color: Style.textSecondary
+            }
+            Item { width: 1; height: Style.spacingXs }
+            TextArea {
+                id: captionDescField
+                width: parent.width - Style.spacingM * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: units.gu(10)
+                enabled: !sheet.savingCaption
+                placeholderText: Lang.tr("Description")
+            }
+
+            Item { width: 1; height: Style.spacingL }
+
+            // Save
+            AbstractButton {
+                width: parent.width - Style.spacingM * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: units.gu(6)
+                enabled: !sheet.savingCaption
+                onClicked: sheet.doSaveCaption()
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Style.cardRadius
+                    color: Style.brand
+                    opacity: sheet.savingCaption ? 0.6 : 1
+                }
+                Label {
+                    anchors.centerIn: parent
+                    text: sheet.savingCaption ? Lang.tr("Saving…") : Lang.tr("Save")
+                    font.pixelSize: Style.fontMedium
+                    font.weight: Font.DemiBold
+                    color: Style.textOnBrand
                 }
             }
 

@@ -182,6 +182,10 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
     };
     // "Post to blockchain" toggle (see createPost): explicit bool, false = DB-only.
     body.post_to_blockchain = (params.postToBlockchain !== false);
+    // Editing an existing video post: sending its permlink makes the backend
+    // update in place (same contract as createPost).
+    if (params.permlink)
+        body.permlink = params.permlink;
     if (params.communityId)
         body.community_id = Number(params.communityId);
     if (params.communityName)

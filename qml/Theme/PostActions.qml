@@ -11,6 +11,9 @@ QtObject {
     signal hideRequested(string author, string permlink)
     signal editRequested(var post)
     signal postDeleted(string author, string permlink)
+    // Emitted after an in-place edit (e.g. video caption) succeeds, so pages
+    // showing the post can refresh their copy without a full reload.
+    signal postUpdated(string author, string permlink, string title, string body)
     signal userBlocked(string username)
     signal userUnblocked(string username)
 

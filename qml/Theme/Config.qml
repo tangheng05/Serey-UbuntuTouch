@@ -33,10 +33,13 @@ QtObject {
     readonly property string uploadUrl: "https://upload.serey.io/uploads/upload_image"
     readonly property string uploadSecret: "5876aafc87185dc0521afcqceo87185dc058718affc7b382730e89s"
 
-    // Video upload endpoint (same media server + api-secret). The simple endpoint
-    // caps at ~95 MB; larger files use the web's chunked S3 flow, not implemented
-    // here yet — see Uploads.uploadVideo's size guard.
-    readonly property string uploadVideoUrl: "https://upload.serey.io/uploads/upload_video"
+    // Dedicated video storage API (tus resumable uploads + server-side
+    // processing). Uploads go in 50 MB chunks — each request must stay under
+    // Cloudflare's 100 MB proxy cap — then the server remuxes to a faststart
+    // MP4 and returns the public URL. Key is the shared upload key from the
+    // storage API's .env (same one the web frontend ships).
+    readonly property string storageApiUrl: "https://storage.serey.io"
+    readonly property string storageUploadKey: "aeb004760bc557962d2623c2d296df835c16a03ea1b1b41dca429f908fd2fc0b"
 
     // Homepage mini-app: a single fixed site (matches serey-ubutu), filtered
     // client-side via a `community_id` query param rather than switching

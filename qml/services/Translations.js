@@ -138,7 +138,7 @@ var nl = {
     "Log out":                                          "Uitloggen",
     "Log out?":                                         "Uitloggen?",
     "Lowercase":                                        "Kleine letters",
-    "MP4, WEBM, MOV · up to 90 MB":                    "MP4, WEBM, MOV · tot 90 MB",
+    "MP4, WEBM, MOV · up to 2 GB":                     "MP4, WEBM, MOV · tot 2 GB",
     "Male":                                             "Man",
     "Mark all read":                                    "Alles als gelezen markeren",
     "Marking…":                                         "Markeren…",

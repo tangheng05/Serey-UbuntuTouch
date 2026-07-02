@@ -1,6 +1,7 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
 import Lomiri.Components.Popups 1.3 as Popups
+import Serey.FileUtils 1.0 as FileUtils
 import "../Theme"
 import "../Session"
 import "../components"
@@ -8,10 +9,11 @@ import "../services/PostService.js" as PostService
 import "../services/Uploads.js" as Uploads
 
 /*
- * Create a video post: pick a local video → upload it to the Serey media server,
- * auto-capture a thumbnail in-app (best-effort), then publish via
- * PostService.createVideoPost. The thumbnail is generated for the user (no
- * picker) and the upload never blocks on it. AI-generated flagging is omitted.
+ * Create a video post: pick a local video → upload it to the dedicated video
+ * storage API (storage.serey.io, tus chunked upload + server-side processing),
+ * auto-capture a thumbnail in-app (best-effort; the server's generated
+ * thumbnail is the fallback), then publish via PostService.createVideoPost.
+ * AI-generated flagging is omitted.
  *
  * A video requires a concrete community (Config.communityId > 0): "Global" is
  * rejected server-side, so publishing is gated until a real community is picked
@@ -25,8 +27,10 @@ Page {
     // Local picked file + hosted results.
     property string videoFileUrl: ""   // file:// of the picked video
     property string videoUrl: ""       // hosted video URL (upload done)
+    property string videoId: ""        // storage API id (for delete on discard)
     property string thumbUrl: ""       // hosted thumbnail URL (best-effort)
     property bool uploadingVideo: false
+    property int uploadPercent: 0      // chunked-upload progress (0-100)
     property bool grabbingThumb: false
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the
     // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
@@ -58,19 +62,29 @@ Page {
     function onVideoPicked(fileUrl) {
         page.videoFileUrl = fileUrl;
         page.videoUrl = "";
+        page.videoId = "";
         page.thumbUrl = "";
         // Start the upload and the (optional) thumbnail capture in parallel.
         page.uploadingVideo = true;
-        Uploads.uploadVideo(Config.uploadVideoUrl, Config.uploadSecret, fileUrl,
-            function (url) {
+        page.uploadPercent = 0;
+        Uploads.uploadVideo(Config.storageApiUrl, Config.storageUploadKey, fileUrl,
+            function (url, job) {
                 page.uploadingVideo = false;
                 page.videoUrl = url;
+                page.videoId = (job && job.id) ? job.id : "";
+                // Server-side thumbnail as fallback if the local frame grab
+                // failed or hasn't produced one.
+                if (!page.thumbUrl && job && job.thumbnail_url)
+                    page.thumbUrl = job.thumbnail_url;
                 Toast.success(Lang.tr("Video uploaded"));
             },
             function (err) {
                 page.uploadingVideo = false;
                 page.videoFileUrl = "";
                 Toast.error((err && err.message) ? err.message : Lang.tr("Video upload failed."));
+            },
+            function (percent) {
+                page.uploadPercent = percent;
             });
 
         page.grabbingThumb = true;
@@ -79,10 +93,17 @@ Page {
 
     function clearVideo() {
         Uploads.abort();
+        // Upload had already finished (post-upload discard, e.g. Remove or
+        // back-out-before-publish) — clean up the now-orphaned file so it
+        // doesn't sit on the storage server forever.
+        if (page.videoId)
+            Uploads.deleteVideo(Config.storageApiUrl, Config.storageUploadKey, page.videoId);
         page.videoFileUrl = "";
         page.videoUrl = "";
+        page.videoId = "";
         page.thumbUrl = "";
         page.uploadingVideo = false;
+        page.uploadPercent = 0;
         page.grabbingThumb = false;
     }
 
@@ -113,6 +134,32 @@ Page {
 
     Item { id: focusSink }
     function dismissKeyboard() { focusSink.forceActiveFocus(); Qt.inputMethod.hide(); }
+
+    // Uploads.js has no setTimeout (QML JS library); this Timer drives the
+    // delay between status polls while the server processes the video.
+    Timer {
+        id: uploadDelayTimer
+        repeat: false
+        property var pending: null
+        onTriggered: {
+            var fn = pending;
+            pending = null;
+            if (fn) fn();
+        }
+    }
+
+    // C++ streaming file reader: uploads read 25 MB slices from disk instead
+    // of loading the whole video into RAM (big files OOM-crashed phones).
+    FileUtils.FileChunkReader { id: chunkReader }
+
+    Component.onCompleted: {
+        Uploads.setDelayHook(function (ms, fn) {
+            uploadDelayTimer.pending = fn;
+            uploadDelayTimer.interval = ms;
+            uploadDelayTimer.restart();
+        });
+        Uploads.setFileReader(chunkReader);
+    }
 
     // --- Picker + helpers --------------------------------------------------
 
@@ -362,7 +409,7 @@ Page {
                     }
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: Lang.tr("MP4, WEBM, MOV · up to 90 MB")
+                        text: Lang.tr("MP4, WEBM, MOV · up to 2 GB")
                         font.pixelSize: Style.fontXSmall
                         color: Style.textSecondary
                     }
@@ -398,7 +445,13 @@ Page {
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
                         visible: page.uploadingVideo
-                        text: Lang.tr("Uploading video…")
+                        // 100% = all chunks sent; the server is then
+                        // validating/remuxing before it returns the URL.
+                        text: page.uploadPercent >= 100
+                              ? Lang.tr("Processing video…")
+                              : (page.uploadPercent > 0
+                                 ? Lang.tr("Uploading video…") + " " + page.uploadPercent + "%"
+                                 : Lang.tr("Uploading video…"))
                         font.pixelSize: Style.fontSmall
                         color: "white"
                     }

@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 project(serey)
 
-# Pure-QML app: no compilation. We configure the manifest with the framework /
-# architecture supplied by Clickable, then install the QML, assets and hooks
-# into the click package root.
+# QML app with one compiled plugin (Serey.FileUtils — streaming file reads so
+# large video uploads don't hold the whole file in RAM). We configure the
+# manifest with the framework / architecture supplied by Clickable, build the
+# plugin, then install the QML, assets and hooks into the click package root.
 
 set(QT_IMPORTS_DIR "lib/${CMAKE_LIBRARY_ARCHITECTURE}")
 
@@ -30,6 +31,9 @@ install(DIRECTORY qml
     DESTINATION ${CMAKE_INSTALL_PREFIX})
 install(DIRECTORY assets
     DESTINATION ${CMAKE_INSTALL_PREFIX})
+
+# C++ QML plugin: Serey.FileUtils (chunked file reads for video upload)
+add_subdirectory(plugins/Serey/FileUtils)
 
 # Translations
 add_subdirectory(po)

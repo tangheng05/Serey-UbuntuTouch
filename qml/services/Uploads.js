@@ -39,6 +39,7 @@ function _contentType(fileUrl) {
 var _active = null;
 
 function abort() {
+    _generation++;   // invalidate any scheduled tus continuation / status poll
     if (_active) {
         try { _active.abort(); } catch (e) { /* already done */ }
         _active = null;
@@ -102,31 +103,106 @@ function uploadImageData(uploadUrl, secret, dataUrl, onOk, onErr) {
     _post(uploadUrl, secret, { mime: "image/jpeg", ext: "jpg" }, bytes, onOk, onErr);
 }
 
-// --- Video upload --------------------------------------------------------
-// The simple /uploads/upload_video endpoint accepts the same multipart envelope
-// as images (field name `video`, header `api-secret`, returns { url }). QML's
-// XMLHttpRequest reads the whole file into memory, so we cap well under the
-// server's ~95 MB limit; larger files need the web's chunked S3 flow (TODO).
-var MAX_VIDEO_BYTES = 90 * 1024 * 1024;
+// --- Video upload (tus → storage.serey.io) --------------------------------
+// The dedicated storage API speaks the tus 1.0.0 resumable-upload protocol:
+//   1. POST   {base}/files            (Upload-Length + Upload-Metadata) → Location
+//   2. PATCH  Location                50 MB chunks (application/offset+octet-stream)
+//   3. GET    {base}/videos/{id}/status  poll until server-side processing
+//      (ffprobe validation + faststart remux + thumbnail) finishes
+// Every request carries the shared key in `x-upload-key`. Chunks must stay
+// under Cloudflare's 100 MB per-request proxy cap.
+//
+// Memory: CreateVideoPage installs a Serey.FileUtils FileChunkReader (C++)
+// via setFileReader, so each 25 MB chunk is read from disk right before its
+// PATCH — constant memory, files up to the server's 2 GB limit. Without the
+// reader (shouldn't happen in a packaged build) we fall back to QML XHR's
+// whole-file read, capped at 300 MB: holding a bigger file in RAM OOM-crashed
+// phones (observed reboot at ~70-80% of a large upload).
+// Callbacks: onOk(url, job), onErr({ message }), optional onProgress(percent).
+var MAX_VIDEO_BYTES_STREAM = 2 * 1024 * 1024 * 1024;   // server maxSize
+var MAX_VIDEO_BYTES_FALLBACK = 300 * 1024 * 1024;
+var CHUNK_BYTES = 25 * 1024 * 1024;
 
+// C++ FileChunkReader (Serey.FileUtils 1.0), installed by CreateVideoPage.
+var _fileReader = null;
+function setFileReader(reader) { _fileReader = reader; }
+var CHUNK_RETRIES = 3;
+var STATUS_POLL_MS = 2000;
+var STATUS_POLL_MAX = 150;          // give processing up to ~5 minutes
+
+// Only types the storage API accepts (it rejects others with 415).
 function _videoType(fileUrl) {
     var u = String(fileUrl).toLowerCase();
     if (u.indexOf(".webm") >= 0) return { mime: "video/webm", ext: "webm" };
     if (u.indexOf(".mov") >= 0)  return { mime: "video/quicktime", ext: "mov" };
     if (u.indexOf(".mkv") >= 0)  return { mime: "video/x-matroska", ext: "mkv" };
-    if (u.indexOf(".ogv") >= 0 || u.indexOf(".ogg") >= 0) return { mime: "video/ogg", ext: "ogv" };
-    if (u.indexOf(".mpeg") >= 0 || u.indexOf(".mpg") >= 0) return { mime: "video/mpeg", ext: "mpeg" };
-    return { mime: "video/mp4", ext: "mp4" };   // most common; also the default ext
+    if (u.indexOf(".avi") >= 0)  return { mime: "video/x-msvideo", ext: "avi" };
+    if (u.indexOf(".mp4") >= 0 || u.indexOf(".m4v") >= 0) return { mime: "video/mp4", ext: "mp4" };
+    return null;
 }
 
-function uploadVideo(uploadUrl, secret, fileUrl, onOk, onErr) {
+// tus metadata values are base64; QML JS has no btoa (mirror of _b64decode).
+function _b64encode(bytes) {
+    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    var out = "", i;
+    for (i = 0; i + 2 < bytes.length; i += 3) {
+        var n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+        out += chars[(n >> 18) & 63] + chars[(n >> 12) & 63] + chars[(n >> 6) & 63] + chars[n & 63];
+    }
+    if (i + 1 === bytes.length) {
+        out += chars[(bytes[i] >> 2) & 63] + chars[(bytes[i] << 4) & 63] + "==";
+    } else if (i + 2 === bytes.length) {
+        var m = (bytes[i] << 8) | bytes[i + 1];
+        out += chars[(m >> 10) & 63] + chars[(m >> 4) & 63] + chars[(m << 2) & 63] + "=";
+    }
+    return out;
+}
+
+function _b64str(str) { return _b64encode(_ascii(str)); }
+
+// Cancellation: clearVideo() calls abort(), which kills the in-flight xhr; the
+// generation counter makes any still-scheduled continuation a no-op.
+var _generation = 0;
+
+function uploadVideo(storageBase, key, fileUrl, onOk, onErr, onProgress) {
+    var base = String(storageBase).replace(/\/$/, "");
     var type = _videoType(fileUrl);
+    if (!type) {
+        onErr({ message: "Unsupported video type. Use mp4, mov, mkv, webm or avi." });
+        return;
+    }
+    _generation++;
+    var gen = _generation;
+    var progress = onProgress || function () {};
+
+    // Streaming path: read 25 MB slices from disk as each PATCH needs them.
+    if (_fileReader) {
+        var size = _fileReader.size(fileUrl);
+        if (size <= 0) {
+            onErr({ message: "Couldn't read the selected video." });
+            return;
+        }
+        if (size > MAX_VIDEO_BYTES_STREAM) {
+            onErr({ message: "Video is too large (max " + Math.round(MAX_VIDEO_BYTES_STREAM / 1073741824) + " GB)." });
+            return;
+        }
+        var streamSource = {
+            size: size,
+            read: function (offset, end) {
+                return _fileReader.read(fileUrl, offset, end - offset);
+            },
+        };
+        _tusCreate(base, key, type, streamSource, gen, onOk, onErr, progress);
+        return;
+    }
+
+    // Fallback: whole-file XHR read (dev harness / missing plugin only).
     var reader = new XMLHttpRequest();
     _active = reader;
     reader.open("GET", fileUrl);
     reader.responseType = "arraybuffer";
     reader.onreadystatechange = function () {
-        if (reader.readyState !== XMLHttpRequest.DONE)
+        if (reader.readyState !== XMLHttpRequest.DONE || gen !== _generation)
             return;
         if (!reader.response) {
             _active = null;
@@ -134,60 +210,187 @@ function uploadVideo(uploadUrl, secret, fileUrl, onOk, onErr) {
             return;
         }
         var bytes = new Uint8Array(reader.response);
-        if (bytes.length > MAX_VIDEO_BYTES) {
+        if (bytes.length === 0) {
             _active = null;
-            onErr({ message: "Video is too large (max " + Math.round(MAX_VIDEO_BYTES / 1048576) + " MB)." });
+            onErr({ message: "Selected video is empty." });
             return;
         }
-        try {
-            _postVideo(uploadUrl, secret, type, bytes, onOk, onErr);
-        } catch (e) {
+        if (bytes.length > MAX_VIDEO_BYTES_FALLBACK) {
             _active = null;
-            onErr({ message: "Couldn't prepare the video for upload." });
+            onErr({ message: "Video is too large (max " + Math.round(MAX_VIDEO_BYTES_FALLBACK / 1048576) + " MB)." });
+            return;
         }
+        var bufferSource = {
+            size: bytes.length,
+            read: function (offset, end) {
+                return new Uint8Array(bytes.subarray(offset, end)).buffer;
+            },
+        };
+        _tusCreate(base, key, type, bufferSource, gen, onOk, onErr, progress);
     };
     reader.send();
 }
 
-function _postVideo(uploadUrl, secret, type, fileBytes, onOk, onErr) {
-    var boundary = "----SereyBoundary" + Date.now() + Math.floor(Math.random() * 1e9);
-    var preamble = _ascii(
-        "--" + boundary + "\r\n" +
-        'Content-Disposition: form-data; name="video"; filename="video.' + type.ext + '"\r\n' +
-        "Content-Type: " + type.mime + "\r\n\r\n");
-    var trailer = _ascii("\r\n--" + boundary + "--\r\n");
+// `source` abstracts where chunk bytes come from:
+//   { size: <bytes>, read: function (offset, end) -> ArrayBuffer }
+function _tusCreate(base, key, type, source, gen, onOk, onErr, onProgress) {
+    var xhr = new XMLHttpRequest();
+    _active = xhr;
+    xhr.open("POST", base + "/files");
+    xhr.setRequestHeader("Tus-Resumable", "1.0.0");
+    xhr.setRequestHeader("Upload-Length", String(source.size));
+    xhr.setRequestHeader("Upload-Metadata",
+        "filename " + _b64str("video." + type.ext) + ",filetype " + _b64str(type.mime));
+    xhr.setRequestHeader("x-upload-key", key);
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState !== XMLHttpRequest.DONE || gen !== _generation)
+            return;
+        _active = null;
+        if (xhr.status === 201) {
+            var location = xhr.getResponseHeader("Location") || "";
+            if (location.indexOf("http") !== 0)
+                location = base + location;          // relative Location
+            _tusPatch(base, key, location, source, 0, 0, gen, onOk, onErr, onProgress);
+        } else if (xhr.status === 401) {
+            onErr({ message: "Upload not authorized (bad upload key)." });
+        } else if (xhr.status === 413) {
+            onErr({ message: "Video is too large for the server." });
+        } else if (xhr.status === 415) {
+            onErr({ message: "The server doesn't accept this video type." });
+        } else if (xhr.status === 0) {
+            onErr({ message: "Network error starting the upload." });
+        } else {
+            onErr({ message: "Couldn't start the upload (" + xhr.status + ")." });
+        }
+    };
+    xhr.send();
+}
 
-    var body = new Uint8Array(preamble.length + fileBytes.length + trailer.length);
-    body.set(preamble, 0);
-    body.set(fileBytes, preamble.length);
-    body.set(trailer, preamble.length + fileBytes.length);
+function _tusPatch(base, key, location, source, offset, attempt, gen, onOk, onErr, onProgress) {
+    var end = Math.min(offset + CHUNK_BYTES, source.size);
+    var chunk = source.read(offset, end);
+    if (!chunk || chunk.byteLength === undefined || chunk.byteLength === 0) {
+        onErr({ message: "Couldn't read the video while uploading." });
+        return;
+    }
 
     var xhr = new XMLHttpRequest();
     _active = xhr;
-    xhr.open("POST", uploadUrl);
-    xhr.setRequestHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
-    xhr.setRequestHeader("api-secret", secret);
-    xhr.setRequestHeader("Accept", "application/json");
+    xhr.open("PATCH", location);
+    xhr.setRequestHeader("Tus-Resumable", "1.0.0");
+    xhr.setRequestHeader("Upload-Offset", String(offset));
+    xhr.setRequestHeader("Content-Type", "application/offset+octet-stream");
+    xhr.setRequestHeader("x-upload-key", key);
     xhr.onreadystatechange = function () {
-        if (xhr.readyState !== XMLHttpRequest.DONE)
+        if (xhr.readyState !== XMLHttpRequest.DONE || gen !== _generation)
             return;
         _active = null;
-        if (xhr.status === 0) {
+        if (xhr.status === 204 || xhr.status === 200) {
+            var newOffset = parseInt(xhr.getResponseHeader("Upload-Offset") || String(end), 10);
+            onProgress(Math.round((newOffset / source.size) * 100));
+            if (newOffset >= source.size) {
+                var id = location.replace(/\/$/, "").split("/").pop();
+                _pollStatus(base, key, id, 0, gen, onOk, onErr);
+            } else {
+                _tusPatch(base, key, location, source, newOffset, 0, gen, onOk, onErr, onProgress);
+            }
+        } else if (attempt < CHUNK_RETRIES && (xhr.status === 0 || xhr.status >= 500 || xhr.status === 409)) {
+            // Transient failure: ask the server where it actually is (HEAD),
+            // then resume from that offset. This is tus's whole point.
+            _tusResume(base, key, location, source, attempt + 1, gen, onOk, onErr, onProgress);
+        } else if (xhr.status === 0) {
             onErr({ message: "Network error during upload." });
-            return;
-        }
-        var data = null;
-        try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; }
-        catch (e) { onErr({ message: "Upload server returned an invalid response." }); return; }
-        var url = data && data.url;
-        if (xhr.status >= 200 && xhr.status < 300 && url) {
-            onOk(url);
         } else {
-            var msg = (data && data.message) ? data.message : "Upload failed (" + xhr.status + ").";
-            onErr({ message: msg });
+            onErr({ message: "Upload failed (" + xhr.status + ")." });
         }
     };
-    xhr.send(body.buffer);
+    xhr.send(chunk);
+}
+
+function _tusResume(base, key, location, source, attempt, gen, onOk, onErr, onProgress) {
+    var xhr = new XMLHttpRequest();
+    _active = xhr;
+    xhr.open("HEAD", location);
+    xhr.setRequestHeader("Tus-Resumable", "1.0.0");
+    xhr.setRequestHeader("x-upload-key", key);
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState !== XMLHttpRequest.DONE || gen !== _generation)
+            return;
+        _active = null;
+        var offset = parseInt(xhr.getResponseHeader("Upload-Offset") || "-1", 10);
+        if (xhr.status === 200 && offset >= 0) {
+            _tusPatch(base, key, location, source, offset, attempt, gen, onOk, onErr, onProgress);
+        } else if (attempt < CHUNK_RETRIES) {
+            _tusResume(base, key, location, source, attempt + 1, gen, onOk, onErr, onProgress);
+        } else {
+            onErr({ message: "Lost connection to the upload server." });
+        }
+    };
+    xhr.send();
+}
+
+// After the last chunk the server queues ffprobe/remux/thumbnail work; poll
+// until it lands on ready (→ public URL) or failed.
+function _pollStatus(base, key, id, tries, gen, onOk, onErr) {
+    if (gen !== _generation)
+        return;
+    if (tries >= STATUS_POLL_MAX) {
+        onErr({ message: "Video processing timed out. Try again later." });
+        return;
+    }
+    var xhr = new XMLHttpRequest();
+    _active = xhr;
+    xhr.open("GET", base + "/videos/" + id + "/status");
+    xhr.setRequestHeader("x-upload-key", key);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState !== XMLHttpRequest.DONE || gen !== _generation)
+            return;
+        _active = null;
+        var job = null;
+        try { job = xhr.responseText ? JSON.parse(xhr.responseText) : null; }
+        catch (e) { /* fall through to retry */ }
+        if (job && job.state === "ready" && job.url) {
+            onOk(job.url, job);
+        } else if (job && job.state === "failed") {
+            var reasons = {
+                not_a_video: "That file isn't a playable video.",
+                unsupported_codec: "This video's format isn't supported.",
+                invalid_duration: "The video's length couldn't be read or is too long."
+            };
+            onErr({ message: reasons[job.error] || "The server couldn't process this video." });
+        } else {
+            // uploading/queued/processing (or a blip) — poll again.
+            _delay(STATUS_POLL_MS, function () {
+                _pollStatus(base, key, id, tries + 1, gen, onOk, onErr);
+            });
+        }
+    };
+    xhr.send();
+}
+
+// setTimeout doesn't exist in QML JS libraries; fake a delay with an XHR to a
+// data: URL? No — Qt honours neither reliably. Callers must provide a Timer.
+// Instead we lean on XMLHttpRequest's timeout: a GET to an unroutable address
+// would be fragile, so the poll delay is driven by the page via _delayHook.
+var _delayHook = null;   // set by the QML page: function (ms, fn)
+function setDelayHook(fn) { _delayHook = fn; }
+function _delay(ms, fn) {
+    if (_delayHook) { _delayHook(ms, fn); return; }
+    fn();   // no hook installed: poll immediately (still correct, just chattier)
+}
+
+// Delete a video that finished uploading but was never published (user backed
+// out of the post after the upload completed). Best-effort: fire-and-forget,
+// no retry — an orphaned file is a minor storage cost, not a correctness bug,
+// and the caller is usually navigating away already.
+function deleteVideo(storageBase, key, id) {
+    if (!id) return;
+    var base = String(storageBase).replace(/\/$/, "");
+    var xhr = new XMLHttpRequest();
+    xhr.open("DELETE", base + "/videos/" + id);
+    xhr.setRequestHeader("x-upload-key", key);
+    xhr.send();
 }
 
 function _post(uploadUrl, secret, type, fileBytes, onOk, onErr) {

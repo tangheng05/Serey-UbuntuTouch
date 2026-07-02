@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import Qt.labs.settings 1.0
 import Lomiri.Components 1.3
 import Lomiri.Components.Popups 1.3 as Popups
 import Serey.FileUtils 1.0 as FileUtils
@@ -152,6 +153,14 @@ Page {
     // of loading the whole video into RAM (big files OOM-crashed phones).
     FileUtils.FileChunkReader { id: chunkReader }
 
+    // Survives app restarts: lets Uploads.js resume a half-finished upload of
+    // the same file instead of re-sending everything from byte 0.
+    Settings {
+        id: uploadResumeStore
+        category: "VideoUpload"
+        property string pendingUpload: ""
+    }
+
     Component.onCompleted: {
         Uploads.setDelayHook(function (ms, fn) {
             uploadDelayTimer.pending = fn;
@@ -159,6 +168,10 @@ Page {
             uploadDelayTimer.restart();
         });
         Uploads.setFileReader(chunkReader);
+        Uploads.setUploadStore({
+            get: function () { return uploadResumeStore.pendingUpload; },
+            set: function (v) { uploadResumeStore.pendingUpload = v; }
+        });
     }
 
     // --- Picker + helpers --------------------------------------------------

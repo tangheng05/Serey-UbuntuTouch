@@ -126,6 +126,27 @@ var CHUNK_BYTES = 25 * 1024 * 1024;
 // C++ FileChunkReader (Serey.FileUtils 1.0), installed by CreateVideoPage.
 var _fileReader = null;
 function setFileReader(reader) { _fileReader = reader; }
+
+// Persisted resume record, so an upload interrupted by an app restart picks up
+// where it left off (the server keeps incomplete tus uploads for 24h).
+// CreateVideoPage installs a store backed by Qt Settings:
+//   { get: function () -> string, set: function (string) }
+var _uploadStore = null;
+function setUploadStore(store) { _uploadStore = store; }
+
+function _saveResume(fingerprint, location) {
+    if (_uploadStore) _uploadStore.set(JSON.stringify({ f: fingerprint, l: location }));
+}
+function _loadResume(fingerprint) {
+    if (!_uploadStore) return null;
+    try {
+        var rec = JSON.parse(_uploadStore.get() || "null");
+        return (rec && rec.f === fingerprint) ? rec.l : null;
+    } catch (e) { return null; }
+}
+function _clearResume() {
+    if (_uploadStore) _uploadStore.set("");
+}
 var CHUNK_RETRIES = 3;
 var STATUS_POLL_MS = 2000;
 var STATUS_POLL_MAX = 150;          // give processing up to ~5 minutes
@@ -192,7 +213,7 @@ function uploadVideo(storageBase, key, fileUrl, onOk, onErr, onProgress) {
                 return _fileReader.read(fileUrl, offset, end - offset);
             },
         };
-        _tusCreate(base, key, type, streamSource, gen, onOk, onErr, progress);
+        _tusCreate(base, key, type, streamSource, String(fileUrl) + ":" + size, gen, onOk, onErr, progress);
         return;
     }
 
@@ -226,14 +247,49 @@ function uploadVideo(storageBase, key, fileUrl, onOk, onErr, onProgress) {
                 return new Uint8Array(bytes.subarray(offset, end)).buffer;
             },
         };
-        _tusCreate(base, key, type, bufferSource, gen, onOk, onErr, progress);
+        _tusCreate(base, key, type, bufferSource, String(fileUrl) + ":" + bytes.length, gen, onOk, onErr, progress);
     };
     reader.send();
 }
 
 // `source` abstracts where chunk bytes come from:
 //   { size: <bytes>, read: function (offset, end) -> ArrayBuffer }
-function _tusCreate(base, key, type, source, gen, onOk, onErr, onProgress) {
+// If this exact file (url+size fingerprint) has a saved partial upload from a
+// previous app run, ask the server how far it got and continue from there;
+// otherwise create a fresh upload.
+function _tusCreate(base, key, type, source, fingerprint, gen, onOk, onErr, onProgress) {
+    var saved = _loadResume(fingerprint);
+    if (!saved) {
+        _tusStart(base, key, type, source, fingerprint, gen, onOk, onErr, onProgress);
+        return;
+    }
+    var head = new XMLHttpRequest();
+    _active = head;
+    head.open("HEAD", saved);
+    head.setRequestHeader("Tus-Resumable", "1.0.0");
+    head.setRequestHeader("x-upload-key", key);
+    head.onreadystatechange = function () {
+        if (head.readyState !== XMLHttpRequest.DONE || gen !== _generation)
+            return;
+        _active = null;
+        var offset = parseInt(head.getResponseHeader("Upload-Offset") || "-1", 10);
+        if (head.status === 200 && offset >= 0 && offset < source.size) {
+            onProgress(Math.round((offset / source.size) * 100));
+            _tusPatch(base, key, saved, source, offset, 0, gen, onOk, onErr, onProgress);
+        } else if (head.status === 200 && offset >= source.size) {
+            // Fully uploaded last time; only processing/polling was cut short.
+            _clearResume();
+            _pollStatus(base, key, saved.replace(/\/$/, "").split("/").pop(), 0, gen, onOk, onErr);
+        } else {
+            // Expired or gone — start over cleanly.
+            _clearResume();
+            _tusStart(base, key, type, source, fingerprint, gen, onOk, onErr, onProgress);
+        }
+    };
+    head.send();
+}
+
+function _tusStart(base, key, type, source, fingerprint, gen, onOk, onErr, onProgress) {
     var xhr = new XMLHttpRequest();
     _active = xhr;
     xhr.open("POST", base + "/files");
@@ -250,6 +306,7 @@ function _tusCreate(base, key, type, source, gen, onOk, onErr, onProgress) {
             var location = xhr.getResponseHeader("Location") || "";
             if (location.indexOf("http") !== 0)
                 location = base + location;          // relative Location
+            _saveResume(fingerprint, location);
             _tusPatch(base, key, location, source, 0, 0, gen, onOk, onErr, onProgress);
         } else if (xhr.status === 401) {
             onErr({ message: "Upload not authorized (bad upload key)." });
@@ -289,6 +346,7 @@ function _tusPatch(base, key, location, source, offset, attempt, gen, onOk, onEr
             var newOffset = parseInt(xhr.getResponseHeader("Upload-Offset") || String(end), 10);
             onProgress(Math.round((newOffset / source.size) * 100));
             if (newOffset >= source.size) {
+                _clearResume();   // done — never resume into a finished upload
                 var id = location.replace(/\/$/, "").split("/").pop();
                 _pollStatus(base, key, id, 0, gen, onOk, onErr);
             } else {
@@ -386,6 +444,7 @@ function _delay(ms, fn) {
 // and the caller is usually navigating away already.
 function deleteVideo(storageBase, key, id) {
     if (!id) return;
+    _clearResume();   // user discarded it; don't resume into a deleted upload
     var base = String(storageBase).replace(/\/$/, "");
     var xhr = new XMLHttpRequest();
     xhr.open("DELETE", base + "/videos/" + id);

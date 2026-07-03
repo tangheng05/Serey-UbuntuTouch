@@ -255,10 +255,9 @@ Page {
 
         // VideoCard wrapped in a Lomiri ListItem so the row gains native swipe
         // context actions (and the same actions via pointer right-click / keyboard
-        // MENU — convergence). Leading = negative (Hide), trailing = positive
-        // (Share), mirroring the ••• sheet. Tap still opens the detail through
-        // VideoCard.onClicked, so navigation is unchanged even if the swipe
-        // gesture is unavailable.
+        // MENU — convergence). Leading = Share, trailing = Hide, matching the
+        // blog/feed pages. Tap still opens the detail through VideoCard.onClicked,
+        // so navigation is unchanged even if the swipe gesture is unavailable.
         delegate: ListItem {
             id: videoRow
             width: list.width
@@ -268,18 +267,16 @@ Page {
             divider.visible: false
 
             leadingActions: ListItemActions {
-                actions: [
-                    Action {
-                        iconName: "close"
-                        text: Lang.tr("Hide")
-                        onTriggered: {
-                            var vm = feedModel.get(index);
-                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
-                        }
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
                     }
-                ]
-            }
-            trailingActions: ListItemActions {
+                }
                 actions: [
                     Action {
                         iconName: "share"
@@ -287,6 +284,29 @@ Page {
                         onTriggered: {
                             var vm = feedModel.get(index);
                             if (vm) Qt.openUrlExternally("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
+                        }
+                    }
+                ]
+            }
+            trailingActions: ListItemActions {
+                delegate: Rectangle {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    color: Style.danger
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "white"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: Lang.tr("Hide")
+                        onTriggered: {
+                            var vm = feedModel.get(index);
+                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
                         }
                     }
                 ]

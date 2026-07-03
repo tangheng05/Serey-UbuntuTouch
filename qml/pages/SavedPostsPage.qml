@@ -95,7 +95,7 @@ Page {
                     Action {
                         iconName: "share"
                         text: Lang.tr("Share")
-                        onTriggered: Qt.openUrlExternally("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
+                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
                     }
                 ]
             }

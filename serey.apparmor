@@ -4,6 +4,7 @@
         "networking",
         "webview",
         "content_exchange",
+        "content_exchange_source",
         "audio",
         "video",
         "push-notification-client"

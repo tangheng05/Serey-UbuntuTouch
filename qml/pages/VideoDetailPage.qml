@@ -806,7 +806,7 @@ Page {
                     visible: (page.video.author || "").length > 0 && (page.video.permlink || "").length > 0
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: units.gu(4.5)
-                    onClicked: Qt.openUrlExternally("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink)
+                    onClicked: Share.open("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink)
                     Rectangle {
                         anchors.fill: parent
                         radius: Style.pillRadius

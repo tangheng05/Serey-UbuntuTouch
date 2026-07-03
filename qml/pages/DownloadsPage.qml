@@ -90,7 +90,7 @@ Page {
                     Action {
                         iconName: "share"
                         text: Lang.tr("Share")
-                        onTriggered: Qt.openUrlExternally(
+                        onTriggered: Share.open(
                             "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
                     }
                 ]

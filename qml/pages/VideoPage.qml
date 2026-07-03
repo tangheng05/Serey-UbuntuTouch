@@ -286,7 +286,7 @@ Page {
                         text: Lang.tr("Share")
                         onTriggered: {
                             var vm = feedModel.get(index);
-                            if (vm) Qt.openUrlExternally("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
+                            if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
                         }
                     }
                 ]

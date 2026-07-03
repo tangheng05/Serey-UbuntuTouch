@@ -168,6 +168,33 @@ Page {
         cacheBuffer: pager.height
         clip: true
 
+        // End-of-feed hint: dragging up past the last reel reveals this, then the
+        // pager snaps back (StrictlyEnforceRange keeps the last reel in range).
+        footer: Item {
+            width: pager.width
+            height: units.gu(12)
+            visible: !page.loading && page.reels.length > 0
+            Column {
+                anchors.centerIn: parent
+                spacing: units.dp(4)
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: Lang.tr("You're all caught up")
+                    color: "white"
+                    font.pixelSize: Style.fontMedium
+                    font.weight: Font.DemiBold
+                    font.family: Style.fontFor(text)
+                }
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: Lang.tr("No more reels for now")
+                    color: Qt.rgba(1, 1, 1, 0.6)
+                    font.pixelSize: Style.fontSmall
+                    font.family: Style.fontFor(text)
+                }
+            }
+        }
+
         delegate: Item {
             id: reel
             width: pager.width

@@ -32,6 +32,11 @@ Item {
     property int step: 0
     property bool savingCaption: false
 
+    // Lift the sheet above the OSK (the edit-caption step has text inputs).
+    readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
+
+    onStepChanged: if (step !== 4) Qt.inputMethod.hide()
+
     onVisibleChanged: {
         if (!visible) {
             step = 0;
@@ -208,7 +213,7 @@ Item {
     // Sheet
     Rectangle {
         id: sheetRect
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: sheet.kbHeight }
         height: (sheet.step === 0 ? mainCol.height
                  : sheet.step === 1 ? reportCol.height
                  : sheet.step === 2 ? deleteCol.height

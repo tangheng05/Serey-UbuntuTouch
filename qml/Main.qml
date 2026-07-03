@@ -390,6 +390,9 @@ MainView {
     // --- Post actions (Report / Hide / Block) bottom sheet ----------------
     PostActionSheet { }
 
+    // --- Share (ContentHub peer picker) bottom sheet -----------------------
+    ShareSheet { }
+
     // --- Transient notifications (snackbar) overlay -----------------------
     Toaster { }
 }

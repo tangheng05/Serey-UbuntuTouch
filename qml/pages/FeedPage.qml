@@ -359,9 +359,9 @@ Page {
                             var p = feedModel.get(index)
                             if (!p) return
                             if (page.feedIndex === 1)
-                                Qt.openUrlExternally("https://serey.io/video-component/watch?author=" + p.author + "&permalink=" + p.permlink)
+                                Share.open("https://serey.io/video-component/watch?author=" + p.author + "&permalink=" + p.permlink)
                             else
-                                Qt.openUrlExternally("https://serey.io/authors/" + p.author + "/" + p.permlink)
+                                Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink)
                         }
                     }
                 ]

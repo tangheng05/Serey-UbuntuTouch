@@ -213,7 +213,7 @@ Page {
                         text: Lang.tr("Share")
                         onTriggered: {
                             var p = feedModel.get(index)
-                            if (p) Qt.openUrlExternally("https://serey.io/authors/" + p.author + "/" + p.permlink)
+                            if (p) Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink)
                         }
                     }
                 ]

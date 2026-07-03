@@ -193,7 +193,7 @@ Page {
                         text: Lang.tr("Share")
                         onTriggered: {
                             var vm = galleryModel.get(index);
-                            if (vm) Qt.openUrlExternally("https://serey.io/authors/" + vm.author + "/" + vm.permlink);
+                            if (vm) Share.open("https://serey.io/authors/" + vm.author + "/" + vm.permlink);
                         }
                     }
                 ]

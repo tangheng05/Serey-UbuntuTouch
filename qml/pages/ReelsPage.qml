@@ -490,7 +490,7 @@ Page {
                     // Share
                     AbstractButton {
                         width: units.gu(7); height: units.gu(7)
-                        onClicked: Qt.openUrlExternally(
+                        onClicked: Share.open(
                             "https://serey.io/video-component/watch?author=" + (modelData.author || "") + "&permalink=" + (modelData.permlink || ""))
                         Icon {
                             anchors.centerIn: parent

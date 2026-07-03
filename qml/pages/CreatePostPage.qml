@@ -400,8 +400,8 @@ Page {
                         Label {
                             width: parent.width
                             text: page.postToBlockchain
-                                ? Lang.tr("Broadcast on-chain — can earn votes and rewards.")
-                                : Lang.tr("Saved to Serey only — no on-chain record, no voting or rewards.")
+                                ? Lang.tr("Can earn votes and rewards.")
+                                : Lang.tr("Serey only, no votes or rewards.")
                             font.pixelSize: Style.fontXSmall
                             font.family: Style.fontFor(text)
                             color: Style.textSecondary

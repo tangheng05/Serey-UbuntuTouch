@@ -134,7 +134,17 @@ Page {
         }
     }
 
+    // Where the next picked image goes: the cover slot, or inline into the
+    // article body at the cursor (toolbar image button). One shared
+    // picker/uploader serves both.
+    property string imageTarget: "cover"
+
     function pickCoverImage() {
+        page.imageTarget = "cover";
+        Popups.PopupUtils.open(pickerComp);
+    }
+    function pickBodyImage() {
+        page.imageTarget = "body";
         Popups.PopupUtils.open(pickerComp);
     }
 
@@ -151,8 +161,17 @@ Page {
         id: imgUploader
         onUploadingChanged: page.uploading = uploading
         onUploaded: {
-            page.coverImageUrl = url;
-            Toast.success(Lang.tr("Cover image uploaded"));
+            if (page.imageTarget === "body") {
+                var snippet = '<img src="' + url + '" style="max-width:100%;height:auto;" />';
+                var pos = bodyArea.cursorPosition;
+                var txt = bodyArea.text;
+                bodyArea.text = txt.substring(0, pos) + snippet + txt.substring(pos);
+                bodyArea.cursorPosition = pos + snippet.length;
+                Toast.success(Lang.tr("Image added"));
+            } else {
+                page.coverImageUrl = url;
+                Toast.success(Lang.tr("Cover image uploaded"));
+            }
         }
         onFailed: Toast.error(message)
     }
@@ -581,7 +600,7 @@ Page {
 
             AbstractButton {
                 width: units.gu(5); height: units.gu(4.5)
-                onClicked: page.pickCoverImage()
+                onClicked: page.pickBodyImage()
                 Rectangle {
                     anchors.fill: parent; anchors.margins: units.dp(4)
                     radius: Style.cardRadius; color: "transparent"

@@ -19,6 +19,11 @@ Page {
     readonly property int titleMaxLength: 250
     property string coverImageUrl: ""
     property bool uploading: false
+    // Inline article images. The plain-text editor would show raw <img> HTML,
+    // so the editor holds readable "[image N]" placeholders instead; this array
+    // maps N (1-based) to the uploaded URL, and publish() swaps the tokens back
+    // into real <img> tags. Deleting a token in the editor drops that image.
+    property var bodyImages: []
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the
     // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
     property bool postToBlockchain: true
@@ -58,7 +63,16 @@ Page {
             titleField.text = page.editPost.title || "";
             // Strip the leading cover <img> we prepend on publish so it isn't
             // duplicated; the cover is restored from the post's thumbnail.
-            bodyArea.text = (page.editPost.body || "").replace(/^\s*<img[^>]*>\s*/i, "");
+            var b = (page.editPost.body || "").replace(/^\s*<img[^>]*>\s*/i, "");
+            // Turn remaining inline images into "[image N]" placeholders so the
+            // editor shows readable text, not raw HTML; publish() restores them.
+            var imgs = [];
+            b = b.replace(/<img[^>]*src=["']([^"']*)["'][^>]*\/?>/gi, function (m, src) {
+                imgs.push(src);
+                return "[image " + imgs.length + "]";
+            });
+            page.bodyImages = imgs;
+            bodyArea.text = b;
             page.coverImageUrl = page.editPost.thumbnail || "";
             // primaryCategory is a scalar (the categories array is wrapped by the
             // feed ListModel and loses [] indexing).
@@ -162,7 +176,8 @@ Page {
         onUploadingChanged: page.uploading = uploading
         onUploaded: {
             if (page.imageTarget === "body") {
-                var snippet = '<img src="' + url + '" style="max-width:100%;height:auto;" />';
+                page.bodyImages = page.bodyImages.concat([url]);
+                var snippet = "[image " + page.bodyImages.length + "]";
                 var pos = bodyArea.cursorPosition;
                 var txt = bodyArea.text;
                 bodyArea.text = txt.substring(0, pos) + snippet + txt.substring(pos);
@@ -181,8 +196,15 @@ Page {
             Toast.error(Lang.tr("Please log in first."));
             return;
         }
-        // Prepend cover image to body if one was uploaded
         var body = bodyArea.text.trim();
+        // Swap "[image N]" placeholders back into real <img> tags (see
+        // bodyImages). Unknown numbers are left as typed.
+        var imgs = page.bodyImages || [];
+        body = body.replace(/\[image (\d+)\]/gi, function (m, n) {
+            var u = imgs[parseInt(n, 10) - 1];
+            return u ? '<img src="' + u + '" style="max-width:100%;height:auto;" />' : m;
+        });
+        // Prepend cover image to body if one was uploaded
         if (page.coverImageUrl.length > 0) {
             body = '<img src="' + page.coverImageUrl + '" style="max-width:100%;height:auto;" />\n' + body;
         }

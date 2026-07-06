@@ -372,10 +372,12 @@ Page {
                 }
             }
 
-            // Category selector
+            // Category selector — hidden for communities that haven't defined any
+            // categories yet (publish() already falls back to "general" for them).
             AbstractButton {
                 width: parent.width
                 height: units.gu(6)
+                visible: page.categories.length > 0
                 onClicked: page.catSheetOpen = true
 
                 Rectangle {
@@ -535,7 +537,7 @@ Page {
 
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: Lang.tr("Add cover image")
+                        text: Lang.tr("Add thumbnail")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }

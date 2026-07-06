@@ -158,7 +158,7 @@ Page {
     SectionTabs {
         id: tabs
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        model: [Lang.tr("Trending"), Lang.tr("New")]
+        model: [Lang.tr("Trending"), Lang.tr("Latest")]
         currentIndex: page.feedIndex
         onSelected: {
             page.feedIndex = index;

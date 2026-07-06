@@ -6,32 +6,53 @@ import "../Session"
 import "../components"
 
 /*
- * Saved articles: blog/news posts saved via the ★ button on PostDetailPage.
- * Reachable from Settings. Tapping a row opens PostDetailPage with the saved
- * view-model (preloadedPost), so it renders instantly and reads offline. Swipe
- * a row (or use the ••• action) to remove.
+ * Combined offline library: videos (Session.Downloads) and articles
+ * (Session.SavedPosts) under one "Downloaded Content" entry, switched by a
+ * Video/Articles tab strip. Replaces the separate DownloadsPage/SavedPostsPage
+ * Settings rows; those pages still exist (e.g. reachable from the Video tab
+ * header) and share the same stores.
  */
 Page {
     id: page
 
     header: Item { height: 0 }
 
-    property string _pendingRemove: ""
+    property int tabIndex: 0
+    property string _pendingRemoveVideo: ""
+    property string _pendingRemoveArticle: ""
 
     Component {
-        id: removeDialog
+        id: removeVideoDialog
         Dialog {
-            id: rdlg
+            id: rvdlg
+            title: Lang.tr("Remove download?")
+            text: Lang.tr("This video will no longer be available offline.")
+            Button {
+                text: Lang.tr("Remove")
+                color: Style.danger
+                onClicked: { PopupUtils.close(rvdlg); Downloads.remove(page._pendingRemoveVideo); }
+            }
+            Button {
+                text: Lang.tr("Cancel")
+                onClicked: PopupUtils.close(rvdlg)
+            }
+        }
+    }
+
+    Component {
+        id: removeArticleDialog
+        Dialog {
+            id: radlg
             title: Lang.tr("Remove saved article?")
             text: Lang.tr("It will no longer be available offline.")
             Button {
                 text: Lang.tr("Remove")
                 color: Style.danger
-                onClicked: { PopupUtils.close(rdlg); SavedPosts.remove(page._pendingRemove); }
+                onClicked: { PopupUtils.close(radlg); SavedPosts.remove(page._pendingRemoveArticle); }
             }
             Button {
                 text: Lang.tr("Cancel")
-                onClicked: PopupUtils.close(rdlg)
+                onClicked: PopupUtils.close(radlg)
             }
         }
     }
@@ -47,14 +68,16 @@ Page {
             anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             onClicked: page.pageStack.pop()
         }
+
         Label {
             anchors.centerIn: parent
-            text: Lang.tr("Saved articles")
+            text: Lang.tr("Downloaded Content")
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
             font.family: Style.fontFor(text)
             color: Style.textPrimary
         }
+
         Rectangle {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: units.dp(1)
@@ -62,23 +85,101 @@ Page {
         }
     }
 
-    function open(modelData) {
-        page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
-            { author: modelData.author, permlink: modelData.permlink,
-              title: modelData.title, preloadedPost: modelData });
+    SectionTabs {
+        id: tabs
+        anchors { top: topBar.bottom; left: parent.left; right: parent.right }
+        model: [Lang.tr("Video"), Lang.tr("Articles")]
+        currentIndex: page.tabIndex
+        onSelected: page.tabIndex = index
     }
 
     ListView {
-        id: list
-        anchors { top: topBar.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        id: videoList
+        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         clip: true
+        visible: page.tabIndex === 0
+        model: Downloads.items
+        cacheBuffer: units.gu(16)
+
+        delegate: ListItem {
+            width: videoList.width
+            height: videoCard.implicitHeight
+
+            leadingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: Share.open(
+                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Rectangle {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    color: Style.danger
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "white"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "delete"
+                        text: Lang.tr("Remove")
+                        onTriggered: Downloads.remove(modelData.permlink)
+                    }
+                ]
+            }
+
+            VideoCard {
+                id: videoCard
+                width: parent.width
+                video: modelData
+                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: modelData })
+                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                    { username: modelData.author })
+                onMoreClicked: { page._pendingRemoveVideo = modelData.permlink || ""; PopupUtils.open(removeVideoDialog); }
+            }
+        }
+    }
+
+    EmptyState {
+        anchors.fill: videoList
+        visible: page.tabIndex === 0 && Downloads.items.length === 0
+        iconName: "save"
+        message: Lang.tr("No downloaded videos yet")
+    }
+
+    ListView {
+        id: articleList
+        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        clip: true
+        visible: page.tabIndex === 1
         model: SavedPosts.items
         cacheBuffer: units.gu(20)
 
         delegate: ListItem {
-            width: list.width
-            height: row.height + Style.spacingM * 2
-            onClicked: page.open(modelData)
+            width: articleList.width
+            height: articleRow.height + Style.spacingM * 2
+            onClicked: page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
+                { author: modelData.author, permlink: modelData.permlink,
+                  title: modelData.title, preloadedPost: modelData })
 
             leadingActions: ListItemActions {
                 delegate: Item {
@@ -122,7 +223,7 @@ Page {
             }
 
             Row {
-                id: row
+                id: articleRow
                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
                           leftMargin: Style.spacingM; rightMargin: Style.spacingM }
                 spacing: Style.spacingM
@@ -176,8 +277,8 @@ Page {
     }
 
     EmptyState {
-        anchors.fill: list
-        visible: SavedPosts.items.length === 0
+        anchors.fill: articleList
+        visible: page.tabIndex === 1 && SavedPosts.items.length === 0
         iconName: "save"
         message: Lang.tr("No saved articles yet")
     }

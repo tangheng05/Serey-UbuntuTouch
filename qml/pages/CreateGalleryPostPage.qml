@@ -170,6 +170,8 @@ Page {
     Flickable {
         id: scroll
         anchors { top: hdr.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        // Shrink above the OSK so the form stays scrollable while typing.
+        anchors.bottomMargin: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
         contentHeight: col.height + Style.spacingL
         clip: true
         opacity: 0

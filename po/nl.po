@@ -415,8 +415,8 @@ msgstr "Uitloggen?"
 msgid "Lowercase"
 msgstr "Kleine letters"
 
-msgid "MP4, WEBM, MOV · up to 90 MB"
-msgstr "MP4, WEBM, MOV · tot 90 MB"
+msgid "MP4, WEBM, MOV · up to 2 GB"
+msgstr "MP4, WEBM, MOV · tot 2 GB"
 
 msgid "Male"
 msgstr "Man"

@@ -19,6 +19,11 @@ Page {
     readonly property int titleMaxLength: 250
     property string coverImageUrl: ""
     property bool uploading: false
+    // Inline article images. The plain-text editor would show raw <img> HTML,
+    // so the editor holds readable "[image N]" placeholders instead; this array
+    // maps N (1-based) to the uploaded URL, and publish() swaps the tokens back
+    // into real <img> tags. Deleting a token in the editor drops that image.
+    property var bodyImages: []
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the
     // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
     property bool postToBlockchain: true
@@ -39,7 +44,7 @@ Page {
         var epoch = ++page.catEpoch;
         var prev = page.selectedCategory;
         page.categoriesLoading = true;
-        CategoryService.listByCommunity(Config.baseUrl, Config.communityName, Session.token,
+        CategoryService.listByCommunity(Config.baseUrl, Config.currentCommunityName, Session.token,
             function (names) {
                 if (epoch !== page.catEpoch) return;   // stale community switch
                 page.categoriesLoading = false;
@@ -58,7 +63,16 @@ Page {
             titleField.text = page.editPost.title || "";
             // Strip the leading cover <img> we prepend on publish so it isn't
             // duplicated; the cover is restored from the post's thumbnail.
-            bodyArea.text = (page.editPost.body || "").replace(/^\s*<img[^>]*>\s*/i, "");
+            var b = (page.editPost.body || "").replace(/^\s*<img[^>]*>\s*/i, "");
+            // Turn remaining inline images into "[image N]" placeholders so the
+            // editor shows readable text, not raw HTML; publish() restores them.
+            var imgs = [];
+            b = b.replace(/<img[^>]*src=["']([^"']*)["'][^>]*\/?>/gi, function (m, src) {
+                imgs.push(src);
+                return "[image " + imgs.length + "]";
+            });
+            page.bodyImages = imgs;
+            bodyArea.text = b;
             page.coverImageUrl = page.editPost.thumbnail || "";
             // primaryCategory is a scalar (the categories array is wrapped by the
             // feed ListModel and loses [] indexing).
@@ -134,7 +148,17 @@ Page {
         }
     }
 
+    // Where the next picked image goes: the cover slot, or inline into the
+    // article body at the cursor (toolbar image button). One shared
+    // picker/uploader serves both.
+    property string imageTarget: "cover"
+
     function pickCoverImage() {
+        page.imageTarget = "cover";
+        Popups.PopupUtils.open(pickerComp);
+    }
+    function pickBodyImage() {
+        page.imageTarget = "body";
         Popups.PopupUtils.open(pickerComp);
     }
 
@@ -151,8 +175,18 @@ Page {
         id: imgUploader
         onUploadingChanged: page.uploading = uploading
         onUploaded: {
-            page.coverImageUrl = url;
-            Toast.success(Lang.tr("Cover image uploaded"));
+            if (page.imageTarget === "body") {
+                page.bodyImages = page.bodyImages.concat([url]);
+                var snippet = "[image " + page.bodyImages.length + "]";
+                var pos = bodyArea.cursorPosition;
+                var txt = bodyArea.text;
+                bodyArea.text = txt.substring(0, pos) + snippet + txt.substring(pos);
+                bodyArea.cursorPosition = pos + snippet.length;
+                Toast.success(Lang.tr("Image added"));
+            } else {
+                page.coverImageUrl = url;
+                Toast.success(Lang.tr("Cover image uploaded"));
+            }
         }
         onFailed: Toast.error(message)
     }
@@ -162,8 +196,15 @@ Page {
             Toast.error(Lang.tr("Please log in first."));
             return;
         }
-        // Prepend cover image to body if one was uploaded
         var body = bodyArea.text.trim();
+        // Swap "[image N]" placeholders back into real <img> tags (see
+        // bodyImages). Unknown numbers are left as typed.
+        var imgs = page.bodyImages || [];
+        body = body.replace(/\[image (\d+)\]/gi, function (m, n) {
+            var u = imgs[parseInt(n, 10) - 1];
+            return u ? '<img src="' + u + '" style="max-width:100%;height:auto;" />' : m;
+        });
+        // Prepend cover image to body if one was uploaded
         if (page.coverImageUrl.length > 0) {
             body = '<img src="' + page.coverImageUrl + '" style="max-width:100%;height:auto;" />\n' + body;
         }
@@ -331,10 +372,12 @@ Page {
                 }
             }
 
-            // Category selector
+            // Category selector — hidden for communities that haven't defined any
+            // categories yet (publish() already falls back to "general" for them).
             AbstractButton {
                 width: parent.width
                 height: units.gu(6)
+                visible: page.categories.length > 0
                 onClicked: page.catSheetOpen = true
 
                 Rectangle {
@@ -400,8 +443,8 @@ Page {
                         Label {
                             width: parent.width
                             text: page.postToBlockchain
-                                ? Lang.tr("Broadcast on-chain — can earn votes and rewards.")
-                                : Lang.tr("Saved to Serey only — no on-chain record, no voting or rewards.")
+                                ? Lang.tr("Can earn votes and rewards.")
+                                : Lang.tr("Serey only, no votes or rewards.")
                             font.pixelSize: Style.fontXSmall
                             font.family: Style.fontFor(text)
                             color: Style.textSecondary
@@ -494,7 +537,7 @@ Page {
 
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: Lang.tr("Add cover image")
+                        text: Lang.tr("Add thumbnail")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
@@ -581,7 +624,7 @@ Page {
 
             AbstractButton {
                 width: units.gu(5); height: units.gu(4.5)
-                onClicked: page.pickCoverImage()
+                onClicked: page.pickBodyImage()
                 Rectangle {
                     anchors.fill: parent; anchors.margins: units.dp(4)
                     radius: Style.cardRadius; color: "transparent"

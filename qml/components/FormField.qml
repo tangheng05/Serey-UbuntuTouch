@@ -16,6 +16,9 @@ Rectangle {
     property string placeholder: ""
     property int echoMode: TextInput.Normal
     property int inputMethodHints: Qt.ImhNone
+    // Password fields get a show/hide eye toggle; revealed flips the live echoMode.
+    readonly property bool isPasswordField: echoMode === TextInput.Password
+    property bool revealed: false
 
     signal accepted()
 
@@ -31,7 +34,7 @@ Rectangle {
         id: input
         anchors.fill: parent
         anchors.leftMargin: Style.spacingM
-        anchors.rightMargin: Style.spacingM
+        anchors.rightMargin: root.isPasswordField ? units.gu(5) : Style.spacingM
         verticalAlignment: TextInput.AlignVCenter
         clip: true
         font.pixelSize: Style.fontRegular
@@ -40,7 +43,7 @@ Rectangle {
         selectionColor: Style.brand
         selectedTextColor: Style.textOnBrand
         selectByMouse: true
-        echoMode: root.echoMode
+        echoMode: root.isPasswordField && root.revealed ? TextInput.Normal : root.echoMode
         inputMethodHints: root.inputMethodHints
         onAccepted: root.accepted()
 
@@ -59,12 +62,26 @@ Rectangle {
         }
     }
 
+    AbstractButton {
+        visible: root.isPasswordField
+        anchors { right: parent.right; verticalCenter: parent.verticalCenter; rightMargin: Style.spacingS }
+        width: units.gu(4); height: units.gu(4)
+        onClicked: root.revealed = !root.revealed
+        Icon {
+            anchors.centerIn: parent
+            width: units.gu(2.2); height: width
+            name: root.revealed ? "view-off" : "view-on"
+            color: Style.textSecondary
+        }
+    }
+
     // A raw TextInput has no native long-press copy/paste popover on touch, so
     // we add it ourselves: tap focuses and positions the cursor; press-and-hold
     // pastes into an editable field (or copies a read-only one, e.g. the saved
     // private key) — this is what lets users paste a copied key to log in.
     MouseArea {
         anchors.fill: parent
+        anchors.rightMargin: root.isPasswordField ? units.gu(4) : 0
         onClicked: {
             input.forceActiveFocus();
             input.cursorPosition = input.positionAt(mouse.x - input.x, input.height / 2);

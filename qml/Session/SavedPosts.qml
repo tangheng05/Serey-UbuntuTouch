@@ -33,12 +33,19 @@ QtObject {
         return _dbHandle;
     }
 
+    // Scoped to the signed-in account so switching accounts shows a fresh list;
+    // logged-out saves (owner "") are their own bucket.
+    function _owner() {
+        return Session.isLoggedIn ? Session.username : "";
+    }
+
     function _load() {
         var out = [];
         try {
             _db().transaction(function (tx) {
-                tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT PRIMARY KEY, author TEXT, saved_at INTEGER, data TEXT)");
-                var rs = tx.executeSql("SELECT permlink, data FROM saved_posts ORDER BY saved_at DESC");
+                tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT, author TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
+                try { tx.executeSql("ALTER TABLE saved_posts ADD COLUMN owner TEXT DEFAULT ''"); } catch (e2) { }
+                var rs = tx.executeSql("SELECT permlink, data FROM saved_posts WHERE owner = ? ORDER BY saved_at DESC", [store._owner()]);
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);
                     var vm = {};
@@ -69,9 +76,9 @@ QtObject {
     function _persist(post) {
         try {
             _db().transaction(function (tx) {
-                tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT PRIMARY KEY, author TEXT, saved_at INTEGER, data TEXT)");
-                tx.executeSql("INSERT OR REPLACE INTO saved_posts(permlink, author, saved_at, data) VALUES(?, ?, ?, ?)",
-                    [post.permlink, post.author || "", Date.now(), JSON.stringify(post)]);
+                tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT, author TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
+                tx.executeSql("INSERT OR REPLACE INTO saved_posts(permlink, author, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
+                    [post.permlink, post.author || "", Date.now(), JSON.stringify(post), store._owner()]);
             });
         } catch (e) {
             console.log("SavedPosts persist error: " + e);
@@ -153,7 +160,7 @@ QtObject {
     function remove(permlink) {
         try {
             _db().transaction(function (tx) {
-                tx.executeSql("DELETE FROM saved_posts WHERE permlink = ?", [permlink]);
+                tx.executeSql("DELETE FROM saved_posts WHERE permlink = ? AND owner = ?", [permlink, store._owner()]);
             });
         } catch (e) {
             console.log("SavedPosts delete error: " + e);
@@ -163,4 +170,14 @@ QtObject {
     }
 
     Component.onCompleted: _load()
+
+    // Re-scope the list when the signed-in account changes (login/logout/switch).
+    // QtObject has no default property, so this must be assigned, not a child.
+    // Session.setAuth() sets username before token, so isLoggedIn is still stale
+    // when onUsernameChanged fires — must also react to onTokenChanged.
+    property Connections _sessionWatcher: Connections {
+        target: Session
+        onUsernameChanged: store._load()
+        onTokenChanged: store._load()
+    }
 }

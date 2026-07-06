@@ -9,7 +9,7 @@ import "../services/AccountService.js" as AccountService
 
 /*
  * Settings, in the iOS Serey app's grouped style: a welcome/identity header, then
- * sections (Account · Preferences · About) of rows, each with a circular icon
+ * sections (Account · Settings · About) of rows, each with a circular icon
  * badge, label, and a trailing control/value/chevron. Signed out shows Log in /
  * Sign up; signed in shows the profile identity + stats and a Log out row.
  */
@@ -110,6 +110,26 @@ Page {
                 width: units.gu(2.6); height: width
                 name: "find"
                 color: Style.textPrimary
+            }
+        }
+        AbstractButton {
+            id: notifButton
+            visible: !page.searchActive && Session.isLoggedIn
+            anchors { right: parent.right; rightMargin: Style.spacingM + units.gu(4); verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: width
+            onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
+            Icon {
+                anchors.centerIn: parent
+                width: units.gu(2.6); height: width
+                name: "notification"
+                color: Style.textPrimary
+            }
+            Rectangle {
+                visible: root && root.lastUnreadCount > 0
+                anchors { top: parent.top; right: parent.right; topMargin: units.gu(0.6); rightMargin: units.gu(0.6) }
+                width: units.gu(1.4); height: width
+                radius: width / 2
+                color: Style.danger
             }
         }
 
@@ -483,10 +503,10 @@ Page {
             }
 
             // ===== Language ===============================================
-            SettingsSectionHeader { text: Lang.tr("Language") }
             SettingsRow {
+                iconName: "language-chooser"
                 label: Lang.tr("Language")
-                valueText: Session.language === "nl" ? "Nederlands" : "English"
+                valueText: Session.language === "nl" ? "Dutch" : "English"
                 showChevron: true
                 onClicked: PopupUtils.open(langDialog)
             }
@@ -508,13 +528,13 @@ Page {
                         }
                     }
                     Button {
-                        text: "Nederlands"
+                        text: "Dutch"
                         color: Session.language === "nl" ? Style.brand : Style.iconBackground
                         onClicked: {
                             PopupUtils.close(langDlg)
                             if (Session.language !== "nl") {
                                 Session.setLanguage("nl")
-                                Toast.show(Lang.tr("Language") + ": Nederlands")
+                                Toast.show(Lang.tr("Language") + ": Dutch")
                             }
                         }
                     }
@@ -543,44 +563,18 @@ Page {
             }
             SettingsRow {
                 visible: Session.isLoggedIn
-                iconName: "notification"
-                label: Lang.tr("Notifications")
-                showChevron: true
-                unreadBadge: root ? root.lastUnreadCount : 0
-                onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
-            }
-            SettingsRow {
-                visible: Session.isLoggedIn
                 iconName: "system-shutdown"
                 label: Lang.tr("Blocked Users")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
             }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "system-log-out"
-                label: Lang.tr("Log out")
-                danger: true
-                onClicked: PopupUtils.open(logoutDialog)
-            }
-
-            // ===== Library ===============================================
-            SettingsSectionHeader { text: Lang.tr("Library") }
-
+            // Not gated on isLoggedIn: downloads/saved articles work signed out too.
             SettingsRow {
                 iconName: "save"
-                label: Lang.tr("Offline videos")
+                label: Lang.tr("Downloaded Content")
                 showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
+                onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadedContentPage.qml"))
             }
-
-            SettingsRow {
-                iconName: "save"
-                label: Lang.tr("Saved articles")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("SavedPostsPage.qml"))
-            }
-
             // ===== About ==================================================
             SettingsSectionHeader { text: Lang.tr("About") }
 
@@ -594,6 +588,15 @@ Page {
                 label: Lang.tr("Serey website")
                 showChevron: true
                 onClicked: Qt.openUrlExternally("https://serey.io")
+            }
+
+            // ===== Log out (bottom of the page) ============================
+            SettingsRow {
+                visible: Session.isLoggedIn
+                iconName: "system-log-out"
+                label: Lang.tr("Log out")
+                danger: true
+                onClicked: PopupUtils.open(logoutDialog)
             }
 
             Item { width: 1; height: Style.spacingL }

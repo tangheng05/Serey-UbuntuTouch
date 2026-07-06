@@ -18,8 +18,10 @@ function _list(baseUrl, path, params, token, onOk, onErr) {
     }, onErr);
 }
 
-function listFeedMixed(baseUrl, params, token, onOk, onErr) {
-    return _list(baseUrl, "/serey-web/list-by-feed-mixed", params, token, onOk, onErr);
+// Only posts from authors the user follows — excludes community-subscription
+// posts (unlike the old list-by-feed-mixed). Same params/response shape.
+function listFeedFollowing(baseUrl, params, token, onOk, onErr) {
+    return _list(baseUrl, "/serey-web/list-by-feed-following", params, token, onOk, onErr);
 }
 
 function listDrumFeed(baseUrl, params, token, onOk, onErr) {
@@ -182,6 +184,10 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
     };
     // "Post to blockchain" toggle (see createPost): explicit bool, false = DB-only.
     body.post_to_blockchain = (params.postToBlockchain !== false);
+    // Editing an existing video post: sending its permlink makes the backend
+    // update in place (same contract as createPost).
+    if (params.permlink)
+        body.permlink = params.permlink;
     if (params.communityId)
         body.community_id = Number(params.communityId);
     if (params.communityName)

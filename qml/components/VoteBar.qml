@@ -42,7 +42,7 @@ RowLayout {
 
     readonly property bool allowFlag: author !== Session.username
     readonly property string shareUrl: (author.length > 0 && permlink.length > 0)
-        ? ("https://serey.io/authors/@" + author + "/" + permlink) : ""
+        ? ("https://serey.io/authors/" + author + "/" + permlink) : ""
 
     signal requireLogin()
     signal commentRequested()
@@ -305,7 +305,7 @@ RowLayout {
         visible: bar.showShare && bar.shareUrl.length > 0
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: units.gu(3)
-        onClicked: Qt.openUrlExternally(bar.shareUrl)
+        onClicked: Share.open(bar.shareUrl)
         Icon {
             anchors.centerIn: parent
             width: units.gu(2.5); height: width

@@ -206,6 +206,7 @@ function toVideo(raw) {
         platform: raw.platform_type || "",
         dimensions: raw.dimensions || "16:9",
         community: raw.community_title || "",
+        communityId: toInt(raw.community_id),
         postToBlockchain: onChainFlag(raw)
     };
 }

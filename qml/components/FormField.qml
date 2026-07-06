@@ -62,12 +62,26 @@ Rectangle {
         }
     }
 
+    AbstractButton {
+        visible: root.isPasswordField
+        anchors { right: parent.right; verticalCenter: parent.verticalCenter; rightMargin: Style.spacingS }
+        width: units.gu(4); height: units.gu(4)
+        onClicked: root.revealed = !root.revealed
+        Icon {
+            anchors.centerIn: parent
+            width: units.gu(2.2); height: width
+            name: root.revealed ? "view-off" : "view-on"
+            color: Style.textSecondary
+        }
+    }
+
     // A raw TextInput has no native long-press copy/paste popover on touch, so
     // we add it ourselves: tap focuses and positions the cursor; press-and-hold
     // pastes into an editable field (or copies a read-only one, e.g. the saved
     // private key) — this is what lets users paste a copied key to log in.
     MouseArea {
         anchors.fill: parent
+        anchors.rightMargin: root.isPasswordField ? units.gu(4) : 0
         onClicked: {
             input.forceActiveFocus();
             input.cursorPosition = input.positionAt(mouse.x - input.x, input.height / 2);

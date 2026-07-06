@@ -1112,43 +1112,23 @@ Page {
                     x: Style.spacingM
                     spacing: Style.spacingS
 
-                    Rectangle {
+                    // Lomiri TextField (not a raw TextInput): only the styled
+                    // component wires up the native long-press selection +
+                    // Cut/Copy/Paste popover. StyleHints keep the gray-pill look.
+                    TextField {
+                        id: composer
                         width: parent.width - cmtSendBtn.width - Style.spacingS
                         height: units.gu(5)
-                        radius: Style.pillRadius
-                        color: Style.iconBackground
-
-                        Label {
-                            anchors {
-                                left: parent.left; right: parent.right
-                                verticalCenter: parent.verticalCenter
-                                leftMargin: Style.spacingM; rightMargin: Style.spacingM
-                            }
-                            visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
-                            text: Session.isLoggedIn ? Lang.tr("Post a comment…") : Lang.tr("Log in to comment…")
-                            font.family: Style.fontFor(text)
-                            color: Style.textSecondary
-                            elide: Text.ElideRight
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: { composer.forceActiveFocus(); Qt.inputMethod.show(); }
-                        }
-
-                        TextInput {
-                            id: composer
-                            anchors {
-                                left: parent.left; right: parent.right
-                                verticalCenter: parent.verticalCenter
-                                leftMargin: Style.spacingM; rightMargin: Style.spacingM
-                            }
-                            font.family: Style.fontFor(text)
-                            font.pixelSize: Style.fontRegular
+                        StyleHints {
+                            backgroundColor: Style.iconBackground
+                            borderColor: "transparent"
                             color: Style.textPrimary
-                            clip: true
-                            onAccepted: page.submitComment()
                         }
+                        hasClearButton: false
+                        placeholderText: Session.isLoggedIn ? Lang.tr("Post a comment…") : Lang.tr("Log in to comment…")
+                        font.family: Style.fontFor(text)
+                        font.pixelSize: Style.fontRegular
+                        onAccepted: page.submitComment()
                     }
 
                     AbstractButton {

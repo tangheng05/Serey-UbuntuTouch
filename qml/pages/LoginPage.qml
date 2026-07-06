@@ -33,6 +33,11 @@ Page {
         AccountService.login(Config.baseUrl, usernameField.text, passwordField.text,
             function (auth) {
                 busy = false;
+                // Account switch is always clear -> set, never an in-place
+                // overwrite: drop any previous session and its cached follow
+                // state so account B never inherits anything from account A.
+                Session.clear();
+                FollowStore.reset();
                 Session.setAuth(auth.token, usernameField.text);
                 AccountService.profile(Config.baseUrl, usernameField.text, auth.token,
                     function (user) { Session.avatarUrl = user.profileUrl; },

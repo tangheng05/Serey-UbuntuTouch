@@ -226,12 +226,23 @@ Page {
     }
 
     function refreshProfile() {
-        if (!Session.isLoggedIn) { profile = null; return; }
+        // Also reset `loading`: logging out mid-fetch would otherwise leave the
+        // earlier request's loading=true with profile nulled -> stuck spinner.
+        if (!Session.isLoggedIn) { profile = null; loading = false; return; }
         loading = true;
         errorMsg = "";
         AccountService.profile(Config.baseUrl, Session.username, Session.token,
-            function (user) { loading = false; page.profile = user; },
-            function (err) { loading = false; page.errorMsg = err.message; });
+            function (user) {
+                // A response landing after logout must not repaint the stale profile.
+                if (!Session.isLoggedIn) { loading = false; return; }
+                loading = false;
+                page.profile = user;
+            },
+            function (err) {
+                if (!Session.isLoggedIn) { loading = false; return; }
+                loading = false;
+                page.errorMsg = err.message;
+            });
     }
 
     function doLogout() {
@@ -606,7 +617,8 @@ Page {
 
     ActivityIndicator {
         anchors.centerIn: parent
-        running: page.loading && page.profile === null
+        // isLoggedIn guard: logout must never leave this spinning (see refreshProfile).
+        running: Session.isLoggedIn && page.loading && page.profile === null
         visible: running
     }
 

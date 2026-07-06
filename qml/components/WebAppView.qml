@@ -82,6 +82,9 @@ Item {
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
     signal getUserInfoRequested()
+    // NOTE: never wire this to Session.setAuth — the web side's identity comes
+    // from its own persistent cookies and can be stale (a previous account);
+    // letting it write the native session would silently switch accounts.
     signal authTokenReceived(string token, string username)
     signal openCommunityRequested(string communityId)
     signal openExternalBrowserRequested(string url)
@@ -183,6 +186,19 @@ Item {
     function reload() {
         webView.url = "";
         loadTimer.restart();
+    }
+
+    // Drop the web side's login. The profile is persistent (offTheRecord:false),
+    // so without this the site keeps the PREVIOUS account's cookie session across
+    // a native logout/switch and the Homepage shows the old account. Guarded:
+    // cookieStore may be missing on older QtWebEngine — the caller's reload()
+    // still refreshes the page either way.
+    function clearSession() {
+        try {
+            mobileProfile.cookieStore.deleteAllCookies();
+        } catch (e) {
+            console.warn("WebAppView: cookie clear unavailable: " + e);
+        }
     }
 
     function _injectBridge() {

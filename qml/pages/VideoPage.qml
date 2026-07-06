@@ -22,6 +22,10 @@ Page {
     // community can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
+    property var reelsInflight: null
+    property var reels: []
+    readonly property bool hasReels: reels && reels.length > 0
+    readonly property int reelsInsertIndex: feedModel.count > 1 ? 1 : 0
 
     // Zero-height header keeps the Page off Lomiri's deprecated Page.head path;
     // the global AppHeader is the real top bar.
@@ -72,11 +76,14 @@ Page {
     function reload() {
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
+        if (reelsInflight) { reelsInflight.abort(); reelsInflight = null; }
         offset = 0;
         endReached = false;
         loading = false;
         errorMsg = "";
+        reels = [];
         feedModel.clear();
+        loadReels();
         loadMore();
     }
 
@@ -88,6 +95,8 @@ Page {
         page.refreshing = true;
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
+        if (reelsInflight) { reelsInflight.abort(); reelsInflight = null; }
+        loadReels();
         var epoch = page.reqEpoch;
         var params = { limit: Config.pageSize, offset: 0 };
         if (Config.communityId > 0)
@@ -115,6 +124,38 @@ Page {
                 if (epoch !== page.reqEpoch) return;
                 inflight = null;
                 page.refreshing = false;
+            });
+    }
+
+    function loadReels() {
+        var epoch = page.reqEpoch;
+        var params = { limit: 30, offset: 0 };
+        if (Config.communityId > 0)
+            params.community_id = Config.communityId;
+        reelsInflight = VideoService.listVideos(Config.baseUrl, params, Session.token,
+            function (result) {
+                if (epoch !== page.reqEpoch) return;
+                reelsInflight = null;
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
+                var out = [];
+                var seen = {};
+                for (var i = 0; i < result.length; i++) {
+                    var v = result[i];
+                    if (v.platform !== "SEREY") continue;
+                    if (!(v.videoLink || "").length) continue;
+                    if (hidden[v.permlink || ""] || blocked[v.author || ""]) continue;
+                    if (seen[v.permlink || ""]) continue;
+                    seen[v.permlink || ""] = true;
+                    out.push(v);
+                    if (out.length >= 12) break;
+                }
+                page.reels = out;
+            },
+            function (err) {
+                if (epoch !== page.reqEpoch) return;
+                reelsInflight = null;
+                page.reels = [];
             });
     }
 
@@ -149,7 +190,10 @@ Page {
             });
     }
 
-    Component.onCompleted: loadMore()
+    Component.onCompleted: {
+        loadReels();
+        loadMore();
+    }
 
     ListView {
         id: list
@@ -184,73 +228,6 @@ Page {
                 color: Style.textPrimary
             }
 
-            // Offline library shortcut.
-            AbstractButton {
-                id: dlBtn
-                anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: headerLabel.verticalCenter }
-                width: dlShortcutRow.width + Style.spacingM * 2
-                height: units.gu(4)
-                onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
-                Rectangle {
-                    anchors.fill: parent
-                    radius: parent.height / 2
-                    color: "transparent"
-                    border.width: units.dp(1.5)
-                    border.color: Style.brand
-                }
-                Row {
-                    id: dlShortcutRow
-                    anchors.centerIn: parent
-                    spacing: Style.spacingXs
-                    Icon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: units.gu(2); height: width
-                        name: "save"
-                        color: Style.brand
-                    }
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Lang.tr("Downloaded")
-                        font.pixelSize: Style.fontSmall
-                        font.weight: Font.DemiBold
-                        color: Style.brand
-                    }
-                }
-            }
-
-            // Reels (short native videos) viewer.
-            AbstractButton {
-                id: reelsBtn
-                anchors { right: dlBtn.left; rightMargin: Style.spacingS; verticalCenter: headerLabel.verticalCenter }
-                width: reelsRow.width + Style.spacingM * 2
-                height: units.gu(4)
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ReelsPage.qml"))
-                Rectangle {
-                    anchors.fill: parent
-                    radius: parent.height / 2
-                    color: "transparent"
-                    border.width: units.dp(1.5)
-                    border.color: Style.brand
-                }
-                Row {
-                    id: reelsRow
-                    anchors.centerIn: parent
-                    spacing: Style.spacingXs
-                    Icon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: units.gu(2); height: width
-                        name: "media-playback-start"
-                        color: Style.brand
-                    }
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Lang.tr("Reels")
-                        font.pixelSize: Style.fontSmall
-                        font.weight: Font.DemiBold
-                        color: Style.brand
-                    }
-                }
-            }
         }
 
         // VideoCard wrapped in a Lomiri ListItem so the row gains native swipe
@@ -258,69 +235,188 @@ Page {
         // MENU — convergence). Leading = Share, trailing = Hide, matching the
         // blog/feed pages. Tap still opens the detail through VideoCard.onClicked,
         // so navigation is unchanged even if the swipe gesture is unavailable.
-        delegate: ListItem {
-            id: videoRow
+        delegate: Item {
+            id: rowWrap
             width: list.width
-            height: card.height
-            // VideoCard draws its own bottom divider — suppress ListItem's to
-            // avoid a double hairline.
-            divider.visible: false
+            readonly property bool showReelShelf: page.hasReels && index === page.reelsInsertIndex
+            height: (showReelShelf ? reelsShelf.implicitHeight : 0) + videoRow.height
 
-            leadingActions: ListItemActions {
-                delegate: Item {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "black"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: {
-                            var vm = feedModel.get(index);
-                            if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
-                        }
-                    }
-                ]
-            }
-            trailingActions: ListItemActions {
-                delegate: Rectangle {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    color: Style.danger
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "white"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "close"
-                        text: Lang.tr("Hide")
-                        onTriggered: {
-                            var vm = feedModel.get(index);
-                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
-                        }
-                    }
-                ]
-            }
-
-            VideoCard {
-                id: card
+            Item {
+                id: reelsShelf
+                visible: rowWrap.showReelShelf
                 width: parent.width
-                video: feedModel.get(index)
-                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
-                    { video: feedModel.get(index) })
-                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                    { username: feedModel.get(index).author })
-                onMoreClicked: PostActions.open(feedModel.get(index), "video")
+                readonly property int reelsCount: page.reels.length
+                readonly property int reelsColumns: reelsCount <= 1 ? 1 : 2
+                readonly property int reelsRows: reelsCount <= 2 ? 1 : 2
+                implicitHeight: reelsHeader.height + reelsGrid.height + Style.spacingS + Style.spacingM
+
+                Item {
+                    id: reelsHeader
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        top: parent.top
+                        topMargin: Style.spacingXs
+                        leftMargin: Style.spacingM
+                        rightMargin: Style.spacingM
+                    }
+                    height: units.gu(3.2)
+
+                    Row {
+                        anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                        spacing: Style.spacingS
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(2.2); height: width
+                            name: "media-playback-start"
+                            color: Style.brand
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Lang.tr("Reels")
+                            font.pixelSize: Style.fontRegular
+                            font.weight: Font.DemiBold
+                            color: Style.textPrimary
+                        }
+                    }
+
+                }
+
+                GridView {
+                    id: reelsGrid
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        top: reelsHeader.bottom
+                        topMargin: Style.spacingS
+                        leftMargin: Style.spacingM
+                        rightMargin: Style.spacingM
+                    }
+                    height: cellHeight * reelsShelf.reelsRows + (reelsShelf.reelsRows > 1 ? Style.spacingS : 0)
+                    clip: true
+                    model: page.reels
+                    cellWidth: reelsShelf.reelsColumns === 1 ? width : width / 2
+                    cellHeight: cellWidth * 1.45
+                    flow: GridView.TopToBottom
+                    flickableDirection: Flickable.HorizontalFlick
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    delegate: AbstractButton {
+                        width: reelsGrid.cellWidth
+                        height: reelsGrid.cellHeight
+                        onClicked: page.pageStack.push(Qt.resolvedUrl("ReelsPage.qml"), { startIndex: index })
+                        readonly property int rowIndex: index % reelsShelf.reelsRows
+                        readonly property int colIndex: Math.floor(index / reelsShelf.reelsRows)
+
+                        Rectangle {
+                            anchors {
+                                fill: parent
+                                leftMargin: reelsShelf.reelsColumns > 1 && colIndex > 0 ? Style.spacingS / 2 : 0
+                                rightMargin: reelsShelf.reelsColumns > 1 && colIndex < reelsShelf.reelsColumns - 1 ? Style.spacingS / 2 : 0
+                                bottomMargin: reelsShelf.reelsRows > 1 && rowIndex < reelsShelf.reelsRows - 1 ? Style.spacingS : 0
+                            }
+                            radius: Style.thumbRadius
+                            color: Style.iconBackground
+
+                            Image {
+                                anchors.fill: parent
+                                source: modelData.thumbnail || ""
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                sourceSize.width: units.gu(36)
+                            }
+
+                            Rectangle {
+                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                height: units.gu(7)
+                                color: "#99000000"
+                            }
+
+                            Label {
+                                anchors {
+                                    left: parent.left
+                                    right: parent.right
+                                    bottom: parent.bottom
+                                    margins: Style.spacingS
+                                }
+                                text: modelData.title || ""
+                                color: "white"
+                                font.pixelSize: Style.fontSmall
+                                font.weight: Font.DemiBold
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+            }
+
+            ListItem {
+                id: videoRow
+                y: rowWrap.showReelShelf ? reelsShelf.implicitHeight : 0
+                width: parent.width
+                height: card.height
+                // VideoCard draws its own bottom divider — suppress ListItem's to
+                // avoid a double hairline.
+                divider.visible: false
+
+                leadingActions: ListItemActions {
+                    delegate: Item {
+                        width: units.gu(7)
+                        height: parent ? parent.height : units.gu(6)
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.5); height: width
+                            name: action.iconName
+                            color: "black"
+                        }
+                    }
+                    actions: [
+                        Action {
+                            iconName: "share"
+                            text: Lang.tr("Share")
+                            onTriggered: {
+                                var vm = feedModel.get(index);
+                                if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
+                            }
+                        }
+                    ]
+                }
+                trailingActions: ListItemActions {
+                    delegate: Rectangle {
+                        width: units.gu(7)
+                        height: parent ? parent.height : units.gu(6)
+                        color: Style.danger
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.5); height: width
+                            name: action.iconName
+                            color: "white"
+                        }
+                    }
+                    actions: [
+                        Action {
+                            iconName: "close"
+                            text: Lang.tr("Hide")
+                            onTriggered: {
+                                var vm = feedModel.get(index);
+                                if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                            }
+                        }
+                    ]
+                }
+
+                VideoCard {
+                    id: card
+                    width: parent.width
+                    video: feedModel.get(index)
+                    onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
+                        { video: feedModel.get(index) })
+                    onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                        { username: feedModel.get(index).author })
+                    onMoreClicked: PostActions.open(feedModel.get(index), "video")
+                }
             }
         }
 

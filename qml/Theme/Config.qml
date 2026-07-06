@@ -15,11 +15,14 @@ QtObject {
 
     readonly property string prodBase: "https://global-api.serey.io/api/v2"
     readonly property string devBase: "http://localhost:5050/api/v2"
+    readonly property string prodBaseV1: "https://global-api.serey.io/api/v1"
+    readonly property string devBaseV1: "http://localhost:5050/api/v1"
 
     readonly property bool showDevOptions: false   // set true locally to expose dev tools
     property bool useLocalDev: false
 
     readonly property string baseUrl: useLocalDev ? devBase : prodBase
+    readonly property string baseUrlV1: useLocalDev ? devBaseV1 : prodBaseV1
 
     // Default page size for paginated lists.
     readonly property int pageSize: 10

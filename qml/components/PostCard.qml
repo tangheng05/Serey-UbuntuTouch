@@ -224,7 +224,9 @@ Item {
             }
         }
 
-        // Title
+        // Title. Text.Wrap (not WordWrap): Khmer has no spaces between words,
+        // so WordWrap finds no break point and a long title is cut off on one
+        // line — Wrap falls back to breaking mid-run when a "word" overflows.
         Label {
             visible: (p.title || "") !== ""
             width: parent.width - Style.spacingM * 2
@@ -233,7 +235,7 @@ Item {
             font.pixelSize: Style.fontMedium
             font.family: Style.fontFor(text)
             color: Style.textPrimary
-            wrapMode: Text.WordWrap
+            wrapMode: Text.Wrap
             maximumLineCount: 3
             elide: Text.ElideRight
             MouseArea { anchors.fill: parent; onClicked: root.clicked() }
@@ -311,7 +313,7 @@ Item {
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFor(text)
             color: Style.textSecondary
-            wrapMode: Text.WordWrap
+            wrapMode: Text.Wrap
             maximumLineCount: 2
             elide: Text.ElideRight
             MouseArea { anchors.fill: parent; onClicked: root.clicked() }

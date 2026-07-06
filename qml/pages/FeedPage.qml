@@ -9,9 +9,10 @@ import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
 
 /*
- * "My Feed" page: posts from followed users + trending, served by the
- * authenticated /list-by-feed-mixed endpoint. Requires login. Tabs switch
- * between Blog, Gallery and Drum feeds.
+ * "My Feed" page: posts from authors the user follows only (no
+ * community-subscription posts), served by the authenticated
+ * /list-by-feed-following endpoint. Requires login. Tabs switch
+ * between Blog and Video feeds.
  */
 Page {
     id: page
@@ -78,11 +79,11 @@ Page {
 
     function feedFn() {
         if (feedIndex === 1) return VideoService.listVideos;
-        return PostService.listFeedMixed;
+        return PostService.listFeedFollowing;
     }
 
-    // The Blog tab draws from list-by-feed-mixed (blog + gallery + video) but must
-    // exclude videos — the Video tab owns those. Mirrors the web's
+    // The Blog tab draws from list-by-feed-following (blog + gallery + video) but
+    // must exclude videos — the Video tab owns those. Mirrors the web's
     // categories.includes('video') classification.
     function _isVideo(p) {
         if (p.primaryCategory === "video") return true;

@@ -18,8 +18,10 @@ function _list(baseUrl, path, params, token, onOk, onErr) {
     }, onErr);
 }
 
-function listFeedMixed(baseUrl, params, token, onOk, onErr) {
-    return _list(baseUrl, "/serey-web/list-by-feed-mixed", params, token, onOk, onErr);
+// Only posts from authors the user follows — excludes community-subscription
+// posts (unlike the old list-by-feed-mixed). Same params/response shape.
+function listFeedFollowing(baseUrl, params, token, onOk, onErr) {
+    return _list(baseUrl, "/serey-web/list-by-feed-following", params, token, onOk, onErr);
 }
 
 function listDrumFeed(baseUrl, params, token, onOk, onErr) {

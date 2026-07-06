@@ -431,7 +431,7 @@ Page {
                 font.weight: Font.DemiBold
                 font.family: Style.fontFor(text)
                 color: Style.textPrimary
-                wrapMode: Text.WordWrap
+                wrapMode: Text.Wrap
             }
 
             OffChainBadge {

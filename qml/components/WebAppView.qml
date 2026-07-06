@@ -29,8 +29,8 @@ Item {
     property bool loading: true
     property string communityId: ""
     property string communityName: ""
-    property string apiBaseV1: "https://global-api.serey.io/api/v1"
-    property string apiBaseV2: "https://global-api.serey.io/api/v2"
+    property string apiBaseV1: Config.baseUrlV1
+    property string apiBaseV2: Config.baseUrl
     property string authToken: ""
     property string username: ""
 

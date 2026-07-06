@@ -3,20 +3,22 @@ import Lomiri.Components 1.3
 import "../Theme"
 
 /*
- * Global top bar, Lomiri-style: a flat surface with a LEFT-ALIGNED title that
- * doubles as the community selector (icon + name + caret), an optional trailing
- * action slot on the right, and a bottom hairline. This replaces the previous
- * centered-logo + gray-pill (iOS-ish) header — Lomiri headers put the title on
- * the left and never center an app logo.
+ * Global top bar, Lomiri-style: a flat surface with a LEFT-ALIGNED button that
+ * doubles as the community selector (icon + caret only, no name), an optional
+ * trailing action slot on the right, and a bottom hairline. This replaces the
+ * previous centered-logo + gray-pill (iOS-ish) header — Lomiri headers put the
+ * title on the left and never center an app logo.
  *
- * Public API unchanged: `communityName`, the `trailing` default slot, and the
- * `communityButtonClicked()` signal, so Main.qml is unaffected.
+ * Public API: `communityName`, the `trailing` default slot (right side), the
+ * `center` slot (horizontally centered, e.g. the "My feed" shortcut), and the
+ * `communityButtonClicked()` signal.
  */
 Rectangle {
     id: appHeader
 
     property string communityName: Config.currentCommunityName
     default property alias trailing: trailingSlot.data
+    property alias center: centerSlot.data
 
     signal communityButtonClicked()
 
@@ -64,17 +66,6 @@ Rectangle {
 
             Label {
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, titleRow.width - units.gu(5))
-                text: appHeader.communityName
-                font.pixelSize: Style.fontTitle
-                font.weight: Font.Normal
-                font.family: Style.fontFor(text)
-                color: Style.textPrimary
-                elide: Text.ElideRight
-            }
-
-            Label {
-                anchors.verticalCenter: parent.verticalCenter
                 text: "▾"
                 font.pixelSize: Style.fontMedium
                 color: Style.textSecondary
@@ -82,7 +73,20 @@ Rectangle {
         }
     }
 
-    // Right: trailing action slot (e.g. the feed shortcut from Main.qml).
+    // Center: horizontally centered action slot (e.g. the "My feed" shortcut).
+    // Fixed width (not childrenRect-based) — a child anchored via centerIn to
+    // this Item would otherwise create a width binding loop.
+    Item {
+        id: centerSlot
+        anchors {
+            horizontalCenter: parent.horizontalCenter
+            verticalCenter: parent.verticalCenter
+        }
+        width: units.gu(4)
+        height: parent.height
+    }
+
+    // Right: trailing action slot (e.g. the compose/upload shortcut from Main.qml).
     Item {
         id: trailingSlot
         anchors {

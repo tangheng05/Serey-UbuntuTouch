@@ -623,7 +623,7 @@ Page {
                 font.weight: Font.DemiBold
                 font.family: Style.fontFor(text)
                 color: Style.textPrimary
-                wrapMode: Text.WordWrap
+                wrapMode: Text.Wrap
             }
 
             OffChainBadge {
@@ -1268,7 +1268,7 @@ Page {
                         font.weight: Font.DemiBold
                         font.family: Style.fontFor(text)
                         color: Style.textPrimary
-                        wrapMode: Text.WordWrap
+                        wrapMode: Text.Wrap
                     }
 
                     // Stats row: Likes | Comments | Date
@@ -1389,7 +1389,7 @@ Page {
                             font.pixelSize: Style.fontRegular
                             font.family: Style.fontFor(text)
                             color: Style.textPrimary
-                            wrapMode: Text.WordWrap
+                            wrapMode: Text.Wrap
                             textFormat: Text.StyledText
                             onLinkActivated: Qt.openUrlExternally(link)
                         }

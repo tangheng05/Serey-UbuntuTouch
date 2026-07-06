@@ -364,7 +364,7 @@ Page {
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFor(text)
                     color: Style.textSecondary
-                    wrapMode: Text.WordWrap
+                    wrapMode: Text.Wrap
                     onLinkActivated: Qt.openUrlExternally(link)
                 }
 

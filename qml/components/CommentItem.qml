@@ -229,7 +229,7 @@ Item {
                         text: Lang.tr("Delete this comment?")
                         font.pixelSize: Style.fontSmall
                         color: Style.textPrimary
-                        wrapMode: Text.WordWrap
+                        wrapMode: Text.Wrap
                     }
                     Item { width: 1; height: Style.spacingS }
                     Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
@@ -258,7 +258,7 @@ Item {
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFor(text)
             color: Style.textPrimary
-            wrapMode: Text.WordWrap
+            wrapMode: Text.Wrap
         }
 
         // Inline edit mode
@@ -273,7 +273,7 @@ Item {
                 width: parent.width
                 text: item.editText
                 font.pixelSize: Style.fontRegular
-                wrapMode: Text.WordWrap
+                wrapMode: Text.Wrap
                 onTextChanged: item.editText = text
             }
             Row {

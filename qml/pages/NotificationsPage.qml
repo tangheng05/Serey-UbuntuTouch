@@ -147,7 +147,7 @@ Page {
             function () {
                 page.markingAllRead = false
                 page.unreadCount = 0
-                if (root) root.lastUnreadCount = 0
+                NotificationState.unread = 0
                 for (var i = 0; i < notifModel.count; i++)
                     notifModel.setProperty(i, "isRead", true)
                 Toast.show(Lang.tr("All notifications marked as read"))
@@ -165,7 +165,7 @@ Page {
                 notifModel.setProperty(index, "isRead", true)
                 if (page.unreadCount > 0) {
                     page.unreadCount--
-                    if (root) root.lastUnreadCount = page.unreadCount
+                    NotificationState.unread = page.unreadCount
                 }
             },
             function (err) { /* silent */ })
@@ -314,7 +314,7 @@ Page {
                               ((model.message || "").replace(model.actorName + " ", "")) + "</span>"
                         font.pixelSize: Style.fontSmall
                         font.family: Style.fontFor(text)
-                        wrapMode: Text.WordWrap
+                        wrapMode: Text.Wrap
                         maximumLineCount: 2
                         elide: Text.ElideRight
                     }
@@ -374,7 +374,7 @@ Page {
                 font.pixelSize: Style.fontSmall
                 font.family: Style.fontFor(text)
                 color: Style.danger
-                wrapMode: Text.WordWrap
+                wrapMode: Text.Wrap
                 width: list.width - Style.spacingM * 2
                 horizontalAlignment: Text.AlignHCenter
             }

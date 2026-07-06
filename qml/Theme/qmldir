@@ -5,3 +5,4 @@ singleton Nav 1.0 Nav.qml
 singleton FollowStore 1.0 FollowStore.qml
 singleton PostActions 1.0 PostActions.qml
 singleton Share 1.0 Share.qml
+singleton NotificationState 1.0 NotificationState.qml

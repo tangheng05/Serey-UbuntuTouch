@@ -9,9 +9,10 @@ import "../services/AccountService.js" as AccountService
 
 /*
  * Settings, in the iOS Serey app's grouped style: a welcome/identity header, then
- * sections (Account · Settings · About) of rows, each with a circular icon
- * badge, label, and a trailing control/value/chevron. Signed out shows Log in /
- * Sign up; signed in shows the profile identity + stats and a Log out row.
+ * a standalone Language row, then sections (Account · About) of rows, each with
+ * a circular icon badge, label, and a trailing control/value/chevron, and a
+ * Log out row pinned to the bottom. Signed out shows Log in / Sign up; signed in
+ * shows the profile identity + stats.
  */
 Page {
     id: page
@@ -125,7 +126,7 @@ Page {
                 color: Style.textPrimary
             }
             Rectangle {
-                visible: root && root.lastUnreadCount > 0
+                visible: NotificationState.unread > 0
                 anchors { top: parent.top; right: parent.right; topMargin: units.gu(0.6); rightMargin: units.gu(0.6) }
                 width: units.gu(1.4); height: width
                 radius: width / 2

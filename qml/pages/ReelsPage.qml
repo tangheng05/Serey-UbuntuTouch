@@ -400,7 +400,7 @@ Page {
                         color: "white"
                         font.pixelSize: Style.fontSmall
                         font.family: Style.fontFor(text)
-                        wrapMode: Text.WordWrap
+                        wrapMode: Text.Wrap
                         maximumLineCount: 2
                         elide: Text.ElideRight
                     }

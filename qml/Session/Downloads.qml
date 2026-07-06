@@ -53,7 +53,6 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS downloads(permlink TEXT, local_path TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                try { tx.executeSql("ALTER TABLE downloads ADD COLUMN owner TEXT DEFAULT ''"); } catch (e2) { }
                 var rs = tx.executeSql("SELECT permlink, local_path, data FROM downloads WHERE owner = ? ORDER BY saved_at DESC", [store._owner()]);
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);
@@ -71,12 +70,16 @@ QtObject {
         store.rev++;
     }
 
-    function _persist(vm, localPath) {
+    // `owner` is passed explicitly for downloads that finish after an account
+    // switch (captured when the download started); it defaults to the current
+    // account for the synchronous save paths.
+    function _persist(vm, localPath, owner) {
+        var o = (owner === undefined) ? store._owner() : owner;
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS downloads(permlink TEXT, local_path TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
                 tx.executeSql("INSERT OR REPLACE INTO downloads(permlink, local_path, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
-                    [vm.permlink, localPath, Date.now(), JSON.stringify(vm), store._owner()]);
+                    [vm.permlink, localPath, Date.now(), JSON.stringify(vm), o]);
             });
         } catch (e) {
             console.log("Downloads persist error: " + e);
@@ -125,6 +128,9 @@ QtObject {
         if (!video || !url || url.length === 0) return;
         var permlink = video.permlink || "";
         if (permlink.length === 0 || isSaved(permlink) || _active[permlink]) return;
+        // Capture the account that started this download; if it finishes after an
+        // account switch, it's still filed under the account that requested it.
+        var startOwner = store._owner();
 
         var comp = _downloaderComponent();
         if (!comp || comp.status === Component.Error) {
@@ -149,7 +155,7 @@ QtObject {
             var vm = video;
             var t = store._pendingThumb[permlink];
             if (t) { vm = Object.assign({}, video, { localThumb: t }); delete store._pendingThumb[permlink]; }
-            store._persist(vm, path);
+            store._persist(vm, path, startOwner);
             delete _active[permlink];
             dl.destroy();
             store._load();

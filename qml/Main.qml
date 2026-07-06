@@ -91,8 +91,9 @@ MainView {
     property var  sysNotif:   null   // Lomiri.Notifications Notification
     property var  pushClient: null   // Ubuntu.PushNotifications PushClient
     property string pushToken: ""
-    property int  lastUnreadCount: -1
     property var  notifSound: null
+    // Unread count lives in the NotificationState singleton so pages pushed onto
+    // a PageStack (which can't resolve this shell's ids) can read it for a badge.
 
     function _showNotif(body) {
         // Play sound
@@ -150,7 +151,7 @@ MainView {
                         ? Lang.tr("You have 1 new notification")
                         : Lang.tr("You have %1 new notifications").arg(notifs.length)
                     root._showNotif(msg)
-                    root.lastUnreadCount = -1
+                    NotificationState.unread = -1
                     root.pushClient.clearAll()
                 }
             })
@@ -172,14 +173,14 @@ MainView {
                     for (var i = 0; i < items.length; i++) {
                         if (!items[i].is_read) count++
                     }
-                    if (root.lastUnreadCount < 0) { root.lastUnreadCount = count; return }
-                    if (count > root.lastUnreadCount) {
-                        var diff = count - root.lastUnreadCount
+                    if (NotificationState.unread < 0) { NotificationState.unread = count; return }
+                    if (count > NotificationState.unread) {
+                        var diff = count - NotificationState.unread
                         root._showNotif(diff === 1
                             ? Lang.tr("You have 1 new notification")
                             : Lang.tr("You have %1 new notifications").arg(diff))
                     }
-                    root.lastUnreadCount = count
+                    NotificationState.unread = count
                 },
                 function (err) { /* silent */ })
         }
@@ -196,7 +197,7 @@ MainView {
             // Blocked-set sync is handled by onTokenChanged (token always changes
             // on login/logout/switch), so it isn't repeated here.
             if (!Session.isLoggedIn) {
-                root.lastUnreadCount = -1
+                NotificationState.unread = -1
             } else if (root.pushToken !== "") {
                 root._registerPushToken(root.pushToken)
             }
@@ -223,6 +224,29 @@ MainView {
         visible: root.showHeader
         onCommunityButtonClicked: communityPicker.open()
 
+        // Center: "My feed" shortcut, now in the middle of the header.
+        center: AbstractButton {
+            id: feedBtn
+            visible: Session.isLoggedIn
+            anchors.centerIn: parent
+            width: units.gu(4); height: width
+            onClicked: {
+                var stack = root.currentTab === 0 ? homeStack
+                          : root.currentTab === 1 ? newsStack
+                          : root.currentTab === 2 ? videoStack
+                          : settingsStack;
+                stack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
+            }
+            Image {
+                anchors.centerIn: parent
+                width: units.gu(3.5); height: width
+                source: Qt.resolvedUrl("../assets/iconFeed.png")
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+            }
+        }
+
+        // Right: post actions, in the feed button's old trailing spot.
         Row {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.spacingS
@@ -280,27 +304,6 @@ MainView {
                     width: units.gu(2.2); height: width
                     name: "add"
                     color: Style.brand
-                }
-            }
-
-            AbstractButton {
-                id: feedBtn
-                visible: Session.isLoggedIn
-                anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(4); height: width
-                onClicked: {
-                    var stack = root.currentTab === 0 ? homeStack
-                              : root.currentTab === 1 ? newsStack
-                              : root.currentTab === 2 ? videoStack
-                              : settingsStack;
-                    stack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
-                }
-                Image {
-                    anchors.centerIn: parent
-                    width: units.gu(3.5); height: width
-                    source: Qt.resolvedUrl("../assets/iconFeed.png")
-                    fillMode: Image.PreserveAspectFit
-                    asynchronous: true
                 }
             }
         }

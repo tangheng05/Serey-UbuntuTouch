@@ -295,7 +295,7 @@ Page {
                 font.pixelSize: Style.fontRegular
                 font.family: Style.fontFor(text)
                 color: Style.textPrimary
-                wrapMode: Text.WordWrap
+                wrapMode: Text.Wrap
             }
 
             Item { width: 1; height: Style.spacingM }

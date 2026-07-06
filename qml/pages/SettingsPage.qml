@@ -533,7 +533,7 @@ Page {
             }
             SettingsRow {
                 iconName: "language-chooser"
-                label: Session.language === "nl" ? "Nederlands" : "English"
+                label: Session.language === "nl" ? "Dutch" : "English"
                 showChevron: true
                 onClicked: PopupUtils.open(langDialog)
             }
@@ -555,13 +555,13 @@ Page {
                         }
                     }
                     Button {
-                        text: "Nederlands"
+                        text: "Dutch"
                         color: Session.language === "nl" ? Style.brand : Style.iconBackground
                         onClicked: {
                             PopupUtils.close(langDlg)
                             if (Session.language !== "nl") {
                                 Session.setLanguage("nl")
-                                Toast.show(Lang.tr("Language") + ": Nederlands")
+                                Toast.show(Lang.tr("Language") + ": Dutch")
                             }
                         }
                     }

@@ -482,6 +482,49 @@ Page {
                 }
             }
 
+            // ===== Language ===============================================
+            SettingsRow {
+                iconName: "language-chooser"
+                label: Lang.tr("Language")
+                valueText: Session.language === "nl" ? "Dutch" : "English"
+                showChevron: true
+                onClicked: PopupUtils.open(langDialog)
+            }
+
+            Component {
+                id: langDialog
+                Dialog {
+                    id: langDlg
+                    title: Lang.tr("Language")
+                    Button {
+                        text: "English"
+                        color: Session.language === "en" ? Style.brand : Style.iconBackground
+                        onClicked: {
+                            PopupUtils.close(langDlg)
+                            if (Session.language !== "en") {
+                                Session.setLanguage("en")
+                                Toast.show(Lang.tr("Language") + ": English")
+                            }
+                        }
+                    }
+                    Button {
+                        text: "Dutch"
+                        color: Session.language === "nl" ? Style.brand : Style.iconBackground
+                        onClicked: {
+                            PopupUtils.close(langDlg)
+                            if (Session.language !== "nl") {
+                                Session.setLanguage("nl")
+                                Toast.show(Lang.tr("Language") + ": Dutch")
+                            }
+                        }
+                    }
+                    Button {
+                        text: Lang.tr("Cancel")
+                        onClicked: PopupUtils.close(langDlg)
+                    }
+                }
+            }
+
             // ===== Account ================================================
             SettingsSectionHeader { text: Lang.tr("Account"); visible: Session.isLoggedIn }
             SettingsRow {
@@ -522,54 +565,13 @@ Page {
             }
 
             // ===== Settings ===============================================
-            // Not gated on isLoggedIn: Language works signed out too.
-            SettingsSectionHeader { text: Lang.tr("Settings") }
+            SettingsSectionHeader { text: Lang.tr("Settings"); visible: Session.isLoggedIn }
             SettingsRow {
                 visible: Session.isLoggedIn
                 iconName: "system-lock-screen"
                 label: Lang.tr("Password & Security")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
-            }
-            SettingsRow {
-                iconName: "language-chooser"
-                label: Session.language === "nl" ? "Dutch" : "English"
-                showChevron: true
-                onClicked: PopupUtils.open(langDialog)
-            }
-
-            Component {
-                id: langDialog
-                Dialog {
-                    id: langDlg
-                    title: Lang.tr("Language")
-                    Button {
-                        text: "English"
-                        color: Session.language === "en" ? Style.brand : Style.iconBackground
-                        onClicked: {
-                            PopupUtils.close(langDlg)
-                            if (Session.language !== "en") {
-                                Session.setLanguage("en")
-                                Toast.show(Lang.tr("Language") + ": English")
-                            }
-                        }
-                    }
-                    Button {
-                        text: "Dutch"
-                        color: Session.language === "nl" ? Style.brand : Style.iconBackground
-                        onClicked: {
-                            PopupUtils.close(langDlg)
-                            if (Session.language !== "nl") {
-                                Session.setLanguage("nl")
-                                Toast.show(Lang.tr("Language") + ": Dutch")
-                            }
-                        }
-                    }
-                    Button {
-                        text: Lang.tr("Cancel")
-                        onClicked: PopupUtils.close(langDlg)
-                    }
-                }
             }
 
             // ===== About ==================================================

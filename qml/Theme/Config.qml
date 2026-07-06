@@ -63,7 +63,7 @@ QtObject {
     // player's WebView (two live Chromium views crashed the app — see device log).
     property int currentTab: 0
 
-    property int sourceIndex: 0
+    property int sourceIndex: 1  // default to Netherlands; Global is hidden from the picker
     // Set when user picks a sub-community from the picker; null = use top-level source.
     property var selectedSubCommunity: null
 

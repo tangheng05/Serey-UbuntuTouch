@@ -311,6 +311,9 @@ Item {
                     delegate: Column {
                         id: sourceCol
                         width: sheetContent.width
+                        // Global (index 0) applies no community filter and is hidden
+                        // from the picker; Netherlands is the default source instead.
+                        visible: index !== 0
                         property int srcIndex: index
                         property bool isExpanded: picker.expandedIndex === index
                         property var cats: picker.cache[index] || []

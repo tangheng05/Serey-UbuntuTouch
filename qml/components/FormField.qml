@@ -16,6 +16,9 @@ Rectangle {
     property string placeholder: ""
     property int echoMode: TextInput.Normal
     property int inputMethodHints: Qt.ImhNone
+    // Password fields get a show/hide eye toggle; revealed flips the live echoMode.
+    readonly property bool isPasswordField: echoMode === TextInput.Password
+    property bool revealed: false
 
     signal accepted()
 
@@ -31,7 +34,7 @@ Rectangle {
         id: input
         anchors.fill: parent
         anchors.leftMargin: Style.spacingM
-        anchors.rightMargin: Style.spacingM
+        anchors.rightMargin: root.isPasswordField ? units.gu(5) : Style.spacingM
         verticalAlignment: TextInput.AlignVCenter
         clip: true
         font.pixelSize: Style.fontRegular
@@ -40,7 +43,7 @@ Rectangle {
         selectionColor: Style.brand
         selectedTextColor: Style.textOnBrand
         selectByMouse: true
-        echoMode: root.echoMode
+        echoMode: root.isPasswordField && root.revealed ? TextInput.Normal : root.echoMode
         inputMethodHints: root.inputMethodHints
         onAccepted: root.accepted()
 

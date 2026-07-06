@@ -320,8 +320,8 @@ Item {
                             id: sourceRow
                             width: parent.width
                             height: units.gu(7)
-                            // Chevron touch target width — used to split the two hit areas
-                            readonly property int chevronW: sourceCol.srcIndex !== 0 ? units.gu(6) : 0
+                            // Chevron touch target width — used to split the two hit areas.
+                            readonly property int chevronW: sourceCol.srcIndex !== 0 ? units.gu(7) : 0
 
                             Rectangle {
                                 anchors.fill: parent
@@ -364,15 +364,19 @@ Item {
                                     color: sourceCol.isExpanded ? Style.brand : Style.textPrimary
                                     elide: Text.ElideRight
                                 }
+                            }
 
-                                // Chevron icon (NL/US only)
-                                Icon {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: units.gu(2.5); height: width
-                                    name: sourceCol.isExpanded ? "go-up" : "go-down"
-                                    color: sourceCol.isExpanded ? Style.brand : Style.textSecondary
-                                    visible: sourceCol.srcIndex !== 0
-                                }
+                            // Chevron icon (NL/US only) — anchored to the row's right
+                            // edge, inside the chevron tap zone (placing it in the Row
+                            // put it left of the zone, so arrow taps selected the source
+                            // and closed the sheet instead of expanding).
+                            Icon {
+                                anchors { right: parent.right; rightMargin: Style.spacingM
+                                          verticalCenter: parent.verticalCenter }
+                                width: units.gu(2.5); height: width
+                                name: sourceCol.isExpanded ? "go-up" : "go-down"
+                                color: sourceCol.isExpanded ? Style.brand : Style.textSecondary
+                                visible: sourceCol.srcIndex !== 0
                             }
 
                             // Left zone (flag + name) → select this source and close

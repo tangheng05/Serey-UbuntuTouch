@@ -44,6 +44,8 @@ Page {
     // Set while replying to a specific comment (rather than the post itself);
     // cleared after posting or via the composer's "Cancel" affordance.
     property var replyTarget: null
+    property bool bodySelectionMode: false
+    property int bodySelectionAnchor: -1
 
     // Minimal header: just a back button, no title text.
     header: Rectangle {
@@ -339,24 +341,6 @@ Page {
         }
     }
 
-    // Plain-text version of the loaded article (title + text blocks with the
-    // remaining <b>/<i>/<a> markup stripped) for the long-press copy gesture.
-    function plainArticleText() {
-        var parts = [];
-        if (page.post && page.post.title) parts.push(page.post.title);
-        for (var i = 0; i < bodyModel.count; i++) {
-            var it = bodyModel.get(i);
-            if (it.type !== "text") continue;
-            var t = it.content.replace(/<[^>]+>/g, "");
-            // _parseBody left &,<,> encoded so they aren't mistaken for markup;
-            // decode them now that no markup remains.
-            t = t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").trim();
-            if (t.length > 0) parts.push(t);
-        }
-        return parts.join("\n\n");
-    }
-
-
     Component.onCompleted: {
         // Render the saved copy immediately (instant + offline), then refresh.
         if (page.preloadedPost) {
@@ -365,6 +349,45 @@ Page {
             page._parseBody();
         }
         load();
+    }
+
+    function clearBodySelections() {
+        page.bodySelectionMode = false;
+        page.bodySelectionAnchor = -1;
+        if (!bodyRepeater) return;
+        for (var i = 0; i < bodyRepeater.count; i++) {
+            var loader = bodyRepeater.itemAt(i);
+            if (!loader || !loader.item || !loader.item.textEdit) continue;
+            loader.item.textEdit.deselect();
+            loader.item.textEdit.focus = false;
+        }
+    }
+
+    function selectedBodyText() {
+        if (!bodyRepeater) return "";
+        for (var i = 0; i < bodyRepeater.count; i++) {
+            var loader = bodyRepeater.itemAt(i);
+            if (!loader || !loader.item || !loader.item.textEdit) continue;
+            var s = loader.item.textEdit.selectedText || "";
+            if (s.length > 0) return s;
+        }
+        return "";
+    }
+
+    // Expand selection to whole-word boundaries so drag-select doesn't cut words.
+    function snapWordBoundary(te, pos, anchor) {
+        var len = te.length || 0;
+        if (len <= 0) return pos;
+        var p = Math.max(0, Math.min(pos, len));
+        var a = Math.max(0, Math.min(anchor, len));
+        var txt = te.getText(0, len);
+        if (!txt || txt.length === 0) return p;
+        if (p >= a) {
+            while (p < txt.length && /\S/.test(txt.charAt(p))) p++;
+        } else {
+            while (p > 0 && /\S/.test(txt.charAt(p - 1))) p--;
+        }
+        return p;
     }
 
     // Open a creator's profile (post author or a comment author).
@@ -408,7 +431,10 @@ Page {
         // Dismiss the keyboard on scroll, but only when the docked composer is the
         // focused input — otherwise scrolling while editing a comment inline would
         // close its keyboard mid-edit.
-        onMovementStarted: if (composer.activeFocus) Qt.inputMethod.hide()
+        onMovementStarted: {
+            page.clearBodySelections();
+            if (composer.activeFocus) Qt.inputMethod.hide();
+        }
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
@@ -570,6 +596,7 @@ Page {
                 spacing: Style.spacingS
 
                 Repeater {
+                    id: bodyRepeater
                     model: bodyModel
 
                     delegate: Loader {
@@ -615,35 +642,148 @@ Page {
 
                         Component {
                             id: bodyTextComp
-                            Label {
-                                id: bodyLbl
+                            Item {
+                                property alias textEdit: bodyTxt
                                 width: parent.width - Style.wrapSafeMargin
-                                text: model.content
-                                font.pixelSize: Style.fontMedium
-                                font.family: Style.fontFor(text)
-                                color: Style.textPrimary
-                                // Text.Wrap, not WordWrap: Khmer/Thai have no spaces,
-                                // so WordWrap can't break the line and long paragraphs
-                                // run off the screen edge.
-                                wrapMode: Text.Wrap
-                                textFormat: Text.StyledText
-                                lineHeight: 1.4
+                                height: bodyTxt.height
 
-                                // QML Text offers no touch selection, so copying is a
-                                // press-and-hold on any paragraph: it copies the whole
-                                // article as plain text. The overlay would swallow link
-                                // taps, so taps are forwarded via linkAt().
+                                TextEdit {
+                                    id: bodyTxt
+                                    width: parent.width
+                                    height: contentHeight
+                                    text: model.content
+                                    font.pixelSize: Style.fontMedium
+                                    font.family: Style.fontFor(text)
+                                    color: Style.textPrimary
+                                    wrapMode: TextEdit.Wrap
+                                    textFormat: Text.RichText
+                                    readOnly: true
+                                    // Only allow drag-selection after an explicit
+                                    // long-press focus, so normal scrolling doesn't
+                                    // accidentally highlight text.
+                                    selectByMouse: false
+                                    activeFocusOnPress: false
+                                    persistentSelection: true
+                                    onLinkActivated: Qt.openUrlExternally(link)
+                                    onActiveFocusChanged: {
+                                        if (!activeFocus) {
+                                            deselect();
+                                            page.bodySelectionMode = false;
+                                        }
+                                    }
+                                }
+
+                                // Touch interaction layer:
+                                // - normal mode: tap links, scroll naturally
+                                // - selection mode: drag to extend selection in
+                                //   either direction (forward/backward)
                                 MouseArea {
-                                    anchors.fill: parent
+                                    id: bodyTouch
+                                    anchors.fill: bodyTxt
+                                    preventStealing: page.bodySelectionMode
+                                    property int dragAnchor: -1
+                                    property real touchXInScroll: 0
+                                    property real touchYInScroll: 0
+                                    onPressed: {
+                                        var sp = bodyTouch.mapToItem(scroll, mouse.x, mouse.y);
+                                        touchXInScroll = sp.x;
+                                        touchYInScroll = sp.y;
+                                        if (!page.bodySelectionMode) return;
+                                        var p = bodyTxt.positionAt(mouse.x, mouse.y);
+                                        var s = Math.min(bodyTxt.selectionStart, bodyTxt.selectionEnd);
+                                        var e = Math.max(bodyTxt.selectionStart, bodyTxt.selectionEnd);
+                                        if (s !== e) {
+                                            // Standard behavior: touching near one edge
+                                            // drags that edge, anchor stays on opposite edge.
+                                            dragAnchor = (Math.abs(p - s) <= Math.abs(p - e)) ? e : s;
+                                        } else {
+                                            dragAnchor = page.bodySelectionAnchor >= 0 ? page.bodySelectionAnchor : p;
+                                        }
+                                    }
                                     onClicked: {
-                                        var l = bodyLbl.linkAt(mouse.x, mouse.y);
+                                        if (page.bodySelectionMode) {
+                                            var p2 = bodyTxt.positionAt(mouse.x, mouse.y);
+                                            var s2 = Math.min(bodyTxt.selectionStart, bodyTxt.selectionEnd);
+                                            var e2 = Math.max(bodyTxt.selectionStart, bodyTxt.selectionEnd);
+                                            // Keep selection active when tapping inside
+                                            // the highlighted range. Tap outside to exit.
+                                            if (bodyTxt.selectedText.length > 0 && p2 >= s2 && p2 <= e2)
+                                                return;
+                                            page.clearBodySelections();
+                                            return;
+                                        }
+                                        var l = bodyTxt.linkAt(mouse.x, mouse.y);
                                         if (l) Qt.openUrlExternally(l);
                                     }
                                     onPressAndHold: {
-                                        Clipboard.push(page.plainArticleText());
-                                        Toast.success(Lang.tr("Article copied"));
+                                        if (page.bodySelectionMode) return;
+                                        page.bodySelectionMode = true;
+                                        bodyTxt.forceActiveFocus();
+                                        var p = bodyTxt.positionAt(mouse.x, mouse.y);
+                                        bodyTxt.cursorPosition = p;
+                                        bodyTxt.selectWord();
+                                        var ws = Math.min(bodyTxt.selectionStart, bodyTxt.selectionEnd);
+                                        // Keep anchor on a word boundary so expansion
+                                        // doesn't start from a mid-word index.
+                                        page.bodySelectionAnchor = ws;
+                                        dragAnchor = ws;
+                                    }
+                                    onPositionChanged: {
+                                        var sp = bodyTouch.mapToItem(scroll, mouse.x, mouse.y);
+                                        touchXInScroll = sp.x;
+                                        touchYInScroll = sp.y;
+                                        if (!pressed || !page.bodySelectionMode || dragAnchor < 0) return;
+                                        var pRaw = bodyTxt.positionAt(mouse.x, mouse.y);
+                                        var p = page.snapWordBoundary(bodyTxt, pRaw, dragAnchor);
+                                        bodyTxt.select(Math.min(dragAnchor, p), Math.max(dragAnchor, p));
+                                        var edge = units.gu(3);
+                                        if (touchYInScroll < edge || touchYInScroll > scroll.height - edge) {
+                                            if (!bodyAutoScrollTimer.running) bodyAutoScrollTimer.start();
+                                        } else if (bodyAutoScrollTimer.running) {
+                                            bodyAutoScrollTimer.stop();
+                                        }
+                                    }
+                                    onReleased: {
+                                        dragAnchor = -1;
+                                        if (bodyAutoScrollTimer.running) bodyAutoScrollTimer.stop();
+                                    }
+                                    onCanceled: {
+                                        dragAnchor = -1;
+                                        if (bodyAutoScrollTimer.running) bodyAutoScrollTimer.stop();
                                     }
                                 }
+
+                                Timer {
+                                    id: bodyAutoScrollTimer
+                                    interval: 16
+                                    repeat: true
+                                    onTriggered: {
+                                        if (!page.bodySelectionMode || !bodyTouch.pressed || bodyTouch.dragAnchor < 0) {
+                                            stop();
+                                            return;
+                                        }
+                                        var edge = units.gu(3);
+                                        var dir = 0;
+                                        if (bodyTouch.touchYInScroll < edge) dir = -1;
+                                        else if (bodyTouch.touchYInScroll > scroll.height - edge) dir = 1;
+                                        if (dir === 0) {
+                                            stop();
+                                            return;
+                                        }
+                                        var maxY = Math.max(0, scroll.contentHeight - scroll.height);
+                                        var nextY = Math.max(0, Math.min(scroll.contentY + dir * units.gu(0.45), maxY));
+                                        if (nextY === scroll.contentY) {
+                                            stop();
+                                            return;
+                                        }
+                                        scroll.contentY = nextY;
+                                        var lp = bodyTxt.mapFromItem(scroll, bodyTouch.touchXInScroll, bodyTouch.touchYInScroll);
+                                        var pRaw = bodyTxt.positionAt(lp.x, lp.y);
+                                        var p = page.snapWordBoundary(bodyTxt, pRaw, bodyTouch.dragAnchor);
+                                        bodyTxt.select(Math.min(bodyTouch.dragAnchor, p), Math.max(bodyTouch.dragAnchor, p));
+                                    }
+                                }
+
                             }
                         }
                     }
@@ -686,6 +826,7 @@ Page {
 
             Item { width: 1; height: Style.spacingM }
         }
+
     }
 
     LoadingState {
@@ -822,5 +963,39 @@ Page {
 
         Item { width: 1; height: Style.spacingS }
     }
+    }
+
+    // Global copy action for selected article text. Fixed near bottom-right so
+    // it remains reachable regardless of where selection started.
+    AbstractButton {
+        id: copySelectionBtn
+        z: 130
+        visible: page.bodySelectionMode && page.selectedBodyText().length > 0
+        anchors {
+            right: parent.right
+            rightMargin: Style.spacingM
+            bottom: footer.visible ? footer.top : parent.bottom
+            bottomMargin: Style.spacingS
+        }
+        height: units.gu(3.4)
+        width: copySelLbl.implicitWidth + Style.spacingM * 2
+        onClicked: {
+            Clipboard.push(page.selectedBodyText());
+            Toast.success(Lang.tr("Article copied"));
+            page.clearBodySelections();
+        }
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.height / 2
+            color: Style.brand
+        }
+        Label {
+            id: copySelLbl
+            anchors.centerIn: parent
+            text: Lang.tr("Copy")
+            font.pixelSize: Style.fontSmall
+            font.weight: Font.DemiBold
+            color: Style.textOnBrand
+        }
     }
 }

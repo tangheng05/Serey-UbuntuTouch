@@ -339,6 +339,23 @@ Page {
         }
     }
 
+    // Plain-text version of the loaded article (title + text blocks with the
+    // remaining <b>/<i>/<a> markup stripped) for the long-press copy gesture.
+    function plainArticleText() {
+        var parts = [];
+        if (page.post && page.post.title) parts.push(page.post.title);
+        for (var i = 0; i < bodyModel.count; i++) {
+            var it = bodyModel.get(i);
+            if (it.type !== "text") continue;
+            var t = it.content.replace(/<[^>]+>/g, "");
+            // _parseBody left &,<,> encoded so they aren't mistaken for markup;
+            // decode them now that no markup remains.
+            t = t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").trim();
+            if (t.length > 0) parts.push(t);
+        }
+        return parts.join("\n\n");
+    }
+
 
     Component.onCompleted: {
         // Render the saved copy immediately (instant + offline), then refresh.
@@ -599,6 +616,7 @@ Page {
                         Component {
                             id: bodyTextComp
                             Label {
+                                id: bodyLbl
                                 width: parent.width - Style.wrapSafeMargin
                                 text: model.content
                                 font.pixelSize: Style.fontMedium
@@ -607,7 +625,22 @@ Page {
                                 wrapMode: Text.WordWrap
                                 textFormat: Text.StyledText
                                 lineHeight: 1.4
-                                onLinkActivated: Qt.openUrlExternally(link)
+
+                                // QML Text offers no touch selection, so copying is a
+                                // press-and-hold on any paragraph: it copies the whole
+                                // article as plain text. The overlay would swallow link
+                                // taps, so taps are forwarded via linkAt().
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        var l = bodyLbl.linkAt(mouse.x, mouse.y);
+                                        if (l) Qt.openUrlExternally(l);
+                                    }
+                                    onPressAndHold: {
+                                        Clipboard.push(page.plainArticleText());
+                                        Toast.success(Lang.tr("Article copied"));
+                                    }
+                                }
                             }
                         }
                     }
@@ -743,49 +776,25 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.spacingS
 
-            Rectangle {
+            // Lomiri TextField (not a raw TextInput): only the styled component
+            // wires up the native long-press selection + Cut/Copy/Paste popover.
+            // StyleHints keep the existing gray-pill look.
+            TextField {
+                id: composer
                 width: parent.width - sendButton.width - Style.spacingS
                 height: units.gu(5)
-                radius: Style.cardRadius
-                color: Style.iconBackground
-
-                Label {
-                    anchors {
-                        left: parent.left
-                        right: parent.right
-                        verticalCenter: parent.verticalCenter
-                        leftMargin: Style.spacingM
-                        rightMargin: Style.spacingM
-                    }
-                    visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
-                    text: Session.isLoggedIn
-                        ? Lang.tr("Post a comment…")
-                        : Lang.tr("Log in to comment…")
-                    font.family: Style.fontFor(text)
-                    color: Style.textSecondary
-                    elide: Text.ElideRight
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: { composer.forceActiveFocus(); Qt.inputMethod.show(); }
-                }
-
-                TextInput {
-                    id: composer
-                    anchors {
-                        left: parent.left
-                        right: parent.right
-                        verticalCenter: parent.verticalCenter
-                        leftMargin: Style.spacingM
-                        rightMargin: Style.spacingM
-                    }
-                    font.family: Style.fontFor(text)
-                    font.pixelSize: Style.fontRegular
+                StyleHints {
+                    backgroundColor: Style.iconBackground
+                    borderColor: "transparent"
                     color: Style.textPrimary
-                    clip: true
-                    onAccepted: page.submitComment()
                 }
+                hasClearButton: false
+                placeholderText: Session.isLoggedIn
+                    ? Lang.tr("Post a comment…")
+                    : Lang.tr("Log in to comment…")
+                font.family: Style.fontFor(text)
+                font.pixelSize: Style.fontRegular
+                onAccepted: page.submitComment()
             }
 
             AbstractButton {

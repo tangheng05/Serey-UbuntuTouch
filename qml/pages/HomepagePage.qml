@@ -34,6 +34,7 @@ Page {
     }
 
     WebAppView {
+        id: webApp
         anchors.fill: parent
         // Freeze this Chromium renderer while another tab is showing so it doesn't
         // compete for GPU/shared memory with the video player's WebView.
@@ -45,5 +46,16 @@ Page {
         communityId: String(Config.communityId)
         communityName: Config.communityName
         onOpenCommunityRequested: page.applyCommunity(communityId)
+    }
+
+    // The web view's cookie session is persistent and otherwise survives a
+    // native logout/account switch — clear it and reload whenever the token
+    // changes so the site re-auths as the current user (or shows logged out).
+    Connections {
+        target: Session
+        function onTokenChanged() {
+            webApp.clearSession();
+            webApp.reload();
+        }
     }
 }

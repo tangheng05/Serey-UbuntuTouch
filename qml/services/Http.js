@@ -68,10 +68,13 @@ function send(method, url, token, bodyObj, onOk, onErr) {
         if (xhr.status >= 200 && xhr.status < 300 && !logicalFail) {
             onOk(data);
         } else {
-            // A 401 on a request we sent a token with means that token is no
-            // longer valid — hand off to the app's re-auth handler.
+            // A 401 on a request we sent a token with means THAT token is no
+            // longer valid — hand off to the app's re-auth handler, passing the
+            // token this request used so the handler can ignore stale 401s from
+            // a previous account's dying requests (they must not clear a newer
+            // session established in the meantime).
             if (xhr.status === 401 && token && _onUnauthorized)
-                _onUnauthorized();
+                _onUnauthorized(token);
             var msg = (data && data.message) ? data.message
                                              : ("Request failed (" + xhr.status + ").");
             onErr({ status: xhr.status, message: msg, data: data });

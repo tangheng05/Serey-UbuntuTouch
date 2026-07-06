@@ -33,6 +33,17 @@ QtObject {
         return _dbHandle;
     }
 
+    // The vote cache lives in its OWN database. It's unbounded and written on
+    // every vote; keeping it out of SereyAuth means nothing can interfere with
+    // the small, critical auth rows (a failed/blocked auth write is how an old
+    // account can silently resurrect on the next launch).
+    property var _votesDbHandle: null
+    function _votesDb() {
+        if (!_votesDbHandle)
+            _votesDbHandle = LocalStorage.openDatabaseSync("SereyVotes", "1.0", "Serey vote cache", 1000000);
+        return _votesDbHandle;
+    }
+
     function _load() {
         try {
             _db().transaction(function (tx) {
@@ -51,16 +62,50 @@ QtObject {
         }
     }
 
+    // Write token+username, then read them back and verify. A silently-failed
+    // write here is how an old account resurrects on the next launch (the user
+    // logs in as B, the write never lands, _load() restores A) — so failures are
+    // retried once and logged loudly enough to spot in `clickable logs`.
+    function _writeAuthOnce() {
+        _db().transaction(function (tx) {
+            tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
+            tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('token', ?)", [session.token]);
+            tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('username', ?)", [session.username]);
+        });
+    }
+
+    function _authWriteVerified() {
+        var ok = false;
+        _db().readTransaction(function (tx) {
+            var t = "", u = "";
+            var rs = tx.executeSql("SELECT k, v FROM auth WHERE k IN ('token','username')");
+            for (var i = 0; i < rs.rows.length; i++) {
+                var row = rs.rows.item(i);
+                if (row.k === "token") t = row.v;
+                else if (row.k === "username") u = row.v;
+            }
+            ok = (t === session.token && u === session.username);
+        });
+        return ok;
+    }
+
     function _save() {
-        try {
-            _db().transaction(function (tx) {
-                tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
-                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('token', ?)", [session.token]);
-                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('username', ?)", [session.username]);
-            });
-        } catch (e) {
-            console.warn("Session save error: " + e);
+        for (var attempt = 1; attempt <= 2; attempt++) {
+            try {
+                _writeAuthOnce();
+                if (_authWriteVerified()) {
+                    if (attempt > 1)
+                        console.warn("Session: auth write succeeded on retry " + attempt);
+                    return;
+                }
+                console.warn("Session: auth write VERIFY FAILED (attempt " + attempt
+                             + ") for user '" + session.username + "'");
+            } catch (e) {
+                console.warn("Session: auth write ERROR (attempt " + attempt + "): " + e);
+            }
         }
+        console.warn("Session: auth state NOT persisted — user '" + session.username
+                     + "' will not survive an app restart");
     }
 
     function setAuth(newToken, newUsername) {
@@ -95,7 +140,7 @@ QtObject {
     function saveVote(author, permlink, upvoted, flagged, votes) {
         if (!author || !permlink) return;
         try {
-            _db().transaction(function (tx) {
+            _votesDb().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS votes(k TEXT PRIMARY KEY, upvoted INTEGER, flagged INTEGER, votes INTEGER)");
                 tx.executeSql("INSERT OR REPLACE INTO votes(k, upvoted, flagged, votes) VALUES(?,?,?,?)",
                     [author + "/" + permlink, upvoted ? 1 : 0, flagged ? 1 : 0, votes]);
@@ -107,7 +152,7 @@ QtObject {
         if (!author || !permlink) return null;
         var result = null;
         try {
-            _db().transaction(function (tx) {
+            _votesDb().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS votes(k TEXT PRIMARY KEY, upvoted INTEGER, flagged INTEGER, votes INTEGER)");
                 var rs = tx.executeSql("SELECT upvoted, flagged, votes FROM votes WHERE k=?",
                                        [author + "/" + permlink]);

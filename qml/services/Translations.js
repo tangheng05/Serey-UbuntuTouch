@@ -23,6 +23,7 @@ var nl = {
     "Add your email":                                   "Voeg uw e-mail toe",
     "All":                                              "Alles",
     "All notifications marked as read":                 "Alle meldingen als gelezen gemarkeerd",
+    "Article copied":                                   "Artikel gekopieerd",
     "Articles":                                         "Artikelen",
     "Available offline":                                "Beschikbaar offline",
     "Back":                                             "Terug",

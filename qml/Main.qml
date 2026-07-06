@@ -45,8 +45,12 @@ MainView {
         // session and prompts re-login, instead of leaving the user "logged in"
         // with a dead token while publishing etc. silently fail. Guarded on
         // isLoggedIn so concurrent 401s only clear + toast once.
-        Http.setUnauthorizedHandler(function () {
+        Http.setUnauthorizedHandler(function (tokenUsed) {
             if (!Session.isLoggedIn) return;
+            // Only clear if the rejected token IS the current session's token.
+            // A late 401 from a previous account's in-flight request (its token
+            // was just invalidated by logout) must not wipe the fresh session.
+            if (tokenUsed !== Session.token) return;
             Session.clear();
             Toast.error(Lang.tr("Your session expired. Please log in again."));
         });

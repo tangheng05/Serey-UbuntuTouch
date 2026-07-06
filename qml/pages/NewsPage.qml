@@ -292,7 +292,7 @@ Page {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
         iconName: "stock_note"
-        message: Lang.tr("No posts in %1").arg(Config.communityName)
+        message: Lang.tr("No posts in %1").arg(Config.currentCommunityName)
     }
 
     // Compose lives in the global header action now (see Main.qml, gated on the

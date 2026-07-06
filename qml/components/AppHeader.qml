@@ -25,7 +25,9 @@ Rectangle {
     height: units.gu(6)
     color: Style.surface
 
-    // Left: title acts as the community selector (Lomiri "title with dropdown").
+    // Left: community selector — a flag chip with a caret (Lomiri "title with
+    // dropdown"). Flat by default; a soft pill only surfaces on press for touch
+    // feedback, so it reads as one control without permanent header chrome.
     AbstractButton {
         id: titleBtn
         anchors {
@@ -38,18 +40,33 @@ Rectangle {
         height: units.gu(5)
         onClicked: appHeader.communityButtonClicked()
 
+        // Press-state backdrop: appears only while held, hugging the flag + caret.
+        Rectangle {
+            anchors {
+                verticalCenter: parent.verticalCenter
+                left: titleRow.left
+                leftMargin: -Style.spacingS
+            }
+            width: titleRow.width + Style.spacingS * 2
+            height: units.gu(4)
+            radius: height / 2
+            color: Style.iconBackground
+            opacity: titleBtn.pressed ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
+        }
+
         Row {
             id: titleRow
             anchors {
                 left: parent.left
-                right: parent.right
                 verticalCenter: parent.verticalCenter
             }
             spacing: Style.spacingXs
 
             Item {
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(2.8); height: width
+                width: units.gu(3.5); height: width   // match the "My feed" logo size
+
                 CircleImage {
                     id: cIcon
                     anchors.fill: parent
@@ -57,17 +74,27 @@ Rectangle {
                 }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(2.4); height: width
+                    width: units.gu(3); height: width
                     name: "language-chooser"
                     color: Style.textSecondary
                     visible: !cIcon.loaded
                 }
+                // Hairline ring so a light-edged flag (e.g. the Dutch white
+                // stripe) stays crisp against the white header instead of bleeding.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    color: "transparent"
+                    border.width: units.dp(1)
+                    border.color: Style.divider
+                }
             }
 
-            Label {
+            // Real vector caret — the old "▾" glyph rendered chunky and off-baseline.
+            Icon {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "▾"
-                font.pixelSize: Style.fontMedium
+                width: units.gu(1.5); height: width
+                name: "down"
                 color: Style.textSecondary
             }
         }

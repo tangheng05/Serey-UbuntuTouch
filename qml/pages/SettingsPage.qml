@@ -9,7 +9,7 @@ import "../services/AccountService.js" as AccountService
 
 /*
  * Settings, in the iOS Serey app's grouped style: a welcome/identity header, then
- * sections (Account · Preferences · About) of rows, each with a circular icon
+ * sections (Account · Settings · About) of rows, each with a circular icon
  * badge, label, and a trailing control/value/chevron. Signed out shows Log in /
  * Sign up; signed in shows the profile identity + stats and a Log out row.
  */
@@ -482,11 +482,58 @@ Page {
                 }
             }
 
-            // ===== Language ===============================================
-            SettingsSectionHeader { text: Lang.tr("Language") }
+            // ===== Account ================================================
+            SettingsSectionHeader { text: Lang.tr("Account"); visible: Session.isLoggedIn }
             SettingsRow {
-                label: Lang.tr("Language")
-                valueText: Session.language === "nl" ? "Nederlands" : "English"
+                visible: Session.isLoggedIn
+                iconName: "edit"
+                label: Lang.tr("Edit profile")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("EditProfilePage.qml"), { initial: page.profile })
+            }
+            SettingsRow {
+                visible: Session.isLoggedIn
+                iconName: "notification"
+                label: Lang.tr("Notifications")
+                showChevron: true
+                unreadBadge: root ? root.lastUnreadCount : 0
+                onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
+            }
+            SettingsRow {
+                visible: Session.isLoggedIn
+                iconName: "system-shutdown"
+                label: Lang.tr("Blocked Users")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
+            }
+            // Not gated on isLoggedIn: downloads/saved articles work signed out too.
+            SettingsRow {
+                iconName: "save"
+                label: Lang.tr("Downloaded Content")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadedContentPage.qml"))
+            }
+            SettingsRow {
+                visible: Session.isLoggedIn
+                iconName: "system-log-out"
+                label: Lang.tr("Log out")
+                danger: true
+                onClicked: PopupUtils.open(logoutDialog)
+            }
+
+            // ===== Settings ===============================================
+            // Not gated on isLoggedIn: Language works signed out too.
+            SettingsSectionHeader { text: Lang.tr("Settings") }
+            SettingsRow {
+                visible: Session.isLoggedIn
+                iconName: "system-lock-screen"
+                label: Lang.tr("Password & Security")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
+            }
+            SettingsRow {
+                iconName: "language-chooser"
+                label: Session.language === "nl" ? "Nederlands" : "English"
                 showChevron: true
                 onClicked: PopupUtils.open(langDialog)
             }
@@ -523,62 +570,6 @@ Page {
                         onClicked: PopupUtils.close(langDlg)
                     }
                 }
-            }
-
-            // ===== Account ================================================
-            SettingsSectionHeader { text: Lang.tr("Account"); visible: Session.isLoggedIn }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "edit"
-                label: Lang.tr("Edit profile")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("EditProfilePage.qml"), { initial: page.profile })
-            }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "system-lock-screen"
-                label: Lang.tr("Password & Security")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
-            }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "notification"
-                label: Lang.tr("Notifications")
-                showChevron: true
-                unreadBadge: root ? root.lastUnreadCount : 0
-                onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
-            }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "system-shutdown"
-                label: Lang.tr("Blocked Users")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
-            }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "system-log-out"
-                label: Lang.tr("Log out")
-                danger: true
-                onClicked: PopupUtils.open(logoutDialog)
-            }
-
-            // ===== Library ===============================================
-            SettingsSectionHeader { text: Lang.tr("Library") }
-
-            SettingsRow {
-                iconName: "save"
-                label: Lang.tr("Offline videos")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadsPage.qml"))
-            }
-
-            SettingsRow {
-                iconName: "save"
-                label: Lang.tr("Saved articles")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("SavedPostsPage.qml"))
             }
 
             // ===== About ==================================================

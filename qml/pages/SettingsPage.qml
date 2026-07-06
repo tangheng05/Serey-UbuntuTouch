@@ -112,6 +112,26 @@ Page {
                 color: Style.textPrimary
             }
         }
+        AbstractButton {
+            id: notifButton
+            visible: !page.searchActive && Session.isLoggedIn
+            anchors { right: parent.right; rightMargin: Style.spacingM + units.gu(4); verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: width
+            onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
+            Icon {
+                anchors.centerIn: parent
+                width: units.gu(2.6); height: width
+                name: "notification"
+                color: Style.textPrimary
+            }
+            Rectangle {
+                visible: root && root.lastUnreadCount > 0
+                anchors { top: parent.top; right: parent.right; topMargin: units.gu(0.6); rightMargin: units.gu(0.6) }
+                width: units.gu(1.4); height: width
+                radius: width / 2
+                color: Style.danger
+            }
+        }
 
         // ----- Active state: back chevron + inline search field (Lomiri header
         // search — the field expands into the header, per the HIG reference). -----
@@ -536,11 +556,10 @@ Page {
             }
             SettingsRow {
                 visible: Session.isLoggedIn
-                iconName: "notification"
-                label: Lang.tr("Notifications")
+                iconName: "system-lock-screen"
+                label: Lang.tr("Password & Security")
                 showChevron: true
-                unreadBadge: root ? root.lastUnreadCount : 0
-                onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
             }
             SettingsRow {
                 visible: Session.isLoggedIn
@@ -556,24 +575,6 @@ Page {
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadedContentPage.qml"))
             }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "system-log-out"
-                label: Lang.tr("Log out")
-                danger: true
-                onClicked: PopupUtils.open(logoutDialog)
-            }
-
-            // ===== Settings ===============================================
-            SettingsSectionHeader { text: Lang.tr("Settings"); visible: Session.isLoggedIn }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "system-lock-screen"
-                label: Lang.tr("Password & Security")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
-            }
-
             // ===== About ==================================================
             SettingsSectionHeader { text: Lang.tr("About") }
 
@@ -587,6 +588,15 @@ Page {
                 label: Lang.tr("Serey website")
                 showChevron: true
                 onClicked: Qt.openUrlExternally("https://serey.io")
+            }
+
+            // ===== Log out (bottom of the page) ============================
+            SettingsRow {
+                visible: Session.isLoggedIn
+                iconName: "system-log-out"
+                label: Lang.tr("Log out")
+                danger: true
+                onClicked: PopupUtils.open(logoutDialog)
             }
 
             Item { width: 1; height: Style.spacingL }

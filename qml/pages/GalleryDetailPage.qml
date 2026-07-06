@@ -289,7 +289,7 @@ Page {
             // Caption
             Label {
                 visible: page.post && (page.post.caption || "") !== ""
-                width: parent.width - Style.spacingM * 2
+                width: parent.width - Style.spacingM * 2 - Style.wrapSafeMargin
                 x: Style.spacingM
                 text: page.post ? page.post.caption : ""
                 font.pixelSize: Style.fontRegular

@@ -53,6 +53,9 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS downloads(permlink TEXT, local_path TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
+                // Add `owner` to tables created before per-account scoping existed;
+                // harmlessly throws (and is caught) once the column is present.
+                try { tx.executeSql("ALTER TABLE downloads ADD COLUMN owner TEXT DEFAULT ''"); } catch (e2) { }
                 var rs = tx.executeSql("SELECT permlink, local_path, data FROM downloads WHERE owner = ? ORDER BY saved_at DESC", [store._owner()]);
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);

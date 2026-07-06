@@ -9,35 +9,51 @@ import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
 
 /*
- * "My Feed" page: posts from authors the user follows only (no
- * community-subscription posts), served by the authenticated
- * /list-by-feed-following endpoint. Requires login. Tabs switch
- * between Blog and Video feeds.
+ * "My Feed" page: content from authors the user follows. Shows a *mixed* feed
+ * (blog + video) by default, with a filter strip to narrow to All / Blog / Video.
+ * Requires login.
+ *
+ * Two sources feed the mixed view because they carry different data:
+ *   - Blog/gallery posts come from the authenticated /list-by-feed-following
+ *     endpoint (mapped as posts).
+ *   - Videos come from VideoService — the feed endpoint's video rows lack the
+ *     playable fields (videoLink/embedUrl/platform) VideoDetailPage needs, so we
+ *     always source videos from the video endpoint and exclude them from the blog
+ *     source to avoid duplicates.
+ * Each loaded batch is date-sorted and appended; every row is tagged `_kind`
+ * ("blog"|"video") so the delegate picks PostCard vs VideoCard.
  */
 Page {
     id: page
 
-    property int offset: 0
+    // 0 = All (mixed), 1 = Blog only, 2 = Video only.
+    property int filterMode: 0
+    property bool filterMenuOpen: false
+    readonly property var filterNames: [Lang.tr("All"), Lang.tr("Blog"), Lang.tr("Video")]
+
+    // Independent per-source pagination cursors.
+    property int  blogOffset: 0
+    property bool blogEnded: false
+    property int  vidOffset: 0
+    property bool vidEnded: false
+    property var  inflightBlog: null
+    property var  inflightVideo: null
+
     property bool loading: false
-    property bool endReached: false
     property string errorMsg: ""
-    property int feedIndex: 0
     property int reqEpoch: 0
-    property var inflight: null
-    // Bounds one "fill the screen" burst: how many sequential loadMore() calls the
-    // auto-continue may chain, so a video-heavy Blog feed can't spiral into many
-    // requests. Reset on every user-initiated load; the rest loads on scroll.
+    // Bounds one "fill the screen" burst so a heavily-filtered feed can't spiral
+    // into many sequential requests. Reset on every user-initiated load.
     property int autoFetches: 0
-    // Per-tab cache (0 = Blog, 1 = Video): switching tabs restores instantly
-    // instead of refetching. rows holds the plain mapped view-models (not the
-    // ListModel-wrapped copies), so re-appending them is clean.
-    property var tabCache: [
-        { rows: [], offset: 0, endReached: false, loaded: false, contentY: 0 },
-        { rows: [], offset: 0, endReached: false, loaded: false, contentY: 0 }
-    ]
-    property real pendingContentY: 0
+
+    property bool refreshing: false
+    // On refresh, keep the old rows on screen until the first new batch arrives
+    // (clear then), so there's no skeleton flash — just the pull spinner.
+    property bool _refreshClear: false
 
     header: Item { height: 0 }
+
+    ListModel { id: feedModel; dynamicRoles: true }
 
     Rectangle {
         id: topBar
@@ -51,12 +67,56 @@ Page {
             onClicked: page.pageStack.pop()
         }
 
-        Image {
+        Row {
             anchors.centerIn: parent
-            width: units.gu(3.5); height: width
-            source: Qt.resolvedUrl("../../assets/iconFeed.png")
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
+            spacing: Style.spacingS
+
+            Image {
+                anchors.verticalCenter: parent.verticalCenter
+                width: units.gu(3.5); height: width
+                source: Qt.resolvedUrl("../../assets/iconFeed.png")
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+            }
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                text: Lang.tr("My Feed")
+                font.pixelSize: Style.fontMedium
+                font.weight: Font.DemiBold
+                font.family: Style.fontFor(text)
+                color: Style.textPrimary
+            }
+        }
+
+        // Filter button: opens the All / Blog / Video menu. Shows the active
+        // filter's name (and tints) when narrowed to something other than All.
+        AbstractButton {
+            id: filterButton
+            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+            height: units.gu(4)
+            width: filterRow.width + Style.spacingS * 2
+            onClicked: page.filterMenuOpen = !page.filterMenuOpen
+
+            Row {
+                id: filterRow
+                anchors.centerIn: parent
+                spacing: Style.spacingXs
+
+                Label {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: page.filterMode !== 0
+                    text: page.filterNames[page.filterMode]
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.DemiBold
+                    color: Style.brand
+                }
+                Icon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: units.gu(2.4); height: width
+                    name: "filters"
+                    color: page.filterMode !== 0 ? Style.brand : Style.textPrimary
+                }
+            }
         }
 
         Rectangle {
@@ -66,198 +126,190 @@ Page {
         }
     }
 
-    ListModel { id: feedModel; dynamicRoles: true }
-
-    // Restore a cached tab's scroll position after its rows are re-appended (the
-    // ListView needs a frame to lay out before contentY will stick). Best-effort.
-    Timer {
-        id: restoreScrollTimer
-        interval: 16
-        repeat: false
-        onTriggered: list.contentY = page.pendingContentY
+    // --- Source helpers ------------------------------------------------------
+    function _wantBlog()  { return page.filterMode !== 2; }   // All or Blog
+    function _wantVideo() { return page.filterMode !== 1; }   // All or Video
+    function _allEnded() {
+        return (!_wantBlog()  || page.blogEnded)
+            && (!_wantVideo() || page.vidEnded);
     }
 
-    function feedFn() {
-        if (feedIndex === 1) return VideoService.listVideos;
-        return PostService.listFeedFollowing;
+    function _params(offset, limit) {
+        var p = { limit: limit, offset: offset };
+        if (Config.communityId > 0) p.community_id = Config.communityId;
+        return p;
     }
 
-    // The Blog tab draws from list-by-feed-following (blog + gallery + video) but
-    // must exclude videos — the Video tab owns those. Mirrors the web's
-    // categories.includes('video') classification.
+    // A post is a video if its (primary) category says so — used to drop videos
+    // from the blog source (they're sourced from the video endpoint instead).
     function _isVideo(p) {
         if (p.primaryCategory === "video") return true;
         var c = p.categories;
         return !!(c && c.indexOf && c.indexOf("video") >= 0);
     }
-    // Filtering videos out of the mixed feed can empty a page, so over-fetch the
-    // Blog tab: one larger round-trip fills the screen instead of several small
-    // sequential ones (the auto-continue loadMore below), which is the slow part.
-    function feedLimit() {
-        return page.feedIndex === 0 ? Config.pageSize * 2 : Config.pageSize;
+
+    // Parse a row's publish date to a sortable timestamp (0 if unparseable), so a
+    // mixed batch can be ordered newest-first before it's appended.
+    function _ts(row) {
+        var t = Date.parse(row.date || "");
+        return isNaN(t) ? 0 : t;
     }
-    // Append server rows minus hidden/blocked (and videos on the Blog tab), and
-    // mirror them into the active tab's cache. Loads the hidden/blocked sets once
-    // per page, not per row.
-    function _appendFiltered(result) {
-        var hidden = HiddenPosts.loadAll();
-        var blocked = BlockedUsers.loadAll();
-        var cacheRows = page.tabCache[page.feedIndex].rows;
-        for (var i = 0; i < result.length; i++) {
-            var p = result[i];
-            if (hidden[p.permlink || ""] || blocked[p.author || ""])
-                continue;
-            if (page.feedIndex === 0 && _isVideo(p))
-                continue;
-            feedModel.append(p);
-            cacheRows.push(p);
-        }
-    }
-    // After a successful load, mirror the live pagination state into the active
-    // tab's cache slot (rows are already appended in _appendFiltered).
-    function _syncSlot() {
-        var slot = page.tabCache[page.feedIndex];
-        slot.offset = page.offset;
-        slot.endReached = page.endReached;
-        slot.loaded = true;
-    }
+
     // Bounded auto-continue: keep paging to fill a screenful, but cap the chain so
-    // a heavily-filtered (video) feed can't fire many sequential requests.
+    // a heavily-filtered feed can't fire many sequential requests.
     function _maybeAutoContinue() {
-        if (!page.endReached && feedModel.count < Config.pageSize && page.autoFetches < 6) {
+        if (!page._allEnded() && feedModel.count < Config.pageSize && page.autoFetches < 6) {
             page.autoFetches++;
             page.loadMore();
         }
     }
-    // Drop rows matching pred from BOTH tab caches, so a blocked author / deleted
-    // post can't resurrect when the other tab is restored.
-    function _purgeCache(pred) {
-        for (var t = 0; t < page.tabCache.length; t++) {
-            var rows = page.tabCache[t].rows;
-            for (var i = rows.length - 1; i >= 0; i--)
-                if (pred(rows[i])) rows.splice(i, 1);
+
+    // --- Loading -------------------------------------------------------------
+    // Fetches the next page from every wanted, not-yet-ended source in parallel,
+    // then merges the combined batch (date-sorted, hidden/blocked removed) once
+    // all responses are in.
+    function loadMore() {
+        if (page.loading || page._allEnded()) return;
+        page.loading = true;
+        page.errorMsg = "";
+        var epoch = page.reqEpoch;
+        var blogRows = [];
+        var vidRows = [];
+        var pending = 0;
+        var lastErr = null;
+
+        function finish() {
+            if (epoch !== page.reqEpoch) return;
+            page.loading = false;
+            page.refreshing = false;
+            if (page._refreshClear) { feedModel.clear(); page._refreshClear = false; }
+            if (lastErr && feedModel.count === 0) {
+                page.errorMsg = lastErr.message || Lang.tr("Something went wrong");
+                return;
+            }
+            var hidden = HiddenPosts.loadAll();
+            var blocked = BlockedUsers.loadAll();
+            var batch = blogRows.concat(vidRows);
+            batch.sort(function (a, b) { return page._ts(b) - page._ts(a); });
+            for (var i = 0; i < batch.length; i++) {
+                var p = batch[i];
+                if (hidden[p.permlink || ""] || blocked[p.author || ""]) continue;
+                feedModel.append(p);
+            }
+            page._maybeAutoContinue();
         }
+
+        if (page._wantBlog() && !page.blogEnded) {
+            pending++;
+            // Over-fetch: videos are filtered out of this source, so a larger
+            // round-trip fills the screen instead of many small sequential ones.
+            var blogLimit = Config.pageSize * 2;
+            page.inflightBlog = PostService.listFeedFollowing(Config.baseUrl,
+                page._params(page.blogOffset, blogLimit), Session.token,
+                function (result, rawCount) {
+                    if (epoch !== page.reqEpoch) return;
+                    page.inflightBlog = null;
+                    for (var i = 0; i < result.length; i++) {
+                        var p = result[i];
+                        if (page._isVideo(p)) continue;
+                        p._kind = "blog";
+                        blogRows.push(p);
+                    }
+                    page.blogOffset += rawCount;
+                    if (rawCount < blogLimit) page.blogEnded = true;
+                    if (--pending === 0) finish();
+                },
+                function (err) {
+                    if (epoch !== page.reqEpoch) return;
+                    page.inflightBlog = null;
+                    lastErr = err;
+                    if (--pending === 0) finish();
+                });
+        }
+
+        if (page._wantVideo() && !page.vidEnded) {
+            pending++;
+            var vidLimit = Config.pageSize;
+            page.inflightVideo = VideoService.listVideos(Config.baseUrl,
+                page._params(page.vidOffset, vidLimit), Session.token,
+                function (result, rawCount) {
+                    if (epoch !== page.reqEpoch) return;
+                    page.inflightVideo = null;
+                    for (var i = 0; i < result.length; i++) {
+                        var v = result[i];
+                        v._kind = "video";
+                        vidRows.push(v);
+                    }
+                    page.vidOffset += rawCount;
+                    if (rawCount < vidLimit) page.vidEnded = true;
+                    if (--pending === 0) finish();
+                },
+                function (err) {
+                    if (epoch !== page.reqEpoch) return;
+                    page.inflightVideo = null;
+                    lastErr = err;
+                    if (--pending === 0) finish();
+                });
+        }
+
+        if (pending === 0) { page.loading = false; page.refreshing = false; }
+    }
+
+    function _abortInflight() {
+        if (page.inflightBlog)  { page.inflightBlog.abort();  page.inflightBlog = null; }
+        if (page.inflightVideo) { page.inflightVideo.abort(); page.inflightVideo = null; }
+    }
+
+    function _resetCursors() {
+        page.blogOffset = 0; page.blogEnded = false;
+        page.vidOffset = 0;  page.vidEnded = false;
+        page.autoFetches = 0;
+        page.loading = false;
+        page.errorMsg = "";
     }
 
     function reload() {
         page.reqEpoch++;
-        if (inflight) { inflight.abort(); inflight = null; }
-        offset = 0;
-        endReached = false;
-        loading = false;
-        errorMsg = "";
-        page.autoFetches = 0;
-        var slot = page.tabCache[page.feedIndex];
-        slot.rows = [];
-        slot.offset = 0;
-        slot.endReached = false;
-        slot.loaded = false;
-        slot.contentY = 0;
+        page._abortInflight();
+        page._resetCursors();
         feedModel.clear();
         loadMore();
     }
 
-    property bool refreshing: false
     function refresh() {
         if (page.refreshing) return;
         page.refreshing = true;
+        page._refreshClear = true;   // clear rows only once the new batch lands
         page.reqEpoch++;
-        if (inflight) { inflight.abort(); inflight = null; }
-        page.autoFetches = 0;
-        var epoch = page.reqEpoch;
-        var limit = page.feedLimit();
-        var params = { limit: limit, offset: 0 };
-        if (Config.communityId > 0)
-            params.community_id = Config.communityId;
-        inflight = feedFn()(Config.baseUrl, params, Session.token,
-            function (result, rawCount) {
-                if (epoch !== page.reqEpoch) return;
-                inflight = null;
-                page.refreshing = false;
-                page.loading = false;
-                feedModel.clear();
-                page.tabCache[page.feedIndex].rows = [];   // rebuild this tab's cache
-                page._appendFiltered(result);
-                page.offset = rawCount;
-                page.endReached = rawCount < limit;
-                page._syncSlot();
-                // A page can be mostly/entirely filtered out (hidden/blocked/video);
-                // keep paging (bounded) so the feed doesn't look empty despite more
-                // content on later pages.
-                page._maybeAutoContinue();
-            },
-            function (err) {
-                if (epoch !== page.reqEpoch) return;
-                inflight = null;
-                page.refreshing = false;
-            });
-    }
-
-    function loadMore() {
-        if (loading || endReached) return;
-        loading = true;
-        errorMsg = "";
-        var epoch = page.reqEpoch;
-        var limit = page.feedLimit();
-        var params = { limit: limit, offset: page.offset };
-        if (Config.communityId > 0)
-            params.community_id = Config.communityId;
-        inflight = feedFn()(Config.baseUrl, params, Session.token,
-            function (result, rawCount) {
-                if (epoch !== page.reqEpoch) return;
-                inflight = null;
-                loading = false;
-                page._appendFiltered(result);
-                page.offset += rawCount;
-                if (rawCount < limit) page.endReached = true;
-                page._syncSlot();
-                // Keep paging (bounded) if this page was filtered below a screenful.
-                page._maybeAutoContinue();
-            },
-            function (err) {
-                if (epoch !== page.reqEpoch) return;
-                inflight = null;
-                loading = false;
-                page.errorMsg = err.message;
-            });
+        page._abortInflight();
+        page._resetCursors();
+        loadMore();
     }
 
     Component.onCompleted: page.reload()
 
     Connections {
         target: PostActions
+        function _removeByPermlink(permlink) {
+            for (var i = feedModel.count - 1; i >= 0; i--)
+                if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
+        }
         function onHideRequested(author, permlink) {
             for (var i = 0; i < feedModel.count; i++) {
                 if (feedModel.get(i).permlink === permlink) {
                     feedModel.remove(i);
                     Toast.show(Lang.tr("Post hidden"));
-                    break;
+                    return;
                 }
             }
-            page._purgeCache(function (r) { return r.permlink === permlink; });
         }
-        function onPostDeleted(author, permlink) {
-            for (var i = feedModel.count - 1; i >= 0; i--) {
-                if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
-            }
-            page._purgeCache(function (r) { return r.permlink === permlink; });
-        }
+        function onPostDeleted(author, permlink) { _removeByPermlink(permlink); }
         function onPostUpdated(author, permlink, title, body) {
             for (var i = 0; i < feedModel.count; i++) {
                 if (feedModel.get(i).permlink === permlink) {
                     feedModel.setProperty(i, "title", title);
                     feedModel.setProperty(i, "body", body);
-                    break;
-                }
-            }
-            // Update both tab caches too, so restoring a tab shows the new caption.
-            for (var t = 0; t < page.tabCache.length; t++) {
-                var rows = page.tabCache[t].rows;
-                for (var j = 0; j < rows.length; j++) {
-                    if (rows[j].permlink === permlink) {
-                        rows[j].title = title;
-                        rows[j].body = body;
-                    }
+                    return;
                 }
             }
         }
@@ -265,15 +317,8 @@ Page {
             for (var i = feedModel.count - 1; i >= 0; i--) {
                 if (feedModel.get(i).author === username) feedModel.remove(i);
             }
-            page._purgeCache(function (r) { return r.author === username; });
         }
-        function onUserUnblocked(username) {
-            // Unblock brings a user's posts back — invalidate both tab caches so
-            // each refetches on its next visit.
-            page.tabCache[0].loaded = false; page.tabCache[0].rows = [];
-            page.tabCache[1].loaded = false; page.tabCache[1].rows = [];
-            page.reload();
-        }
+        function onUserUnblocked(username) { page.reload(); }
         function onEditRequested(post) {
             if (!page.visible) return;
             var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { editPost: post });
@@ -281,43 +326,9 @@ Page {
         }
     }
 
-    SectionTabs {
-        id: tabs
-        anchors { top: topBar.bottom; left: parent.left; right: parent.right }
-        model: [Lang.tr("Blog"), Lang.tr("Video")]
-        currentIndex: page.feedIndex
-        onSelected: {
-            if (index === page.feedIndex) return;
-            // Save the outgoing tab's scroll position (rows/pagination are kept in
-            // sync by each load), then invalidate its in-flight request.
-            page.tabCache[page.feedIndex].contentY = list.contentY;
-            page.reqEpoch++;
-            if (page.inflight) { page.inflight.abort(); page.inflight = null; }
-
-            page.feedIndex = index;
-            page.errorMsg = "";
-            page.autoFetches = 0;
-
-            var slot = page.tabCache[index];
-            if (slot.loaded) {
-                // Restore instantly — no network.
-                page.loading = false;
-                page.offset = slot.offset;
-                page.endReached = slot.endReached;
-                feedModel.clear();
-                for (var i = 0; i < slot.rows.length; i++)
-                    feedModel.append(slot.rows[i]);
-                page.pendingContentY = slot.contentY;
-                restoreScrollTimer.restart();
-            } else {
-                page.reload();
-            }
-        }
-    }
-
     ListView {
         id: list
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: topBar.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         clip: true
         model: feedModel
         cacheBuffer: units.gu(12)
@@ -340,6 +351,7 @@ Page {
             width: list.width
             height: contentLoader.height
             property var postData: feedModel.get(index)
+            readonly property bool isVideo: postData && postData._kind === "video"
 
             leadingActions: ListItemActions {
                 delegate: Item {
@@ -359,7 +371,7 @@ Page {
                         onTriggered: {
                             var p = feedModel.get(index)
                             if (!p) return
-                            if (page.feedIndex === 1)
+                            if (p._kind === "video")
                                 Share.open("https://serey.io/video-component/watch?author=" + p.author + "&permalink=" + p.permlink)
                             else
                                 Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink)
@@ -396,7 +408,7 @@ Page {
                 id: contentLoader
                 width: parent.width
                 height: item ? item.implicitHeight : 0
-                sourceComponent: page.feedIndex === 1 ? videoDelegate : blogDelegate
+                sourceComponent: feedItem.isVideo ? videoDelegate : blogDelegate
 
                 Component {
                     id: blogDelegate
@@ -438,7 +450,7 @@ Page {
         }
 
         onAtYEndChanged: {
-            if (atYEnd && !page.loading && !page.endReached) {
+            if (atYEnd && !page.loading && !page._allEnded()) {
                 page.autoFetches = 0;   // fresh burst budget per user scroll
                 page.loadMore();
             }
@@ -460,5 +472,76 @@ Page {
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
         iconName: "stock_note"
         message: Lang.tr("Follow people to see their posts here")
+    }
+
+    // --- Filter dropdown -----------------------------------------------------
+    // Only Blog / Video are offered (All is the default, so it needs no button);
+    // tapping the active filter again clears back to the mixed All feed.
+    Item {
+        anchors.fill: parent
+        visible: page.filterMenuOpen
+        z: 100
+
+        MouseArea { anchors.fill: parent; onClicked: page.filterMenuOpen = false }
+
+        Rectangle {
+            anchors { top: topBar.bottom; right: parent.right; topMargin: Style.spacingXs; rightMargin: Style.spacingM }
+            width: units.gu(20)
+            height: menuCol.height
+            radius: Style.cardRadius
+            color: Style.surface
+            border.width: units.dp(1)
+            border.color: Style.divider
+
+            Column {
+                id: menuCol
+                width: parent.width
+
+                Repeater {
+                    model: [ { label: Lang.tr("Blog"), mode: 1 }, { label: Lang.tr("Video"), mode: 2 } ]
+
+                    delegate: AbstractButton {
+                        width: menuCol.width
+                        height: units.gu(6)
+                        onClicked: {
+                            // Toggle: re-selecting the active filter returns to All.
+                            page.filterMode = (page.filterMode === modelData.mode) ? 0 : modelData.mode;
+                            page.filterMenuOpen = false;
+                            page.reload();
+                        }
+
+                        Row {
+                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - checkIcon.width - Style.spacingM
+                                text: modelData.label
+                                font.pixelSize: Style.fontRegular
+                                font.family: Style.fontFor(text)
+                                color: page.filterMode === modelData.mode ? Style.brand : Style.textPrimary
+                                font.weight: page.filterMode === modelData.mode ? Font.DemiBold : Font.Normal
+                            }
+                            Icon {
+                                id: checkIcon
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2.2); height: width
+                                name: "tick"
+                                color: Style.brand
+                                visible: page.filterMode === modelData.mode
+                            }
+                        }
+
+                        Rectangle {
+                            anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
+                            height: units.dp(1)
+                            color: Style.divider
+                            visible: index === 0
+                        }
+                    }
+                }
+            }
+        }
     }
 }

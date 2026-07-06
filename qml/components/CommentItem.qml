@@ -252,7 +252,7 @@ Item {
 
         Label {
             visible: !item.editing
-            width: parent.width
+            width: parent.width - x - Style.wrapSafeMargin
             x: units.gu(3.5) + Style.spacingS
             text: c.body || ""
             font.pixelSize: Style.fontRegular

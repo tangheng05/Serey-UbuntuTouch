@@ -424,7 +424,7 @@ Page {
             }
 
             Label {
-                width: parent.width - Style.spacingM * 2
+                width: parent.width - Style.spacingM * 2 - Style.wrapSafeMargin
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: page.post ? page.post.title : ""
                 textSize: Label.Large
@@ -599,7 +599,7 @@ Page {
                         Component {
                             id: bodyTextComp
                             Label {
-                                width: parent.width
+                                width: parent.width - Style.wrapSafeMargin
                                 text: model.content
                                 font.pixelSize: Style.fontMedium
                                 font.family: Style.fontFor(text)

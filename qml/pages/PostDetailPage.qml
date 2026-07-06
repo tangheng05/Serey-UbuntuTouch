@@ -604,7 +604,10 @@ Page {
                                 font.pixelSize: Style.fontMedium
                                 font.family: Style.fontFor(text)
                                 color: Style.textPrimary
-                                wrapMode: Text.WordWrap
+                                // Text.Wrap, not WordWrap: Khmer/Thai have no spaces,
+                                // so WordWrap can't break the line and long paragraphs
+                                // run off the screen edge.
+                                wrapMode: Text.Wrap
                                 textFormat: Text.StyledText
                                 lineHeight: 1.4
                                 onLinkActivated: Qt.openUrlExternally(link)

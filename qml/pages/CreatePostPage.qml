@@ -44,7 +44,7 @@ Page {
         var epoch = ++page.catEpoch;
         var prev = page.selectedCategory;
         page.categoriesLoading = true;
-        CategoryService.listByCommunity(Config.baseUrl, Config.communityName, Session.token,
+        CategoryService.listByCommunity(Config.baseUrl, Config.currentCommunityName, Session.token,
             function (names) {
                 if (epoch !== page.catEpoch) return;   // stale community switch
                 page.categoriesLoading = false;

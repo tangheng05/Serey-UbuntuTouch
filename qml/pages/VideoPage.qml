@@ -80,6 +80,9 @@ Page {
         offset = 0;
         endReached = false;
         loading = false;
+        // Also clear refreshing so a reload that interrupts an in-flight
+        // pull-to-refresh can't leave it stuck true (which disables refresh).
+        refreshing = false;
         errorMsg = "";
         reels = [];
         feedModel.clear();
@@ -124,6 +127,12 @@ Page {
                 if (epoch !== page.reqEpoch) return;
                 inflight = null;
                 page.refreshing = false;
+                // Also clear loading: if a loadMore was in flight when refresh
+                // started, refresh() aborted it and bumped reqEpoch, so its
+                // callback early-returns without resetting loading — otherwise a
+                // failed refresh (e.g. a 401 from a stale token) leaves the
+                // skeleton (loading && count === 0) stuck until the app restarts.
+                page.loading = false;
             });
     }
 

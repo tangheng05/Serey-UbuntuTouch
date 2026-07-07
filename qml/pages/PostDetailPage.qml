@@ -44,8 +44,6 @@ Page {
     // Set while replying to a specific comment (rather than the post itself);
     // cleared after posting or via the composer's "Cancel" affordance.
     property var replyTarget: null
-    property bool bodySelectionMode: false
-    property int bodySelectionAnchor: -1
 
     // Minimal header: just a back button, no title text.
     header: Rectangle {
@@ -351,47 +349,6 @@ Page {
         load();
     }
 
-    function clearBodySelections() {
-        console.log("[sel] clearBodySelections (was mode=" + page.bodySelectionMode
-            + " anchor=" + page.bodySelectionAnchor + ")");
-        page.bodySelectionMode = false;
-        page.bodySelectionAnchor = -1;
-        if (!bodyRepeater) return;
-        for (var i = 0; i < bodyRepeater.count; i++) {
-            var loader = bodyRepeater.itemAt(i);
-            if (!loader || !loader.item || !loader.item.textEdit) continue;
-            loader.item.textEdit.deselect();
-            loader.item.textEdit.focus = false;
-        }
-    }
-
-    function selectedBodyText() {
-        if (!bodyRepeater) return "";
-        for (var i = 0; i < bodyRepeater.count; i++) {
-            var loader = bodyRepeater.itemAt(i);
-            if (!loader || !loader.item || !loader.item.textEdit) continue;
-            var s = loader.item.textEdit.selectedText || "";
-            if (s.length > 0) return s;
-        }
-        return "";
-    }
-
-    // Expand selection to whole-word boundaries so drag-select doesn't cut words.
-    function snapWordBoundary(te, pos, anchor) {
-        var len = te.length || 0;
-        if (len <= 0) return pos;
-        var p = Math.max(0, Math.min(pos, len));
-        var a = Math.max(0, Math.min(anchor, len));
-        var txt = te.getText(0, len);
-        if (!txt || txt.length === 0) return p;
-        if (p >= a) {
-            while (p < txt.length && /\S/.test(txt.charAt(p))) p++;
-        } else {
-            while (p > 0 && /\S/.test(txt.charAt(p - 1))) p--;
-        }
-        return p;
-    }
-
     // Open a creator's profile (post author or a comment author).
     function openProfile(username) {
         if (username)
@@ -433,10 +390,7 @@ Page {
         // Dismiss the keyboard on scroll, but only when the docked composer is the
         // focused input — otherwise scrolling while editing a comment inline would
         // close its keyboard mid-edit.
-        onMovementStarted: {
-            page.clearBodySelections();
-            if (composer.activeFocus) Qt.inputMethod.hide();
-        }
+        onMovementStarted: if (composer.activeFocus) Qt.inputMethod.hide()
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
@@ -598,7 +552,6 @@ Page {
                 spacing: Style.spacingS
 
                 Repeater {
-                    id: bodyRepeater
                     model: bodyModel
 
                     delegate: Loader {
@@ -644,158 +597,84 @@ Page {
 
                         Component {
                             id: bodyTextComp
+                            // Wrap the TextArea in an Item sized to its full content
+                            // height (like the image block does). The TextArea's own
+                            // autoSize sets its height to the whole paragraph; without
+                            // this wrapper the surrounding Loader/Column only sees a
+                            // one-line implicit height and the internal Flickable clips
+                            // the rest (you'd have to drag-select to scroll it in).
                             Item {
-                                property alias textEdit: bodyTxt
                                 width: parent.width - Style.wrapSafeMargin
                                 height: bodyTxt.height
 
-                                TextEdit {
+                                // Read-only Lomiri TextArea: it wraps a TextEdit and
+                                // ships the native long-press selection UI (blue drag
+                                // handles + Copy/Select-All popover), just like the
+                                // comment field. RichText renders the parsed <b>/<i>/<a>
+                                // markup; native Copy puts plain text on the clipboard.
+                                TextArea {
                                     id: bodyTxt
                                     width: parent.width
-                                    height: contentHeight
                                     text: model.content
+                                    textFormat: TextEdit.RichText
+                                    readOnly: true
+                                    // autoSize + maximumLineCount<=0 is the intended
+                                    // config for a TextArea living inside an outer
+                                    // Flickable: it disables the internal scroll and
+                                    // routes the OUTER flickable's movement into the
+                                    // input handler's "scrolling" state, which cancels
+                                    // the long-press timer so a scroll drag never turns
+                                    // into a text selection. This is what makes scroll
+                                    // vs. select behave natively, with no custom hacks.
+                                    // (Lomiri InputHandler.qml: scrollingDisabled / scroller.)
+                                    autoSize: true
+                                    maximumLineCount: 0
+                                    // autoSize measures height as lineCount×lineHeight,
+                                    // which under-measures RichText (taller bold/heading
+                                    // lines); with the internal flick disabled that would
+                                    // clip the text. Grow to the true painted height.
+                                    onPaintedHeightChanged: Qt.callLater(_fitHeight)
+                                    onLineCountChanged: Qt.callLater(_fitHeight)
+                                    Component.onCompleted: Qt.callLater(_fitHeight)
+                                    function _fitHeight() { if (height < paintedHeight) height = paintedHeight; }
+                                    // Focus-on-press is required: Lomiri's long-press
+                                    // timer bails unless the field is already focused.
+                                    // readOnly keeps the on-screen keyboard suppressed.
+                                    activeFocusOnPress: true
                                     font.pixelSize: Style.fontMedium
                                     font.family: Style.fontFor(text)
                                     color: Style.textPrimary
-                                    wrapMode: TextEdit.Wrap
-                                    textFormat: Text.RichText
-                                    readOnly: true
-                                    // Only allow drag-selection after an explicit
-                                    // long-press focus, so normal scrolling doesn't
-                                    // accidentally highlight text.
-                                    selectByMouse: false
-                                    activeFocusOnPress: false
-                                    // Keep the highlight alive when focus moves to
-                                    // the floating Copy button (an AbstractButton
-                                    // steals active focus). Selection is torn down
-                                    // explicitly instead — on scroll, tap-outside,
-                                    // or after Copy — via clearBodySelections().
-                                    persistentSelection: true
+                                    // Flat: strip the input frame/background and padding
+                                    // so it reads as plain article body, not a text field.
+                                    StyleHints {
+                                        backgroundColor: "transparent"
+                                        frameSpacing: 0
+                                        overlaySpacing: 0
+                                    }
                                     onLinkActivated: Qt.openUrlExternally(link)
+                                    // Show the caret only while text is selected. The
+                                    // caret gates the native Copy popover (openPopover()
+                                    // bails if it's hidden), but keeping it always-on left
+                                    // an idle blue cursor when just reading. Long-press
+                                    // selects a word first, flipping this on in time for
+                                    // the popover; tapping away clears the selection and
+                                    // hides the caret again. The second handler re-asserts
+                                    // it against the read-only editor's reset, but only
+                                    // while a selection exists (so idle stays caret-free).
+                                    onSelectedTextChanged: cursorVisible = (selectedText.length > 0)
+                                    onCursorVisibleChanged: if (!cursorVisible && selectedText.length > 0) cursorVisible = true
                                 }
 
-                                // Touch interaction layer:
-                                // - normal mode: tap links, scroll naturally
-                                // - selection mode: drag to extend selection in
-                                //   either direction (forward/backward)
-                                MouseArea {
-                                    id: bodyTouch
-                                    anchors.fill: bodyTxt
-                                    preventStealing: page.bodySelectionMode
-                                    property int dragAnchor: -1
-                                    property real touchXInScroll: 0
-                                    property real touchYInScroll: 0
-                                    onPressed: {
-                                        var sp = bodyTouch.mapToItem(scroll, mouse.x, mouse.y);
-                                        touchXInScroll = sp.x;
-                                        touchYInScroll = sp.y;
-                                        console.log("[sel] block#" + index + " onPressed x=" + mouse.x.toFixed(0)
-                                            + " mode=" + page.bodySelectionMode + " selLen=" + bodyTxt.selectedText.length);
-                                        if (!page.bodySelectionMode) return;
-                                        var p = bodyTxt.positionAt(mouse.x, mouse.y);
-                                        var s = Math.min(bodyTxt.selectionStart, bodyTxt.selectionEnd);
-                                        var e = Math.max(bodyTxt.selectionStart, bodyTxt.selectionEnd);
-                                        if (s !== e) {
-                                            // Standard behavior: touching near one edge
-                                            // drags that edge, anchor stays on opposite edge.
-                                            dragAnchor = (Math.abs(p - s) <= Math.abs(p - e)) ? e : s;
-                                        } else {
-                                            dragAnchor = page.bodySelectionAnchor >= 0 ? page.bodySelectionAnchor : p;
-                                        }
-                                        console.log("[sel] block#" + index + " onPressed -> dragAnchor=" + dragAnchor
-                                            + " p=" + p + " (globalAnchor=" + page.bodySelectionAnchor + ")");
-                                    }
-                                    onClicked: {
-                                        console.log("[sel] block#" + index + " onClicked mode=" + page.bodySelectionMode
-                                            + " selLen=" + bodyTxt.selectedText.length);
-                                        if (page.bodySelectionMode) {
-                                            var p2 = bodyTxt.positionAt(mouse.x, mouse.y);
-                                            var s2 = Math.min(bodyTxt.selectionStart, bodyTxt.selectionEnd);
-                                            var e2 = Math.max(bodyTxt.selectionStart, bodyTxt.selectionEnd);
-                                            // Keep selection active when tapping inside
-                                            // the highlighted range. Tap outside to exit.
-                                            if (bodyTxt.selectedText.length > 0 && p2 >= s2 && p2 <= e2)
-                                                return;
-                                            page.clearBodySelections();
-                                            return;
-                                        }
-                                        var l = bodyTxt.linkAt(mouse.x, mouse.y);
-                                        if (l) Qt.openUrlExternally(l);
-                                    }
-                                    onPressAndHold: {
-                                        console.log("[sel] block#" + index + " onPressAndHold mode=" + page.bodySelectionMode);
-                                        if (page.bodySelectionMode) return;
-                                        page.bodySelectionMode = true;
-                                        bodyTxt.forceActiveFocus();
-                                        var p = bodyTxt.positionAt(mouse.x, mouse.y);
-                                        bodyTxt.cursorPosition = p;
-                                        bodyTxt.selectWord();
-                                        var ws = Math.min(bodyTxt.selectionStart, bodyTxt.selectionEnd);
-                                        // Keep anchor on a word boundary so expansion
-                                        // doesn't start from a mid-word index.
-                                        page.bodySelectionAnchor = ws;
-                                        dragAnchor = ws;
-                                        console.log("[sel] block#" + index + " selectWord -> '" + bodyTxt.selectedText
-                                            + "' anchor=" + ws);
-                                    }
-                                    onPositionChanged: {
-                                        var sp = bodyTouch.mapToItem(scroll, mouse.x, mouse.y);
-                                        touchXInScroll = sp.x;
-                                        touchYInScroll = sp.y;
-                                        if (!pressed || !page.bodySelectionMode || dragAnchor < 0) return;
-                                        var pRaw = bodyTxt.positionAt(mouse.x, mouse.y);
-                                        var p = page.snapWordBoundary(bodyTxt, pRaw, dragAnchor);
-                                        bodyTxt.select(Math.min(dragAnchor, p), Math.max(dragAnchor, p));
-                                        console.log("[sel] block#" + index + " drag pRaw=" + pRaw + " snap=" + p
-                                            + " sel='" + bodyTxt.selectedText + "'");
-                                        var edge = units.gu(3);
-                                        if (touchYInScroll < edge || touchYInScroll > scroll.height - edge) {
-                                            if (!bodyAutoScrollTimer.running) bodyAutoScrollTimer.start();
-                                        } else if (bodyAutoScrollTimer.running) {
-                                            bodyAutoScrollTimer.stop();
-                                        }
-                                    }
-                                    onReleased: {
-                                        dragAnchor = -1;
-                                        if (bodyAutoScrollTimer.running) bodyAutoScrollTimer.stop();
-                                    }
-                                    onCanceled: {
-                                        dragAnchor = -1;
-                                        if (bodyAutoScrollTimer.running) bodyAutoScrollTimer.stop();
-                                    }
+                                // A scroll drag can grab a word in the few pixels before
+                                // the Flickable crosses its drag threshold and enters the
+                                // native "scrolling" state. Clear any such stray selection
+                                // once the page actually moves. This never fires during a
+                                // real selection adjust, because dragging the handles puts
+                                // the handler in "select" state, which freezes the scroller.
+                                Connections {
+                                    target: scroll
+                                    onMovementStarted: bodyTxt.deselect()
                                 }
-
-                                Timer {
-                                    id: bodyAutoScrollTimer
-                                    interval: 16
-                                    repeat: true
-                                    onTriggered: {
-                                        if (!page.bodySelectionMode || !bodyTouch.pressed || bodyTouch.dragAnchor < 0) {
-                                            stop();
-                                            return;
-                                        }
-                                        var edge = units.gu(3);
-                                        var dir = 0;
-                                        if (bodyTouch.touchYInScroll < edge) dir = -1;
-                                        else if (bodyTouch.touchYInScroll > scroll.height - edge) dir = 1;
-                                        if (dir === 0) {
-                                            stop();
-                                            return;
-                                        }
-                                        var maxY = Math.max(0, scroll.contentHeight - scroll.height);
-                                        var nextY = Math.max(0, Math.min(scroll.contentY + dir * units.gu(0.45), maxY));
-                                        if (nextY === scroll.contentY) {
-                                            stop();
-                                            return;
-                                        }
-                                        scroll.contentY = nextY;
-                                        var lp = bodyTxt.mapFromItem(scroll, bodyTouch.touchXInScroll, bodyTouch.touchYInScroll);
-                                        var pRaw = bodyTxt.positionAt(lp.x, lp.y);
-                                        var p = page.snapWordBoundary(bodyTxt, pRaw, bodyTouch.dragAnchor);
-                                        bodyTxt.select(Math.min(bodyTouch.dragAnchor, p), Math.max(bodyTouch.dragAnchor, p));
-                                    }
-                                }
-
                             }
                         }
                     }
@@ -975,44 +854,5 @@ Page {
 
         Item { width: 1; height: Style.spacingS }
     }
-    }
-
-    // Global copy action for selected article text. Fixed near bottom-right so
-    // it remains reachable regardless of where selection started.
-    AbstractButton {
-        id: copySelectionBtn
-        z: 130
-        // Don't take active focus from the body TextEdit, or the selection is
-        // torn down before onClicked can read it.
-        activeFocusOnPress: false
-        visible: page.bodySelectionMode && page.selectedBodyText().length > 0
-        anchors {
-            right: parent.right
-            rightMargin: Style.spacingM
-            bottom: footer.visible ? footer.top : parent.bottom
-            bottomMargin: Style.spacingS
-        }
-        height: units.gu(3.4)
-        width: copySelLbl.implicitWidth + Style.spacingM * 2
-        onClicked: {
-            var txt = page.selectedBodyText();
-            console.log("[sel] COPY pressed, len=" + txt.length + " text='" + txt + "'");
-            Clipboard.push(txt);
-            Toast.success(Lang.tr("Article copied"));
-            page.clearBodySelections();
-        }
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.height / 2
-            color: Style.brand
-        }
-        Label {
-            id: copySelLbl
-            anchors.centerIn: parent
-            text: Lang.tr("Copy")
-            font.pixelSize: Style.fontSmall
-            font.weight: Font.DemiBold
-            color: Style.textOnBrand
-        }
     }
 }

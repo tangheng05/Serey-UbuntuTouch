@@ -48,7 +48,7 @@ Rectangle {
             // Per-field only: NOT Qt.inputMethod.visible (a global singleton that
             // would blank every other field's placeholder while any one is focused).
             visible: input.text.length === 0 && !input.inputMethodComposing && !input.activeFocus
-            wrapMode: Text.WordWrap
+            wrapMode: Text.Wrap
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFor(text)
             color: Style.textSecondary

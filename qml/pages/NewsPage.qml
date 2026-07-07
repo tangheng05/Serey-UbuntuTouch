@@ -78,6 +78,10 @@ Page {
         offset = 0;
         endReached = false;
         loading = false;
+        // Also clear refreshing: a reload (e.g. community switch or tab change)
+        // that interrupts an in-flight pull-to-refresh would otherwise leave
+        // refreshing stuck true, permanently disabling pull-to-refresh.
+        refreshing = false;
         errorMsg = "";
         feedModel.clear();
         loadMore();
@@ -119,6 +123,12 @@ Page {
                 if (epoch !== page.reqEpoch) return;
                 inflight = null;
                 page.refreshing = false;
+                // A failed refresh (e.g. a 401 from a stale token) must also clear
+                // `loading`. If a loadMore was in flight when the refresh started,
+                // refresh() aborted it and bumped reqEpoch, so that loadMore's
+                // callback early-returns without resetting loading — leaving the
+                // skeleton (loading && count === 0) stuck on screen until restart.
+                page.loading = false;
             });
     }
 

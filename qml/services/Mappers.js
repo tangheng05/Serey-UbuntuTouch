@@ -222,7 +222,10 @@ function toCommunity(raw) {
         level: toInt(raw.level),
         // is_allow_post=true → anyone may post; false → owner/managers only.
         // Drives whether the compose buttons are shown for this community.
-        allowPost: !!raw.is_allow_post
+        allowPost: !!raw.is_allow_post,
+        // video_is_allow_post=true → anyone may post a video; false → owner/
+        // managers only. Gates the Video upload FAB independently of the blog flag.
+        videoAllowPost: !!raw.video_is_allow_post
     };
 }
 

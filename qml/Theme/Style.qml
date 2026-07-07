@@ -111,6 +111,14 @@ QtObject {
         return fontFamily;
     }
 
+    // Qt's line-wrap for wrapped text sizes lines by glyph *advance* width, but
+    // Khmer combining vowel signs can ink past their advance box on the right.
+    // With no buffer, that overhang pokes past the wrap width and gets clipped
+    // by an ancestor Flickable's `clip: true`, making the last glyph on a line
+    // look cut off. Subtract this from the wrap width of any Label/Text that
+    // may hold Khmer body content.
+    readonly property real wrapSafeMargin: units.gu(0.5)
+
     // --- Helpers --------------------------------------------------------------
     // Relative timestamp: "just now / Xm / Xh / Xd ago / DD Mon [YYYY]".
     function formatTimeAgo(dateStr) {

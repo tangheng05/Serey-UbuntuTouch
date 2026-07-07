@@ -9,9 +9,10 @@ import "../services/AccountService.js" as AccountService
 
 /*
  * Settings, in the iOS Serey app's grouped style: a welcome/identity header, then
- * sections (Account · Settings · About) of rows, each with a circular icon
- * badge, label, and a trailing control/value/chevron. Signed out shows Log in /
- * Sign up; signed in shows the profile identity + stats and a Log out row.
+ * a standalone Language row, then sections (Account · About) of rows, each with
+ * a circular icon badge, label, and a trailing control/value/chevron, and a
+ * Log out row pinned to the bottom. Signed out shows Log in / Sign up; signed in
+ * shows the profile identity + stats.
  */
 Page {
     id: page
@@ -125,7 +126,7 @@ Page {
                 color: Style.textPrimary
             }
             Rectangle {
-                visible: root && root.lastUnreadCount > 0
+                visible: NotificationState.unread > 0
                 anchors { top: parent.top; right: parent.right; topMargin: units.gu(0.6); rightMargin: units.gu(0.6) }
                 width: units.gu(1.4); height: width
                 radius: width / 2
@@ -225,12 +226,23 @@ Page {
     }
 
     function refreshProfile() {
-        if (!Session.isLoggedIn) { profile = null; return; }
+        // Also reset `loading`: logging out mid-fetch would otherwise leave the
+        // earlier request's loading=true with profile nulled -> stuck spinner.
+        if (!Session.isLoggedIn) { profile = null; loading = false; return; }
         loading = true;
         errorMsg = "";
         AccountService.profile(Config.baseUrl, Session.username, Session.token,
-            function (user) { loading = false; page.profile = user; },
-            function (err) { loading = false; page.errorMsg = err.message; });
+            function (user) {
+                // A response landing after logout must not repaint the stale profile.
+                if (!Session.isLoggedIn) { loading = false; return; }
+                loading = false;
+                page.profile = user;
+            },
+            function (err) {
+                if (!Session.isLoggedIn) { loading = false; return; }
+                loading = false;
+                page.errorMsg = err.message;
+            });
     }
 
     function doLogout() {
@@ -605,7 +617,8 @@ Page {
 
     ActivityIndicator {
         anchors.centerIn: parent
-        running: page.loading && page.profile === null
+        // isLoggedIn guard: logout must never leave this spinning (see refreshProfile).
+        running: Session.isLoggedIn && page.loading && page.profile === null
         visible: running
     }
 

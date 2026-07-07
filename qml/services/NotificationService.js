@@ -2,7 +2,7 @@
 .import "Http.js" as Http
 
 function registerPushToken(baseUrl, token, pushToken, onOk, onErr) {
-    Http.post(baseUrl, "/api/v2/notification/register-push-token",
+    Http.post(baseUrl, "/notification/register-push-token",
               { push_token: pushToken, platform: "ubuntu-touch" },
               token, onOk, onErr)
 }

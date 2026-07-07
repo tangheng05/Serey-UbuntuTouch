@@ -36,7 +36,7 @@ Item {
     // *_public_key fields and posting_private_key.
     function generate(username, onKeys, onErr) {
         if (!_ready) {
-            onErr(qsTr("Still preparing — please try again in a moment."));
+            onErr(qsTr("Still preparing, please try again in a moment."));
             return;
         }
         web.runJavaScript("JSON.stringify(generateSereyKeys(" + JSON.stringify(username) + "))",

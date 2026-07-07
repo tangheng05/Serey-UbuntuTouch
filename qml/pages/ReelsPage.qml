@@ -27,6 +27,7 @@ Page {
     property var reels: []
     property bool loading: true
     property string errorMsg: ""
+    property int startIndex: 0
 
     // Pending vote — set by the delegate before opening the weight dialog.
     property var    _voteReel:    null
@@ -110,6 +111,11 @@ Page {
                 page.reels = result.filter(function (v) {
                     return v.platform === "SEREY" && (v.videoLink || "").length > 0;
                 });
+                if (page.reels.length > 0) {
+                    var idx = Math.max(0, Math.min(page.startIndex, page.reels.length - 1));
+                    pager.positionViewAtIndex(idx, ListView.Beginning);
+                    pager.currentIndex = idx;
+                }
                 page.loading = false;
             },
             function (err) {
@@ -400,7 +406,7 @@ Page {
                         color: "white"
                         font.pixelSize: Style.fontSmall
                         font.family: Style.fontFor(text)
-                        wrapMode: Text.WordWrap
+                        wrapMode: Text.Wrap
                         maximumLineCount: 2
                         elide: Text.ElideRight
                     }

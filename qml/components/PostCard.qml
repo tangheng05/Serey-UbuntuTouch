@@ -44,27 +44,6 @@ Item {
         if (typeof v.count === "number") return v.count;
         return 0;
     }
-    function _inList(v, name) {
-        if (!v || !name) return false;
-        if (typeof v.indexOf === "function") return v.indexOf(name) >= 0;
-        // ListModel-wrapped arrays (dynamicRoles) have .count/.get() but no
-        // .indexOf(). Each wrapped string element is stored as an object; the
-        // actual value lives in .modelData, .value, or the first own property.
-        if (typeof v.count === "number") {
-            for (var i = 0; i < v.count; i++) {
-                var item = v.get(i);
-                if (!item) continue;
-                if (item === name) return true;
-                if (item.modelData === name) return true;
-                if (item.value === name) return true;
-                var keys = Object.keys(item);
-                for (var k = 0; k < keys.length; k++) {
-                    if (item[keys[k]] === name) return true;
-                }
-            }
-        }
-        return false;
-    }
 
     // Ensure the shared store knows this author's state (queries once).
     // Also refresh vote state from session cache or model voters.
@@ -86,6 +65,11 @@ Item {
                 var me = Session.username || "";
                 cardVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
                 cardVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
+                // Re-assert count/payout imperatively: a prior cached assignment
+                // breaks the QML binding on this pooled delegate, so a recycle to
+                // an uncached post would otherwise keep the previous post's numbers.
+                cardVoteBar.votes = p.votes || 0;
+                cardVoteBar.payout = p.payout || "";
             }
         }
     }

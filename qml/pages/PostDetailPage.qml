@@ -303,26 +303,32 @@ Page {
                 bodyModel.append({ type: "image", content: piece.content });
             } else {
                 var text = piece.content;
-                text = text.replace(/<br\s*\/?>/gi, "\n");
-                text = text.replace(/<\/p>/gi, "\n");
+                // The blocks render as RichText, which (being HTML) collapses literal
+                // "\n" to a single space — so block boundaries must become <br/> tags,
+                // and a paragraph gap is a double break, to match the web spacing.
+                text = text.replace(/<\/p>/gi, "<br/><br/>");
                 text = text.replace(/<p[^>]*>/gi, "");
                 text = text.replace(/<div[^>]*>/gi, "");
-                text = text.replace(/<\/div>/gi, "");
+                text = text.replace(/<\/div>/gi, "<br/>");
                 text = text.replace(/<strong>/gi, "<b>");
                 text = text.replace(/<\/strong>/gi, "</b>");
                 text = text.replace(/<em>/gi, "<i>");
                 text = text.replace(/<\/em>/gi, "</i>");
                 text = text.replace(/<h[1-6][^>]*>/gi, "<b>");
-                text = text.replace(/<\/h[1-6]>/gi, "</b>\n");
-                text = text.replace(/<(?!\/?(?:b|i|br|u|a)\b)[^>]+>/g, "");
+                text = text.replace(/<\/h[1-6]>/gi, "</b><br/><br/>");
+                text = text.replace(/<li[^>]*>/gi, "• ");
+                text = text.replace(/<\/li>/gi, "<br/>");
+                text = text.replace(/<\/?(?:ul|ol)[^>]*>/gi, "");
+                text = text.replace(/<br\s*\/?>/gi, "<br/>");
+                text = text.replace(/<(?!\/?(?:b|i|br|u|a)\b)[^>]*>/gi, "");
                 text = text.replace(/&nbsp;/g, " ");
                 text = text.replace(/&amp;/g, "&");
                 text = text.replace(/&lt;/g, "<");
                 text = text.replace(/&gt;/g, ">");
                 text = text.replace(/&quot;/g, "\"");
                 // Decode numeric entities (e.g. &#8220; smart quotes, &#8217;
-                // apostrophes) that Text.StyledText can't render — but leave &,<,>
-                // encoded so they aren't mistaken for markup.
+                // apostrophes) that the rich-text renderer can't render — but leave
+                // &,<,> encoded so they aren't mistaken for markup.
                 text = text.replace(/&#(\d+);/g, function (mm, n) {
                     var code = parseInt(n, 10);
                     return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
@@ -331,14 +337,16 @@ Page {
                     var code = parseInt(n, 16);
                     return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
                 });
-                text = text.replace(/\n{3,}/g, "\n\n");
-                text = text.trim();
+                // Collapse runs of breaks and trim leading/trailing ones so blocks
+                // don't start or end with blank lines.
+                text = text.replace(/(?:<br\/>\s*){3,}/gi, "<br/><br/>");
+                text = text.replace(/^(?:\s|<br\/>)+/i, "");
+                text = text.replace(/(?:\s|<br\/>)+$/i, "");
                 if (text.length > 0)
                     bodyModel.append({ type: "text", content: text });
             }
         }
     }
-
 
     Component.onCompleted: {
         // Render the saved copy immediately (instant + offline), then refresh.
@@ -424,7 +432,7 @@ Page {
             }
 
             Label {
-                width: parent.width - Style.spacingM * 2
+                width: parent.width - Style.spacingM * 2 - Style.wrapSafeMargin
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: page.post ? page.post.title : ""
                 textSize: Label.Large
@@ -598,16 +606,97 @@ Page {
 
                         Component {
                             id: bodyTextComp
-                            Label {
-                                width: parent.width
-                                text: model.content
-                                font.pixelSize: Style.fontMedium
-                                font.family: Style.fontFor(text)
-                                color: Style.textPrimary
-                                wrapMode: Text.WordWrap
-                                textFormat: Text.StyledText
-                                lineHeight: 1.4
-                                onLinkActivated: Qt.openUrlExternally(link)
+                            // Wrap the TextArea in an Item sized to its full content
+                            // height (like the image block does). The TextArea's own
+                            // autoSize sets its height to the whole paragraph; without
+                            // this wrapper the surrounding Loader/Column only sees a
+                            // one-line implicit height and the internal Flickable clips
+                            // the rest (you'd have to drag-select to scroll it in).
+                            Item {
+                                width: parent.width - Style.wrapSafeMargin
+                                height: bodyTxt.height
+
+                                // Read-only Lomiri TextArea: it wraps a TextEdit and
+                                // ships the native long-press selection UI (blue drag
+                                // handles + Copy/Select-All popover), just like the
+                                // comment field. RichText renders the parsed <b>/<i>/<a>
+                                // markup; native Copy puts plain text on the clipboard.
+                                TextArea {
+                                    id: bodyTxt
+                                    width: parent.width
+                                    text: model.content
+                                    textFormat: TextEdit.RichText
+                                    readOnly: true
+                                    // autoSize + maximumLineCount<=0 is the intended
+                                    // config for a TextArea living inside an outer
+                                    // Flickable: it disables the internal scroll and
+                                    // routes the OUTER flickable's movement into the
+                                    // input handler's "scrolling" state, which cancels
+                                    // the long-press timer so a scroll drag never turns
+                                    // into a text selection. This is what makes scroll
+                                    // vs. select behave natively, with no custom hacks.
+                                    // (Lomiri InputHandler.qml: scrollingDisabled / scroller.)
+                                    autoSize: true
+                                    maximumLineCount: 0
+                                    // autoSize measures height as lineCount×lineHeight,
+                                    // which under-measures RichText (taller bold/heading
+                                    // lines); with the internal flick disabled that would
+                                    // clip the text. Grow to the true painted height.
+                                    onPaintedHeightChanged: Qt.callLater(_fitHeight)
+                                    onLineCountChanged: Qt.callLater(_fitHeight)
+                                    Component.onCompleted: Qt.callLater(_fitHeight)
+                                    function _fitHeight() { if (height < paintedHeight) height = paintedHeight; }
+                                    // Focus-on-press is required: Lomiri's long-press
+                                    // timer bails unless the field is already focused.
+                                    // readOnly keeps the on-screen keyboard suppressed.
+                                    activeFocusOnPress: true
+                                    font.pixelSize: Style.fontMedium
+                                    font.family: Style.fontFor(text)
+                                    color: Style.textPrimary
+                                    // Flat: strip the input frame/background and padding
+                                    // so it reads as plain article body, not a text field.
+                                    StyleHints {
+                                        backgroundColor: "transparent"
+                                        frameSpacing: 0
+                                        overlaySpacing: 0
+                                    }
+                                    onLinkActivated: Qt.openUrlExternally(link)
+                                    // Show the caret only while text is selected. The
+                                    // caret gates the native Copy popover (openPopover()
+                                    // bails if it's hidden), but keeping it always-on left
+                                    // an idle blue cursor when just reading. Long-press
+                                    // selects a word first, flipping this on in time for
+                                    // the popover; tapping away clears the selection and
+                                    // hides the caret again. The second handler re-asserts
+                                    // it against the read-only editor's reset, but only
+                                    // while a selection exists (so idle stays caret-free).
+                                    onSelectedTextChanged: {
+                                        // A genuine selection only happens while the page
+                                        // is still. If one appears while the scroll is
+                                        // moving/flicking (e.g. a finger pressed down to
+                                        // catch a flick grabs a word, then momentum slides
+                                        // the text under it and extends it), it's a stray —
+                                        // clear it. Dragging the selection handles freezes
+                                        // the scroller, so a real selection never trips this.
+                                        if (selectedText.length > 0 && scroll.moving) {
+                                            bodyTxt.deselect();
+                                            return;
+                                        }
+                                        cursorVisible = (selectedText.length > 0);
+                                    }
+                                    onCursorVisibleChanged: if (!cursorVisible && selectedText.length > 0) cursorVisible = true
+                                }
+
+                                // A scroll drag can grab a word in the few pixels before
+                                // the Flickable crosses its drag threshold and enters the
+                                // native "scrolling" state. Clear any such stray selection
+                                // once the page actually moves. This never fires during a
+                                // real selection adjust, because dragging the handles puts
+                                // the handler in "select" state, which freezes the scroller.
+                                Connections {
+                                    target: scroll
+                                    onMovementStarted: bodyTxt.deselect()
+                                }
                             }
                         }
                     }
@@ -650,6 +739,7 @@ Page {
 
             Item { width: 1; height: Style.spacingM }
         }
+
     }
 
     LoadingState {
@@ -743,49 +833,25 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.spacingS
 
-            Rectangle {
+            // Lomiri TextField (not a raw TextInput): only the styled component
+            // wires up the native long-press selection + Cut/Copy/Paste popover.
+            // StyleHints keep the existing gray-pill look.
+            TextField {
+                id: composer
                 width: parent.width - sendButton.width - Style.spacingS
                 height: units.gu(5)
-                radius: Style.cardRadius
-                color: Style.iconBackground
-
-                Label {
-                    anchors {
-                        left: parent.left
-                        right: parent.right
-                        verticalCenter: parent.verticalCenter
-                        leftMargin: Style.spacingM
-                        rightMargin: Style.spacingM
-                    }
-                    visible: composer.text.length === 0 && !composer.inputMethodComposing && !composer.activeFocus && !Qt.inputMethod.visible
-                    text: Session.isLoggedIn
-                        ? Lang.tr("Post a comment…")
-                        : Lang.tr("Log in to comment…")
-                    font.family: Style.fontFor(text)
-                    color: Style.textSecondary
-                    elide: Text.ElideRight
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: { composer.forceActiveFocus(); Qt.inputMethod.show(); }
-                }
-
-                TextInput {
-                    id: composer
-                    anchors {
-                        left: parent.left
-                        right: parent.right
-                        verticalCenter: parent.verticalCenter
-                        leftMargin: Style.spacingM
-                        rightMargin: Style.spacingM
-                    }
-                    font.family: Style.fontFor(text)
-                    font.pixelSize: Style.fontRegular
+                StyleHints {
+                    backgroundColor: Style.iconBackground
+                    borderColor: "transparent"
                     color: Style.textPrimary
-                    clip: true
-                    onAccepted: page.submitComment()
                 }
+                hasClearButton: false
+                placeholderText: Session.isLoggedIn
+                    ? Lang.tr("Post a comment…")
+                    : Lang.tr("Log in to comment…")
+                font.family: Style.fontFor(text)
+                font.pixelSize: Style.fontRegular
+                onAccepted: page.submitComment()
             }
 
             AbstractButton {

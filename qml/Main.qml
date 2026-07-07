@@ -45,8 +45,12 @@ MainView {
         // session and prompts re-login, instead of leaving the user "logged in"
         // with a dead token while publishing etc. silently fail. Guarded on
         // isLoggedIn so concurrent 401s only clear + toast once.
-        Http.setUnauthorizedHandler(function () {
+        Http.setUnauthorizedHandler(function (tokenUsed) {
             if (!Session.isLoggedIn) return;
+            // Only clear if the rejected token IS the current session's token.
+            // A late 401 from a previous account's in-flight request (its token
+            // was just invalidated by logout) must not wipe the fresh session.
+            if (tokenUsed !== Session.token) return;
             Session.clear();
             Toast.error(Lang.tr("Your session expired. Please log in again."));
         });
@@ -65,6 +69,7 @@ MainView {
             function (list) {
                 Config.iconByDns = CommunityService.iconMap(list);
                 Config.allowPostByDns = CommunityService.allowPostMap(list);
+                Config.videoAllowPostByDns = CommunityService.videoAllowPostMap(list);
             },
             function (err) { /* keep globe fallback */ });
 
@@ -76,6 +81,7 @@ MainView {
                 function (err) { /* keep letter-fallback avatar */ });
         }
         _syncBlockedUsers();
+        _syncOwnedCommunities();
     }
 
     // Keep the local blocked-users set (used to filter feeds) in step with the
@@ -87,12 +93,27 @@ MainView {
             function (err) { /* offline / failed — keep last-known local set */ });
     }
 
+    // Keep the set of communities the user owns/manages in step with the session
+    // — on launch and whenever the token changes. Lets an owner see the compose /
+    // video-upload buttons in their own community even when it is owner-only.
+    function _syncOwnedCommunities() {
+        if (!Session.isLoggedIn) { Config.ownedCommunityIdSet = ({}); return; }
+        AccountService.ownedCommunityIds(Config.baseUrl, Session.token,
+            function (ids) {
+                var set = {};
+                for (var i = 0; i < ids.length; i++) set[ids[i]] = true;
+                Config.ownedCommunityIdSet = set;
+            },
+            function (err) { /* offline / failed — keep last-known set */ });
+    }
+
     // ── Push / local notification handles (created dynamically) ─────────────
     property var  sysNotif:   null   // Lomiri.Notifications Notification
     property var  pushClient: null   // Ubuntu.PushNotifications PushClient
     property string pushToken: ""
-    property int  lastUnreadCount: -1
     property var  notifSound: null
+    // Unread count lives in the NotificationState singleton so pages pushed onto
+    // a PageStack (which can't resolve this shell's ids) can read it for a badge.
 
     function _showNotif(body) {
         // Play sound
@@ -150,14 +171,14 @@ MainView {
                         ? Lang.tr("You have 1 new notification")
                         : Lang.tr("You have %1 new notifications").arg(notifs.length)
                     root._showNotif(msg)
-                    root.lastUnreadCount = -1
+                    NotificationState.unread = -1
                     root.pushClient.clearAll()
                 }
             })
         } catch (e) { console.warn("Push: PushClient failed to create:", e) }
     }
 
-    // Poll every 60 s while logged in
+    // Poll every 30 s while logged in
     Timer {
         id: notifPoller
         interval: 30000
@@ -172,14 +193,14 @@ MainView {
                     for (var i = 0; i < items.length; i++) {
                         if (!items[i].is_read) count++
                     }
-                    if (root.lastUnreadCount < 0) { root.lastUnreadCount = count; return }
-                    if (count > root.lastUnreadCount) {
-                        var diff = count - root.lastUnreadCount
+                    if (NotificationState.unread < 0) { NotificationState.unread = count; return }
+                    if (count > NotificationState.unread) {
+                        var diff = count - NotificationState.unread
                         root._showNotif(diff === 1
                             ? Lang.tr("You have 1 new notification")
                             : Lang.tr("You have %1 new notifications").arg(diff))
                     }
-                    root.lastUnreadCount = count
+                    NotificationState.unread = count
                 },
                 function (err) { /* silent */ })
         }
@@ -191,12 +212,12 @@ MainView {
         // token changes. Keying off the token (not isLoggedIn) means switching
         // accounts reloads the new account's blocks even if the token is swapped
         // directly, so one account's blocks never leak into another's feed.
-        function onTokenChanged() { root._syncBlockedUsers() }
+        function onTokenChanged() { root._syncBlockedUsers(); root._syncOwnedCommunities() }
         function onIsLoggedInChanged() {
             // Blocked-set sync is handled by onTokenChanged (token always changes
             // on login/logout/switch), so it isn't repeated here.
             if (!Session.isLoggedIn) {
-                root.lastUnreadCount = -1
+                NotificationState.unread = -1
             } else if (root.pushToken !== "") {
                 root._registerPushToken(root.pushToken)
             }
@@ -223,6 +244,29 @@ MainView {
         visible: root.showHeader
         onCommunityButtonClicked: communityPicker.open()
 
+        // Center: "My feed" shortcut, now in the middle of the header.
+        center: AbstractButton {
+            id: feedBtn
+            visible: Session.isLoggedIn
+            anchors.centerIn: parent
+            width: units.gu(4); height: width
+            onClicked: {
+                var stack = root.currentTab === 0 ? homeStack
+                          : root.currentTab === 1 ? newsStack
+                          : root.currentTab === 2 ? videoStack
+                          : settingsStack;
+                stack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
+            }
+            Image {
+                anchors.centerIn: parent
+                width: units.gu(3.5); height: width
+                source: Qt.resolvedUrl("../assets/iconFeed.png")
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+            }
+        }
+
+        // Right: post actions, in the feed button's old trailing spot.
         Row {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.spacingS
@@ -258,9 +302,10 @@ MainView {
             // old Material floating button on VideoPage.
             AbstractButton {
                 id: uploadBtn
-                // Only when the selected community allows posting (is_allow_post);
-                // hidden for Global and owner-only communities.
-                visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostCurrent
+                // Only when the selected community lets everyone post a VIDEO
+                // (video_is_allow_post); hidden for Global and owner-only-video
+                // communities, independent of the blog posting flag.
+                visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostVideoCurrent
                 anchors.verticalCenter: parent.verticalCenter
                 width: units.gu(3.2); height: width
                 onClicked: {
@@ -280,27 +325,6 @@ MainView {
                     width: units.gu(2.2); height: width
                     name: "add"
                     color: Style.brand
-                }
-            }
-
-            AbstractButton {
-                id: feedBtn
-                visible: Session.isLoggedIn
-                anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(4); height: width
-                onClicked: {
-                    var stack = root.currentTab === 0 ? homeStack
-                              : root.currentTab === 1 ? newsStack
-                              : root.currentTab === 2 ? videoStack
-                              : settingsStack;
-                    stack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
-                }
-                Image {
-                    anchors.centerIn: parent
-                    width: units.gu(3.5); height: width
-                    source: Qt.resolvedUrl("../assets/iconFeed.png")
-                    fillMode: Image.PreserveAspectFit
-                    asynchronous: true
                 }
             }
         }

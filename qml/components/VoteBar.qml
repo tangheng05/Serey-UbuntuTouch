@@ -83,7 +83,7 @@ RowLayout {
     }
     function _fail(e) {
         bar.busy = false;
-        Toast.error((e && e.message) ? e.message : i18n.tr("Action failed."));
+        Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
     }
     // Upvote-only failure handler. An "already voted" error means the server
     // already has our vote and the local UI was out of sync — reconcile it to

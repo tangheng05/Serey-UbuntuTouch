@@ -145,9 +145,14 @@ Page {
         page.markingAllRead = true
         NotificationService.markAllRead(Config.baseUrl, Session.token,
             function () {
+                // Clear the global badge even if the page was torn down (e.g.
+                // logout) before this callback ran; NotificationState is a
+                // singleton and always safe. Then guard the page-local updates
+                // against that teardown (notifModel becomes null with the page).
+                NotificationState.unread = 0
+                if (!notifModel) return
                 page.markingAllRead = false
                 page.unreadCount = 0
-                if (root) root.lastUnreadCount = 0
                 for (var i = 0; i < notifModel.count; i++)
                     notifModel.setProperty(i, "isRead", true)
                 Toast.show(Lang.tr("All notifications marked as read"))
@@ -162,10 +167,14 @@ Page {
         if (notifModel.get(index).isRead) return
         NotificationService.markOneRead(Config.baseUrl, Session.token, nid,
             function () {
+                // The page (and its notifModel) can be torn down — e.g. a logout
+                // that pops NotificationsPage — while this request is in flight;
+                // the stale callback must not touch the now-null model.
+                if (!notifModel) return
                 notifModel.setProperty(index, "isRead", true)
                 if (page.unreadCount > 0) {
                     page.unreadCount--
-                    if (root) root.lastUnreadCount = page.unreadCount
+                    NotificationState.unread = page.unreadCount
                 }
             },
             function (err) { /* silent */ })
@@ -314,7 +323,7 @@ Page {
                               ((model.message || "").replace(model.actorName + " ", "")) + "</span>"
                         font.pixelSize: Style.fontSmall
                         font.family: Style.fontFor(text)
-                        wrapMode: Text.WordWrap
+                        wrapMode: Text.Wrap
                         maximumLineCount: 2
                         elide: Text.ElideRight
                     }
@@ -374,7 +383,7 @@ Page {
                 font.pixelSize: Style.fontSmall
                 font.family: Style.fontFor(text)
                 color: Style.danger
-                wrapMode: Text.WordWrap
+                wrapMode: Text.Wrap
                 width: list.width - Style.spacingM * 2
                 horizontalAlignment: Text.AlignHCenter
             }

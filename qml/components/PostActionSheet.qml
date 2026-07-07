@@ -70,7 +70,7 @@ Item {
                 sheet.reportTypesLoading = false;
                 sheet.reportTypesLoaded = false;
                 Toast.error((err && err.message) ? err.message
-                            : i18n.tr("Couldn't load report reasons. Please try again."));
+                            : Lang.tr("Couldn't load report reasons. Please try again."));
             });
     }
 
@@ -90,7 +90,7 @@ Item {
         // Backend expects the post id; fall back to permlink only if present.
         var postId = (p.id !== undefined && p.id !== null) ? p.id : (p.permlink || "");
         if (postId === "" || postId === null || postId === undefined) {
-            Toast.error(i18n.tr("Failed to submit report."));
+            Toast.error(Lang.tr("Failed to submit report."));
             return;
         }
         sheet.reporting = true;
@@ -268,6 +268,7 @@ Item {
                 readonly property bool _saved: (SavedPosts.rev, SavedPosts.isSaved(saveOfflineBtn._pl))
                 property bool _saving: false
                 onClicked: {
+                    if (saveOfflineBtn._saving) return;   // ignore rapid double-taps mid-fetch
                     var p = PostActions.post;
                     if (!p || saveOfflineBtn._pl.length === 0) return;
                     if (saveOfflineBtn._saved) { SavedPosts.remove(saveOfflineBtn._pl); sheet.closeSheet(); return; }
@@ -522,7 +523,7 @@ Item {
                 x: Style.spacingM
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: i18n.tr("Couldn't load report reasons. Close and try again.")
+                text: Lang.tr("Couldn't load report reasons. Close and try again.")
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
             }

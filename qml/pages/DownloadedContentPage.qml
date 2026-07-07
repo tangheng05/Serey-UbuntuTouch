@@ -260,7 +260,7 @@ Page {
                         font.weight: Font.DemiBold
                         font.family: Style.fontFor(text)
                         color: Style.textPrimary
-                        wrapMode: Text.WordWrap
+                        wrapMode: Text.Wrap
                         maximumLineCount: 2
                         elide: Text.ElideRight
                     }

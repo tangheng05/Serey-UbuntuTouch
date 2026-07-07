@@ -6,6 +6,11 @@ import "../Theme"
  * Branded text input matching the app's design tokens: a white field with a
  * rounded (cardRadius) hairline border that turns brand-blue on focus — the
  * same rounding/divider language as the feed cards. Used by the auth pages.
+ *
+ * The editor is a Lomiri TextField made chrome-less via StyleHints (this
+ * Rectangle draws the frame instead), because only the styled TextField wires
+ * up Lomiri's InputHandler: native long-press word-selection with handles and
+ * the Cut/Copy/Paste popover. A raw TextInput has none of that on touch.
  */
 Rectangle {
     id: root
@@ -30,36 +35,43 @@ Rectangle {
     border.color: input.activeFocus ? Style.brand : Style.divider
     Behavior on border.color { ColorAnimation { duration: 120 } }
 
-    TextInput {
+    TextField {
         id: input
         anchors.fill: parent
         anchors.leftMargin: Style.spacingM
         anchors.rightMargin: root.isPasswordField ? units.gu(5) : Style.spacingM
-        verticalAlignment: TextInput.AlignVCenter
-        clip: true
+        // Hide the theme's own frame — the parent Rectangle is the visual.
+        StyleHints {
+            backgroundColor: "transparent"
+            borderColor: "transparent"
+            frameSpacing: 0
+            color: Style.textPrimary
+            selectionColor: Style.brand
+            selectedTextColor: Style.textOnBrand
+        }
+        hasClearButton: false
         font.pixelSize: Style.fontRegular
         font.family: Style.fontFor(text)
-        color: Style.textPrimary
-        selectionColor: Style.brand
-        selectedTextColor: Style.textOnBrand
-        selectByMouse: true
         echoMode: root.isPasswordField && root.revealed ? TextInput.Normal : root.echoMode
         inputMethodHints: root.inputMethodHints
         onAccepted: root.accepted()
+    }
 
-        Label {
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width
-            text: root.placeholder
-            // Per-field only: NOT Qt.inputMethod.visible (a global singleton that
-            // would blank every other field's placeholder while any one is focused).
-            visible: input.text.length === 0 && !input.inputMethodComposing && !input.activeFocus
-            elide: Text.ElideRight
-            font.pixelSize: Style.fontRegular
-            font.family: Style.fontFor(text)
-            color: Style.textSecondary
-            opacity: 0.7
+    // Custom placeholder (kept out of the TextField so its per-field visibility
+    // logic stays ours; TextField's own placeholderText is unused).
+    Label {
+        anchors {
+            left: parent.left; leftMargin: Style.spacingM
+            right: parent.right; rightMargin: root.isPasswordField ? units.gu(5) : Style.spacingM
+            verticalCenter: parent.verticalCenter
         }
+        text: root.placeholder
+        visible: input.text.length === 0 && !input.activeFocus
+        elide: Text.ElideRight
+        font.pixelSize: Style.fontRegular
+        font.family: Style.fontFor(text)
+        color: Style.textSecondary
+        opacity: 0.7
     }
 
     AbstractButton {
@@ -72,28 +84,6 @@ Rectangle {
             width: units.gu(2.2); height: width
             name: root.revealed ? "view-off" : "view-on"
             color: Style.textSecondary
-        }
-    }
-
-    // A raw TextInput has no native long-press copy/paste popover on touch, so
-    // we add it ourselves: tap focuses and positions the cursor; press-and-hold
-    // pastes into an editable field (or copies a read-only one, e.g. the saved
-    // private key) — this is what lets users paste a copied key to log in.
-    MouseArea {
-        anchors.fill: parent
-        anchors.rightMargin: root.isPasswordField ? units.gu(4) : 0
-        onClicked: {
-            input.forceActiveFocus();
-            input.cursorPosition = input.positionAt(mouse.x - input.x, input.height / 2);
-        }
-        onPressAndHold: {
-            input.forceActiveFocus();
-            if (input.readOnly) {
-                input.selectAll();
-                input.copy();
-            } else {
-                input.paste();
-            }
         }
     }
 }

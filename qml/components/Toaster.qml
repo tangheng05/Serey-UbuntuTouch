@@ -31,7 +31,7 @@ Item {
             anchors.centerIn: parent
             width: Math.min(toaster.width - units.gu(8), implicitWidth)
             horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
+            wrapMode: Text.Wrap
             maximumLineCount: 3
             elide: Text.ElideRight
             color: Style.textOnBrand

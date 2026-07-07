@@ -47,3 +47,15 @@ function allowPostMap(list) {
     }
     return map;
 }
+
+// Convenience: build a { dns: videoAllowPost(bool) } map from listAll's result,
+// used to gate the Video upload FAB — only show when the community lets everyone
+// post a video. Independent of allowPostMap (which is the blog posting flag).
+function videoAllowPostMap(list) {
+    var map = {};
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].dns)
+            map[list[i].dns] = !!list[i].videoAllowPost;
+    }
+    return map;
+}

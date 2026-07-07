@@ -76,13 +76,13 @@ Item {
     // still fires — a failure just surfaces a toast (the comment doesn't come
     // back, same as most apps' optimistic delete).
     function doDelete() {
-        var permlinkToDelete = c.permlink;
-        item.deleted(permlinkToDelete);
-        CommentService.remove(Config.baseUrl, permlinkToDelete, Session.username, Session.token,
-            function () { /* already removed from the UI */ },
-            function (err) {
-                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't delete comment."));
-            });
+        // Emit only — the actual server delete is performed by the host page's
+        // onDeleted handler. CommentItem is loaded recursively via Loader for
+        // nested replies, and JS module imports (CommentService) resolve to NULL
+        // in those Loader-created instances, so calling CommentService.remove()
+        // here threw "Cannot call method 'remove' of null" — the delete silently
+        // never reached the server and the comment reappeared on the next fetch.
+        item.deleted(c.permlink);
     }
 
     width: parent ? parent.width : units.gu(40)

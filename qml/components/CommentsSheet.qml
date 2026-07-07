@@ -86,7 +86,20 @@ Item {
         }
         return out;
     }
-    function removeComment(p) { sheet.comments = _removeFrom(sheet.comments, p); sheet.countChanged(-1); }
+    function removeComment(p) {
+        sheet.comments = _removeFrom(sheet.comments, p);
+        sheet.countChanged(-1);
+        // Server delete must run in this sheet-level scope: the CommentService JS
+        // import resolves to null inside the Repeater delegate's inline handler
+        // (and inside Loader-created nested reply rows), so calling it there threw
+        // "Cannot call method 'remove' of null" and the delete never reached the
+        // server. Here in the sheet root the import is valid.
+        CommentService.remove(Config.baseUrl, p, Session.username, Session.token,
+            function () {},
+            function (err) {
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't delete comment."));
+            });
+    }
     function editComment(p, b) { sheet.comments = _editIn(sheet.comments, p, b); }
     function startReply(c) { sheet.replyTarget = c; composer.forceActiveFocus(); }
 

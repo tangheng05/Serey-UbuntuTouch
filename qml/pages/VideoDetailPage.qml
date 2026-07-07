@@ -381,6 +381,16 @@ Page {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
         Toast.success(Lang.tr("Comment deleted"));
+        // Server delete must run in this page-level scope: the CommentService JS
+        // import resolves to null inside the Repeater delegate's inline handler
+        // (and inside Loader-created nested reply rows), so calling it there threw
+        // "Cannot call method 'remove' of null" and the delete never reached the
+        // server. Here in the page root the import is valid.
+        CommentService.remove(Config.baseUrl, permlinkToRemove, Session.username, Session.token,
+            function () {},
+            function (err) {
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't delete comment."));
+            });
     }
 
     function _editIn(list, permlinkToEdit, newBody) {

@@ -268,18 +268,24 @@ Page {
                         z: 10
                         onClicked: PopupUtils.open(blockDialog)
 
+                        // Subtle disc behind the mark; tints red when the
+                        // user is currently blocked to signal the active state.
                         Rectangle {
                             anchors.fill: parent
-                            radius: units.dp(6)
-                            color: page.isBlocked ? Style.danger : "white"
-                            border.width: units.dp(2)
-                            border.color: Style.danger
+                            radius: width / 2
+                            color: page.isBlocked
+                                ? Qt.rgba(Style.danger.r, Style.danger.g, Style.danger.b, 0.16)
+                                : "transparent"
                         }
-                        Icon {
+                        // Prohibition / "no entry" badge.
+                        Image {
                             anchors.centerIn: parent
-                            width: units.gu(2.2); height: width
-                            name: "system-shutdown"
-                            color: page.isBlocked ? "white" : Style.danger
+                            width: units.gu(3); height: width
+                            source: Qt.resolvedUrl("../../assets/prohibition.png")
+                            sourceSize.width: width * 2
+                            sourceSize.height: height * 2
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
                         }
                     }
                 }

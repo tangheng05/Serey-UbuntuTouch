@@ -70,7 +70,7 @@ Page {
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: Lang.tr("We keep your keys safe — sign in with a password.")
+                text: Lang.tr("We keep your keys safe, sign in with a password.")
                 font.pixelSize: Style.fontXSmall
                 font.family: Style.fontFor(text)
                 color: Style.textSecondary

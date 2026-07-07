@@ -162,7 +162,7 @@ MainView {
         } catch (e) { console.warn("Push: PushClient failed to create:", e) }
     }
 
-    // Poll every 60 s while logged in
+    // Poll every 30 s while logged in
     Timer {
         id: notifPoller
         interval: 30000

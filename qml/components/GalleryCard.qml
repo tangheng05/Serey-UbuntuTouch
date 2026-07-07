@@ -44,6 +44,11 @@ Item {
                 var me = Session.username || "";
                 galVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
                 galVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
+                // Re-assert count/payout imperatively: a prior cached assignment
+                // breaks the QML binding on this pooled delegate, so a recycle to
+                // an uncached post would otherwise keep the previous post's numbers.
+                galVoteBar.votes = p.votes || 0;
+                galVoteBar.payout = p.payout || "";
             }
         }
     }
@@ -63,24 +68,6 @@ Item {
         if (typeof v.length === "number") return v.length;
         if (typeof v.count === "number") return v.count;
         return 0;
-    }
-    function _inList(v, name) {
-        if (!v || !name) return false;
-        if (typeof v.indexOf === "function") return v.indexOf(name) >= 0;
-        if (typeof v.count === "number") {
-            for (var i = 0; i < v.count; i++) {
-                var item = v.get(i);
-                if (!item) continue;
-                if (item === name) return true;
-                if (item.modelData === name) return true;
-                if (item.value === name) return true;
-                var keys = Object.keys(item);
-                for (var k = 0; k < keys.length; k++) {
-                    if (item[keys[k]] === name) return true;
-                }
-            }
-        }
-        return false;
     }
     // images may arrive as a plain JS array (fresh map) or a wrapped
     // ListModel (dynamicRoles re-binding); normalise to a plain array.

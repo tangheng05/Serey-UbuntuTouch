@@ -194,10 +194,12 @@ Item {
     // cookieStore may be missing on older QtWebEngine — the caller's reload()
     // still refreshes the page either way.
     function clearSession() {
-        try {
+        // cookieStore is missing on older QtWebEngine — guard rather than let the
+        // call throw (which logged "deleteAllCookies of undefined" on every
+        // logout). The caller's reload() still refreshes the page either way.
+        if (mobileProfile && mobileProfile.cookieStore
+                && typeof mobileProfile.cookieStore.deleteAllCookies === "function") {
             mobileProfile.cookieStore.deleteAllCookies();
-        } catch (e) {
-            console.warn("WebAppView: cookie clear unavailable: " + e);
         }
     }
 

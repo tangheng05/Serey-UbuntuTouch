@@ -145,9 +145,14 @@ Page {
         page.markingAllRead = true
         NotificationService.markAllRead(Config.baseUrl, Session.token,
             function () {
+                // Clear the global badge even if the page was torn down (e.g.
+                // logout) before this callback ran; NotificationState is a
+                // singleton and always safe. Then guard the page-local updates
+                // against that teardown (notifModel becomes null with the page).
+                NotificationState.unread = 0
+                if (!notifModel) return
                 page.markingAllRead = false
                 page.unreadCount = 0
-                NotificationState.unread = 0
                 for (var i = 0; i < notifModel.count; i++)
                     notifModel.setProperty(i, "isRead", true)
                 Toast.show(Lang.tr("All notifications marked as read"))
@@ -162,6 +167,10 @@ Page {
         if (notifModel.get(index).isRead) return
         NotificationService.markOneRead(Config.baseUrl, Session.token, nid,
             function () {
+                // The page (and its notifModel) can be torn down — e.g. a logout
+                // that pops NotificationsPage — while this request is in flight;
+                // the stale callback must not touch the now-null model.
+                if (!notifModel) return
                 notifModel.setProperty(index, "isRead", true)
                 if (page.unreadCount > 0) {
                     page.unreadCount--

@@ -485,7 +485,11 @@ Page {
         MouseArea { anchors.fill: parent; onClicked: page.filterMenuOpen = false }
 
         Rectangle {
-            anchors { top: topBar.bottom; right: parent.right; topMargin: Style.spacingXs; rightMargin: Style.spacingM }
+            // This Item fills the page and topBar is its sibling (not this
+            // Rectangle's), so anchoring to topBar.bottom is invalid ("Cannot
+            // anchor to an item that isn't a parent or sibling"). Anchor to
+            // parent.top instead and offset by topBar.height (an id read is fine).
+            anchors { top: parent.top; right: parent.right; topMargin: topBar.height + Style.spacingXs; rightMargin: Style.spacingM }
             width: units.gu(20)
             height: menuCol.height
             radius: Style.cardRadius

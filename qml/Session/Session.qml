@@ -168,7 +168,18 @@ QtObject {
         token = "";
         username = "";
         avatarUrl = "";
-        _save();
+        // Logout: DELETE the stored credentials rather than persisting empty
+        // strings via _save(). _save()'s write-verify exists to catch a failed
+        // *login* write; running it for an empty session just logs a spurious
+        // "auth write VERIFY FAILED for user ''" on every logout. Deleting the
+        // rows is the correct "restore nothing on next launch" outcome, and
+        // leaves the language/pushEnabled rows untouched.
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
+                tx.executeSql("DELETE FROM auth WHERE k IN ('token','username')");
+            });
+        } catch (e) { console.warn("Session clear error: " + e); }
     }
 
     Component.onCompleted: _load()

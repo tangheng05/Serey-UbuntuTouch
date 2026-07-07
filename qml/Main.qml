@@ -69,6 +69,7 @@ MainView {
             function (list) {
                 Config.iconByDns = CommunityService.iconMap(list);
                 Config.allowPostByDns = CommunityService.allowPostMap(list);
+                Config.videoAllowPostByDns = CommunityService.videoAllowPostMap(list);
             },
             function (err) { /* keep globe fallback */ });
 
@@ -286,9 +287,10 @@ MainView {
             // old Material floating button on VideoPage.
             AbstractButton {
                 id: uploadBtn
-                // Only when the selected community allows posting (is_allow_post);
-                // hidden for Global and owner-only communities.
-                visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostCurrent
+                // Only when the selected community lets everyone post a VIDEO
+                // (video_is_allow_post); hidden for Global and owner-only-video
+                // communities, independent of the blog posting flag.
+                visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostVideoCurrent
                 anchors.verticalCenter: parent.verticalCenter
                 width: units.gu(3.2); height: width
                 onClicked: {

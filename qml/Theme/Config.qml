@@ -103,6 +103,18 @@ QtObject {
         && (selectedSubCommunity ? !!selectedSubCommunity.allowPost
                                  : !!allowPostByDns[communityDns])
 
+    // Map of community dns -> video_is_allow_post (bool), fetched alongside
+    // allowPostByDns. Backend rule: video_is_allow_post=true → anyone may post a
+    // video; false → owner/managers only. Gates the Video upload FAB.
+    property var videoAllowPostByDns: ({})
+
+    // Whether the *currently selected* community lets the signed-in user post a
+    // VIDEO. Same resolution as canPostCurrent but keyed off the video flag, so an
+    // owner-only-video community hides the upload FAB even when its blog is open.
+    readonly property bool canPostVideoCurrent: communityId > 0
+        && (selectedSubCommunity ? !!selectedSubCommunity.videoAllowPost
+                                 : !!videoAllowPostByDns[communityDns])
+
     function communityIcon(dns) {
         // Global uses a bundled multi-flag globe icon instead of the backend logo.
         if (dns === sources[0].dns)

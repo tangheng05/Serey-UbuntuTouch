@@ -21,9 +21,9 @@ Page {
     property var post: null
     property var comments: []
     property int commentCount: 0
-    // Keep the shared store in sync so the feed card behind this page reflects
-    // adds/deletes when the user goes back (see CommentCountStore).
-    onCommentCountChanged: CommentCountStore.set(page.permlink, page.commentCount)
+    // Broadcast so the feed card behind this page reflects adds/deletes when the
+    // user goes back; feed pages patch the row by permlink (like onPostDeleted).
+    onCommentCountChanged: if (page.permlink) PostActions.commentCountChanged(page.permlink, page.commentCount)
     property bool loading: false
     property bool posting: false
     property string errorMsg: ""

@@ -16,6 +16,9 @@ QtObject {
     signal postUpdated(string author, string permlink, string title, string body)
     signal userBlocked(string username)
     signal userUnblocked(string username)
+    // Emitted when a detail page's comment count changes (add/delete), so feed
+    // pages can patch the row's count without a full reload.
+    signal commentCountChanged(string permlink, int count)
 
     function open(postData, postKind) {
         post = postData;

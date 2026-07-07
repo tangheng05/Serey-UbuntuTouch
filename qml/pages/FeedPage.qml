@@ -304,6 +304,10 @@ Page {
             }
         }
         function onPostDeleted(author, permlink) { _removeByPermlink(permlink); }
+        function onCommentCountChanged(permlink, count) {
+            for (var i = 0; i < feedModel.count; i++)
+                if (feedModel.get(i).permlink === permlink) { feedModel.setProperty(i, "comments", count); return; }
+        }
         function onPostUpdated(author, permlink, title, body) {
             for (var i = 0; i < feedModel.count; i++) {
                 if (feedModel.get(i).permlink === permlink) {

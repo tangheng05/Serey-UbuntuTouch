@@ -259,7 +259,7 @@ Item {
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
             flaggers: root._len(p.flaggers)
-            comments: CommentCountStore.countFor(p.permlink, p.comments || 0)
+            comments: p.comments || 0
             payout: p.payout || ""
             onRequireLogin: root.requireLogin()
             onCommentRequested: root.clicked()

@@ -352,6 +352,8 @@ Page {
     }
 
     function clearBodySelections() {
+        console.log("[sel] clearBodySelections (was mode=" + page.bodySelectionMode
+            + " anchor=" + page.bodySelectionAnchor + ")");
         page.bodySelectionMode = false;
         page.bodySelectionAnchor = -1;
         if (!bodyRepeater) return;
@@ -663,14 +665,13 @@ Page {
                                     // accidentally highlight text.
                                     selectByMouse: false
                                     activeFocusOnPress: false
+                                    // Keep the highlight alive when focus moves to
+                                    // the floating Copy button (an AbstractButton
+                                    // steals active focus). Selection is torn down
+                                    // explicitly instead — on scroll, tap-outside,
+                                    // or after Copy — via clearBodySelections().
                                     persistentSelection: true
                                     onLinkActivated: Qt.openUrlExternally(link)
-                                    onActiveFocusChanged: {
-                                        if (!activeFocus) {
-                                            deselect();
-                                            page.bodySelectionMode = false;
-                                        }
-                                    }
                                 }
 
                                 // Touch interaction layer:
@@ -688,6 +689,8 @@ Page {
                                         var sp = bodyTouch.mapToItem(scroll, mouse.x, mouse.y);
                                         touchXInScroll = sp.x;
                                         touchYInScroll = sp.y;
+                                        console.log("[sel] block#" + index + " onPressed x=" + mouse.x.toFixed(0)
+                                            + " mode=" + page.bodySelectionMode + " selLen=" + bodyTxt.selectedText.length);
                                         if (!page.bodySelectionMode) return;
                                         var p = bodyTxt.positionAt(mouse.x, mouse.y);
                                         var s = Math.min(bodyTxt.selectionStart, bodyTxt.selectionEnd);
@@ -699,8 +702,12 @@ Page {
                                         } else {
                                             dragAnchor = page.bodySelectionAnchor >= 0 ? page.bodySelectionAnchor : p;
                                         }
+                                        console.log("[sel] block#" + index + " onPressed -> dragAnchor=" + dragAnchor
+                                            + " p=" + p + " (globalAnchor=" + page.bodySelectionAnchor + ")");
                                     }
                                     onClicked: {
+                                        console.log("[sel] block#" + index + " onClicked mode=" + page.bodySelectionMode
+                                            + " selLen=" + bodyTxt.selectedText.length);
                                         if (page.bodySelectionMode) {
                                             var p2 = bodyTxt.positionAt(mouse.x, mouse.y);
                                             var s2 = Math.min(bodyTxt.selectionStart, bodyTxt.selectionEnd);
@@ -716,6 +723,7 @@ Page {
                                         if (l) Qt.openUrlExternally(l);
                                     }
                                     onPressAndHold: {
+                                        console.log("[sel] block#" + index + " onPressAndHold mode=" + page.bodySelectionMode);
                                         if (page.bodySelectionMode) return;
                                         page.bodySelectionMode = true;
                                         bodyTxt.forceActiveFocus();
@@ -727,6 +735,8 @@ Page {
                                         // doesn't start from a mid-word index.
                                         page.bodySelectionAnchor = ws;
                                         dragAnchor = ws;
+                                        console.log("[sel] block#" + index + " selectWord -> '" + bodyTxt.selectedText
+                                            + "' anchor=" + ws);
                                     }
                                     onPositionChanged: {
                                         var sp = bodyTouch.mapToItem(scroll, mouse.x, mouse.y);
@@ -736,6 +746,8 @@ Page {
                                         var pRaw = bodyTxt.positionAt(mouse.x, mouse.y);
                                         var p = page.snapWordBoundary(bodyTxt, pRaw, dragAnchor);
                                         bodyTxt.select(Math.min(dragAnchor, p), Math.max(dragAnchor, p));
+                                        console.log("[sel] block#" + index + " drag pRaw=" + pRaw + " snap=" + p
+                                            + " sel='" + bodyTxt.selectedText + "'");
                                         var edge = units.gu(3);
                                         if (touchYInScroll < edge || touchYInScroll > scroll.height - edge) {
                                             if (!bodyAutoScrollTimer.running) bodyAutoScrollTimer.start();
@@ -970,6 +982,9 @@ Page {
     AbstractButton {
         id: copySelectionBtn
         z: 130
+        // Don't take active focus from the body TextEdit, or the selection is
+        // torn down before onClicked can read it.
+        activeFocusOnPress: false
         visible: page.bodySelectionMode && page.selectedBodyText().length > 0
         anchors {
             right: parent.right
@@ -980,7 +995,9 @@ Page {
         height: units.gu(3.4)
         width: copySelLbl.implicitWidth + Style.spacingM * 2
         onClicked: {
-            Clipboard.push(page.selectedBodyText());
+            var txt = page.selectedBodyText();
+            console.log("[sel] COPY pressed, len=" + txt.length + " text='" + txt + "'");
+            Clipboard.push(txt);
             Toast.success(Lang.tr("Article copied"));
             page.clearBodySelections();
         }

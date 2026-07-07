@@ -303,26 +303,32 @@ Page {
                 bodyModel.append({ type: "image", content: piece.content });
             } else {
                 var text = piece.content;
-                text = text.replace(/<br\s*\/?>/gi, "\n");
-                text = text.replace(/<\/p>/gi, "\n");
+                // The blocks render as RichText, which (being HTML) collapses literal
+                // "\n" to a single space — so block boundaries must become <br/> tags,
+                // and a paragraph gap is a double break, to match the web spacing.
+                text = text.replace(/<\/p>/gi, "<br/><br/>");
                 text = text.replace(/<p[^>]*>/gi, "");
                 text = text.replace(/<div[^>]*>/gi, "");
-                text = text.replace(/<\/div>/gi, "");
+                text = text.replace(/<\/div>/gi, "<br/>");
                 text = text.replace(/<strong>/gi, "<b>");
                 text = text.replace(/<\/strong>/gi, "</b>");
                 text = text.replace(/<em>/gi, "<i>");
                 text = text.replace(/<\/em>/gi, "</i>");
                 text = text.replace(/<h[1-6][^>]*>/gi, "<b>");
-                text = text.replace(/<\/h[1-6]>/gi, "</b>\n");
-                text = text.replace(/<(?!\/?(?:b|i|br|u|a)\b)[^>]+>/g, "");
+                text = text.replace(/<\/h[1-6]>/gi, "</b><br/><br/>");
+                text = text.replace(/<li[^>]*>/gi, "• ");
+                text = text.replace(/<\/li>/gi, "<br/>");
+                text = text.replace(/<\/?(?:ul|ol)[^>]*>/gi, "");
+                text = text.replace(/<br\s*\/?>/gi, "<br/>");
+                text = text.replace(/<(?!\/?(?:b|i|br|u|a)\b)[^>]*>/gi, "");
                 text = text.replace(/&nbsp;/g, " ");
                 text = text.replace(/&amp;/g, "&");
                 text = text.replace(/&lt;/g, "<");
                 text = text.replace(/&gt;/g, ">");
                 text = text.replace(/&quot;/g, "\"");
                 // Decode numeric entities (e.g. &#8220; smart quotes, &#8217;
-                // apostrophes) that Text.StyledText can't render — but leave &,<,>
-                // encoded so they aren't mistaken for markup.
+                // apostrophes) that the rich-text renderer can't render — but leave
+                // &,<,> encoded so they aren't mistaken for markup.
                 text = text.replace(/&#(\d+);/g, function (mm, n) {
                     var code = parseInt(n, 10);
                     return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
@@ -331,8 +337,11 @@ Page {
                     var code = parseInt(n, 16);
                     return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
                 });
-                text = text.replace(/\n{3,}/g, "\n\n");
-                text = text.trim();
+                // Collapse runs of breaks and trim leading/trailing ones so blocks
+                // don't start or end with blank lines.
+                text = text.replace(/(?:<br\/>\s*){3,}/gi, "<br/><br/>");
+                text = text.replace(/^(?:\s|<br\/>)+/i, "");
+                text = text.replace(/(?:\s|<br\/>)+$/i, "");
                 if (text.length > 0)
                     bodyModel.append({ type: "text", content: text });
             }
@@ -661,7 +670,20 @@ Page {
                                     // hides the caret again. The second handler re-asserts
                                     // it against the read-only editor's reset, but only
                                     // while a selection exists (so idle stays caret-free).
-                                    onSelectedTextChanged: cursorVisible = (selectedText.length > 0)
+                                    onSelectedTextChanged: {
+                                        // A genuine selection only happens while the page
+                                        // is still. If one appears while the scroll is
+                                        // moving/flicking (e.g. a finger pressed down to
+                                        // catch a flick grabs a word, then momentum slides
+                                        // the text under it and extends it), it's a stray —
+                                        // clear it. Dragging the selection handles freezes
+                                        // the scroller, so a real selection never trips this.
+                                        if (selectedText.length > 0 && scroll.moving) {
+                                            bodyTxt.deselect();
+                                            return;
+                                        }
+                                        cursorVisible = (selectedText.length > 0);
+                                    }
                                     onCursorVisibleChanged: if (!cursorVisible && selectedText.length > 0) cursorVisible = true
                                 }
 

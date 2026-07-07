@@ -406,9 +406,20 @@ Page {
         return out;
     }
 
-    function editComment(permlinkToEdit, newBody) {
+    function editComment(permlinkToEdit, newBody, parentAuthor, parentPermlink) {
         page.comments = page._editIn(page.comments, permlinkToEdit, newBody);
         Toast.success(Lang.tr("Comment updated"));
+        // Server update runs in this page-level scope, not in CommentItem: its
+        // CommentService import is null inside Loader-created reply rows (see
+        // removeComment). Passing the existing permlink updates that comment.
+        CommentService.create(Config.baseUrl,
+            { parentAuthor: parentAuthor, parentPermlink: parentPermlink,
+              body: newBody, permlink: permlinkToEdit },
+            Session.token,
+            function () {},
+            function (err) {
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update comment."));
+            });
     }
 
     function _appendReply(list, parentPermlink, reply) {
@@ -1068,7 +1079,7 @@ Page {
                             width: cmtCol.width
                             comment: modelData
                             onDeleted: page.removeComment(permlink)
-                            onEdited: page.editComment(permlink, newBody)
+                            onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
                             onReplyRequested: page.startReply(comment)
                         }
                     }

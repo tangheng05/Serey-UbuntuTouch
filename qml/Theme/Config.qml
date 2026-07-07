@@ -94,14 +94,26 @@ QtObject {
     // only. Used to gate the compose buttons (e.g. the Video upload FAB).
     property var allowPostByDns: ({})
 
+    // Community ids the signed-in user owns/manages, fetched from
+    // /user-permission/permission-by-current-user (see Main.qml). Stored as a map
+    // { id: true } for O(1) lookup; empty ({}) when logged out.
+    property var ownedCommunityIdSet: ({})
+
+    // Whether the signed-in user owns/manages the currently selected community.
+    // An owner/manager may post even when the community is set to owner-only, so
+    // this is OR-ed into the compose gates below.
+    readonly property bool isOwnerCurrent: communityId > 0
+                                           && !!ownedCommunityIdSet[communityId]
+
     // Whether the *currently selected* community allows the signed-in user to
     // post. Global (sentinel id 0, no filter) is never postable. A picked
     // sub-community carries its own allowPost flag; otherwise fall back to the
-    // top-level source's flag keyed by dns. (Owner/manager overrides aren't
-    // resolved client-side — managers of an owner-only community post via web.)
+    // top-level source's flag keyed by dns. Owners/managers may always post
+    // (isOwnerCurrent), even when the community is set to owner-only.
     readonly property bool canPostCurrent: communityId > 0
-        && (selectedSubCommunity ? !!selectedSubCommunity.allowPost
-                                 : !!allowPostByDns[communityDns])
+        && (isOwnerCurrent
+            || (selectedSubCommunity ? !!selectedSubCommunity.allowPost
+                                     : !!allowPostByDns[communityDns]))
 
     // Map of community dns -> video_is_allow_post (bool), fetched alongside
     // allowPostByDns. Backend rule: video_is_allow_post=true → anyone may post a
@@ -112,8 +124,9 @@ QtObject {
     // VIDEO. Same resolution as canPostCurrent but keyed off the video flag, so an
     // owner-only-video community hides the upload FAB even when its blog is open.
     readonly property bool canPostVideoCurrent: communityId > 0
-        && (selectedSubCommunity ? !!selectedSubCommunity.videoAllowPost
-                                 : !!videoAllowPostByDns[communityDns])
+        && (isOwnerCurrent
+            || (selectedSubCommunity ? !!selectedSubCommunity.videoAllowPost
+                                     : !!videoAllowPostByDns[communityDns]))
 
     function communityIcon(dns) {
         // Global uses a bundled multi-flag globe icon instead of the backend logo.

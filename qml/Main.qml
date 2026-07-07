@@ -81,6 +81,7 @@ MainView {
                 function (err) { /* keep letter-fallback avatar */ });
         }
         _syncBlockedUsers();
+        _syncOwnedCommunities();
     }
 
     // Keep the local blocked-users set (used to filter feeds) in step with the
@@ -90,6 +91,20 @@ MainView {
         AccountService.listBlocked(Config.baseUrl, Session.token,
             function (list) { BlockedUsers.replaceAll(list); },
             function (err) { /* offline / failed — keep last-known local set */ });
+    }
+
+    // Keep the set of communities the user owns/manages in step with the session
+    // — on launch and whenever the token changes. Lets an owner see the compose /
+    // video-upload buttons in their own community even when it is owner-only.
+    function _syncOwnedCommunities() {
+        if (!Session.isLoggedIn) { Config.ownedCommunityIdSet = ({}); return; }
+        AccountService.ownedCommunityIds(Config.baseUrl, Session.token,
+            function (ids) {
+                var set = {};
+                for (var i = 0; i < ids.length; i++) set[ids[i]] = true;
+                Config.ownedCommunityIdSet = set;
+            },
+            function (err) { /* offline / failed — keep last-known set */ });
     }
 
     // ── Push / local notification handles (created dynamically) ─────────────
@@ -197,7 +212,7 @@ MainView {
         // token changes. Keying off the token (not isLoggedIn) means switching
         // accounts reloads the new account's blocks even if the token is swapped
         // directly, so one account's blocks never leak into another's feed.
-        function onTokenChanged() { root._syncBlockedUsers() }
+        function onTokenChanged() { root._syncBlockedUsers(); root._syncOwnedCommunities() }
         function onIsLoggedInChanged() {
             // Blocked-set sync is handled by onTokenChanged (token always changes
             // on login/logout/switch), so it isn't repeated here.

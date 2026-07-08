@@ -166,6 +166,12 @@ Page {
         target: PostActions
         function onHideRequested(author, permlink) { page.removeRow(permlink); }
         function onPostDeleted(author, permlink) { page.removeRow(permlink); }
+        function onCommentCountChanged(permlink, count) {
+            var models = [m0, m1, m2];
+            for (var k = 0; k < models.length; k++)
+                for (var i = 0; i < models[k].count; i++)
+                    if (models[k].get(i).permlink === permlink) { models[k].setProperty(i, "comments", count); return; }
+        }
         function onPostUpdated(author, permlink, title, body) {
             var models = [m0, m1, m2];
             for (var k = 0; k < models.length; k++) {

@@ -100,7 +100,20 @@ Item {
                 Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't delete comment."));
             });
     }
-    function editComment(p, b) { sheet.comments = _editIn(sheet.comments, p, b); }
+    function editComment(p, b, parentAuthor, parentPermlink) {
+        sheet.comments = _editIn(sheet.comments, p, b);
+        // Server update runs in this sheet-level scope, not in CommentItem: its
+        // CommentService import is null inside Loader-created reply rows (see
+        // removeComment). Passing the existing permlink updates that comment.
+        CommentService.create(Config.baseUrl,
+            { parentAuthor: parentAuthor, parentPermlink: parentPermlink,
+              body: b, permlink: p },
+            Session.token,
+            function () {},
+            function (err) {
+                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update comment."));
+            });
+    }
     function startReply(c) { sheet.replyTarget = c; composer.forceActiveFocus(); }
 
     function submit() {
@@ -195,7 +208,7 @@ Item {
                 comment: modelData
                 topLevel: true
                 onDeleted: sheet.removeComment(permlink)
-                onEdited: sheet.editComment(permlink, newBody)
+                onEdited: sheet.editComment(permlink, newBody, parentAuthor, parentPermlink)
                 onReplyRequested: sheet.startReply(comment)
             }
         }

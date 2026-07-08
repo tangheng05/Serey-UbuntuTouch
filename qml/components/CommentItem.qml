@@ -38,7 +38,7 @@ Item {
     property bool saving: false
 
     signal deleted(string permlink)
-    signal edited(string permlink, string newBody)
+    signal edited(string permlink, string newBody, string parentAuthor, string parentPermlink)
     signal replyRequested(var comment)
     signal authorClicked(string author)
 
@@ -53,22 +53,16 @@ Item {
 
     function saveEdit() {
         var text = item.editText.trim();
-        if (text.length === 0 || item.saving)
+        if (text.length === 0)
             return;
-        item.saving = true;
-        CommentService.create(Config.baseUrl,
-            { parentAuthor: c.parentAuthor, parentPermlink: c.parentPermlink,
-              body: text, permlink: c.permlink },
-            Session.token,
-            function () {
-                item.saving = false;
-                item.editing = false;
-                item.edited(c.permlink, text);
-            },
-            function (err) {
-                item.saving = false;
-                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update comment."));
-            });
+        // Emit only — the server update is performed by the host page's onEdited
+        // handler. Like doDelete, this file is instantiated via Loader for nested
+        // replies, where the CommentService JS import resolves to NULL, so calling
+        // CommentService.create() here threw and the edit never reached the server
+        // (the change reverted on the next fetch). Applied optimistically, same as
+        // delete; the parent fields are carried up so the page can rebuild the call.
+        item.editing = false;
+        item.edited(c.permlink, text, c.parentAuthor || "", c.parentPermlink || "");
     }
 
     // Optimistic: drop it from the page's tree immediately rather than waiting
@@ -418,7 +412,7 @@ Item {
                 function forwardSignals(loaderItem) {
                     if (!loaderItem) return;
                     loaderItem.deleted.connect(function(permlink) { item.deleted(permlink) })
-                    loaderItem.edited.connect(function(permlink, newBody) { item.edited(permlink, newBody) })
+                    loaderItem.edited.connect(function(permlink, newBody, pa, pp) { item.edited(permlink, newBody, pa, pp) })
                     loaderItem.replyRequested.connect(function(c) { item.replyRequested(c) })
                     loaderItem.authorClicked.connect(function(author) { item.authorClicked(author) })
                 }

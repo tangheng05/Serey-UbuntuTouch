@@ -54,6 +54,14 @@ Page {
                 if (feedModel.get(i).permlink === permlink) feedModel.remove(i);
             }
         }
+        function onCommentCountChanged(permlink, count) {
+            for (var i = 0; i < feedModel.count; i++) {
+                if (feedModel.get(i).permlink === permlink) {
+                    feedModel.setProperty(i, "comments", count);
+                    return;
+                }
+            }
+        }
         function onUserBlocked(username) {
             for (var i = feedModel.count - 1; i >= 0; i--) {
                 if (feedModel.get(i).author === username) feedModel.remove(i);

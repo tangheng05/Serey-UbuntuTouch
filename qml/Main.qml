@@ -1,8 +1,7 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
-// Lomiri.Notifications and Ubuntu.PushNotifications are only available on a
-// real Ubuntu Touch device, not in the clickable desktop container. We load
-// them dynamically so the desktop build doesn't crash.
+// Lomiri.Notifications / Ubuntu.PushNotifications exist only on-device, so
+// they're created dynamically (see _initNotifications) to keep desktop builds alive.
 import "Theme"
 import "Session"
 import "components"
@@ -14,8 +13,7 @@ import "services/BlockedUsers.js" as BlockedUsers
 
 /*
  * Application shell: a persistent bottom tab bar with one PageStack per tab so
- * each section keeps its own navigation history. On launch we validate any
- * stored auth token in the background.
+ * each section keeps its own navigation history.
  */
 MainView {
     id: root
@@ -27,11 +25,24 @@ MainView {
     height: units.gu(80)
 
     property int currentTab: 0
-    onCurrentTabChanged: { Config.currentTab = currentTab; body.opacity = 0; tabFadeIn.start(); }
+    onCurrentTabChanged: { Config.currentTab = currentTab; _ensureTab(currentTab); body.opacity = 0; tabFadeIn.start(); }
+
+    // Tabs are created lazily on first visit: launching all four at once made
+    // the Homepage web view slow/janky on low-end devices (Pixel 3).
+    function _ensureTab(tab) {
+        if (tab === 0 && homeStack.depth === 0)
+            homeStack.push(Qt.resolvedUrl("pages/HomepagePage.qml"));
+        else if (tab === 1 && newsStack.depth === 0)
+            newsStack.push(Qt.resolvedUrl("pages/NewsPage.qml"));
+        else if (tab === 2 && videoStack.depth === 0)
+            videoStack.push(Qt.resolvedUrl("pages/VideoPage.qml"));
+        else if (tab === 3 && settingsStack.depth === 0)
+            settingsStack.push(Qt.resolvedUrl("pages/SettingsPage.qml"));
+    }
     NumberAnimation { id: tabFadeIn; target: body; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
 
-    // Depth of the active tab's stack. The global header only shows at a tab's
-    // root (depth 1); pushed sub-pages (detail/login) bring their own back-bar.
+    // The global header/nav only show at a tab's root (depth 1); pushed
+    // sub-pages bring their own back-bar.
     property int activeDepth: currentTab === 0 ? homeStack.depth
                             : currentTab === 1 ? newsStack.depth
                             : currentTab === 2 ? videoStack.depth
@@ -40,31 +51,19 @@ MainView {
     readonly property bool showNavBar: activeDepth <= 1
 
     Component.onCompleted: {
-        // A stale/expired JWT can't be detected up-front (see note below), so
-        // catch it lazily: any authed request that comes back 401 clears the
-        // session and prompts re-login, instead of leaving the user "logged in"
-        // with a dead token while publishing etc. silently fail. Guarded on
-        // isLoggedIn so concurrent 401s only clear + toast once.
+        // Expired tokens are caught lazily via 401 (they can't be checked
+        // up-front: /auth/authenticated needs a device JWT we never have and
+        // always 401s — validating on launch wrongly logged users out). Only
+        // clear if the rejected token is still the CURRENT one; a late 401
+        // from a logged-out account must not wipe a fresh session.
         Http.setUnauthorizedHandler(function (tokenUsed) {
             if (!Session.isLoggedIn) return;
-            // Only clear if the rejected token IS the current session's token.
-            // A late 401 from a previous account's in-flight request (its token
-            // was just invalidated by logout) must not wipe the fresh session.
             if (tokenUsed !== Session.token) return;
             Session.clear();
             Toast.error(Lang.tr("Your session expired. Please log in again."));
         });
 
-        // NOTE: we deliberately do NOT validate the token via /auth/authenticated
-        // on startup. That endpoint additionally requires a *device* JWT
-        // (isDeviceJwtAuthenticated) which the native client never has, so it
-        // always returns 401 — calling it would wrongly clear a perfectly valid
-        // session on every launch (the original "logged out on reopen" bug). The
-        // stored token is trusted; it works for every endpoint the app uses
-        // (those need only isJwtAuthenticated). A genuinely stale token simply
-        // surfaces as a normal API error when used.
-        _initNotifications()
-
+        // Needed immediately: the header pill icons and can-post gates read it.
         CommunityService.listAll(Config.baseUrl,
             function (list) {
                 Config.iconByDns = CommunityService.iconMap(list);
@@ -72,20 +71,31 @@ MainView {
                 Config.videoAllowPostByDns = CommunityService.videoAllowPostMap(list);
             },
             function (err) { /* keep globe fallback */ });
-
-        // A persisted session only carries token + username (see Session.qml);
-        // refetch the avatar so optimistic local comments can show it.
-        if (Session.isLoggedIn) {
-            AccountService.profile(Config.baseUrl, Session.username, Session.token,
-                function (user) { Session.avatarUrl = user.profileUrl; },
-                function (err) { /* keep letter-fallback avatar */ });
-        }
-        _syncBlockedUsers();
-        _syncOwnedCommunities();
     }
 
-    // Keep the local blocked-users set (used to filter feeds) in step with the
-    // server's authoritative list — on launch and whenever the session changes.
+    // Non-critical launch work is deferred a few seconds so the Homepage web
+    // view's first load gets the CPU/network to itself on slow devices.
+    property bool startupSettled: false
+    Timer {
+        id: startupSettleTimer
+        interval: 3500
+        repeat: false
+        running: true
+        onTriggered: {
+            root.startupSettled = true;
+            _initNotifications();
+            // The avatar isn't persisted with the session — refetch it.
+            if (Session.isLoggedIn) {
+                AccountService.profile(Config.baseUrl, Session.username, Session.token,
+                    function (user) { Session.avatarUrl = user.profileUrl; },
+                    function (err) { /* keep letter-fallback avatar */ });
+            }
+            _syncBlockedUsers();
+            _syncOwnedCommunities();
+        }
+    }
+
+    // Mirror the server's blocked-users list (feeds filter on it).
     function _syncBlockedUsers() {
         if (!Session.isLoggedIn) { BlockedUsers.replaceAll([]); return; }
         AccountService.listBlocked(Config.baseUrl, Session.token,
@@ -93,9 +103,8 @@ MainView {
             function (err) { /* offline / failed — keep last-known local set */ });
     }
 
-    // Keep the set of communities the user owns/manages in step with the session
-    // — on launch and whenever the token changes. Lets an owner see the compose /
-    // video-upload buttons in their own community even when it is owner-only.
+    // Communities the user owns/manages — an owner may post even when the
+    // community is set to owner-only.
     function _syncOwnedCommunities() {
         if (!Session.isLoggedIn) { Config.ownedCommunityIdSet = ({}); return; }
         AccountService.ownedCommunityIds(Config.baseUrl, Session.token,
@@ -112,20 +121,15 @@ MainView {
     property var  pushClient: null   // Ubuntu.PushNotifications PushClient
     property string pushToken: ""
     property var  notifSound: null
-    // Unread count lives in the NotificationState singleton so pages pushed onto
-    // a PageStack (which can't resolve this shell's ids) can read it for a badge.
 
     function _showNotif(body) {
-        // Play sound
         if (root.notifSound) root.notifSound.play()
 
-        // System notification (lock screen / indicator)
         if (root.sysNotif) {
             root.sysNotif.body = body
             root.sysNotif.show()
         }
 
-        // In-app toast (always works)
         Toast.show(body)
     }
 
@@ -136,21 +140,19 @@ MainView {
     }
 
     function _initNotifications() {
-        // Notification sound (QtMultimedia Audio for ogg support)
+        // QtMultimedia Audio (not SoundEffect) for ogg support.
         try {
             root.notifSound = Qt.createQmlObject(
                 'import QtMultimedia 5.6; Audio { source: "/usr/share/sounds/lomiri/notifications/Xylo.ogg"; autoPlay: false }',
                 root, "notifSound")
         } catch (e) { /* QtMultimedia not available — silent */ }
 
-        // System notification (indicator + lock screen)
         try {
             root.sysNotif = Qt.createQmlObject(
                 'import Lomiri.Notifications 1.0; Notification { summary: "Serey" }',
                 root, "sysNotif")
         } catch (e) { /* Lomiri.Notifications not available on desktop — expected */ }
 
-        // Push client for background delivery
         try {
             root.pushClient = Qt.createQmlObject(
                 'import Ubuntu.PushNotifications 0.1; PushClient {' +
@@ -178,12 +180,12 @@ MainView {
         } catch (e) { console.warn("Push: PushClient failed to create:", e) }
     }
 
-    // Poll every 30 s while logged in
+    // Poll every 30 s while logged in; the first poll waits for startupSettled.
     Timer {
         id: notifPoller
         interval: 30000
         repeat: true
-        running: Session.isLoggedIn && Session.pushEnabled
+        running: Session.isLoggedIn && Session.pushEnabled && root.startupSettled
         triggeredOnStart: true
         onTriggered: {
             if (!Session.isLoggedIn || !Session.pushEnabled) return
@@ -208,14 +210,10 @@ MainView {
 
     Connections {
         target: Session
-        // The blocked set is per-account; resync (or clear) it whenever the auth
-        // token changes. Keying off the token (not isLoggedIn) means switching
-        // accounts reloads the new account's blocks even if the token is swapped
-        // directly, so one account's blocks never leak into another's feed.
+        // Keyed off the token (not isLoggedIn) so a direct account switch also
+        // resyncs — one account's blocks must never leak into another's feed.
         function onTokenChanged() { root._syncBlockedUsers(); root._syncOwnedCommunities() }
         function onIsLoggedInChanged() {
-            // Blocked-set sync is handled by onTokenChanged (token always changes
-            // on login/logout/switch), so it isn't repeated here.
             if (!Session.isLoggedIn) {
                 NotificationState.unread = -1
             } else if (root.pushToken !== "") {
@@ -224,13 +222,14 @@ MainView {
         }
     }
 
-    // A page requested a tab switch (e.g. signup success → Homepage). Switch
-    // tabs and unwind the Settings stack the auth flow was pushed onto, so we
-    // don't leave the signup pages behind it.
+    // Tab switch requested by a page (e.g. signup success → Homepage); also
+    // unwinds the auth pages left on the Settings stack.
     Connections {
         target: Nav
         function onGoToTab(tab) {
             root.currentTab = tab;
+            // tab may already equal currentTab (no change signal) — ensure explicitly.
+            root._ensureTab(tab);
             while (settingsStack.depth > 1)
                 settingsStack.pop();
         }
@@ -244,7 +243,6 @@ MainView {
         visible: root.showHeader
         onCommunityButtonClicked: communityPicker.open()
 
-        // Center: "My feed" shortcut, now in the middle of the header.
         center: AbstractButton {
             id: feedBtn
             visible: Session.isLoggedIn
@@ -266,13 +264,11 @@ MainView {
             }
         }
 
-        // Right: post actions, in the feed button's old trailing spot.
         Row {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.spacingS
 
-            // Compose (News tab only) — Lomiri header action, replacing the old
-            // Material floating button. Reloads the feed once a post is saved.
+            // Compose (News tab only). Reloads the feed once a post is saved.
             AbstractButton {
                 id: composeBtn
                 visible: Session.isLoggedIn && root.currentTab === 1
@@ -298,13 +294,10 @@ MainView {
                 }
             }
 
-            // Upload video (Video tab only) — Lomiri header action, replacing the
-            // old Material floating button on VideoPage.
+            // Upload video (Video tab only), gated on the community's video
+            // posting permission (see Config.canPostVideoCurrent).
             AbstractButton {
                 id: uploadBtn
-                // Only when the selected community lets everyone post a VIDEO
-                // (video_is_allow_post); hidden for Global and owner-only-video
-                // communities, independent of the blog posting flag.
                 visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostVideoCurrent
                 anchors.verticalCenter: parent.verticalCenter
                 width: units.gu(3.2); height: width
@@ -346,23 +339,21 @@ MainView {
             visible: root.currentTab === 0
             Component.onCompleted: push(Qt.resolvedUrl("pages/HomepagePage.qml"))
         }
+        // News/Video/Settings are filled lazily by _ensureTab() on first visit.
         PageStack {
             id: newsStack
             anchors.fill: parent
             visible: root.currentTab === 1
-            Component.onCompleted: push(Qt.resolvedUrl("pages/NewsPage.qml"))
         }
         PageStack {
             id: videoStack
             anchors.fill: parent
             visible: root.currentTab === 2
-            Component.onCompleted: push(Qt.resolvedUrl("pages/VideoPage.qml"))
         }
         PageStack {
             id: settingsStack
             anchors.fill: parent
             visible: root.currentTab === 3
-            Component.onCompleted: push(Qt.resolvedUrl("pages/SettingsPage.qml"))
         }
     }
 
@@ -408,15 +399,9 @@ MainView {
         }
     }
 
-    // --- Community / source selector (bottom sheet) overlay ---------------
+    // --- Overlays (bottom sheets + toasts) ---------------------------------
     CommunityPicker { id: communityPicker }
-
-    // --- Post actions (Report / Hide / Block) bottom sheet ----------------
     PostActionSheet { }
-
-    // --- Share (ContentHub peer picker) bottom sheet -----------------------
     ShareSheet { }
-
-    // --- Transient notifications (snackbar) overlay -----------------------
     Toaster { }
 }

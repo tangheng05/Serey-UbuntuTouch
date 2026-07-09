@@ -593,7 +593,7 @@ Page {
             SettingsRow {
                 iconName: "info"
                 label: Lang.tr("Version")
-                valueText: "0.1.0"
+                valueText: Config.appVersion
             }
             SettingsRow {
                 iconName: "external-link"

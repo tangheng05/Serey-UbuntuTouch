@@ -241,7 +241,7 @@ Item {
             case "getDeviceInfo":
                 _sendResponse(id, {
                     os: "UbuntuTouch",
-                    version: "0.1.0",
+                    version: Config.appVersion,
                     apiData: { baseUrlV1: webAppView.apiBaseV1, baseUrlV2: webAppView.apiBaseV2 }
                 });
                 break;

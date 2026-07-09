@@ -13,6 +13,10 @@ import QtQuick 2.7
 QtObject {
     id: config
 
+    // App version shown in Settings and reported to the web bridge. Keep in
+    // sync with manifest.json.in "version" on every release.
+    readonly property string appVersion: "1.0.0"
+
     readonly property string prodBase: "https://global-api.serey.io/api/v2"
     readonly property string devBase: "http://localhost:5050/api/v2"
     readonly property string prodBaseV1: "https://global-api.serey.io/api/v1"

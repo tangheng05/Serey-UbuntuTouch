@@ -225,7 +225,10 @@ function toCommunity(raw) {
         allowPost: !!raw.is_allow_post,
         // video_is_allow_post=true → anyone may post a video; false → owner/
         // managers only. Gates the Video upload FAB independently of the blog flag.
-        videoAllowPost: !!raw.video_is_allow_post
+        videoAllowPost: !!raw.video_is_allow_post,
+        // Number of sub-communities under this one. Used to hide empty countries
+        // from the picker (a country with no communities yet).
+        childCount: Array.isArray(raw.child_communities) ? raw.child_communities.length : 0
     };
 }
 

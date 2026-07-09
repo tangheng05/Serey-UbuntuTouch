@@ -6,6 +6,7 @@ import "Theme"
 import "Session"
 import "components"
 import "services/CommunityService.js" as CommunityService
+import "services/Flags.js" as Flags
 import "services/AccountService.js" as AccountService
 import "services/Http.js" as Http
 import "services/NotificationService.js" as NotificationService
@@ -66,9 +67,32 @@ MainView {
         // Needed immediately: the header pill icons and can-post gates read it.
         CommunityService.listAll(Config.baseUrl,
             function (list) {
-                Config.iconByDns = CommunityService.iconMap(list);
+                var icons = CommunityService.iconMap(list);
                 Config.allowPostByDns = CommunityService.allowPostMap(list);
                 Config.videoAllowPostByDns = CommunityService.videoAllowPostMap(list);
+
+                // dns of the three fixed rows — leave their icons untouched.
+                var baseDns = {};
+                for (var b = 0; b < Config.baseSources.length; b++)
+                    baseDns[Config.baseSources[b].dns] = true;
+
+                // Append every top-level country (except Cambodia) below the
+                // fixed Global / Netherlands / United States rows in the picker.
+                // Country icons follow fe-serey-web: derive a flagcdn flag from
+                // the title (backend leaves icon_url empty → generic Serey logo).
+                var extra = [];
+                for (var i = 0; i < list.length; i++) {
+                    var c = list[i];
+                    if (!c.dns || baseDns[c.dns]) continue;
+                    if ((c.country || "").toLowerCase() === "cambodia") continue;
+                    if (c.childCount <= 0) continue;   // hide countries with no communities yet
+                    var flag = Flags.flagUrl(c.title);
+                    if (flag) icons[c.dns] = flag;   // override generic logo with the flag
+                    extra.push({ name: c.title, id: c.id, dns: c.dns, icon: flag || c.icon || "" });
+                }
+
+                Config.iconByDns = icons;
+                Config.appendCountries(extra);
             },
             function (err) { /* keep globe fallback */ });
     }

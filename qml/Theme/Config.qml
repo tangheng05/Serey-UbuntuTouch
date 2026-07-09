@@ -50,15 +50,32 @@ QtObject {
     readonly property string homeLandingPageUrl: "https://khmer.serey.io"
 
     // --- Regional sources (verified community IDs) -----------------------
-    // Three communities. "Global" (id 0) applies no community filter, so its
-    // News/Video feeds combine content from every community. Keep `sourceNames`
-    // in the same order as `sources`.
-    readonly property var sources: [
+    // The three fixed rows shown at the top of the community picker, in this
+    // order. "Global" (id 0) applies no community filter, so its News/Video
+    // feeds combine content from every community.
+    readonly property var baseSources: [
         { "name": "Global",        "id": 0,  "dns": "serey.io",             "icon": "view-grid-symbolic" },
         { "name": "Netherlands",   "id": 99, "dns": "netherlands.serey.io", "icon": "" },
         { "name": "United States", "id": 26, "dns": "us.serey.io",          "icon": "" }
     ]
-    readonly property var sourceNames: ["Global", "Netherlands", "United States"]
+
+    // The live source list. Seeded with baseSources; Main.qml appends every
+    // other top-level country from GET /general/get-communities below them at
+    // startup (see appendCountries). Indexed by sourceIndex everywhere.
+    property var sources: baseSources
+
+    // Append backend countries below the fixed three, skipping any dns already
+    // present. `extra` is a list of { name, id, dns, icon }.
+    function appendCountries(extra) {
+        var seen = {};
+        for (var i = 0; i < baseSources.length; i++) seen[baseSources[i].dns] = true;
+        var out = baseSources.slice();
+        for (var j = 0; j < extra.length; j++) {
+            var e = extra[j];
+            if (e.dns && !seen[e.dns]) { seen[e.dns] = true; out.push(e); }
+        }
+        sources = out;
+    }
 
     // The active bottom-nav tab (mirrored from Main.currentTab). Read by
     // HomepagePage to suspend its WebView's Chromium renderer while another tab
@@ -66,7 +83,7 @@ QtObject {
     // player's WebView (two live Chromium views crashed the app — see device log).
     property int currentTab: 0
 
-    property int sourceIndex: 1  // default to Netherlands; Global is hidden from the picker
+    property int sourceIndex: 0  // default to Global (combined feed, no community filter)
     // Set when user picks a sub-community from the picker; null = use top-level source.
     property var selectedSubCommunity: null
 

@@ -19,8 +19,10 @@ Item {
 
     // Which source row is currently expanded (-1 = none).
     property int expandedIndex: -1
-    // Per-source cache: null = not fetched yet, [] = fetched but empty, [...] = data.
-    property var cache: [null, null, null, null]
+    // Per-source cache keyed by srcIndex: undefined = not fetched yet,
+    // [] = fetched but empty, [...] = data. An object (not a fixed-length array)
+    // so it works for however many countries the backend adds below the fixed rows.
+    property var cache: ({})
     property int loadingIndex: -1
     // Map of communityId (string) → true for communities the user is subscribed to.
     property var subscribedMap: ({})
@@ -66,7 +68,7 @@ Item {
     }
 
     function _fetch(srcIndex) {
-        if (picker.cache[srcIndex] !== null) return
+        if (picker.cache[srcIndex] !== undefined) return
         picker.loadingIndex = srcIndex
 
         // All sources: step 1 — fetch the correct communities for this source,
@@ -145,8 +147,8 @@ Item {
         }
 
         function _store(si, cats) {
-            var nc = []
-            for (var i = 0; i < picker.cache.length; i++) nc.push(picker.cache[i])
+            var nc = {}
+            for (var k in picker.cache) nc[k] = picker.cache[k]
             nc[si] = cats
             picker.cache = nc
             picker.loadingIndex = -1
@@ -290,7 +292,7 @@ Item {
                     x: Style.spacingM
                     Label {
                         width: parent.width - units.gu(4)
-                        text: Lang.tr("Choose community")
+                        text: Lang.tr("Choose platform")
                         font.pixelSize: units.dp(17)
                         font.weight: Font.DemiBold
                         color: Style.textTitle
@@ -311,9 +313,10 @@ Item {
                     delegate: Column {
                         id: sourceCol
                         width: sheetContent.width
-                        // Global (index 0) applies no community filter and is hidden
-                        // from the picker; Netherlands is the default source instead.
-                        visible: index !== 0
+                        // Global (index 0) applies no community filter (combined
+                        // feed) and is the default/main source. Shown as a plain
+                        // selectable row with no chevron (it has no sub-communities).
+                        visible: true
                         property int srcIndex: index
                         property bool isExpanded: picker.expandedIndex === index
                         property var cats: picker.cache[index] || []
@@ -438,11 +441,11 @@ Item {
 
                             // Empty state
                             Item {
-                                visible: sourceCol.cats.length === 0 && picker.cache[sourceCol.srcIndex] !== null
+                                visible: sourceCol.cats.length === 0 && picker.cache[sourceCol.srcIndex] !== undefined
                                 width: parent.width; height: units.gu(5)
                                 Label {
                                     anchors.centerIn: parent
-                                    text: Lang.tr("No communities found")
+                                    text: Lang.tr("No platforms found")
                                     font.pixelSize: Style.fontSmall
                                     color: Style.textSecondary
                                 }

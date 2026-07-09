@@ -721,7 +721,7 @@ Page {
                     Label {
                         anchors.centerIn: parent
                         visible: !page.categoriesLoading
-                        text: Lang.tr("No categories for this community")
+                        text: Lang.tr("No categories for this platform")
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }

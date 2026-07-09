@@ -53,7 +53,7 @@ Page {
     function pickVideo() {
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
         if (!page.hasCommunity) {
-            Toast.error(Lang.tr("Pick a community (not Global) from the top bar first."));
+            Toast.error(Lang.tr("Pick a platform (not Global) from the top bar first."));
             return;
         }
         if (page.uploadingVideo) return;
@@ -281,7 +281,7 @@ Page {
                 Label {
                     id: gateLabel
                     anchors { fill: parent; margins: Style.spacingM }
-                    text: Lang.tr("Pick a community (not Global) from the top bar to post a video.")
+                    text: Lang.tr("Pick a platform (not Global) from the top bar to post a video.")
                     wrapMode: Text.WordWrap
                     font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontSmall

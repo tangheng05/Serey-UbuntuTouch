@@ -1,10 +1,10 @@
 [Desktop Entry]
 Name=Serey
-Comment=Serey network client — feed, blog, videos and account
+Comment=Serey network client. Feed, blog, videos and account
 Exec=qmlscene %u qml/Main.qml
 Icon=assets/serey-logo.png
 Terminal=false
 Type=Application
 X-Lomiri-Touch=true
 X-Lomiri-StageHint=SideStage
-X-Lomiri-Gettext-Domain=serey.ubuntu
+X-Lomiri-Gettext-Domain=serey.serey-io

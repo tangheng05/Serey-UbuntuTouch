@@ -19,7 +19,7 @@ import "services/BlockedUsers.js" as BlockedUsers
 MainView {
     id: root
     objectName: "mainView"
-    applicationName: "serey.ubuntu"
+    applicationName: "serey.serey-io"
     automaticOrientation: true
 
     width: units.gu(45)
@@ -181,7 +181,7 @@ MainView {
         try {
             root.pushClient = Qt.createQmlObject(
                 'import Ubuntu.PushNotifications 0.1; PushClient {' +
-                '  appId: "serey.ubuntu_serey"; }',
+                '  appId: "serey.serey-io_serey"; }',
                 root, "pushClient")
 
             root.pushClient.tokenChanged.connect(function () {

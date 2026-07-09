@@ -1,6 +1,6 @@
 {
-    "name": "serey.ubuntu",
-    "description": "Serey network client for Ubuntu Touch — feed, blog, videos and account.",
+    "name": "serey.serey-io",
+    "description": "Serey network client for Ubuntu Touch. Feed, blog, videos and account.",
     "architecture": "$ENV{ARCH}",
     "title": "Serey",
     "hooks": {
@@ -13,7 +13,7 @@
             "push-helper": "push-helper.json"
         }
     },
-    "version": "0.1.0",
+    "version": "1.0.0",
     "maintainer": "Draxler <hengthegoat@gmail.com>",
     "framework": "$ENV{CLICK_FRAMEWORK}"
 }

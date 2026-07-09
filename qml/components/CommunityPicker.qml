@@ -542,7 +542,11 @@ Item {
                                     Repeater {
                                         model: catData.communities
 
-                                        delegate: Item {
+                                        delegate: Column {
+                                            width: sheetContent.width
+
+                                            // ── Main platform card ─────────────────────────
+                                            Item {
                                             id: commBtn
                                             width: sheetContent.width
                                             height: units.gu(8.5)
@@ -553,6 +557,11 @@ Item {
                                             property bool isSelected: Config.selectedSubCommunity
                                                                       && Config.selectedSubCommunity.id === commBtn.commId
                                             property bool subscribed: picker.subscribedRev >= 0 && !!picker.subscribedMap[commBtn.commId]
+                                            // A superhub is a platform that itself contains child platforms.
+                                            property bool isSuperhub: !!(modelData.is_superhub)
+                                            property var hubChildren: commBtn.isSuperhub
+                                                                      ? (Config.superhubChildrenById[commBtn.commId] || [])
+                                                                      : []
 
                                             // Card
                                             Rectangle {
@@ -607,13 +616,36 @@ Item {
                                                     // Name
                                                     Label {
                                                         anchors.verticalCenter: parent.verticalCenter
-                                                        width: parent.width - units.gu(5.5) - subBtn.width - Style.spacingM * 2
+                                                        width: parent.width - units.gu(5.5) - subBtn.width
+                                                               - (hubBadge.visible ? hubBadge.width + Style.spacingM : 0)
+                                                               - Style.spacingM * 2
                                                         text: commBtn.commName
                                                         font.pixelSize: Style.fontRegular
                                                         font.weight: commBtn.isSelected ? Font.DemiBold : Font.Normal
                                                         font.family: Style.fontFor(text)
                                                         color: commBtn.isSelected ? Style.brand : Style.textPrimary
                                                         elide: Text.ElideRight
+                                                    }
+
+                                                    // HUB badge — marks a superhub platform
+                                                    Rectangle {
+                                                        id: hubBadge
+                                                        visible: commBtn.isSuperhub
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: hubLbl.width + units.gu(1.6)
+                                                        height: units.gu(2.6)
+                                                        radius: Style.pillRadius
+                                                        color: "#FCE7F3"
+
+                                                        Label {
+                                                            id: hubLbl
+                                                            anchors.centerIn: parent
+                                                            text: "HUB"
+                                                            font.pixelSize: Style.fontXSmall
+                                                            font.weight: Font.Bold
+                                                            font.letterSpacing: units.dp(0.5)
+                                                            color: "#DB2777"
+                                                        }
                                                     }
 
                                                     // Subscribe button — defined last so it renders on top of the navigate MouseArea
@@ -640,6 +672,120 @@ Item {
                                                         MouseArea {
                                                             anchors.fill: parent
                                                             onClicked: picker._toggleSubscribe(commBtn.commId, commBtn.subscribed)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            }
+
+                                            // ── Superhub children (indented, with a connector line) ──
+                                            Repeater {
+                                                model: commBtn.hubChildren
+
+                                                delegate: Item {
+                                                    id: childBtn
+                                                    width: sheetContent.width
+                                                    height: units.gu(7.5)
+
+                                                    property string cId:   String(modelData.id || "")
+                                                    property string cName: modelData.title || modelData.name || ""
+                                                    property string cIcon: modelData.icon || modelData.icon_url || modelData.logo_url || ""
+                                                    property bool cSelected: Config.selectedSubCommunity
+                                                                             && Config.selectedSubCommunity.id === childBtn.cId
+                                                    property bool cSubscribed: picker.subscribedRev >= 0 && !!picker.subscribedMap[childBtn.cId]
+
+                                                    // Connector: vertical line down the indent gutter + short elbow into the card
+                                                    Rectangle {
+                                                        x: Style.spacingM + units.gu(1.6)
+                                                        y: 0
+                                                        width: units.dp(1.5)
+                                                        height: parent.height / 2
+                                                        color: Style.divider
+                                                    }
+                                                    Rectangle {
+                                                        x: Style.spacingM + units.gu(1.6)
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: units.gu(1.4); height: units.dp(1.5)
+                                                        color: Style.divider
+                                                    }
+
+                                                    // Child card (indented)
+                                                    Rectangle {
+                                                        anchors {
+                                                            fill: parent
+                                                            leftMargin: Style.spacingM + units.gu(3.2)
+                                                            rightMargin: Style.spacingM
+                                                            topMargin: units.dp(3)
+                                                            bottomMargin: units.dp(3)
+                                                        }
+                                                        radius: Style.cardRadius
+                                                        color: Style.surface
+                                                        border.width: childBtn.cSelected ? units.dp(2) : units.dp(1)
+                                                        border.color: childBtn.cSelected ? Style.brand : Style.divider
+
+                                                        MouseArea {
+                                                            anchors.fill: parent
+                                                            onClicked: {
+                                                                Config.selectedSubCommunity = {
+                                                                    id: childBtn.cId,
+                                                                    name: childBtn.cName,
+                                                                    icon: childBtn.cIcon,
+                                                                    allowPost: !!modelData.allowPost
+                                                                }
+                                                                picker.closeAnimated()
+                                                            }
+                                                        }
+
+                                                        Row {
+                                                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                                            spacing: Style.spacingM
+
+                                                            Rectangle {
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                width: units.gu(4.5); height: width; radius: width / 2
+                                                                color: Style.iconBackground
+                                                                CircleImage {
+                                                                    anchors { fill: parent; margins: units.dp(2) }
+                                                                    source: childBtn.cIcon
+                                                                }
+                                                            }
+
+                                                            Label {
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                width: parent.width - units.gu(4.5) - childSubBtn.width - Style.spacingM * 2
+                                                                text: childBtn.cName
+                                                                font.pixelSize: Style.fontRegular
+                                                                font.weight: childBtn.cSelected ? Font.DemiBold : Font.Normal
+                                                                font.family: Style.fontFor(text)
+                                                                color: childBtn.cSelected ? Style.brand : Style.textPrimary
+                                                                elide: Text.ElideRight
+                                                            }
+
+                                                            Rectangle {
+                                                                id: childSubBtn
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                width: childSubLbl.width + units.gu(3)
+                                                                height: units.gu(3.6)
+                                                                radius: Style.pillRadius
+                                                                color: childBtn.cSubscribed ? Style.surface : Style.brand
+                                                                border.width: childBtn.cSubscribed ? units.dp(1.5) : 0
+                                                                border.color: Style.brand
+
+                                                                Label {
+                                                                    id: childSubLbl
+                                                                    anchors.centerIn: parent
+                                                                    text: childBtn.cSubscribed ? Lang.tr("Subscribed") : Lang.tr("Subscribe")
+                                                                    font.pixelSize: Style.fontSmall
+                                                                    font.weight: Font.DemiBold
+                                                                    font.family: Style.fontFor(text)
+                                                                    color: childBtn.cSubscribed ? Style.brand : Style.textOnBrand
+                                                                }
+
+                                                                MouseArea {
+                                                                    anchors.fill: parent
+                                                                    onClicked: picker._toggleSubscribe(childBtn.cId, childBtn.cSubscribed)
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                 }

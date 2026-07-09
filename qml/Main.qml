@@ -66,10 +66,11 @@ MainView {
 
         // Needed immediately: the header pill icons and can-post gates read it.
         CommunityService.listAll(Config.baseUrl,
-            function (list) {
+            function (list, superhubChildren) {
                 var icons = CommunityService.iconMap(list);
                 Config.allowPostByDns = CommunityService.allowPostMap(list);
                 Config.videoAllowPostByDns = CommunityService.videoAllowPostMap(list);
+                Config.superhubChildrenById = superhubChildren || ({});
 
                 // dns of the three fixed rows — leave their icons untouched.
                 var baseDns = {};

@@ -5,7 +5,14 @@
 /*
  * Communities (regional sources). GET /general/get-communities returns
  * { globals, locals, foreigns, independents }, each a list of community objects
- * with id/title/dns/icon_url/logo_url. We flatten and de-dupe by dns.
+ * with id/title/dns/icon_url/logo_url and a nested child_communities tree.
+ *
+ * onOk receives (list, superhubChildren):
+ *   list             — top-level communities, flattened and de-duped by dns.
+ *   superhubChildren — { superhubId(string): [child view-model, …] } for every
+ *                      node marked is_superhub, so the picker can nest a hub's
+ *                      children (list-by-parent-id/<country> returns the hub but
+ *                      NOT its children, so we take them from this tree instead).
  */
 function listAll(baseUrl, onOk, onErr) {
     Http.get(baseUrl, "/general/get-communities", {}, "",
@@ -13,9 +20,22 @@ function listAll(baseUrl, onOk, onErr) {
             var groups = ["globals", "locals", "foreigns", "independents"];
             var seen = {};
             var out = [];
+            var hubs = {};
+
+            function collectHubs(node) {
+                var kids = node.child_communities || [];
+                if (node.is_superhub && kids.length > 0) {
+                    var mapped = [];
+                    for (var i = 0; i < kids.length; i++) mapped.push(M.toCommunity(kids[i]));
+                    hubs[String(node.id)] = mapped;
+                }
+                for (var j = 0; j < kids.length; j++) collectHubs(kids[j]);
+            }
+
             for (var g = 0; g < groups.length; g++) {
                 var arr = (data && data[groups[g]]) || [];
                 for (var i = 0; i < arr.length; i++) {
+                    collectHubs(arr[i]);
                     var c = M.toCommunity(arr[i]);
                     if (c.dns && !seen[c.dns]) {
                         seen[c.dns] = true;
@@ -23,7 +43,7 @@ function listAll(baseUrl, onOk, onErr) {
                     }
                 }
             }
-            onOk(out);
+            onOk(out, hubs);
         }, onErr);
 }
 

@@ -106,6 +106,11 @@ QtObject {
     // (see Main.qml) so the source switcher shows each country's real icon.
     property var iconByDns: ({})
 
+    // Map of superhub community id (string) -> its child communities, built from
+    // the get-communities tree at startup. The picker nests these under a hub row
+    // (list-by-parent-id/<country> returns the hub but not its children).
+    property var superhubChildrenById: ({})
+
     // Map of community dns -> is_allow_post (bool), fetched alongside iconByDns.
     // Backend rule: is_allow_post=true → anyone may post; false → owner/managers
     // only. Used to gate the compose buttons (e.g. the Video upload FAB).

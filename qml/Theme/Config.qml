@@ -41,12 +41,14 @@ QtObject {
     readonly property string uploadSecret: "5876aafc87185dc0521afcqceo87185dc058718affc7b382730e89s"
 
     // Dedicated video storage API (tus resumable uploads + server-side
-    // processing). Uploads go in 50 MB chunks — each request must stay under
-    // Cloudflare's 100 MB proxy cap — then the server remuxes to a faststart
-    // MP4 and returns the public URL. Key is the shared upload key from the
-    // storage API's .env (same one the web frontend ships).
-    readonly property string storageApiUrl: "https://storage.serey.io"
-    readonly property string storageUploadKey: "aeb004760bc557962d2623c2d296df835c16a03ea1b1b41dca429f908fd2fc0b"
+    // processing). The app never holds the storage master key: it asks the
+    // Serey web backend for a per-upload session (logged-in users only) and
+    // receives { uploadUrl, token, statusUrl } where token is scoped to that
+    // one upload. Chunks then PATCH straight to storage.serey.io with the
+    // scoped token — see Uploads.js. Chunks must stay under Cloudflare's
+    // 100 MB per-request proxy cap.
+    readonly property string storageCreateUploadUrl: "https://serey.io/api/storage/create-upload"
+    readonly property string storageDeleteUploadUrl: "https://serey.io/api/storage/delete-upload"
 
     // Homepage mini-app: a single fixed site (matches serey-ubutu), filtered
     // client-side via a `community_id` query param rather than switching

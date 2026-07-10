@@ -103,14 +103,19 @@ function uploadImageData(uploadUrl, secret, dataUrl, onOk, onErr) {
     _post(uploadUrl, secret, { mime: "image/jpeg", ext: "jpg" }, bytes, onOk, onErr);
 }
 
-// --- Video upload (tus → storage.serey.io) --------------------------------
-// The dedicated storage API speaks the tus 1.0.0 resumable-upload protocol:
-//   1. POST   {base}/files            (Upload-Length + Upload-Metadata) → Location
-//   2. PATCH  Location                50 MB chunks (application/offset+octet-stream)
-//   3. GET    {base}/videos/{id}/status  poll until server-side processing
-//      (ffprobe validation + faststart remux + thumbnail) finishes
-// Every request carries the shared key in `x-upload-key`. Chunks must stay
-// under Cloudflare's 100 MB per-request proxy cap.
+// --- Video upload (tus → storage.serey.io, scoped per-upload token) --------
+// Standard "direct creator upload" pattern (same shape as S3 presigned URLs):
+// the app never holds the storage master key.
+//   1. POST  createUploadUrl (Serey web backend, Authorization: Bearer
+//      <user's session token>, JSON { filename, filetype, size })
+//      → { uploadUrl, token, statusUrl }. `token` is a random secret scoped
+//      to this one upload id; it can PATCH chunks and read this upload's
+//      status, nothing else, and dies when the upload completes.
+//   2. PATCH uploadUrl   25 MB chunks (application/offset+octet-stream),
+//      header `x-upload-key: <scoped token>` — straight to storage.serey.io.
+//   3. GET   statusUrl   poll (same scoped token) until server-side
+//      processing (ffprobe validation + faststart remux + thumbnail) finishes.
+// Chunks must stay under Cloudflare's 100 MB per-request proxy cap.
 //
 // Memory: CreateVideoPage installs a Serey.FileUtils FileChunkReader (C++)
 // via setFileReader, so each 25 MB chunk is read from disk right before its
@@ -128,20 +133,26 @@ var _fileReader = null;
 function setFileReader(reader) { _fileReader = reader; }
 
 // Persisted resume record, so an upload interrupted by an app restart picks up
-// where it left off (the server keeps incomplete tus uploads for 24h).
+// where it left off (the server keeps incomplete tus uploads for 24h). Stores
+// the whole upload session — { uploadUrl, token, statusUrl } — because the
+// scoped token is minted once at creation and can't be re-derived.
 // CreateVideoPage installs a store backed by Qt Settings:
 //   { get: function () -> string, set: function (string) }
 var _uploadStore = null;
 function setUploadStore(store) { _uploadStore = store; }
 
-function _saveResume(fingerprint, location) {
-    if (_uploadStore) _uploadStore.set(JSON.stringify({ f: fingerprint, l: location }));
+function _saveResume(fingerprint, session) {
+    if (_uploadStore) _uploadStore.set(JSON.stringify({
+        f: fingerprint, l: session.uploadUrl, t: session.token, s: session.statusUrl
+    }));
 }
 function _loadResume(fingerprint) {
     if (!_uploadStore) return null;
     try {
         var rec = JSON.parse(_uploadStore.get() || "null");
-        return (rec && rec.f === fingerprint) ? rec.l : null;
+        return (rec && rec.f === fingerprint && rec.l && rec.t)
+            ? { uploadUrl: rec.l, token: rec.t, statusUrl: rec.s }
+            : null;
     } catch (e) { return null; }
 }
 function _clearResume() {
@@ -162,34 +173,18 @@ function _videoType(fileUrl) {
     return null;
 }
 
-// tus metadata values are base64; QML JS has no btoa (mirror of _b64decode).
-function _b64encode(bytes) {
-    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    var out = "", i;
-    for (i = 0; i + 2 < bytes.length; i += 3) {
-        var n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
-        out += chars[(n >> 18) & 63] + chars[(n >> 12) & 63] + chars[(n >> 6) & 63] + chars[n & 63];
-    }
-    if (i + 1 === bytes.length) {
-        out += chars[(bytes[i] >> 2) & 63] + chars[(bytes[i] << 4) & 63] + "==";
-    } else if (i + 2 === bytes.length) {
-        var m = (bytes[i] << 8) | bytes[i + 1];
-        out += chars[(m >> 10) & 63] + chars[(m >> 4) & 63] + chars[(m << 2) & 63] + "=";
-    }
-    return out;
-}
-
-function _b64str(str) { return _b64encode(_ascii(str)); }
-
 // Cancellation: clearVideo() calls abort(), which kills the in-flight xhr; the
 // generation counter makes any still-scheduled continuation a no-op.
 var _generation = 0;
 
-function uploadVideo(storageBase, key, fileUrl, onOk, onErr, onProgress) {
-    var base = String(storageBase).replace(/\/$/, "");
+function uploadVideo(createUploadUrl, sessionToken, fileUrl, onOk, onErr, onProgress) {
     var type = _videoType(fileUrl);
     if (!type) {
         onErr({ message: "Unsupported video type. Use mp4, mov, mkv, webm or avi." });
+        return;
+    }
+    if (!sessionToken) {
+        onErr({ message: "Please log in first." });
         return;
     }
     _generation++;
@@ -213,7 +208,7 @@ function uploadVideo(storageBase, key, fileUrl, onOk, onErr, onProgress) {
                 return _fileReader.read(fileUrl, offset, end - offset);
             },
         };
-        _tusCreate(base, key, type, streamSource, String(fileUrl) + ":" + size, gen, onOk, onErr, progress);
+        _tusCreate(createUploadUrl, sessionToken, type, streamSource, String(fileUrl) + ":" + size, gen, onOk, onErr, progress);
         return;
     }
 
@@ -247,7 +242,7 @@ function uploadVideo(storageBase, key, fileUrl, onOk, onErr, onProgress) {
                 return new Uint8Array(bytes.subarray(offset, end)).buffer;
             },
         };
-        _tusCreate(base, key, type, bufferSource, String(fileUrl) + ":" + bytes.length, gen, onOk, onErr, progress);
+        _tusCreate(createUploadUrl, sessionToken, type, bufferSource, String(fileUrl) + ":" + bytes.length, gen, onOk, onErr, progress);
     };
     reader.send();
 }
@@ -255,19 +250,20 @@ function uploadVideo(storageBase, key, fileUrl, onOk, onErr, onProgress) {
 // `source` abstracts where chunk bytes come from:
 //   { size: <bytes>, read: function (offset, end) -> ArrayBuffer }
 // If this exact file (url+size fingerprint) has a saved partial upload from a
-// previous app run, ask the server how far it got and continue from there;
-// otherwise create a fresh upload.
-function _tusCreate(base, key, type, source, fingerprint, gen, onOk, onErr, onProgress) {
+// previous app run, ask the server how far it got and continue from there
+// (the saved session carries its own scoped token); otherwise create a fresh
+// upload session via the web backend.
+function _tusCreate(createUploadUrl, sessionToken, type, source, fingerprint, gen, onOk, onErr, onProgress) {
     var saved = _loadResume(fingerprint);
     if (!saved) {
-        _tusStart(base, key, type, source, fingerprint, gen, onOk, onErr, onProgress);
+        _tusStart(createUploadUrl, sessionToken, type, source, fingerprint, gen, onOk, onErr, onProgress);
         return;
     }
     var head = new XMLHttpRequest();
     _active = head;
-    head.open("HEAD", saved);
+    head.open("HEAD", saved.uploadUrl);
     head.setRequestHeader("Tus-Resumable", "1.0.0");
-    head.setRequestHeader("x-upload-key", key);
+    head.setRequestHeader("x-upload-key", saved.token);
     head.onreadystatechange = function () {
         if (head.readyState !== XMLHttpRequest.DONE || gen !== _generation)
             return;
@@ -275,55 +271,68 @@ function _tusCreate(base, key, type, source, fingerprint, gen, onOk, onErr, onPr
         var offset = parseInt(head.getResponseHeader("Upload-Offset") || "-1", 10);
         if (head.status === 200 && offset >= 0 && offset < source.size) {
             onProgress(Math.round((offset / source.size) * 100));
-            _tusPatch(base, key, saved, source, offset, 0, gen, onOk, onErr, onProgress);
+            _tusPatch(saved, source, offset, 0, gen, onOk, onErr, onProgress);
         } else if (head.status === 200 && offset >= source.size) {
             // Fully uploaded last time; only processing/polling was cut short.
             _clearResume();
-            _pollStatus(base, key, saved.replace(/\/$/, "").split("/").pop(), 0, gen, onOk, onErr);
+            _pollStatus(saved, 0, gen, onOk, onErr);
         } else {
-            // Expired or gone — start over cleanly.
+            // Expired, gone, or the scoped token no longer valid — start over.
             _clearResume();
-            _tusStart(base, key, type, source, fingerprint, gen, onOk, onErr, onProgress);
+            _tusStart(createUploadUrl, sessionToken, type, source, fingerprint, gen, onOk, onErr, onProgress);
         }
     };
     head.send();
 }
 
-function _tusStart(base, key, type, source, fingerprint, gen, onOk, onErr, onProgress) {
+// Asks the Serey web backend (logged-in users only) to create the upload on
+// the storage API and hand back the session: { uploadUrl, token, statusUrl }.
+function _tusStart(createUploadUrl, sessionToken, type, source, fingerprint, gen, onOk, onErr, onProgress) {
     var xhr = new XMLHttpRequest();
     _active = xhr;
-    xhr.open("POST", base + "/files");
-    xhr.setRequestHeader("Tus-Resumable", "1.0.0");
-    xhr.setRequestHeader("Upload-Length", String(source.size));
-    xhr.setRequestHeader("Upload-Metadata",
-        "filename " + _b64str("video." + type.ext) + ",filetype " + _b64str(type.mime));
-    xhr.setRequestHeader("x-upload-key", key);
+    xhr.open("POST", createUploadUrl);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("Authorization", "Bearer " + sessionToken);
     xhr.onreadystatechange = function () {
         if (xhr.readyState !== XMLHttpRequest.DONE || gen !== _generation)
             return;
         _active = null;
-        if (xhr.status === 201) {
-            var location = xhr.getResponseHeader("Location") || "";
-            if (location.indexOf("http") !== 0)
-                location = base + location;          // relative Location
-            _saveResume(fingerprint, location);
-            _tusPatch(base, key, location, source, 0, 0, gen, onOk, onErr, onProgress);
+        var data = null;
+        try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; }
+        catch (e) { /* handled below */ }
+        if (xhr.status === 200 && data && data.uploadUrl && data.token) {
+            var session = {
+                uploadUrl: data.uploadUrl,
+                token: data.token,
+                statusUrl: data.statusUrl
+            };
+            _saveResume(fingerprint, session);
+            _tusPatch(session, source, 0, 0, gen, onOk, onErr, onProgress);
         } else if (xhr.status === 401) {
-            onErr({ message: "Upload not authorized (bad upload key)." });
+            onErr({ message: "Your session has expired. Please log in again." });
         } else if (xhr.status === 413) {
             onErr({ message: "Video is too large for the server." });
         } else if (xhr.status === 415) {
             onErr({ message: "The server doesn't accept this video type." });
+        } else if (xhr.status === 429) {
+            onErr({ message: "Too many uploads. Please try again later." });
         } else if (xhr.status === 0) {
             onErr({ message: "Network error starting the upload." });
         } else {
             onErr({ message: "Couldn't start the upload (" + xhr.status + ")." });
         }
     };
-    xhr.send();
+    xhr.send(JSON.stringify({
+        filename: "video." + type.ext,
+        filetype: type.mime,
+        size: source.size
+    }));
 }
 
-function _tusPatch(base, key, location, source, offset, attempt, gen, onOk, onErr, onProgress) {
+// `session` is { uploadUrl, token, statusUrl } — the scoped upload session
+// minted by the web backend in _tusStart (or restored from the resume store).
+function _tusPatch(session, source, offset, attempt, gen, onOk, onErr, onProgress) {
     var end = Math.min(offset + CHUNK_BYTES, source.size);
     var chunk = source.read(offset, end);
     if (!chunk || chunk.byteLength === undefined || chunk.byteLength === 0) {
@@ -333,11 +342,11 @@ function _tusPatch(base, key, location, source, offset, attempt, gen, onOk, onEr
 
     var xhr = new XMLHttpRequest();
     _active = xhr;
-    xhr.open("PATCH", location);
+    xhr.open("PATCH", session.uploadUrl);
     xhr.setRequestHeader("Tus-Resumable", "1.0.0");
     xhr.setRequestHeader("Upload-Offset", String(offset));
     xhr.setRequestHeader("Content-Type", "application/offset+octet-stream");
-    xhr.setRequestHeader("x-upload-key", key);
+    xhr.setRequestHeader("x-upload-key", session.token);
     xhr.onreadystatechange = function () {
         if (xhr.readyState !== XMLHttpRequest.DONE || gen !== _generation)
             return;
@@ -347,15 +356,14 @@ function _tusPatch(base, key, location, source, offset, attempt, gen, onOk, onEr
             onProgress(Math.round((newOffset / source.size) * 100));
             if (newOffset >= source.size) {
                 _clearResume();   // done — never resume into a finished upload
-                var id = location.replace(/\/$/, "").split("/").pop();
-                _pollStatus(base, key, id, 0, gen, onOk, onErr);
+                _pollStatus(session, 0, gen, onOk, onErr);
             } else {
-                _tusPatch(base, key, location, source, newOffset, 0, gen, onOk, onErr, onProgress);
+                _tusPatch(session, source, newOffset, 0, gen, onOk, onErr, onProgress);
             }
         } else if (attempt < CHUNK_RETRIES && (xhr.status === 0 || xhr.status >= 500 || xhr.status === 409)) {
             // Transient failure: ask the server where it actually is (HEAD),
             // then resume from that offset. This is tus's whole point.
-            _tusResume(base, key, location, source, attempt + 1, gen, onOk, onErr, onProgress);
+            _tusResume(session, source, attempt + 1, gen, onOk, onErr, onProgress);
         } else if (xhr.status === 0) {
             onErr({ message: "Network error during upload." });
         } else {
@@ -365,21 +373,21 @@ function _tusPatch(base, key, location, source, offset, attempt, gen, onOk, onEr
     xhr.send(chunk);
 }
 
-function _tusResume(base, key, location, source, attempt, gen, onOk, onErr, onProgress) {
+function _tusResume(session, source, attempt, gen, onOk, onErr, onProgress) {
     var xhr = new XMLHttpRequest();
     _active = xhr;
-    xhr.open("HEAD", location);
+    xhr.open("HEAD", session.uploadUrl);
     xhr.setRequestHeader("Tus-Resumable", "1.0.0");
-    xhr.setRequestHeader("x-upload-key", key);
+    xhr.setRequestHeader("x-upload-key", session.token);
     xhr.onreadystatechange = function () {
         if (xhr.readyState !== XMLHttpRequest.DONE || gen !== _generation)
             return;
         _active = null;
         var offset = parseInt(xhr.getResponseHeader("Upload-Offset") || "-1", 10);
         if (xhr.status === 200 && offset >= 0) {
-            _tusPatch(base, key, location, source, offset, attempt, gen, onOk, onErr, onProgress);
+            _tusPatch(session, source, offset, attempt, gen, onOk, onErr, onProgress);
         } else if (attempt < CHUNK_RETRIES) {
-            _tusResume(base, key, location, source, attempt + 1, gen, onOk, onErr, onProgress);
+            _tusResume(session, source, attempt + 1, gen, onOk, onErr, onProgress);
         } else {
             onErr({ message: "Lost connection to the upload server." });
         }
@@ -388,8 +396,9 @@ function _tusResume(base, key, location, source, attempt, gen, onOk, onErr, onPr
 }
 
 // After the last chunk the server queues ffprobe/remux/thumbnail work; poll
-// until it lands on ready (→ public URL) or failed.
-function _pollStatus(base, key, id, tries, gen, onOk, onErr) {
+// statusUrl until it lands on ready (→ public URL) or failed. The scoped
+// token authorizes reading this one upload's status.
+function _pollStatus(session, tries, gen, onOk, onErr) {
     if (gen !== _generation)
         return;
     if (tries >= STATUS_POLL_MAX) {
@@ -398,8 +407,8 @@ function _pollStatus(base, key, id, tries, gen, onOk, onErr) {
     }
     var xhr = new XMLHttpRequest();
     _active = xhr;
-    xhr.open("GET", base + "/videos/" + id + "/status");
-    xhr.setRequestHeader("x-upload-key", key);
+    xhr.open("GET", session.statusUrl);
+    xhr.setRequestHeader("x-upload-key", session.token);
     xhr.setRequestHeader("Accept", "application/json");
     xhr.onreadystatechange = function () {
         if (xhr.readyState !== XMLHttpRequest.DONE || gen !== _generation)
@@ -420,7 +429,7 @@ function _pollStatus(base, key, id, tries, gen, onOk, onErr) {
         } else {
             // uploading/queued/processing (or a blip) — poll again.
             _delay(STATUS_POLL_MS, function () {
-                _pollStatus(base, key, id, tries + 1, gen, onOk, onErr);
+                _pollStatus(session, tries + 1, gen, onOk, onErr);
             });
         }
     };
@@ -439,16 +448,17 @@ function _delay(ms, fn) {
 }
 
 // Delete a video that finished uploading but was never published (user backed
-// out of the post after the upload completed). Best-effort: fire-and-forget,
-// no retry — an orphaned file is a minor storage cost, not a correctness bug,
-// and the caller is usually navigating away already.
-function deleteVideo(storageBase, key, id) {
+// out of the post after the upload completed). Goes through the web backend's
+// authenticated delete passthrough — the scoped upload token deliberately
+// can't delete anything. Best-effort: fire-and-forget, no retry — an orphaned
+// file is a minor storage cost, not a correctness bug, and the caller is
+// usually navigating away already.
+function deleteVideo(deleteUploadUrl, sessionToken, id) {
     if (!id) return;
     _clearResume();   // user discarded it; don't resume into a deleted upload
-    var base = String(storageBase).replace(/\/$/, "");
     var xhr = new XMLHttpRequest();
-    xhr.open("DELETE", base + "/videos/" + id);
-    xhr.setRequestHeader("x-upload-key", key);
+    xhr.open("DELETE", deleteUploadUrl + "?type=videos&id=" + encodeURIComponent(id));
+    xhr.setRequestHeader("Authorization", "Bearer " + sessionToken);
     xhr.send();
 }
 

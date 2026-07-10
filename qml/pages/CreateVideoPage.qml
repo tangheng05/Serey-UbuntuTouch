@@ -68,7 +68,7 @@ Page {
         // Start the upload and the (optional) thumbnail capture in parallel.
         page.uploadingVideo = true;
         page.uploadPercent = 0;
-        Uploads.uploadVideo(Config.storageApiUrl, Config.storageUploadKey, fileUrl,
+        Uploads.uploadVideo(Config.storageCreateUploadUrl, Session.token, fileUrl,
             function (url, job) {
                 page.uploadingVideo = false;
                 page.videoUrl = url;
@@ -98,7 +98,7 @@ Page {
         // back-out-before-publish) — clean up the now-orphaned file so it
         // doesn't sit on the storage server forever.
         if (page.videoId)
-            Uploads.deleteVideo(Config.storageApiUrl, Config.storageUploadKey, page.videoId);
+            Uploads.deleteVideo(Config.storageDeleteUploadUrl, Session.token, page.videoId);
         page.videoFileUrl = "";
         page.videoUrl = "";
         page.videoId = "";

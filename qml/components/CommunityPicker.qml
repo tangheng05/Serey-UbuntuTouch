@@ -585,8 +585,11 @@ Item {
                                                             id: commBtn.commId,
                                                             name: commBtn.commName,
                                                             icon: commBtn.commIcon,
-                                                            // Posting permission for this sub-community (gates compose buttons).
-                                                            allowPost: !!modelData.is_allow_post
+                                                            // Posting permissions for this sub-community (gate the
+                                                            // compose buttons). modelData is a raw list-by-parent-id
+                                                            // object, so the fields use the API's snake_case names.
+                                                            allowPost: !!modelData.is_allow_post,
+                                                            videoAllowPost: !!modelData.video_is_allow_post
                                                         }
                                                         picker.closeAnimated()
                                                     }
@@ -730,7 +733,10 @@ Item {
                                                                     id: childBtn.cId,
                                                                     name: childBtn.cName,
                                                                     icon: childBtn.cIcon,
-                                                                    allowPost: !!modelData.allowPost
+                                                                    // modelData is a mapped superhub child (M.toCommunity),
+                                                                    // so the fields use the mapper's camelCase names.
+                                                                    allowPost: !!modelData.allowPost,
+                                                                    videoAllowPost: !!modelData.videoAllowPost
                                                                 }
                                                                 picker.closeAnimated()
                                                             }

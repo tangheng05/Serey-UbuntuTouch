@@ -21,8 +21,14 @@ function listAll(baseUrl, onOk, onErr) {
             var seen = {};
             var out = [];
             var hubs = {};
+            // Every community visited (top-level AND nested at any depth),
+            // keyed by numeric id — lets callers resolve a specific community's
+            // name/icon (e.g. an owned sub-community) without a dedicated
+            // "get community by id" endpoint.
+            var byId = {};
 
             function collectHubs(node) {
+                if (node.id !== undefined) byId[String(node.id)] = M.toCommunity(node);
                 var kids = node.child_communities || [];
                 if (node.is_superhub && kids.length > 0) {
                     var mapped = [];
@@ -43,7 +49,7 @@ function listAll(baseUrl, onOk, onErr) {
                     }
                 }
             }
-            onOk(out, hubs);
+            onOk(out, hubs, byId);
         }, onErr);
 }
 
@@ -78,4 +84,14 @@ function videoAllowPostMap(list) {
             map[list[i].dns] = !!list[i].videoAllowPost;
     }
     return map;
+}
+
+// POST /community/update-logo (JWT) — platform branding. Backend requires
+// logo_url + footer_logo_url; icon_url is optional. The mobile CMS only
+// captures one uploaded image, so the same hosted URL is sent for all three
+// (there's no separate footer/icon image picker here).
+function updateLogo(baseUrl, token, logoUrl, onOk, onErr) {
+    Http.post(baseUrl, "/community/update-logo",
+              { logo_url: logoUrl, footer_logo_url: logoUrl, icon_url: logoUrl }, token,
+              function (data) { onOk(data || {}); }, onErr);
 }

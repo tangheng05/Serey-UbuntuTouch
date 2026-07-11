@@ -80,6 +80,19 @@ Item {
     }
 
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    readonly property string desktopUA: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    // Convergence: below this width we keep pretending to be a 412px phone (the
+    // site has no responsive desktop layout to fall back to otherwise). Once the
+    // view is wider than a phone — the window docked to a monitor, or just a
+    // tablet-size app window — stop faking a phone and let the site render (and
+    // the page itself pick) its own real desktop layout at its real size.
+    readonly property bool desktopMode: width >= 800
+
+    // Crossing the breakpoint (dock/undock, window resize) needs a reload: the
+    // forced-viewport script only re-runs on navigation, so a live page would
+    // otherwise keep rendering at the old width/UA until the next reload.
+    onDesktopModeChanged: reload()
 
     signal getUserInfoRequested()
     // NOTE: never wire this to Session.setAuth — the web side's identity comes
@@ -92,7 +105,7 @@ Item {
     WebEngineProfile {
         id: mobileProfile
         storageName: "SereyMiniApp"
-        httpUserAgent: webAppView.mobileUA
+        httpUserAgent: webAppView.desktopMode ? webAppView.desktopUA : webAppView.mobileUA
         offTheRecord: false
     }
 
@@ -103,7 +116,8 @@ Item {
         // imperatively on app background/foreground so the Active->Frozen
         // transition (rejected while visible) becomes legal.
         profile: mobileProfile
-        zoomFactor: webAppView.width > 0 ? webAppView.width / 412 : 1.0
+        // Desktop mode renders the site at its real width — no upscaling needed.
+        zoomFactor: webAppView.desktopMode ? 1.0 : (webAppView.width > 0 ? webAppView.width / 412 : 1.0)
         settings.showScrollBars: false
 
         userScripts: [
@@ -111,7 +125,10 @@ Item {
                 injectionPoint: WebEngineScript.DocumentCreation
                 worldId: WebEngineScript.MainWorld
                 runOnSubframes: true
-                sourceCode: "" +
+                // Empty in desktop mode: let the page see its real navigator/screen
+                // properties so its own responsive layout (not our phone fake-out)
+                // decides how to render.
+                sourceCode: webAppView.desktopMode ? "" : ("" +
                     "Object.defineProperty(navigator, 'userAgent', { get: function() { return '" + webAppView.mobileUA + "'; }, configurable: true });" +
                     "Object.defineProperty(navigator, 'platform', { get: function() { return 'Linux armv8l'; }, configurable: true });" +
                     "Object.defineProperty(navigator, 'maxTouchPoints', { get: function() { return 5; }, configurable: true });" +
@@ -122,7 +139,7 @@ Item {
                     "Object.defineProperty(screen, 'availWidth', { get: function() { return 412; }, configurable: true });" +
                     "var meta = document.createElement('meta'); meta.name = 'viewport';" +
                     "meta.content = 'width=412, initial-scale=1, maximum-scale=1, user-scalable=no';" +
-                    "(document.head || document.documentElement).appendChild(meta);"
+                    "(document.head || document.documentElement).appendChild(meta);")
             }
         ]
 

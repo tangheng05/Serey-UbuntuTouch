@@ -206,3 +206,27 @@ function deletePost(baseUrl, username, permlink, token, onOk, onErr) {
               { username: username, permlink: permlink }, token,
               function (data) { onOk(data || {}); }, onErr);
 }
+
+// --- Admin/CMS moderation (requires an owner/manager token) ----------------
+
+// DELETE /serey-web/admin-delete-post-or-comment/:id — moderator delete of
+// any post/comment by numeric row id (unlike deletePost, not limited to the
+// token's own username).
+function adminDeletePost(baseUrl, id, token, onOk, onErr) {
+    Http.del(baseUrl, "/serey-web/admin-delete-post-or-comment/" + id, token,
+             function (data) { onOk(data || {}); }, onErr);
+}
+
+// DELETE /serey-web/admin-bulk-delete-posts — needs a JSON body (list of
+// ids), so it goes through Http.delWithBody rather than the bodiless del().
+function adminBulkDeletePosts(baseUrl, ids, token, onOk, onErr) {
+    Http.delWithBody(baseUrl, "/serey-web/admin-bulk-delete-posts", { ids: ids }, token,
+                      function (data) { onOk(data || {}); }, onErr);
+}
+
+// GET /serey-web/search-advanced — used by BlogManagementPage to list/filter
+// a community's posts for moderation. Same paginated {posts:[...]} shape as
+// the other _list-backed feeds.
+function listAdvancedSearch(baseUrl, params, token, onOk, onErr) {
+    return _list(baseUrl, "/serey-web/search-advanced", params, token, onOk, onErr);
+}

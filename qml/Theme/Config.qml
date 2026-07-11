@@ -115,6 +115,21 @@ QtObject {
     // (list-by-parent-id/<country> returns the hub but not its children).
     property var superhubChildrenById: ({})
 
+    // Map of EVERY community (string id -> {id,title,dns,icon,...}) seen in the
+    // get-communities tree at startup, at any nesting depth — unlike
+    // superhubChildrenById (only superhub children), this covers every
+    // community. Used to resolve an owned sub-community's real name/logo
+    // (see communityInfoFor) since there's no dedicated "get community by id"
+    // endpoint.
+    property var communityById: ({})
+
+    // Look up a community's {title, icon, dns, ...} by id from the cached
+    // get-communities tree, or null if it isn't loaded/known yet.
+    function communityInfoFor(id) {
+        var c = communityById[String(id)];
+        return c || null;
+    }
+
     // Map of community dns -> is_allow_post (bool), fetched alongside iconByDns.
     // Backend rule: is_allow_post=true → anyone may post; false → owner/managers
     // only. Used to gate the compose buttons (e.g. the Video upload FAB).
@@ -130,6 +145,30 @@ QtObject {
     // this is OR-ed into the compose gates below.
     readonly property bool isOwnerCurrent: communityId > 0
                                            && !!ownedCommunityIdSet[communityId]
+
+    // Whether the user owns/manages ANY community at all (not necessarily the
+    // one currently selected in the picker). Drives the "Manage your platform"
+    // entry point in Settings — owners shouldn't have to first navigate to
+    // their own community just to find the CMS.
+    readonly property bool hasAnyOwnedCommunity: Object.keys(ownedCommunityIdSet).length > 0
+
+    // Explicit pick from the CMS hub's "Switch Platform" control, for owners of
+    // more than one community. 0 = no override, fall back to the default rule
+    // below. Reset on logout (see ownedCommunityIdSet's clearer in Main.qml)
+    // isn't needed since a stale id simply fails the ownedCommunityIdSet check
+    // below and the default rule takes back over.
+    property int overrideManagedCommunityId: 0
+
+    // The community the CMS pages should act on: an explicit "Switch Platform"
+    // pick if one is set and still owned, else the currently selected community
+    // if the user owns it, else the first community they own/manage. This way
+    // "Manage your platform" always targets a community the user can actually
+    // administer, regardless of what's selected in the main picker.
+    readonly property int managedCommunityId: (overrideManagedCommunityId > 0 && !!ownedCommunityIdSet[overrideManagedCommunityId])
+        ? overrideManagedCommunityId
+        : (isOwnerCurrent
+            ? communityId
+            : (hasAnyOwnedCommunity ? Number(Object.keys(ownedCommunityIdSet)[0]) : 0))
 
     // Whether the *currently selected* community allows the signed-in user to
     // post. Global (sentinel id 0, no filter) is never postable. A picked

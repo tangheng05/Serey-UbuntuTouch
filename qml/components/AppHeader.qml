@@ -2,23 +2,14 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Global top bar, Lomiri-style: a flat surface with a LEFT-ALIGNED button that
- * doubles as the community selector (icon + caret only, no name), an optional
- * trailing action slot on the right, and a bottom hairline. This replaces the
- * previous centered-logo + gray-pill (iOS-ish) header — Lomiri headers put the
- * title on the left and never center an app logo.
- *
- * Public API: `communityName`, the `trailing` default slot (right side), the
- * `center` slot (horizontally centered, e.g. the "My feed" shortcut), and the
- * `communityButtonClicked()` signal.
- */
 Rectangle {
     id: appHeader
 
     property string communityName: Config.currentCommunityName
     default property alias trailing: trailingSlot.data
     property alias center: centerSlot.data
+    // Bigger touch targets on desktop/tablet
+    property bool wide: false
 
     signal communityButtonClicked()
 
@@ -65,7 +56,9 @@ Rectangle {
 
             Item {
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(3.5); height: width   // match the "My feed" logo size
+                // match the "My feed" logo size
+                width: appHeader.wide ? units.gu(4.5) : units.gu(3.5)
+                height: width
 
                 CircleImage {
                     id: cIcon
@@ -74,7 +67,7 @@ Rectangle {
                 }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(3); height: width
+                    width: appHeader.wide ? units.gu(4) : units.gu(3); height: width
                     name: "language-chooser"
                     color: Style.textSecondary
                     visible: !cIcon.loaded
@@ -93,7 +86,7 @@ Rectangle {
             // Real vector caret — the old "▾" glyph rendered chunky and off-baseline.
             Icon {
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(1.5); height: width
+                width: appHeader.wide ? units.gu(2) : units.gu(1.5); height: width
                 name: "down"
                 color: Style.textSecondary
             }

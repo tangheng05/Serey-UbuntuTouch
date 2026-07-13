@@ -5,13 +5,6 @@ import "../Theme"
 import "../Session"
 import "../components"
 
-/*
- * Combined offline library: videos (Session.Downloads) and articles
- * (Session.SavedPosts) under one "Downloaded Content" entry, switched by a
- * Video/Articles tab strip. Replaces the separate DownloadsPage/SavedPostsPage
- * Settings rows; those pages still exist (e.g. reachable from the Video tab
- * header) and share the same stores.
- */
 Page {
     id: page
 
@@ -105,28 +98,9 @@ Page {
             width: videoList.width
             height: videoCard.implicitHeight
 
+            // Lomiri HIG (Presenting data): leading = negative/destructive,
+            // trailing = positive/confirming.
             leadingActions: ListItemActions {
-                delegate: Item {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "black"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: Share.open(
-                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -143,6 +117,27 @@ Page {
                         iconName: "delete"
                         text: Lang.tr("Remove")
                         onTriggered: Downloads.remove(modelData.permlink)
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: Share.open(
+                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
                     }
                 ]
             }
@@ -181,27 +176,9 @@ Page {
                 { author: modelData.author, permlink: modelData.permlink,
                   title: modelData.title, preloadedPost: modelData })
 
+            // Lomiri HIG (Presenting data): leading = negative/destructive,
+            // trailing = positive/confirming.
             leadingActions: ListItemActions {
-                delegate: Item {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "black"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -218,6 +195,26 @@ Page {
                         iconName: "delete"
                         text: Lang.tr("Remove")
                         onTriggered: SavedPosts.remove(modelData.permlink)
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
                     }
                 ]
             }

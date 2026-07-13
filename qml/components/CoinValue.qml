@@ -2,10 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Compact SEREY payout pill: coin icon + value string (e.g. "1685.653 SEREY").
- * Hidden when there's no value. Used in cards and the post action bar.
- */
 Rectangle {
     id: coin
 

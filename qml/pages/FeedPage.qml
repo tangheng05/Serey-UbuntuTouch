@@ -8,23 +8,11 @@ import "../services/VideoService.js" as VideoService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
 
-/*
- * "My Feed" page: content from authors the user follows. Shows a *mixed* feed
- * (blog + video) by default, with a filter strip to narrow to All / Blog / Video.
- * Requires login.
- *
- * Two sources feed the mixed view because they carry different data:
- *   - Blog/gallery posts come from the authenticated /list-by-feed-following
- *     endpoint (mapped as posts).
- *   - Videos come from VideoService — the feed endpoint's video rows lack the
- *     playable fields (videoLink/embedUrl/platform) VideoDetailPage needs, so we
- *     always source videos from the video endpoint and exclude them from the blog
- *     source to avoid duplicates.
- * Each loaded batch is date-sorted and appended; every row is tagged `_kind`
- * ("blog"|"video") so the delegate picks PostCard vs VideoCard.
- */
 Page {
     id: page
+
+    // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
+    readonly property real maxContentWidth: units.gu(60)
 
     // 0 = All (mixed), 1 = Blog only, 2 = Video only.
     property int filterMode: 0
@@ -332,7 +320,8 @@ Page {
 
     ListView {
         id: list
-        anchors { top: topBar.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: topBar.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: feedModel
         cacheBuffer: units.gu(12)
@@ -357,7 +346,33 @@ Page {
             property var postData: feedModel.get(index)
             readonly property bool isVideo: postData && postData._kind === "video"
 
+            // Lomiri HIG (Presenting data): leading = negative/destructive,
+            // trailing = positive/confirming.
             leadingActions: ListItemActions {
+                delegate: Rectangle {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    color: Style.danger
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "white"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: Lang.tr("Hide")
+                        onTriggered: {
+                            var p = feedModel.get(index)
+                            if (p) PostActions.hideRequested(p.author, p.permlink)
+                        }
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
                 delegate: Item {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -379,30 +394,6 @@ Page {
                                 Share.open("https://serey.io/video-component/watch?author=" + p.author + "&permalink=" + p.permlink)
                             else
                                 Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink)
-                        }
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
-                delegate: Rectangle {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    color: Style.danger
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "white"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "close"
-                        text: Lang.tr("Hide")
-                        onTriggered: {
-                            var p = feedModel.get(index)
-                            if (p) PostActions.hideRequested(p.author, p.permlink)
                         }
                     }
                 ]
@@ -489,10 +480,8 @@ Page {
         MouseArea { anchors.fill: parent; onClicked: page.filterMenuOpen = false }
 
         Rectangle {
-            // This Item fills the page and topBar is its sibling (not this
-            // Rectangle's), so anchoring to topBar.bottom is invalid ("Cannot
-            // anchor to an item that isn't a parent or sibling"). Anchor to
-            // parent.top instead and offset by topBar.height (an id read is fine).
+            // topBar is a sibling of this Item's parent, not of this Rectangle,
+            // so anchor to parent.top and offset by topBar.height instead.
             anchors { top: parent.top; right: parent.right; topMargin: topBar.height + Style.spacingXs; rightMargin: Style.spacingM }
             width: units.gu(20)
             height: menuCol.height

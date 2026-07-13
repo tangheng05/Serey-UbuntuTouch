@@ -8,17 +8,6 @@ import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 import "../services/VoteService.js" as VoteService
 
-/*
- * Full post view. Receives author/permlink (and an optional title for the
- * header) when pushed; fetches the full body + replies from the detail
- * endpoint. Provides upvote/downvote (VoteBar) and a comment composer + list.
- *
- * Body rendering: the API returns raw HTML with inline styles and unconstrained
- * <img> tags that Lomiri's Text.RichText can't lay out sanely (broken styles,
- * images overflowing the viewport). _parseBody() strips that down to alternating
- * plain-text blocks (bold/italic/links preserved) and full-width rounded images,
- * rendered as native Image/Label items instead of one big RichText blob.
- */
 Page {
     id: page
 
@@ -26,9 +15,7 @@ Page {
     property string permlink: ""
     property string title: ""
 
-    // When opened from the Saved Articles list, the full view-model is passed in
-    // so the article renders instantly and reads offline; load() still runs as a
-    // best-effort refresh (and silently no-ops when there's no connection).
+    // Passed in when opened from Saved Articles, so it renders instantly offline
     property var preloadedPost: null
 
     property var post: null
@@ -48,32 +35,20 @@ Page {
     // cleared after posting or via the composer's "Cancel" affordance.
     property var replyTarget: null
 
-    // Minimal header: just a back button, no title text.
-    header: Rectangle {
-        height: units.gu(6)
-        color: Style.surface
-
-        BackButton {
-            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            onClicked: page.pageStack.pop()
-        }
-
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: units.dp(1)
-            color: Style.divider
-        }
+    // Minimal header: just a back button, no title text
+    header: PageHeader {
+        title: ""
+        leadingActionBar.actions: [
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
+        ]
     }
 
-    // Save / unsave for offline reading. A sibling overlay (NOT inside the
-    // Page.header item, whose right-anchored children don't lay out reliably on
-    // Lomiri — the codebase's working pattern is a z-stacked overlay). Sits at the
-    // header's top-right; enabled once the body has loaded so there's content to
-    // persist. Filled blue = saved.
+    // Save/unsave overlay — sibling of the header, not inside it (right-anchored
+    // children don't lay out reliably inside Page.header on Lomiri)
     AbstractButton {
         id: saveBtn
         anchors { right: parent.right; rightMargin: Style.spacingM; top: parent.top }
-        height: units.gu(6)
+        height: page.header.height
         width: units.gu(6)
         z: 50
         enabled: page.post !== null && (page.permlink || "").length > 0
@@ -132,9 +107,7 @@ Page {
             },
             function (err) {
                 page.loading = false;
-                // Offline (or fetch failed): fall back to a saved copy so the
-                // article still reads. If we already have a post (preloaded from
-                // the saved list), keep it and swallow the refresh error.
+                // Offline/failed fetch: fall back to a saved copy if we have one
                 if (page.post === null) {
                     var saved = SavedPosts.get(page.permlink);
                     if (saved) {
@@ -181,11 +154,8 @@ Page {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
         Toast.success(Lang.tr("Comment deleted"));
-        // Server delete must run in this page-level scope: the CommentService JS
-        // import resolves to null inside the Repeater delegate's inline handler
-        // (and inside Loader-created nested reply rows), so calling it there threw
-        // "Cannot call method 'remove' of null" and the delete never reached the
-        // server. Here in the page root the import is valid.
+        // Must run in this page-level scope: the CommentService import resolves
+        // to null inside Loader-created reply row delegates.
         CommentService.remove(Config.baseUrl, permlinkToRemove, Session.username, Session.token,
             function () {},
             function (err) {
@@ -209,9 +179,7 @@ Page {
     function editComment(permlinkToEdit, newBody, parentAuthor, parentPermlink) {
         page.comments = page._editIn(page.comments, permlinkToEdit, newBody);
         Toast.success(Lang.tr("Comment updated"));
-        // Server update runs in this page-level scope, not in CommentItem: its
-        // CommentService import is null inside Loader-created reply rows (see
-        // removeComment). Passing the existing permlink updates that comment.
+        // Same page-level-scope reason as removeComment; existing permlink = update
         CommentService.create(Config.baseUrl,
             { parentAuthor: parentAuthor, parentPermlink: parentPermlink,
               body: newBody, permlink: permlinkToEdit },
@@ -630,78 +598,51 @@ Page {
 
                         Component {
                             id: bodyTextComp
-                            // Wrap the TextArea in an Item sized to its full content
-                            // height (like the image block does). The TextArea's own
-                            // autoSize sets its height to the whole paragraph; without
-                            // this wrapper the surrounding Loader/Column only sees a
-                            // one-line implicit height and the internal Flickable clips
-                            // the rest (you'd have to drag-select to scroll it in).
+                            // Wrapped in an Item sized to full content height — without
+                            // it the surrounding Loader/Column only sees a one-line
+                            // implicit height and clips the rest.
                             Item {
                                 width: parent.width - Style.wrapSafeMargin
                                 height: bodyTxt.height
 
-                                // Read-only Lomiri TextArea: it wraps a TextEdit and
-                                // ships the native long-press selection UI (blue drag
-                                // handles + Copy/Select-All popover), just like the
-                                // comment field. RichText renders the parsed <b>/<i>/<a>
-                                // markup; native Copy puts plain text on the clipboard.
+                                // Lomiri TextArea (not plain Text) for the native
+                                // long-press selection UI (drag handles + Copy popover)
                                 TextArea {
                                     id: bodyTxt
                                     width: parent.width
                                     text: model.content
                                     textFormat: TextEdit.RichText
                                     readOnly: true
-                                    // autoSize + maximumLineCount<=0 is the intended
-                                    // config for a TextArea living inside an outer
-                                    // Flickable: it disables the internal scroll and
-                                    // routes the OUTER flickable's movement into the
-                                    // input handler's "scrolling" state, which cancels
-                                    // the long-press timer so a scroll drag never turns
-                                    // into a text selection. This is what makes scroll
-                                    // vs. select behave natively, with no custom hacks.
-                                    // (Lomiri InputHandler.qml: scrollingDisabled / scroller.)
+                                    // autoSize + maximumLineCount<=0 disables the TextArea's
+                                    // internal scroll and lets the outer Flickable's own
+                                    // scroll cancel the long-press timer — scroll vs. select
+                                    // works natively with no custom gesture code.
                                     autoSize: true
                                     maximumLineCount: 0
-                                    // autoSize measures height as lineCount×lineHeight,
-                                    // which under-measures RichText (taller bold/heading
-                                    // lines); with the internal flick disabled that would
-                                    // clip the text. Grow to the true painted height.
+                                    // autoSize under-measures RichText (taller bold/heading
+                                    // lines) — grow to the true painted height.
                                     onPaintedHeightChanged: Qt.callLater(_fitHeight)
                                     onLineCountChanged: Qt.callLater(_fitHeight)
                                     Component.onCompleted: Qt.callLater(_fitHeight)
                                     function _fitHeight() { if (height < paintedHeight) height = paintedHeight; }
-                                    // Focus-on-press is required: Lomiri's long-press
-                                    // timer bails unless the field is already focused.
-                                    // readOnly keeps the on-screen keyboard suppressed.
+                                    // Long-press selection requires the field to already be focused
                                     activeFocusOnPress: true
                                     font.pixelSize: Style.fontMedium
                                     font.family: Style.fontFor(text)
                                     color: Style.textPrimary
-                                    // Flat: strip the input frame/background and padding
-                                    // so it reads as plain article body, not a text field.
+                                    // Flat look — not a text field
                                     StyleHints {
                                         backgroundColor: "transparent"
                                         frameSpacing: 0
                                         overlaySpacing: 0
                                     }
                                     onLinkActivated: Qt.openUrlExternally(link)
-                                    // Show the caret only while text is selected. The
-                                    // caret gates the native Copy popover (openPopover()
-                                    // bails if it's hidden), but keeping it always-on left
-                                    // an idle blue cursor when just reading. Long-press
-                                    // selects a word first, flipping this on in time for
-                                    // the popover; tapping away clears the selection and
-                                    // hides the caret again. The second handler re-asserts
-                                    // it against the read-only editor's reset, but only
-                                    // while a selection exists (so idle stays caret-free).
+                                    // Caret visible only while selected (gates the native Copy
+                                    // popover; always-on left an idle blue cursor while reading)
                                     onSelectedTextChanged: {
-                                        // A genuine selection only happens while the page
-                                        // is still. If one appears while the scroll is
-                                        // moving/flicking (e.g. a finger pressed down to
-                                        // catch a flick grabs a word, then momentum slides
-                                        // the text under it and extends it), it's a stray —
-                                        // clear it. Dragging the selection handles freezes
-                                        // the scroller, so a real selection never trips this.
+                                        // Scroll momentum can grab/extend a stray selection —
+                                        // real selection-adjusts freeze the scroller, so this
+                                        // only ever clears accidental ones.
                                         if (selectedText.length > 0 && scroll.moving) {
                                             bodyTxt.deselect();
                                             return;
@@ -711,12 +652,8 @@ Page {
                                     onCursorVisibleChanged: if (!cursorVisible && selectedText.length > 0) cursorVisible = true
                                 }
 
-                                // A scroll drag can grab a word in the few pixels before
-                                // the Flickable crosses its drag threshold and enters the
-                                // native "scrolling" state. Clear any such stray selection
-                                // once the page actually moves. This never fires during a
-                                // real selection adjust, because dragging the handles puts
-                                // the handler in "select" state, which freezes the scroller.
+                                // Clears a stray selection grabbed just before a scroll drag
+                                // crosses its threshold (never fires during a real select-drag)
                                 Connections {
                                     target: scroll
                                     onMovementStarted: bodyTxt.deselect()

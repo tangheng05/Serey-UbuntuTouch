@@ -6,23 +6,13 @@ import "../Session"
 import "../services/CommentService.js" as CommentService
 import "../services/VoteService.js" as VoteService
 
-/*
- * A single comment row (iOS-style): circular avatar + author + relative time
- * + "•••" menu, body text, a like + reply action row, and — when the comment
- * has replies — a "Hide replies / N replies" toggle that reveals a nested,
- * left-indented sub-tree (recursive CommentItem). Own comments (with a
- * server-assigned permlink) can be edited or deleted via the "•••" menu;
- * each is reported up (edited()/deleted()) so the page updates its tree.
- */
 Item {
     id: item
     property var comment: ({})
     readonly property var c: comment ? comment : ({})
     readonly property var replies: c.replies || []
     property int depth: 0
-    // Top-level comments show their direct replies; deeper (nested) replies start
-    // collapsed behind the "N replies" toggle so a deep thread doesn't instantiate
-    // the whole sub-tree eagerly. The toggle flips this per comment.
+    // Nested replies start collapsed so a deep thread doesn't eagerly instantiate
     property bool repliesExpanded: depth < 1
     property bool topLevel: true
 
@@ -55,27 +45,16 @@ Item {
         var text = item.editText.trim();
         if (text.length === 0)
             return;
-        // Emit only — the server update is performed by the host page's onEdited
-        // handler. Like doDelete, this file is instantiated via Loader for nested
-        // replies, where the CommentService JS import resolves to NULL, so calling
-        // CommentService.create() here threw and the edit never reached the server
-        // (the change reverted on the next fetch). Applied optimistically, same as
-        // delete; the parent fields are carried up so the page can rebuild the call.
+        // Emit only — the host page's onEdited handler does the server call.
+        // CommentItem is Loader-instantiated for nested replies, where JS module
+        // imports (CommentService) resolve to null, so calling them here throws.
         item.editing = false;
         item.edited(c.permlink, text, c.parentAuthor || "", c.parentPermlink || "");
     }
 
-    // Optimistic: drop it from the page's tree immediately rather than waiting
-    // on the round-trip, which made deleting feel sluggish. The DELETE request
-    // still fires — a failure just surfaces a toast (the comment doesn't come
-    // back, same as most apps' optimistic delete).
+    // Optimistic delete (feels instant); same Loader/null-import reason as
+    // saveEdit for why the host page's onDeleted handler does the actual call.
     function doDelete() {
-        // Emit only — the actual server delete is performed by the host page's
-        // onDeleted handler. CommentItem is loaded recursively via Loader for
-        // nested replies, and JS module imports (CommentService) resolve to NULL
-        // in those Loader-created instances, so calling CommentService.remove()
-        // here threw "Cannot call method 'remove' of null" — the delete silently
-        // never reached the server and the comment reappeared on the next fetch.
         item.deleted(c.permlink);
     }
 
@@ -401,10 +380,7 @@ Item {
 
             Column {
                 id: repliesCol
-                // Capture owner depth here — inside a Loader delegate, 'item'
-                // refers to the Loader's loaded object (null at onCompleted time),
-                // shadowing the outer CommentItem id. Reading it on repliesCol
-                // avoids that shadowing.
+                // 'item' inside a Loader delegate shadows the outer CommentItem id
                 readonly property int ownerDepth: item.depth
                 x: ownerDepth === 0 ? units.gu(3.5) : 0
                 width: parent.width - x

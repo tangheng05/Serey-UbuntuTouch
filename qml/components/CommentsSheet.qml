@@ -5,15 +5,6 @@ import "../Session"
 import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 
-/*
- * Bottom-sheet comment thread — a pure-QML overlay (no WebView), so it can be
- * shown on top of the reels player's live Chromium surface without tripping the
- * dual-Chromium crash (which is why reels used to bounce comments to the browser).
- * Mirrors VideoDetailPage's comment load/post/tree logic and reuses CommentItem.
- *
- * open(author, permlink) loads the thread; emits countChanged(delta) as comments
- * are added/removed so the caller can keep its count in sync.
- */
 Item {
     id: sheet
     anchors.fill: parent

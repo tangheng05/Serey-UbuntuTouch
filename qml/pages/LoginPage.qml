@@ -5,11 +5,6 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-/*
- * Username/password login. On success stores the JWT in Session and pops back
- * to Settings (which then loads the profile). Styled with the app's shared
- * design tokens (logo hero, branded FormField inputs, PrimaryButton).
- */
 Page {
     id: page
 
@@ -33,9 +28,8 @@ Page {
         AccountService.login(Config.baseUrl, usernameField.text, passwordField.text,
             function (auth) {
                 busy = false;
-                // Account switch is always clear -> set, never an in-place
-                // overwrite: drop any previous session and its cached follow
-                // state so account B never inherits anything from account A.
+                // Clear -> set, never overwrite in place, so account B never
+                // inherits anything cached from account A.
                 Session.clear();
                 FollowStore.reset();
                 Session.setAuth(auth.token, usernameField.text);

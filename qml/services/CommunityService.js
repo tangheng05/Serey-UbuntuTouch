@@ -2,18 +2,6 @@
 .import "Http.js" as Http
 .import "Mappers.js" as M
 
-/*
- * Communities (regional sources). GET /general/get-communities returns
- * { globals, locals, foreigns, independents }, each a list of community objects
- * with id/title/dns/icon_url/logo_url and a nested child_communities tree.
- *
- * onOk receives (list, superhubChildren):
- *   list             — top-level communities, flattened and de-duped by dns.
- *   superhubChildren — { superhubId(string): [child view-model, …] } for every
- *                      node marked is_superhub, so the picker can nest a hub's
- *                      children (list-by-parent-id/<country> returns the hub but
- *                      NOT its children, so we take them from this tree instead).
- */
 function listAll(baseUrl, onOk, onErr) {
     Http.get(baseUrl, "/general/get-communities", {}, "",
         function (data) {
@@ -68,9 +56,7 @@ function allowPostMap(list) {
     return map;
 }
 
-// Convenience: build a { dns: videoAllowPost(bool) } map from listAll's result,
-// used to gate the Video upload FAB — only show when the community lets everyone
-// post a video. Independent of allowPostMap (which is the blog posting flag).
+// Gates the Video upload FAB — independent of allowPostMap (the blog flag)
 function videoAllowPostMap(list) {
     var map = {};
     for (var i = 0; i < list.length; i++) {

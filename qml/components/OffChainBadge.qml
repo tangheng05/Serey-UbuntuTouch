@@ -3,12 +3,6 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 
-/*
- * Small pill shown on posts/videos that were saved to the DB only (the composer's
- * "Post to blockchain" toggle was off). On-chain is the default, so this renders
- * ONLY for off-chain posts (`visible: !onChain`) to keep the common case clean.
- * Callers bind `onChain: <viewModel>.postToBlockchain`.
- */
 Rectangle {
     id: badge
 

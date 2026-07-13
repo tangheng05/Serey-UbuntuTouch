@@ -1,18 +1,6 @@
 .pragma library
 .import "Http.js" as Http
 
-/*
- * Create or update a comment/reply. JWT-only; the backend broadcasts it to
- * the chain using the token's posting key.
- *
- *   POST /serey-web/create-or-update-comment
- *     { parent_author, parent_permlink, maincategory, body, permlink? }
- *
- * `maincategory` is the parent post's primary category. Omitting `permlink`
- * creates a new comment (the backend generates one); passing the existing
- * `permlink` updates that comment instead. The response does not echo the
- * created/updated comment, so the UI applies the change optimistically.
- */
 function create(baseUrl, params, token, onOk, onErr) {
     var body = {
         parent_author: params.parentAuthor,

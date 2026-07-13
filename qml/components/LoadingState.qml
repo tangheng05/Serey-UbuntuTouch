@@ -2,17 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Loading placeholder shown while a list/detail is fetching. Renders shimmer
- * skeleton "cards" whose shape mirrors the REAL card for that surface, so the
- * layout doesn't visibly jump when content arrives:
- *
- *   variant "post"    PostCard    — header · title lines · inset 16:9 cover · action chips
- *   variant "gallery" GalleryCard — header · full-bleed square photo · action chips
- *   variant "video"   VideoCard   — inset 16:9 thumbnail · avatar + title rows
- *
- * Detail pages set fullBleedCover (one full-width cover) instead of a feed row.
- */
 Item {
     id: root
     property string message: ""

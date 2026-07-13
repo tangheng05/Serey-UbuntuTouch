@@ -7,13 +7,11 @@ import "../services/PostService.js" as PostService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
 
-/*
- * Gallery feed: image-only posts from the selected regional source
- * (community_id from Config), rendered as swipeable carousels via
- * GalleryCard. Mirrors NewsPage's pagination/reload pattern.
- */
 Page {
     id: page
+
+    // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
+    readonly property real maxContentWidth: units.gu(60)
 
     property int offset: 0
     property bool loading: false
@@ -99,9 +97,7 @@ Page {
                         galleryModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
-                // Gallery filters to image posts (and hidden/blocked), so a page can
-                // yield few or zero rows; keep paging until there's a screenful or the
-                // server runs out, else the grid stalls or looks empty prematurely.
+                // Image-only filtering can leave a page thin — keep paging to a screenful
                 if (!page.endReached && galleryModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
@@ -148,7 +144,8 @@ Page {
 
     ListView {
         id: list
-        anchors.fill: parent
+        anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: galleryModel
         cacheBuffer: units.gu(12)

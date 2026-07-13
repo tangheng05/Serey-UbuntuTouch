@@ -1,14 +1,6 @@
 import QtQuick 2.7
 import QtGraphicalEffects 1.0
 
-/*
- * An image clipped to a circle. Qt's `clip: true` only clips to the bounding
- * rectangle (it ignores `radius`), so a rectangular source like a flag shows
- * square corners. OpacityMask masks the image to a circular shape instead.
- *
- * `loaded` is true once a real image has decoded — callers show a fallback
- * (e.g. a globe icon) while it's false.
- */
 Item {
     id: root
 

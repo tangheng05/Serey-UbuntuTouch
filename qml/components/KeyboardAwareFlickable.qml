@@ -2,17 +2,6 @@ import QtQuick 2.7
 import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 
-/*
- * A Flickable that stays clear of the on-screen keyboard. Lomiri does NOT shrink
- * the window when the OSK appears, and a plain Flickable neither reserves room
- * for it nor scrolls the focused field above it (our raw TextInput/TextEdit don't
- * integrate with the toolkit's auto-scroll). This drop-in replacement:
- *   - reserves extra bottom scroll room equal to the keyboard height, and
- *   - scrolls the focused input fully into the area above the keyboard.
- *
- * On Ubuntu Touch the QML scene and Qt.inputMethod.keyboardRectangle share the
- * same (physical) pixel space, so the height is used directly.
- */
 Flickable {
     id: flick
 

@@ -3,22 +3,6 @@ import QtQuick 2.7
 import QtQuick.LocalStorage 2.0
 import "../Theme"
 
-/*
- * Registry of blog/news articles saved for offline reading — the text-content
- * counterpart of Downloads.qml (which saves video files). An article is just its
- * already-loaded view-model (title + full body HTML + author/date/thumbnail), so
- * there's nothing to stream: we persist the view-model JSON in SQLite (commits
- * synchronously, surviving a swipe-kill, same as Session/Downloads) and the
- * detail page renders straight from it when offline.
- *
- * `items` is reassigned wholesale and `rev` bumped on every change so QML
- * bindings that read isSaved()/get() re-evaluate.
- *
- * Images: on save we also download the cover + every <img> in the body to local
- * files (via the same Lomiri.DownloadManager wrapper the video offline feature
- * uses), then rewrite the saved copy's URLs to local file:// paths — so the
- * article renders fully offline, images included.
- */
 QtObject {
     id: store
 
@@ -173,10 +157,8 @@ QtObject {
 
     Component.onCompleted: _load()
 
-    // Re-scope the list when the signed-in account changes (login/logout/switch).
     // QtObject has no default property, so this must be assigned, not a child.
-    // Session.setAuth() sets username before token, so isLoggedIn is still stale
-    // when onUsernameChanged fires — must also react to onTokenChanged.
+    // setAuth() sets username before token, so react to both changes.
     property Connections _sessionWatcher: Connections {
         target: Session
         onUsernameChanged: store._load()

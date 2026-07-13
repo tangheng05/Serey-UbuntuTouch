@@ -7,11 +7,6 @@ import "../services/PostService.js" as PostService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
 
-/*
- * News feed: Trending / New posts, filtered by the selected regional source
- * (community_id from Config). The source is chosen via the global AppHeader
- * community pill and shared app-wide through Config.sourceIndex.
- */
 Page {
     id: page
 
@@ -24,6 +19,9 @@ Page {
     // community/tab can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
+
+    // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
+    readonly property real maxContentWidth: units.gu(60)
 
     // Zero-height header: the global AppHeader provides the top bar, but giving
     // the Page an explicit header keeps it off Lomiri's deprecated Page.head path.
@@ -86,9 +84,7 @@ Page {
         offset = 0;
         endReached = false;
         loading = false;
-        // Also clear refreshing: a reload (e.g. community switch or tab change)
-        // that interrupts an in-flight pull-to-refresh would otherwise leave
-        // refreshing stuck true, permanently disabling pull-to-refresh.
+        // Clear too, or an interrupted pull-to-refresh leaves this stuck true
         refreshing = false;
         errorMsg = "";
         feedModel.clear();
@@ -122,20 +118,16 @@ Page {
                         feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
-                // A page can be mostly/entirely filtered out (hidden/blocked); keep
-                // paging until there's a screenful or the server runs out, else the
-                // feed stalls or looks empty despite more content on later pages.
+                // Keep paging if filtering left less than a screenful, or the feed
+                // stalls looking empty despite more content on later pages.
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
                 inflight = null;
                 page.refreshing = false;
-                // A failed refresh (e.g. a 401 from a stale token) must also clear
-                // `loading`. If a loadMore was in flight when the refresh started,
-                // refresh() aborted it and bumped reqEpoch, so that loadMore's
-                // callback early-returns without resetting loading — leaving the
-                // skeleton (loading && count === 0) stuck on screen until restart.
+                // Must also clear loading — an aborted in-flight loadMore's own
+                // callback early-returns and would leave the skeleton stuck otherwise.
                 page.loading = false;
             });
     }
@@ -186,7 +178,8 @@ Page {
 
     ListView {
         id: list
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: feedModel
         cacheBuffer: units.gu(12)
@@ -194,12 +187,8 @@ Page {
         PullToRefresh {
             refreshing: page.refreshing
             onRefresh: page.refresh()
-            // Show "Pull to refresh" only while actively dragging, so it's gone
-            // the moment you release — no built-in "Release to refresh..." text and
-            // no flash during load/retract. We drive OPACITY (not visible): the
-            // PullToRefresh style imperatively sets the content's `visible` per its
-            // own state, which would clobber a `visible` binding; it never touches
-            // opacity, so this is the reliable lever.
+            // Opacity, not visible — PullToRefresh's style imperatively sets
+            // `visible` itself, which would clobber a visible binding.
             content: Label {
                 text: Lang.tr("Pull to refresh")
                 opacity: list.dragging ? 1 : 0
@@ -214,30 +203,9 @@ Page {
             width: list.width
             height: card.implicitHeight
 
+            // Lomiri HIG (Presenting data): leading = negative/destructive,
+            // trailing = positive/confirming.
             leadingActions: ListItemActions {
-                delegate: Item {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "black"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: {
-                            var p = feedModel.get(index)
-                            if (p) Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink)
-                        }
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -256,6 +224,29 @@ Page {
                         onTriggered: {
                             var p = feedModel.get(index)
                             if (p) PostActions.hideRequested(p.author, p.permlink)
+                        }
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: {
+                            var p = feedModel.get(index)
+                            if (p) Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink)
                         }
                     }
                 ]

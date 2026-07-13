@@ -1,15 +1,6 @@
 pragma Singleton
 import QtQuick 2.7
 
-/*
- * App-wide configuration. Flip `useLocalDev` to point the whole app at a
- * locally-running serey-api instead of production. (A physical device cannot
- * reach `localhost` without `clickable` port-forwarding — see README.)
- *
- * Regional source: the app filters native feeds by a Serey community
- * (`community_id`, recursive incl. children). `sourceIndex` is the currently
- * selected source; it's read by News/Video and drives the Homepage WebView.
- */
 QtObject {
     id: config
 
@@ -40,13 +31,8 @@ QtObject {
     readonly property string uploadUrl: "https://upload.serey.io/uploads/upload_image"
     readonly property string uploadSecret: "5876aafc87185dc0521afcqceo87185dc058718affc7b382730e89s"
 
-    // Dedicated video storage API (tus resumable uploads + server-side
-    // processing). The app never holds the storage master key: it asks the
-    // Serey web backend for a per-upload session (logged-in users only) and
-    // receives { uploadUrl, token, statusUrl } where token is scoped to that
-    // one upload. Chunks then PATCH straight to storage.serey.io with the
-    // scoped token — see Uploads.js. Chunks must stay under Cloudflare's
-    // 100 MB per-request proxy cap.
+    // Dedicated video storage API (tus resumable uploads) — see Uploads.js
+    // for the scoped-token upload flow.
     readonly property string storageCreateUploadUrl: "https://serey.io/api/storage/create-upload"
     readonly property string storageDeleteUploadUrl: "https://serey.io/api/storage/delete-upload"
 
@@ -83,11 +69,12 @@ QtObject {
         sources = out;
     }
 
-    // The active bottom-nav tab (mirrored from Main.currentTab). Read by
-    // HomepagePage to suspend its WebView's Chromium renderer while another tab
-    // is showing, so it doesn't compete for GPU/shared memory with the video
-    // player's WebView (two live Chromium views crashed the app — see device log).
+    // Mirrored from Main.currentTab — HomepagePage reads it to suspend its
+    // WebView while another tab is showing (two live Chromium views crashed the app).
     property int currentTab: 0
+
+    // Mirrored from Main.wideMode
+    property bool wideMode: false
 
     property int sourceIndex: 0  // default to Global (combined feed, no community filter)
     // Set when user picks a sub-community from the picker; null = use top-level source.
@@ -133,24 +120,17 @@ QtObject {
     readonly property bool isOwnerCurrent: communityId > 0
                                            && !!ownedCommunityIdSet[communityId]
 
-    // Whether the *currently selected* community allows the signed-in user to
-    // post. Global (sentinel id 0, no filter) is never postable. A picked
-    // sub-community carries its own allowPost flag; otherwise fall back to the
-    // top-level source's flag keyed by dns. Owners/managers may always post
-    // (isOwnerCurrent), even when the community is set to owner-only.
+    // Can the signed-in user post to the currently selected community?
+    // Global (id 0) never postable; owners/managers always can.
     readonly property bool canPostCurrent: communityId > 0
         && (isOwnerCurrent
             || (selectedSubCommunity ? !!selectedSubCommunity.allowPost
                                      : !!allowPostByDns[communityDns]))
 
-    // Map of community dns -> video_is_allow_post (bool), fetched alongside
-    // allowPostByDns. Backend rule: video_is_allow_post=true → anyone may post a
-    // video; false → owner/managers only. Gates the Video upload FAB.
+    // Same as allowPostByDns, for video posting
     property var videoAllowPostByDns: ({})
 
-    // Whether the *currently selected* community lets the signed-in user post a
-    // VIDEO. Same resolution as canPostCurrent but keyed off the video flag, so an
-    // owner-only-video community hides the upload FAB even when its blog is open.
+    // Same as canPostCurrent, gates the Video upload FAB
     readonly property bool canPostVideoCurrent: communityId > 0
         && (isOwnerCurrent
             || (selectedSubCommunity ? !!selectedSubCommunity.videoAllowPost

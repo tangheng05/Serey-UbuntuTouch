@@ -1,54 +1,24 @@
 import QtQuick 2.7
 import QtWebEngine 1.10
 
-/*
- * In-app video web view, on QtWebEngine (same engine the Homepage mini-app uses),
- * in three modes:
- *  - Direct top-level (wrap=false, directVideo=false): load `embedUrl` as a
- *    top-level page.
- *  - Iframe wrap (wrap=true): embed `embedUrl` inside a minimal full-bleed HTML
- *    <iframe> document. Used for third-party players (YouTube / TikTok /
- *    Facebook), which render a black frame when pointed at directly on device.
- *  - Direct video (directVideo=true): render `embedUrl` (a direct media file —
- *    e.g. a Serey-hosted .mp4, local or remote) inside an HTML5 <video> element.
- *
- * Mobile identity: QtWebEngine's default UA is desktop ("X11; Linux"), so
- * YouTube serves the PC player. We force mobile exactly like WebAppView — a
- * mobile `httpUserAgent` on the profile (fixes the server-side embed) AND a
- * document-creation user script that overrides navigator.* in every frame,
- * including the cross-origin YouTube iframe (fixes client-side sniffing).
- *
- * `fullscreenToggled(on)` is emitted when the <video> control or the YouTube
- * iframe requests fullscreen; the host (VideoDetailPage) makes the view fill the
- * screen.
- */
 Item {
     id: root
     property string embedUrl: ""
     property bool wrap: false
     property bool directVideo: false
-    // Direct-video chrome. Detail playback wants the native <video> controls;
-    // the reels viewer hides them (controls:false) and loops (loop:true) for an
-    // immersive, TikTok-style surface.
+    // Detail playback shows native controls; reels hide them + loop
     property bool controls: true
     property bool loop: false
-    // True once the inner page has finished loading (the <video> exists and is
-    // starting). Hosts fade the surface in on this so the WebView's blank first
-    // frame never flashes (the reels scroll-in flicker).
+    // True once the <video> has a decoded frame — hosts fade in on this so
+    // the WebView's blank first frame never flashes
     property bool ready: false
     property bool paused: false
     signal fullscreenToggled(bool on)
 
-    // Freeze the Chromium renderer when the whole app is backgrounded/suspended —
-    // a live WebEngineView left Active across a long OS suspend loses its GPU/
-    // shared-memory context and SIGBUSes on resume. (Same lifecycleState int trap
-    // as WebAppView: enum names aren't exposed on UT, so use the ints.) Frozen is
-    // only legal while hidden, so wv binds `visible` to appActive and we defer the
-    // freeze a tick; resuming to Active is always legal.
+    // Freeze the Chromium renderer on app background/suspend — same
+    // SIGBUS-on-resume issue and lifecycleState int trap as WebAppView.
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
-    // Imperative (only on an actual state change, never at startup) so a quirky
-    // initial application state can't leave the player blank.
     property bool appActive: Qt.application.state === Qt.ApplicationActive
     onAppActiveChanged: {
         if (appActive) {
@@ -86,9 +56,7 @@ Item {
     onLoopChanged: _load()
     Component.onCompleted: _load()
 
-    // Off-the-record: a transient player shouldn't persist streamed-video HTTP
-    // cache/cookies to the phone's disk. (The Homepage profile is non-OTR because
-    // it needs persistent login; video doesn't.)
+    // Off-the-record: unlike the Homepage profile, video doesn't need persistent login
     WebEngineProfile {
         id: videoProfile
         httpUserAgent: root.mobileUA
@@ -98,16 +66,10 @@ Item {
     WebEngineView {
         id: wv
         anchors.fill: parent
-        // `visible` is toggled imperatively in onAppActiveChanged on app
-        // background/foreground so the Active->Frozen transition (rejected while
-        // visible) becomes legal — not a declarative binding, to avoid blanking
-        // the player if the initial application state is ever reported non-active.
         profile: videoProfile
 
-        // Autoplay without an in-page tap (our overlay tap is the gesture);
-        // fullscreen support must be enabled for fullScreenRequested to fire;
-        // local-file access lets an offline file:// <video> load from a file://
-        // wrapper document.
+        // Autoplay without a user gesture (our overlay tap is the gesture);
+        // local-file access lets an offline file:// <video> load from its wrapper.
         settings.playbackRequiresUserGesture: false
         settings.fullScreenSupportEnabled: true
         settings.localContentCanAccessFileUrls: true
@@ -132,29 +94,23 @@ Item {
             root.fullscreenToggled(request.toggleOn);
         }
 
-        // LoadSucceededStatus == 2. (Enum names aren't reliably exposed to QML on
-        // UT's QtWebEngine — same trap as lifecycleState — so compare the int.)
-        // For directVideo we wait for the <video>'s first decoded frame instead
-        // (the __SEREY_READY__ console sentinel below), because page-load fires
-        // before the frame paints — fading the surface in then flashes black.
+        // LoadSucceededStatus == 2 (same enum-not-exposed trap). directVideo
+        // waits for the __SEREY_READY__ sentinel instead — page-load fires
+        // before the first frame paints, which would flash black.
         onLoadingChanged: function (loadRequest) {
             if (loadRequest.status === 2 && !root.directVideo)
                 root.ready = true;
         }
 
-        // The direct-video page logs __SEREY_READY__ once its <video> has a frame
-        // (loadeddata/playing); flip ready then so the host reveals a painted
-        // surface, not the WebView's blank first frame.
         onJavaScriptConsoleMessage: function (level, message, lineNumber, sourceID) {
             if (root.directVideo && message.indexOf("__SEREY_READY__") >= 0)
                 root.ready = true;
         }
     }
 
-    // The wrapper document is "served from" serey.io so an embedded player sees a
-    // normal site origin/referrer (basing it on youtube.com trips YouTube's embed
-    // referrer check). An offline copy is a local file:// URL — base the wrapper
-    // on the file's own directory so the <video src> is same-origin.
+    // Wrapper is "served from" serey.io so embeds see a normal referrer
+    // (youtube.com trips YouTube's embed check); offline copies base on the
+    // file's own directory so <video src> is same-origin.
     readonly property string _origin: "https://serey.io"
     function _baseUrl() {
         if (directVideo && embedUrl.indexOf("file://") === 0) {

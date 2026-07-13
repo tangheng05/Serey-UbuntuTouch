@@ -3,25 +3,6 @@ import Lomiri.Components 1.3
 import QtWebEngine 1.10
 import "../Theme"
 
-/*
- * Embedded "mini app" web view (ported from serey-ubutu). Loads a Serey web
- * surface (e.g. a community site) in QtWebEngine with a forced mobile viewport,
- * and exposes a small JS bridge so the page can talk to the native shell:
- *
- *   window.messageHandler(method, params) -> Promise
- *     getDeviceInfo  -> { os, version, apiData:{ baseUrlV1, baseUrlV2 } }
- *     getUserInfo    -> { token, username, community_id, community_name }
- *     setAuthToken   -> stores a token pushed from the web side
- *     openCommunity  -> asks the shell to switch community
- *     openExternalBrowser -> opens a URL in the system browser
- *
- * The page posts requests via `console.log("UBUNTU_BRIDGE:" + json)`, which we
- * intercept in onJavaScriptConsoleMessage and answer with receiveResponse().
- *
- * Cleanups vs the reference: the bridge handlers read real component properties
- * (apiBaseV1/V2, authToken, username, communityName) instead of an undefined
- * `root.*`, and a single persistent WebEngineProfile is reused for caching.
- */
 Item {
     id: webAppView
 
@@ -34,22 +15,15 @@ Item {
     property string authToken: ""
     property string username: ""
 
-    // When true (the Homepage tab is hidden) the WebEngineView's Chromium
-    // renderer is moved to the Frozen lifecycle state: it stops background
-    // timers/rendering and lets Chromium reclaim memory, so it no longer
-    // competes for GPU/shared memory with the video player's separate WebView.
-    // Two live Chromium views on the Pixel 3a exhausted shared memory and
-    // SIGSEGV'd the app (see device log). Frozen keeps the DOM, so returning to
-    // the tab resumes instantly without reloading the site or losing the session.
+    // When true (Homepage tab hidden), freeze the Chromium renderer so it stops
+    // competing for GPU/shared memory with the video player's WebView — two
+    // live Chromium views exhausted shared memory and SIGSEGV'd the app.
     property bool suspended: false
-    // WebEngineView.LifecycleState values. UT's QtWebEngine doesn't expose the
-    // enum names to QML (WebEngineView.Frozen reads as undefined), but the
-    // lifecycleState property accepts the underlying ints: Active=0, Frozen=1.
+    // UT's QtWebEngine doesn't expose LifecycleState enum names to QML
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
-    // Freezing is only legal once the view is actually hidden, and `visible`
-    // settles a tick after the tab switch — so defer the freeze, but resume
-    // immediately (Active is always legal).
+    // Freezing is only legal once `visible` has settled hidden (a tick after
+    // the tab switch) — so defer it; resuming to Active is always legal.
     onSuspendedChanged: {
         if (suspended) {
             freezeTimer.restart();
@@ -59,13 +33,10 @@ Item {
         }
     }
 
-    // Also freeze on whole-app background/suspend, not just tab-hide: a live
-    // WebEngineView left Active across a long OS suspend loses its GPU/shared-mem
-    // context and SIGBUSes on resume (device log: status=7/BUS moments after a
-    // 54-min suspend). QtWebEngine rejects Active->Frozen while the page is
-    // visible, so hide the view first. This is done IMPERATIVELY and only on an
-    // actual state change — never at startup — so a quirky initial state can't
-    // leave the Homepage blank.
+    // Also freeze on whole-app background/suspend: a live WebEngineView left
+    // Active across a long OS suspend SIGBUSes on resume. QtWebEngine rejects
+    // Active->Frozen while visible, so hide the view first — imperatively, only
+    // on an actual state change (never at startup, or Homepage could start blank).
     property bool appActive: Qt.application.state === Qt.ApplicationActive
     onAppActiveChanged: {
         if (!appActive) {
@@ -80,6 +51,11 @@ Item {
     }
 
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    readonly property string desktopUA: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    // Above this width, stop pretending to be a 412px phone
+    readonly property bool desktopMode: webAppView.width >= 800
+    onDesktopModeChanged: reload()
 
     signal getUserInfoRequested()
     // NOTE: never wire this to Session.setAuth — the web side's identity comes
@@ -92,7 +68,7 @@ Item {
     WebEngineProfile {
         id: mobileProfile
         storageName: "SereyMiniApp"
-        httpUserAgent: webAppView.mobileUA
+        httpUserAgent: webAppView.desktopMode ? webAppView.desktopUA : webAppView.mobileUA
         offTheRecord: false
     }
 
@@ -103,7 +79,8 @@ Item {
         // imperatively on app background/foreground so the Active->Frozen
         // transition (rejected while visible) becomes legal.
         profile: mobileProfile
-        zoomFactor: webAppView.width > 0 ? webAppView.width / 412 : 1.0
+        zoomFactor: webAppView.desktopMode ? 1.0
+            : (webAppView.width > 0 ? webAppView.width / 412 : 1.0)
         settings.showScrollBars: false
 
         userScripts: [
@@ -111,7 +88,7 @@ Item {
                 injectionPoint: WebEngineScript.DocumentCreation
                 worldId: WebEngineScript.MainWorld
                 runOnSubframes: true
-                sourceCode: "" +
+                sourceCode: webAppView.desktopMode ? "" : ("" +
                     "Object.defineProperty(navigator, 'userAgent', { get: function() { return '" + webAppView.mobileUA + "'; }, configurable: true });" +
                     "Object.defineProperty(navigator, 'platform', { get: function() { return 'Linux armv8l'; }, configurable: true });" +
                     "Object.defineProperty(navigator, 'maxTouchPoints', { get: function() { return 5; }, configurable: true });" +
@@ -122,7 +99,7 @@ Item {
                     "Object.defineProperty(screen, 'availWidth', { get: function() { return 412; }, configurable: true });" +
                     "var meta = document.createElement('meta'); meta.name = 'viewport';" +
                     "meta.content = 'width=412, initial-scale=1, maximum-scale=1, user-scalable=no';" +
-                    "(document.head || document.documentElement).appendChild(meta);"
+                    "(document.head || document.documentElement).appendChild(meta);")
             }
         ]
 
@@ -188,15 +165,10 @@ Item {
         loadTimer.restart();
     }
 
-    // Drop the web side's login. The profile is persistent (offTheRecord:false),
-    // so without this the site keeps the PREVIOUS account's cookie session across
-    // a native logout/switch and the Homepage shows the old account. Guarded:
-    // cookieStore may be missing on older QtWebEngine — the caller's reload()
-    // still refreshes the page either way.
+    // Drops the web side's login — the persistent profile otherwise keeps the
+    // PREVIOUS account's cookies across a native logout/switch. cookieStore may
+    // be missing on older QtWebEngine, so guard it; reload() still runs either way.
     function clearSession() {
-        // cookieStore is missing on older QtWebEngine — guard rather than let the
-        // call throw (which logged "deleteAllCookies of undefined" on every
-        // logout). The caller's reload() still refreshes the page either way.
         if (mobileProfile && mobileProfile.cookieStore
                 && typeof mobileProfile.cookieStore.deleteAllCookies === "function") {
             mobileProfile.cookieStore.deleteAllCookies();

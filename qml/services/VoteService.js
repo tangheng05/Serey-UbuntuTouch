@@ -1,19 +1,6 @@
 .pragma library
 .import "Http.js" as Http
 
-/*
- * Voting. All endpoints are JWT-only and signed server-side using the posting
- * key carried in the token (Serey is a Steem-fork blockchain), so the client
- * only sends author/permlink/weight/vote_type.
- *
- *   POST /vote/vote         weight > 0   upvote (or like, when vote_type=comment)
- *   POST /vote/flag         weight < 0   flag / downvote (not allowed on comments)
- *   POST /vote/remove-vote               clear an existing vote
- *
- * `weight` is a percentage 1..100 (web uses a slider; we vote at full strength).
- * Success data: { voter_count, flagger_count, voters[], flaggers[], serey_value }.
- */
-
 // Session-level vote state cache. Survives delegate recycling and page
 // navigation so a post the user just upvoted still shows blue when they
 // navigate back. Keyed by "author/permlink".

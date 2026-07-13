@@ -5,12 +5,6 @@ import "../Theme"
 import "../Session"
 import "../components"
 
-/*
- * Saved articles: blog/news posts saved via the ★ button on PostDetailPage.
- * Reachable from Settings. Tapping a row opens PostDetailPage with the saved
- * view-model (preloadedPost), so it renders instantly and reads offline. Swipe
- * a row (or use the ••• action) to remove.
- */
 Page {
     id: page
 
@@ -80,27 +74,9 @@ Page {
             height: row.height + Style.spacingM * 2
             onClicked: page.open(modelData)
 
+            // Lomiri HIG (Presenting data): leading = negative/destructive,
+            // trailing = positive/confirming.
             leadingActions: ListItemActions {
-                delegate: Item {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "black"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -117,6 +93,26 @@ Page {
                         iconName: "delete"
                         text: Lang.tr("Remove")
                         onTriggered: SavedPosts.remove(modelData.permlink)
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
                     }
                 ]
             }

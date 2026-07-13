@@ -4,17 +4,6 @@ import "../Theme"
 import "../Session"
 import "../components"
 
-/*
- * Homepage tab: Config.homeLandingPageUrl ("https://khmer.serey.io"), embedded
- * as a mini web app (WebAppView) with a forced mobile viewport and a JS bridge
- * that hands the site the native session token + API base, and lets it ask the
- * shell to switch community or open links externally. Matches serey-ubutu: a
- * single fixed site filtered by a `community_id` query param, rather than
- * switching domains per source.
- *
- * The community is chosen via the global AppHeader pill (Config.sourceIndex);
- * because `url` reads Config.communityId, switching the source reloads the site.
- */
 Page {
     id: page
 
@@ -48,9 +37,7 @@ Page {
         onOpenCommunityRequested: page.applyCommunity(communityId)
     }
 
-    // The web view's cookie session is persistent and otherwise survives a
-    // native logout/account switch — clear it and reload whenever the token
-    // changes so the site re-auths as the current user (or shows logged out).
+    // Persistent cookies otherwise survive a native logout/account switch
     Connections {
         target: Session
         function onTokenChanged() {

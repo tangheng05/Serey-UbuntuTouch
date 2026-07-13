@@ -2,24 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import QtWebEngine 1.10
 
-/*
- * Best-effort, automatic thumbnail grabber for a locally-picked video.
- *
- * QtMultimedia/media-hub can't read the app's confined local files (→ 0x0
- * surface then SIGSEGV — see VideoDetailPage.startPlay), so we decode in-process
- * like VideoWebView: load the file:// video into an in-app Chromium <video> via
- * loadHtml() based at the file's own directory (so the <video src> is same-origin
- * and the canvas is NOT tainted), seek to an early frame, draw it to a <canvas>
- * and read canvas.toDataURL — exactly how the web captures its thumbnail.
- *
- * We deliberately do NOT grab the WebEngineView itself (grabToImage returns a
- * black frame on Ubuntu Touch because the video is a hardware overlay outside the
- * scene graph) — reading the canvas pixels is the only reliable path.
- *
- * grab(fileUrl) → emits grabbed(dataUrl) with a "data:image/jpeg;base64,…" string,
- * or failed(). The caller treats the thumbnail as optional and must NEVER block
- * the upload on it.
- */
 Item {
     id: root
 

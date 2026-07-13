@@ -5,22 +5,6 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-/*
- * Password reset — two modes:
- *
- * Logged-in (prefillUsername set by caller):
- *   step 0 — email → send OTP immediately (username already known)
- *   step 1 — enter OTP
- *   step 2 — new password
- *
- * Not logged-in (prefillUsername empty):
- *   step 0 — username → fetch masked email hint
- *   step 1 — fill masked email → send OTP
- *   step 2 — enter OTP
- *   step 3 — new password
- *
- * Phone support removed — email only.
- */
 Page {
     id: page
 

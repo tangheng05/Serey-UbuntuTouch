@@ -2,24 +2,12 @@ pragma Singleton
 import QtQuick 2.7
 import QtQuick.LocalStorage 2.0
 
-/*
- * Authentication state, persisted across launches in a local SQLite database.
- *
- * We use Qt.labs.LocalStorage rather than Qt.labs.Settings because Settings
- * (QSettings) buffers writes and only flushes on a clean shutdown — when the
- * user swipe-kills the app the token is lost. LocalStorage transactions commit
- * to disk synchronously, so the token survives even an abrupt kill.
- *
- * UI binds to `isLoggedIn`.
- */
 QtObject {
     id: session
 
     property string token: ""
     property string username: ""
-    // Not persisted to disk (only token/username are) — refetched each launch
-    // via AccountService.profile() so optimistic local comments can show a
-    // real avatar instead of the letter-fallback.
+    // Not persisted — refetched each launch via AccountService.profile()
     property string avatarUrl: ""
     property bool pushEnabled: true
     property string language: "en"   // "en" or "nl"
@@ -33,10 +21,8 @@ QtObject {
         return _dbHandle;
     }
 
-    // The vote cache lives in its OWN database. It's unbounded and written on
-    // every vote; keeping it out of SereyAuth means nothing can interfere with
-    // the small, critical auth rows (a failed/blocked auth write is how an old
-    // account can silently resurrect on the next launch).
+    // Own database (unbounded, written every vote) so it can't interfere with
+    // the small, critical auth rows below.
     property var _votesDbHandle: null
     function _votesDb() {
         if (!_votesDbHandle)
@@ -62,10 +48,8 @@ QtObject {
         }
     }
 
-    // Write token+username, then read them back and verify. A silently-failed
-    // write here is how an old account resurrects on the next launch (the user
-    // logs in as B, the write never lands, _load() restores A) — so failures are
-    // retried once and logged loudly enough to spot in `clickable logs`.
+    // Write then read back and verify — a silent write failure is how an old
+    // account resurrects next launch (B logs in, write fails, _load() restores A).
     function _writeAuthOnce() {
         _db().transaction(function (tx) {
             tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
@@ -109,9 +93,8 @@ QtObject {
     }
 
     function setAuth(newToken, newUsername) {
-        // Set username first: assigning `token` fires onTokenChanged synchronously,
-        // and listeners (e.g. SettingsPage) immediately fetch the profile by
-        // username — so username must already be in place or the fetch uses "".
+        // Username first: token fires onTokenChanged synchronously, and
+        // listeners fetch the profile by username immediately.
         username = newUsername;
         token = newToken;
         _save();

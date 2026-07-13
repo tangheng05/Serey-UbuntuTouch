@@ -1,22 +1,8 @@
 .pragma library
 .import "Http.js" as Http
 
-/*
- * Following another author. `status` is public (no auth) so a feed card can
- * show the current state for any viewer; `toggle` requires the viewer's JWT
- * and flips follow/unfollow server-side based on the current state.
- *
- *   GET  /follow/status               username, author -> { is_following }
- *   POST /follow/follow-or-unfollow   { author, action_type } JWT
- *
- * `action_type` per the API: "follow" | "unfollow".
- */
-
-// Feed cards ask for follow state once per visible card AND again on every
-// ListView recycle, so an uncached `status` fires dozens–hundreds of identical
-// requests while scrolling. Cache the result per author for the session, and
-// coalesce concurrent first-time requests for the same author (`_pending`).
-// The cache auto-resets when the viewer (logged-in user) changes.
+// ListView recycling re-asks for follow state per card — cache per author for
+// the session and coalesce concurrent first-time requests via `_pending`.
 var _cache = {};            // author -> bool
 var _pending = {};          // author -> [ {onOk, onErr}, ... ]
 var _cacheViewer = null;

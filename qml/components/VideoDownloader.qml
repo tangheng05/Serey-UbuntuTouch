@@ -1,17 +1,6 @@
 import QtQuick 2.7
 import Lomiri.DownloadManager 1.2
 
-/*
- * Per-download wrapper over Lomiri.DownloadManager's SingleDownload. This is the
- * ONLY file that imports the module, so its absence (e.g. the WSL desktop
- * preview, which has no download daemon) is contained: Downloads.qml creates
- * this via Qt.createComponent and tolerates a Component.Error status, exactly
- * like Main.qml guards PushClient.
- *
- * The system daemon streams the file to the app's confined download cache and
- * keeps going while the app is backgrounded; on completion it hands back an
- * absolute path which Downloads.qml persists for offline playback.
- */
 Item {
     id: dl
 

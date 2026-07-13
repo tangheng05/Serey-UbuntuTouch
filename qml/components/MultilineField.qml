@@ -2,11 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Multi-line branded text box — the FormField look (rounded cardRadius border
- * that turns brand-blue on focus) but with a wrapping, growing TextEdit. Used
- * for the profile bio. `maximumLength` caps input; `length` exposes the count.
- */
 Rectangle {
     id: root
 

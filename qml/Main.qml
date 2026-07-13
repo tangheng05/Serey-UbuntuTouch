@@ -12,10 +12,6 @@ import "services/Http.js" as Http
 import "services/NotificationService.js" as NotificationService
 import "services/BlockedUsers.js" as BlockedUsers
 
-/*
- * Application shell: a persistent bottom tab bar with one PageStack per tab so
- * each section keeps its own navigation history.
- */
 MainView {
     id: root
     objectName: "mainView"
@@ -24,6 +20,10 @@ MainView {
 
     width: units.gu(45)
     height: units.gu(80)
+
+    // Convergence breakpoint (matches AdaptivePageLayout's own default)
+    readonly property bool wideMode: width >= units.gu(80)
+    Binding { target: Config; property: "wideMode"; value: root.wideMode }
 
     property int currentTab: 0
     onCurrentTabChanged: { Config.currentTab = currentTab; _ensureTab(currentTab); body.opacity = 0; tabFadeIn.start(); }
@@ -42,14 +42,14 @@ MainView {
     }
     NumberAnimation { id: tabFadeIn; target: body; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
 
-    // The global header/nav only show at a tab's root (depth 1); pushed
-    // sub-pages bring their own back-bar.
+    // Header/nav hide at depth > 1 on phone (sub-page takes over the screen);
+    // stay up on a wide window since the list is still visible beside it.
     property int activeDepth: currentTab === 0 ? homeStack.depth
                             : currentTab === 1 ? newsStack.depth
                             : currentTab === 2 ? videoStack.depth
                             : settingsStack.depth
-    readonly property bool showHeader: activeDepth <= 1 && currentTab !== 3
-    readonly property bool showNavBar: activeDepth <= 1
+    readonly property bool showHeader: (root.wideMode || activeDepth <= 1) && currentTab !== 3
+    readonly property bool showNavBar: root.wideMode || activeDepth <= 1
 
     Component.onCompleted: {
         // Expired tokens are caught lazily via 401 (they can't be checked
@@ -263,16 +263,18 @@ MainView {
     // --- Global header (community pill + logo) ----------------------------
     AppHeader {
         id: appHeader
-        anchors { left: parent.left; right: parent.right; top: parent.top }
+        anchors { left: root.wideMode ? sideNavBar.right : parent.left; right: parent.right; top: parent.top }
         height: root.showHeader ? units.gu(6) : 0
         visible: root.showHeader
+        wide: root.wideMode
         onCommunityButtonClicked: communityPicker.open()
 
         center: AbstractButton {
             id: feedBtn
             visible: Session.isLoggedIn
             anchors.centerIn: parent
-            width: units.gu(4); height: width
+            width: root.wideMode ? units.gu(5) : units.gu(4)
+            height: width
             onClicked: {
                 var stack = root.currentTab === 0 ? homeStack
                           : root.currentTab === 1 ? newsStack
@@ -282,7 +284,8 @@ MainView {
             }
             Image {
                 anchors.centerIn: parent
-                width: units.gu(3.5); height: width
+                width: root.wideMode ? units.gu(4.5) : units.gu(3.5)
+                height: width
                 source: Qt.resolvedUrl("../assets/iconFeed.png")
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
@@ -298,7 +301,8 @@ MainView {
                 id: composeBtn
                 visible: Session.isLoggedIn && root.currentTab === 1
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(3.2); height: width
+                width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
+                height: width
                 onClicked: {
                     var np = newsStack.currentPage;
                     var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"));
@@ -313,7 +317,8 @@ MainView {
                 }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(2.2); height: width
+                    width: root.wideMode ? units.gu(3) : units.gu(2.2)
+                    height: width
                     name: "edit"
                     color: Style.brand
                 }
@@ -325,7 +330,8 @@ MainView {
                 id: uploadBtn
                 visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostVideoCurrent
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(3.2); height: width
+                width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
+                height: width
                 onClicked: {
                     var vp = videoStack.currentPage;
                     var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
@@ -340,7 +346,8 @@ MainView {
                 }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(2.2); height: width
+                    width: root.wideMode ? units.gu(3) : units.gu(2.2)
+                    height: width
                     name: "add"
                     color: Style.brand
                 }
@@ -352,42 +359,57 @@ MainView {
     Item {
         id: body
         anchors {
-            left: parent.left
+            left: root.wideMode ? sideNavBar.right : parent.left
             right: parent.right
             top: appHeader.bottom
-            bottom: root.showNavBar ? navBar.top : parent.bottom
+            bottom: (root.showNavBar && !root.wideMode) ? navBar.top : parent.bottom
         }
 
-        PageStack {
+        AdaptiveStack {
             id: homeStack
+            singleColumnUntilPushed: true
             anchors.fill: parent
             visible: root.currentTab === 0
             Component.onCompleted: push(Qt.resolvedUrl("pages/HomepagePage.qml"))
         }
         // News/Video/Settings are filled lazily by _ensureTab() on first visit.
-        PageStack {
+        AdaptiveStack {
             id: newsStack
+            emptyDetailIconName: "stock_note"
+            emptyDetailMessage: Lang.tr("Select a post to read")
             anchors.fill: parent
             visible: root.currentTab === 1
         }
-        PageStack {
+        AdaptiveStack {
             id: videoStack
+            emptyDetailIconName: "camcorder"
+            emptyDetailMessage: Lang.tr("Select a video to watch")
             anchors.fill: parent
             visible: root.currentTab === 2
         }
-        PageStack {
+        AdaptiveStack {
             id: settingsStack
+            emptyDetailIconName: "settings"
+            emptyDetailMessage: Lang.tr("Select a setting")
             anchors.fill: parent
             visible: root.currentTab === 3
         }
     }
 
-    // --- Bottom navigation ------------------------------------------------
+    // Shared by both nav layouts below, so the tab list only exists once.
+    readonly property var _tabs: [
+        { label: Lang.tr("Homepage"), icon: "home" },
+        { label: Lang.tr("News"),     icon: "stock_note" },
+        { label: Lang.tr("Video"),    icon: "camcorder" },
+        { label: Lang.tr("Settings"), icon: "settings" }
+    ]
+
+    // --- Bottom navigation (phone / narrow window) -------------------------
     Rectangle {
         id: navBar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: root.showNavBar ? units.gu(7) : 0
-        visible: root.showNavBar
+        height: (root.showNavBar && !root.wideMode) ? units.gu(7) : 0
+        visible: root.showNavBar && !root.wideMode
         color: Style.surface
 
         Rectangle {
@@ -400,12 +422,7 @@ MainView {
             anchors.fill: parent
 
             Repeater {
-                model: [
-                    { label: Lang.tr("Homepage"), icon: "home" },
-                    { label: Lang.tr("News"),     icon: "stock_note" },
-                    { label: Lang.tr("Video"),    icon: "camcorder" },
-                    { label: Lang.tr("Settings"), icon: "settings" }
-                ]
+                model: root._tabs
                 delegate: AbstractButton {
                     width: navBar.width / 4
                     height: navBar.height
@@ -414,6 +431,47 @@ MainView {
                     Icon {
                         anchors.centerIn: parent
                         width: units.gu(3)
+                        height: width
+                        name: modelData.icon
+                        color: active ? Style.brand : Style.textSecondary
+                    }
+                    onClicked: root.currentTab = index
+                }
+            }
+        }
+    }
+
+    // --- Side navigation (docked / desktop / tablet-wide window) -----------
+    // Convergence, not scaling: this isn't the bottom bar resized — it's a
+    // separate vertical rail, spanning full height on the left edge, matching
+    // Lomiri's own desktop shell convention (its app dash lives the same way).
+    Rectangle {
+        id: sideNavBar
+        anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+        width: (root.showNavBar && root.wideMode) ? units.gu(9) : 0
+        visible: root.showNavBar && root.wideMode
+        color: Style.surface
+
+        Rectangle {
+            anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
+            width: units.dp(1)
+            color: Style.divider
+        }
+
+        Column {
+            anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: units.gu(2) }
+            spacing: units.gu(1)
+
+            Repeater {
+                model: root._tabs
+                delegate: AbstractButton {
+                    width: sideNavBar.width
+                    height: units.gu(7)
+                    property bool active: root.currentTab === index
+
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(4)
                         height: width
                         name: modelData.icon
                         color: active ? Style.brand : Style.textSecondary

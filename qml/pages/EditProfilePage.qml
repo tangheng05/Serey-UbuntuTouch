@@ -7,13 +7,6 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-/*
- * Edit the signed-in user's profile: avatar (uploaded via Content Hub + the
- * media server), bio, name, email, gender and date of birth. Text fields save
- * in one call (`update-user-detail`); the avatar is uploaded + set active as
- * soon as it's picked. Prefilled from `initial` (the Settings profile) so it
- * opens populated with no reload flash.
- */
 Page {
     id: page
 

@@ -2,11 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Centered, brand-coloured text link as a real AbstractButton — reliable to tap
- * inside a Flickable (unlike a rich-text <a> link, whose hit detection the
- * Flickable steals). Used for secondary navigation (Sign up, Forgot password).
- */
 AbstractButton {
     id: root
 

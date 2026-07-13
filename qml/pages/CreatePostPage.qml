@@ -19,10 +19,7 @@ Page {
     readonly property int titleMaxLength: 250
     property string coverImageUrl: ""
     property bool uploading: false
-    // Inline article images. The plain-text editor would show raw <img> HTML,
-    // so the editor holds readable "[image N]" placeholders instead; this array
-    // maps N (1-based) to the uploaded URL, and publish() swaps the tokens back
-    // into real <img> tags. Deleting a token in the editor drops that image.
+    // Maps editor placeholder "[image N]" -> uploaded URL; publish() swaps them back to <img>
     property var bodyImages: []
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the
     // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
@@ -220,11 +217,8 @@ Page {
             categories: page.selectedCategory || "general",
             postToBlockchain: page.postToBlockchain,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
-            // Also send the cover in `images` (→ json_meta.image), not just the
-            // body <img>. The web derives a post's thumbnail from json_meta.image,
-            // so without this the cover only shows inside the article, never as
-            // the card/thumbnail. (Our app body-scrapes as a fallback, which is
-            // why it looked fine on mobile.) The detail view dedupes it.
+            // Also send in `images` (json_meta.image) — the web derives the card
+            // thumbnail from that field, not from the body <img>.
             images: page.coverImageUrl.length > 0 ? [page.coverImageUrl] : []
         }, Session.token,
         function (data) {

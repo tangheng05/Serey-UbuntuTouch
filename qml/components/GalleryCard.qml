@@ -5,12 +5,6 @@ import "../Theme"
 import "../Session"
 import "../services/VoteService.js" as VoteService
 
-/*
- * Gallery feed card (serey-ubutu GalleryCard style): avatar + author + time,
- * a swipeable image carousel (with page dots) cropped to a rounded square-ish
- * frame, a live action row (VoteBar) and a caption. Tapping the image opens
- * the post detail; the action row votes/comments inline.
- */
 Item {
     id: root
 

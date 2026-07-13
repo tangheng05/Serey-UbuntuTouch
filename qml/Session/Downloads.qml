@@ -3,23 +3,6 @@ import QtQuick 2.7
 import QtQuick.LocalStorage 2.0
 import "../Theme"
 
-/*
- * Registry of videos saved for offline playback, persisted in SQLite using the
- * same QtQuick.LocalStorage approach as Session.qml: transactions commit
- * synchronously, so a saved video survives a swipe-kill (Qt.labs.Settings would
- * buffer and lose it).
- *
- * Scope: Serey-hosted / direct-file videos only. The gate is the caller's
- * VideoDetailPage.remoteDirectUrl(), which is empty for YouTube/TikTok/Facebook
- * embeds — there are no bytes to download for those. The actual transfer runs in
- * the Lomiri.DownloadManager system daemon via VideoDownloader.qml, created
- * lazily and guarded so the desktop preview (no daemon) degrades to a disabled
- * feature instead of crashing.
- *
- * Reactivity: `items` is reassigned wholesale and `rev` is bumped on every
- * change (including in-flight progress) so QML bindings that read isSaved() /
- * activeFor() / pathFor() re-evaluate — plain array/map mutation isn't reactive.
- */
 QtObject {
     id: store
 
@@ -176,9 +159,7 @@ QtObject {
         dl.start(url);
     }
 
-    // Best-effort local copy of the poster image so the thumbnail shows offline.
-    // Hidden from the system download indicator; failures are silent (the video
-    // still saves, the card just falls back to the remote URL).
+    // Best-effort poster copy for offline thumbnails; failures fall back to the remote URL
     function _saveThumb(video, permlink) {
         var thumb = (video && video.thumbnail) || "";
         if (thumb.indexOf("http") !== 0) return;       // only remote http(s) posters
@@ -220,10 +201,8 @@ QtObject {
 
     Component.onCompleted: _load()
 
-    // Re-scope the list when the signed-in account changes (login/logout/switch).
     // QtObject has no default property, so this must be assigned, not a child.
-    // Session.setAuth() sets username before token, so isLoggedIn is still stale
-    // when onUsernameChanged fires — must also react to onTokenChanged.
+    // setAuth() sets username before token, so react to both changes.
     property Connections _sessionWatcher: Connections {
         target: Session
         onUsernameChanged: store._load()

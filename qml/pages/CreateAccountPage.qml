@@ -4,11 +4,6 @@ import "../Theme"
 import "../Session"
 import "../components"
 
-/*
- * Sign-up chooser (mirrors the iOS "Create Account" screen): a standard custodial
- * Serey account, or a self-custody account where the user holds their own key.
- * (Apple sign-in is iOS-only and omitted here.)
- */
 Page {
     id: page
 

@@ -2,17 +2,6 @@ pragma Singleton
 import QtQuick 2.7
 import "../services/FollowService.js" as FollowService
 
-/*
- * Single source of truth for follow state, shared reactively across every
- * follow button in the app (feed cards, gallery cards, the profile view).
- * Previously each card held its own `isFollowing` boolean set once at bind
- * time, so following a user in one place left the others showing "Follow".
- *
- * Cards bind `isFollowing: FollowStore.isFollowing(author)` — reading the `rev`
- * counter inside the function makes that binding re-evaluate whenever any state
- * changes, so all buttons for the same author stay in sync. `rev` is bumped on
- * every mutation; the JS map itself is mutated in place.
- */
 QtObject {
     id: store
 

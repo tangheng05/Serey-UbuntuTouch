@@ -1,21 +1,5 @@
 .pragma library
 
-/*
- * Image upload to Serey's media server. The server only accepts
- * multipart/form-data (field name `image`, header `api-secret`) and returns
- * { url }. QML's XMLHttpRequest has no FormData/File, so we read the picked
- * file's bytes and hand-build the multipart body as a single ArrayBuffer:
- *
- *   --BOUNDARY\r\n
- *   Content-Disposition: form-data; name="image"; filename="avatar.jpg"\r\n
- *   Content-Type: image/jpeg\r\n
- *   \r\n
- *   <raw file bytes>\r\n
- *   --BOUNDARY--\r\n
- *
- * Callbacks: onOk(url), onErr({ message }).
- */
-
 function _ascii(str) {
     // Latin-1 bytes for the multipart envelope (header text is ASCII only).
     var out = new Uint8Array(str.length);
@@ -32,10 +16,8 @@ function _contentType(fileUrl) {
     return { mime: "image/jpeg", ext: "jpg" };
 }
 
-// The most recent in-flight request (reader or upload). PhotoUploader's
-// watchdog calls abort() when QML's XMLHttpRequest hangs without honouring its
-// own `timeout` — see PhotoUploader.qml. Only one upload runs at a time (every
-// caller guards with an `uploading` flag), so a single handle is enough.
+// Current in-flight request — PhotoUploader's watchdog calls abort() when
+// XMLHttpRequest hangs without honouring its own `timeout`.
 var _active = null;
 
 function abort() {
@@ -73,11 +55,9 @@ function uploadImage(uploadUrl, secret, fileUrl, onOk, onErr) {
 }
 
 // --- Thumbnail (data URL) upload -----------------------------------------
-// VideoThumbnailGrabber captures a frame as a "data:image/jpeg;base64,…" URL
-// (QtMultimedia can't decode our confined local files, and grabToImage returns
-// black on UT — so we read canvas pixels in-page). QML's JS engine has no atob,
-// so decode base64 by hand into bytes and POST them with the normal `image`
-// multipart envelope. Callbacks: onOk(url), onErr({ message }).
+// VideoThumbnailGrabber hands us a "data:image/jpeg;base64,…" URL (canvas
+// pixels read in-page — grabToImage returns black on UT). QML's JS engine
+// has no atob, so decode base64 by hand.
 function _b64decode(s) {
     var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     var lookup = {};
@@ -104,26 +84,16 @@ function uploadImageData(uploadUrl, secret, dataUrl, onOk, onErr) {
 }
 
 // --- Video upload (tus → storage.serey.io, scoped per-upload token) --------
-// Standard "direct creator upload" pattern (same shape as S3 presigned URLs):
-// the app never holds the storage master key.
-//   1. POST  createUploadUrl (Serey web backend, Authorization: Bearer
-//      <user's session token>, JSON { filename, filetype, size })
-//      → { uploadUrl, token, statusUrl }. `token` is a random secret scoped
-//      to this one upload id; it can PATCH chunks and read this upload's
-//      status, nothing else, and dies when the upload completes.
-//   2. PATCH uploadUrl   25 MB chunks (application/offset+octet-stream),
-//      header `x-upload-key: <scoped token>` — straight to storage.serey.io.
-//   3. GET   statusUrl   poll (same scoped token) until server-side
-//      processing (ffprobe validation + faststart remux + thumbnail) finishes.
-// Chunks must stay under Cloudflare's 100 MB per-request proxy cap.
+// Direct-creator-upload pattern (like S3 presigned URLs) — the app never
+// holds the storage master key. Serey web backend mints a scoped per-upload
+// token (POST createUploadUrl); chunks PATCH straight to storage.serey.io
+// under the 100 MB Cloudflare proxy cap; statusUrl is polled until server-side
+// processing (ffprobe/remux/thumbnail) finishes.
 //
-// Memory: CreateVideoPage installs a Serey.FileUtils FileChunkReader (C++)
-// via setFileReader, so each 25 MB chunk is read from disk right before its
-// PATCH — constant memory, files up to the server's 2 GB limit. Without the
-// reader (shouldn't happen in a packaged build) we fall back to QML XHR's
-// whole-file read, capped at 300 MB: holding a bigger file in RAM OOM-crashed
-// phones (observed reboot at ~70-80% of a large upload).
-// Callbacks: onOk(url, job), onErr({ message }), optional onProgress(percent).
+// Memory: CreateVideoPage's FileChunkReader (C++) streams each 25 MB chunk
+// from disk, so RAM stays constant up to the server's 2 GB limit. Without it
+// we fall back to a whole-file XHR read capped at 300 MB — bigger files OOM-
+// crashed phones (observed reboot at ~70-80% of a large upload).
 var MAX_VIDEO_BYTES_STREAM = 2 * 1024 * 1024 * 1024;   // server maxSize
 var MAX_VIDEO_BYTES_FALLBACK = 300 * 1024 * 1024;
 var CHUNK_BYTES = 25 * 1024 * 1024;
@@ -132,12 +102,9 @@ var CHUNK_BYTES = 25 * 1024 * 1024;
 var _fileReader = null;
 function setFileReader(reader) { _fileReader = reader; }
 
-// Persisted resume record, so an upload interrupted by an app restart picks up
-// where it left off (the server keeps incomplete tus uploads for 24h). Stores
-// the whole upload session — { uploadUrl, token, statusUrl } — because the
-// scoped token is minted once at creation and can't be re-derived.
-// CreateVideoPage installs a store backed by Qt Settings:
-//   { get: function () -> string, set: function (string) }
+// Persisted resume record (server keeps incomplete tus uploads for 24h). The
+// scoped token can't be re-derived, so the whole session is stored, not just
+// the fingerprint. CreateVideoPage installs a Qt Settings-backed store.
 var _uploadStore = null;
 function setUploadStore(store) { _uploadStore = store; }
 
@@ -247,12 +214,9 @@ function uploadVideo(createUploadUrl, sessionToken, fileUrl, onOk, onErr, onProg
     reader.send();
 }
 
-// `source` abstracts where chunk bytes come from:
-//   { size: <bytes>, read: function (offset, end) -> ArrayBuffer }
-// If this exact file (url+size fingerprint) has a saved partial upload from a
-// previous app run, ask the server how far it got and continue from there
-// (the saved session carries its own scoped token); otherwise create a fresh
-// upload session via the web backend.
+// `source`: { size: <bytes>, read: function (offset, end) -> ArrayBuffer }
+// Resumes a saved partial upload for this fingerprint if one exists, else
+// starts a fresh session.
 function _tusCreate(createUploadUrl, sessionToken, type, source, fingerprint, gen, onOk, onErr, onProgress) {
     var saved = _loadResume(fingerprint);
     if (!saved) {
@@ -436,10 +400,8 @@ function _pollStatus(session, tries, gen, onOk, onErr) {
     xhr.send();
 }
 
-// setTimeout doesn't exist in QML JS libraries; fake a delay with an XHR to a
-// data: URL? No — Qt honours neither reliably. Callers must provide a Timer.
-// Instead we lean on XMLHttpRequest's timeout: a GET to an unroutable address
-// would be fragile, so the poll delay is driven by the page via _delayHook.
+// No setTimeout in QML JS libraries — the poll delay is driven by a Timer the
+// QML page provides via _delayHook.
 var _delayHook = null;   // set by the QML page: function (ms, fn)
 function setDelayHook(fn) { _delayHook = fn; }
 function _delay(ms, fn) {
@@ -447,12 +409,9 @@ function _delay(ms, fn) {
     fn();   // no hook installed: poll immediately (still correct, just chattier)
 }
 
-// Delete a video that finished uploading but was never published (user backed
-// out of the post after the upload completed). Goes through the web backend's
-// authenticated delete passthrough — the scoped upload token deliberately
-// can't delete anything. Best-effort: fire-and-forget, no retry — an orphaned
-// file is a minor storage cost, not a correctness bug, and the caller is
-// usually navigating away already.
+// Deletes a video that finished uploading but was never published (the
+// scoped upload token can't delete, so this goes through the web backend).
+// Fire-and-forget: an orphaned file is a minor storage cost, not a bug.
 function deleteVideo(deleteUploadUrl, sessionToken, id) {
     if (!id) return;
     _clearResume();   // user discarded it; don't resume into a deleted upload

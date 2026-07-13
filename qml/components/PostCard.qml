@@ -6,15 +6,6 @@ import "../Theme"
 import "../Session"
 import "../services/VoteService.js" as VoteService
 
-/*
- * Feed post card (serey-ubutu FeedCard style): avatar + author + relative time
- * + Follow pill + ••• menu, title, rounded cover image with a red category
- * badge, then a live action row (VoteBar) and a hairline divider. Tapping the
- * title or image opens the detail page; the action row votes/comments inline.
- *
- * Consumes the Mappers.toPost view-model. Emits clicked() to open detail, and
- * re-exposes the VoteBar's requireLogin() so the page can route to login.
- */
 Item {
     id: root
 
@@ -303,11 +294,14 @@ Item {
             MouseArea { anchors.fill: parent; onClicked: root.clicked() }
         }
 
+        // Bottom margin below the thumbnail (always visible, unlike the vote row)
         Item { width: 1; height: Style.spacingS }
 
-        // Action row (live voting)
+        // Vote/comment/share row: narrow mode only (wide mode shows these
+        // in the detail column instead — see PostDetailPage)
         VoteBar {
             id: cardVoteBar
+            visible: !Config.wideMode
             width: parent.width - Style.spacingM * 2
             x: Style.spacingM
             author: p.author || ""
@@ -322,7 +316,7 @@ Item {
             onCommentRequested: root.clicked()
         }
 
-        Item { width: 1; height: Style.spacingS }
+        Item { width: 1; height: Style.spacingS; visible: !Config.wideMode }
 
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }

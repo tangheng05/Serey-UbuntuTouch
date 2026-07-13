@@ -7,20 +7,6 @@ import "../components"
 import "../services/VideoService.js" as VideoService
 import "../services/VoteService.js" as VoteService
 
-/*
- * Vertical, full-screen reels viewer for short native (SEREY-platform) videos —
- * the mobile counterpart of the web's ReelPage. A snapping vertical ListView
- * pages through reels TikTok-style; only the current item mounts a VideoWebView
- * (directVideo), so at most ONE in-app Chromium surface is ever live (two live
- * WebViews crash the app — see the dual-Chromium memory note).
- *
- * Reels are the native SEREY-platform videos. The web additionally filters to
- * duration <= 180s, but it probes each clip with a hidden <video> — on Ubuntu
- * Touch every WebEngine probe spawns a full Chromium renderer (seconds each), so
- * doing that across a list left this page on a black loading screen for minutes
- * (and the extra surface risked the dual-Chromium SIGSEGV). We therefore show all
- * native uploads immediately, without probing — they're short clips in practice.
- */
 Page {
     id: page
 
@@ -125,10 +111,8 @@ Page {
             });
     }
 
-    // A caption edit (action sheet on a reel) changed a title/description. The
-    // model is a plain JS array, so mutating in place won't refresh delegates —
-    // reassign it and restore the pager position. The current reel remounts
-    // (video restarts), which is acceptable right after an edit.
+    // Model is a plain JS array — reassign (not mutate) to refresh delegates,
+    // and restore pager position. The current reel remounts (video restarts).
     Connections {
         target: PostActions
         function onPostUpdated(author, permlink, title, body) {
@@ -137,6 +121,31 @@ Page {
             for (var i = 0; i < rows.length; i++) {
                 if (rows[i].permlink === permlink) {
                     rows[i] = Object.assign({}, rows[i], { title: title, body: body });
+                    idx = i;
+                }
+            }
+            if (idx < 0) return;
+            var keep = pager.currentIndex;
+            page.reels = rows;
+            pager.positionViewAtIndex(keep, ListView.Beginning);
+            pager.currentIndex = keep;
+        }
+    }
+
+    // Reel the comment sheet is currently open for
+    property string _commentSheetPermlink: ""
+
+    // Keep the comment-rail count in sync with the sheet
+    Connections {
+        target: commentSheet
+        function onCountChanged(delta) {
+            var permlink = page._commentSheetPermlink;
+            if (permlink === "") return;
+            var idx = -1;
+            var rows = page.reels.slice();
+            for (var i = 0; i < rows.length; i++) {
+                if (rows[i].permlink === permlink) {
+                    rows[i] = Object.assign({}, rows[i], { comments: Math.max(0, (rows[i].comments || 0) + delta) });
                     idx = i;
                 }
             }
@@ -167,10 +176,8 @@ Page {
         highlightMoveDuration: 130          // snappier page-snap (was 200)
         maximumFlickVelocity: units.gu(700) // let a flick page promptly
         boundsBehavior: Flickable.StopAtBounds
-        // Pre-create the neighbouring delegates so their POSTERS decode ahead of
-        // time — scrolling then shows the next thumbnail instantly (smooth, like
-        // Shorts), even though only the current reel mounts a WebView (the player
-        // Loader is gated on isCurrentItem, not on cacheBuffer).
+        // Pre-creates neighbouring delegates so posters decode ahead of scroll
+        // (only the current reel mounts a WebView — gated on isCurrentItem)
         cacheBuffer: pager.height
         clip: true
 
@@ -223,11 +230,8 @@ Page {
                 VoteService._updateCache(modelData.author, modelData.permlink,
                                          reel.upvoted, reel.flagged, reel.votes, modelData.payout || "");
             }
-            // Vote actions are OPTIMISTIC: the icon/count flip the instant you tap
-            // (Serey signs+broadcasts the vote async, so the server response lags
-            // a couple seconds — waiting for it made the rail look dead). We snapshot
-            // the prior state, apply the change immediately + cache it, fire the
-            // request, and revert only if it fails.
+            // Optimistic: flip icon/count immediately (async broadcast lags a
+            // couple seconds), revert only if the request fails.
             function _revert(wasUp, wasFlag, prevVotes, e) {
                 reel.upvoted = wasUp; reel.flagged = wasFlag; reel.votes = prevVotes;
                 reel.busy = false; reel._vcache();
@@ -268,17 +272,14 @@ Page {
                 }
             }
 
-            // Poster — stays mounted UNDER the player the whole time. The player
-            // fades in only once its page has loaded, so the WebView's initial
-            // blank/black frame never shows (that was the scroll-in flicker).
+            // Stays mounted under the player, which fades in once loaded —
+            // the WebView's initial blank frame never shows.
             Image {
                 anchors.fill: parent
                 source: modelData.thumbnail || ""
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
-                // Cap the decode size — full-screen on a phone would otherwise
-                // decode at the source's native resolution. Snap to a breakpoint
-                // (docs/ubports-other-considerations/02-scaling-images.md).
+                // Cap decode size to a breakpoint instead of native resolution
                 sourceSize.width: pager.width > units.gu(70) ? units.gu(90) : units.gu(50)
             }
 
@@ -288,9 +289,7 @@ Page {
                 active: current
                 sourceComponent: playerComp
                 onLoaded: item.embedUrl = modelData.videoLink
-                // Reveal over the poster only when the <video> page is up. The
-                // poster itself IS the loading state — no spinner, so a scrolled-to
-                // reel shows its thumbnail cleanly, then cross-fades to video.
+                // Poster IS the loading state (no spinner) — cross-fade once ready
                 opacity: (item && item.ready) ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 180 } }
             }
@@ -413,10 +412,8 @@ Page {
                 }
             }
 
-            // TikTok-style vertical action rail. Upvote/downvote post signed
-            // votes via XHR (no WebView). Comment/share open the thread in the
-            // system browser (mounting the detail page's WebView over this live
-            // reel would crash — see the dual-Chromium note).
+            // Comment/share open in the system browser — a second WebView
+            // over this live reel would trip the dual-Chromium crash.
             Rectangle {
                 id: actionRail
                 anchors { right: parent.right; rightMargin: Style.spacingS
@@ -473,7 +470,10 @@ Page {
                     // Comment
                     AbstractButton {
                         width: units.gu(7); height: units.gu(7)
-                        onClicked: commentSheet.open(modelData.author || "", modelData.permlink || "")
+                        onClicked: {
+                            page._commentSheetPermlink = modelData.permlink || "";
+                            commentSheet.open(modelData.author || "", modelData.permlink || "");
+                        }
                         Column {
                             anchors.centerIn: parent
                             spacing: units.dp(2)

@@ -9,14 +9,6 @@ import "../services/PostService.js" as PostService
 import "../services/VideoService.js" as VideoService
 import "../services/BlockedUsers.js" as BlockedUsers
 
-/*
- * Public profile view for any user: a cover banner with an overlapping avatar,
- * name / @username / bio, follower stats and a Follow button, then the user's
- * content under three tabs — Posts (blog), Gallery (image posts) and Video —
- * each lazily loaded and paginated. The header + tab bar scroll with the list
- * (ListView.header) so it stays smooth and the rows virtualise. The "•••" on a
- * post/gallery card opens the shared action sheet (Hide / Report / Block).
- */
 Page {
     id: page
 
@@ -24,9 +16,7 @@ Page {
     property var profile: null
     property bool profileLoading: false
 
-    // Active tab + per-tab pagination state. `rev` is bumped on any state change
-    // so the `cur*` bindings (used by the footer) re-evaluate (the `st` object is
-    // mutated in place — see Theme/FollowStore.qml for the same pattern).
+    // `st` is mutated in place, so `rev` is bumped to make `cur*` bindings re-evaluate
     property int tab: 0          // 0 posts, 1 gallery, 2 video
     property int rev: 0
     property var st: ({
@@ -185,9 +175,8 @@ Page {
                 }
             }
         }
-        // Keep the cover Block button in sync when the same user is blocked/unblocked
-        // elsewhere (e.g. from a post's action sheet), so it doesn't show a stale
-        // state and send a duplicate ADD (which the backend rejects with a 400).
+        // Sync if blocked/unblocked elsewhere, or a stale state re-sends a
+        // duplicate block the backend rejects with a 400.
         function onUserBlocked(username) { if (username === page.username) page.isBlocked = true; }
         function onUserUnblocked(username) { if (username === page.username) page.isBlocked = false; }
         function onEditRequested(post) {
@@ -548,10 +537,7 @@ Page {
     }
 
 
-    // Back button: a FIXED page overlay (not inside the scrolling list header),
-    // so it's always visible from the first frame regardless of scroll position
-    // or async header relayout. `overlay` gives it a translucent dark pill so it
-    // reads over both the cover and scrolled content.
+    // Fixed overlay (not in the scrolling header) so it's always visible
     BackButton {
         anchors { left: parent.left; top: parent.top; leftMargin: Style.spacingS; topMargin: Style.spacingS }
         z: 100

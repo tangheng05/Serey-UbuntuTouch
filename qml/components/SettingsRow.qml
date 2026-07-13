@@ -2,14 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * One Lomiri-style list row: a bare (theme-colorable) Suru icon, a label, and an
- * optional trailing element (value text, a switch, or a chevron). Tappable via
- * clicked(). A hairline divider is inset to start after the icon.
- *
- * (Was an iOS-style row with a circular tinted icon badge — Lomiri list rows use
- * a plain icon, no disc.)
- */
 AbstractButton {
     id: root
 

@@ -9,17 +9,6 @@ import "../components"
 import "../services/PostService.js" as PostService
 import "../services/Uploads.js" as Uploads
 
-/*
- * Create a video post: pick a local video → upload it to the dedicated video
- * storage API (storage.serey.io, tus chunked upload + server-side processing),
- * auto-capture a thumbnail in-app (best-effort; the server's generated
- * thumbnail is the fallback), then publish via PostService.createVideoPost.
- * AI-generated flagging is omitted.
- *
- * A video requires a concrete community (Config.communityId > 0): "Global" is
- * rejected server-side, so publishing is gated until a real community is picked
- * from the global AppHeader pill.
- */
 Page {
     id: page
 

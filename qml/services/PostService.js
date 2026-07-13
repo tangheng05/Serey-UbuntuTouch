@@ -2,15 +2,8 @@
 .import "Http.js" as Http
 .import "Mappers.js" as M
 
-/*
- * Post / feed endpoints under /serey-web. The list endpoints accept only
- * `limit` and `offset` (sending community_id is rejected with "Invalid parameter").
- * Responses come back as { posts: [...] }; detail as { content: {...}, replies: [...] }.
- */
-
-// onOk receives (posts, rawCount). rawCount is the number of rows the server
-// returned *before* any client-side filtering, so callers paginate/`endReached`
-// against the true server offset rather than a filtered length.
+// onOk receives (posts, rawCount) — rawCount is the pre-filter server count,
+// so callers paginate against the true offset, not a filtered length.
 function _list(baseUrl, path, params, token, onOk, onErr) {
     return Http.get(baseUrl, path, params, token, function (data) {
         var raw = data.posts || [];
@@ -50,20 +43,15 @@ function listNew(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-new", params, token, onOk, onErr);
 }
 
-// Gallery: the dedicated image-post feed. Takes limit + offset (offset=0 is
-// sent as "0", which the backend accepts), and community_id to narrow by region
-// exactly like the blog feeds. Requires only optional auth; the token, when
-// present, personalises voters/flaggers state. Mapped via toGalleryPost, which
-// already expects this endpoint's fields (image_url, voter_count, serey_value…).
+// The dedicated image-post feed. Auth is optional (token personalises
+// voters/flaggers). Mapped via toGalleryPost for this endpoint's field shape.
 function listGallery(baseUrl, params, token, onOk, onErr) {
     return Http.get(baseUrl, "/serey-web/list-gallery-post-by-new", params, token, function (data) {
         var raw = data.posts || [];
         var posts = raw.map(M.toGalleryPost).filter(function (p) {
             return p.images.length > 0;
         });
-        // Pass the RAW server count, not the filtered length, so GalleryPage
-        // advances offset correctly (filtering image-less rows must not shrink
-        // the next page's offset or it re-requests the same rows forever).
+        // Raw count, not filtered length — else offset shrinks and re-requests rows
         onOk(posts, raw.length);
     }, onErr);
 }
@@ -74,9 +62,7 @@ function listByAuthor(baseUrl, author, params, token, onOk, onErr) {
     _list(baseUrl, "/serey-web/list-by-author", p, token, onOk, onErr);
 }
 
-// A specific author's gallery (image) posts, mapped via toGalleryPost so the
-// profile's Gallery tab shows the image carousel. Mirrors listGallery's
-// image-less filtering + raw-count pagination.
+// An author's gallery posts — mirrors listGallery's filtering + pagination
 function listGalleryByAuthor(baseUrl, author, params, token, onOk, onErr) {
     var p = params || {};
     p.author = author;
@@ -128,20 +114,15 @@ function createPost(baseUrl, params, token, onOk, onErr) {
         subcategories: params.subcategories || [],
         images: params.images || []
     };
-    // Editing an existing post: sending its permlink makes the backend update in
-    // place (isCreate=false) instead of creating a new post. Author is taken from
-    // the token, so only your own post can be updated.
+    // Sending permlink makes the backend update in place instead of creating new
     if (params.permlink)
         body.permlink = params.permlink;
-    // "Post to blockchain" toggle. Sent explicitly (as a bool) so an edit can
-    // switch it either way — the backend re-evaluates it per save. Omitting it
-    // would default to true on-chain, so only `false` changes behaviour.
+    // Explicit bool so an edit can flip it either way — omitting it defaults true
     body.post_to_blockchain = (params.postToBlockchain !== false);
     if (params.communityId)            // omit when 0/empty so we don't post a falsy id
         body.community_id = Number(params.communityId);
-    // The server resolves the target community by id when present, otherwise by
-    // title (country_name). Sending the name lets "Global" (sentinel id 0) and
-    // any source whose id we don't hold still resolve server-side.
+    // Server resolves by id when present, else by title — lets "Global" (id 0)
+    // and any source whose id we don't hold still resolve server-side.
     if (params.communityName)
         body.country_name = params.communityName;
     Http.post(baseUrl, "/serey-web/create-or-update-post", body,
@@ -169,11 +150,8 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
         desc: params.desc || "",
         body: params.body || params.desc || "",
         videos: [params.videoUrl],
-        // The backend only persists a SEREY video's thumbnail when images.length
-        // > 1 (createOrUpdatePost: `images.length > 1 ? images[0] : video_thumbnail_url`,
-        // and video_thumbnail_url is undefined for SEREY). So send the captured
-        // thumbnail twice — images[0] becomes the stored thumbnail_url; a single
-        // entry would be dropped and the card would show blank.
+        // Backend only persists a SEREY thumbnail when images.length > 1 — a
+        // single entry is dropped, so send the captured thumbnail twice.
         images: params.thumbUrl ? [params.thumbUrl, params.thumbUrl] : [],
         categories: "video",
         subcategories: [],
@@ -196,11 +174,8 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
               token, function (data) { onOk(data || {}); }, onErr);
 }
 
-// Delete one of the signed-in user's own posts (blog, gallery or video — all are
-// Posts server-side). Uses the POST alias of /serey-web/delete-post-or-comment
-// (QML's XMLHttpRequest can't send a DELETE body). The backend authorises by the
-// token's username, so this can only ever delete your own content; the `username`
-// in the body is required by the schema but the author is taken from the token.
+// POST alias — QML's XMLHttpRequest can't send a DELETE body. Backend
+// authorizes by the token's username, so only your own content can be deleted.
 function deletePost(baseUrl, username, permlink, token, onOk, onErr) {
     Http.post(baseUrl, "/serey-web/delete-post-or-comment",
               { username: username, permlink: permlink }, token,

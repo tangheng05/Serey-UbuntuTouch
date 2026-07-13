@@ -7,13 +7,6 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-/*
- * Settings, in the iOS Serey app's grouped style: a welcome/identity header, then
- * a standalone Language row, then sections (Account · About) of rows, each with
- * a circular icon badge, label, and a trailing control/value/chevron, and a
- * Log out row pinned to the bottom. Signed out shows Log in / Sign up; signed in
- * shows the profile identity + stats.
- */
 Page {
     id: page
 
@@ -77,12 +70,8 @@ Page {
             })
     }
 
-    // Flat Lomiri page header: left-aligned title + a search action + bottom
-    // hairline. Replaces the iOS sticky search field; search now reveals on the
-    // action (matches the reference, e.g. uNav's header search icon).
-    // Suppress Lomiri's default header and draw our own as a top-anchored child.
-    // (Page.header did not render the right-side action icon reliably; a normal
-    // child item — like the global AppHeader — does.)
+    // Suppress the default header and draw our own — Page.header didn't
+    // render the right-side search action icon reliably.
     header: Item { height: 0 }
 
     Rectangle {
@@ -255,11 +244,8 @@ Page {
 
     Component.onCompleted: refreshProfile()
 
-    // Re-fetch every time the Settings tab becomes active. The profile (incl. the
-    // following/followers counts) is held in memory, and following someone happens
-    // on another tab — so without this the count stays stale until something else
-    // (token change, sub-page pop) forces a refresh. The backend invalidates the
-    // profile cache on follow, so this re-fetch returns the up-to-date counts.
+    // Following someone happens on another tab, so the in-memory follower
+    // count would otherwise stay stale until this tab is revisited.
     onVisibleChanged: if (visible) refreshProfile()
 
     Connections {

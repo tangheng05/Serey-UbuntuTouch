@@ -1,21 +1,11 @@
 .pragma library
 
-/*
- * Normalises raw Serey API JSON into stable view-models used by the QML.
- * All field-name quirks live here. The API sends several fields as Python-style
- * stringified lists, e.g. image_url = "['https://...']", categories = "['general']",
- * and "None" for nulls — parseList() handles those.
- */
-
 function toInt(v) {
     var n = parseInt(v, 10);
     return isNaN(n) ? 0 : n;
 }
 
-// Per-save "post to blockchain" flag. The server returns this on every post/
-// video/gallery read, reflecting what was saved. Default TRUE (on-chain): only
-// an explicit false/"false"/0 means the post was stored in the DB only — such a
-// post has no on-chain record, so it can't be voted on or earn rewards.
+// Default true (on-chain) — only an explicit false/"false"/0 means DB-only
 function onChainFlag(raw) {
     return raw.post_to_blockchain !== false
         && raw.post_to_blockchain !== "false"
@@ -124,10 +114,7 @@ function toPost(raw) {
     };
 }
 
-// A comment/reply node. Recurses into nested `replies` so the detail page can
-// flatten the tree with indentation.
-// Gallery post: like toPost, but keeps every image (not just the cover) for
-// the swipeable carousel.
+// Like toPost, but keeps every image (not just the cover) for the carousel
 function toGalleryPost(raw) {
     raw = raw || {};
     var imgs = parseList(raw.image_url).map(fixThumb);
@@ -138,10 +125,8 @@ function toGalleryPost(raw) {
         authorImage: raw.author_image_url || "",
         date: raw.publish_date || "",
         images: imgs,
-        // A dynamicRoles ListModel wraps the `images` array into a nested model
-        // whose .get(i) loses the bare URL strings (returns empty objects), so
-        // the feed card reads this newline-joined scalar instead — scalars
-        // survive the ListModel intact. URLs never contain a raw newline.
+        // A dynamicRoles ListModel wraps `images` and loses the bare URL
+        // strings — the feed card reads this scalar instead.
         imagesStr: imgs.join("\n"),
         caption: raw.title || "",
         votes: toInt(raw.voter_count),

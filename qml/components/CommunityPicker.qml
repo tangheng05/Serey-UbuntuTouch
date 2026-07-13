@@ -5,12 +5,6 @@ import "../Theme"
 import "../Session"
 import "../services/CommunitySubscriberService.js" as SubscriberService
 
-/*
- * Bottom-sheet community picker. Each top-level source (Global / NL / US) has
- * a chevron that expands to show sub-communities fetched from
- * GET /community/categories/list?community_id=X, grouped by category.
- * Sub-community results are cached per source so we only fetch once.
- */
 Item {
     id: picker
     anchors.fill: parent
@@ -19,9 +13,7 @@ Item {
 
     // Which source row is currently expanded (-1 = none).
     property int expandedIndex: -1
-    // Per-source cache keyed by srcIndex: undefined = not fetched yet,
-    // [] = fetched but empty, [...] = data. An object (not a fixed-length array)
-    // so it works for however many countries the backend adds below the fixed rows.
+    // Per-source cache: undefined = not fetched, [] = empty, [...] = data
     property var cache: ({})
     property int loadingIndex: -1
     // Map of communityId (string) → true for communities the user is subscribed to.
@@ -71,11 +63,9 @@ Item {
         if (picker.cache[srcIndex] !== undefined) return
         picker.loadingIndex = srcIndex
 
-        // All sources: step 1 — fetch the correct communities for this source,
-        // step 2 — fetch categories list and build id→categoryName map,
-        // step 3 — group step-1 communities by their category.
-        // Global (srcIndex 0) uses categories/list directly since list-by-parent-id/1
-        // returns only the top-level regional hubs, not the individual communities.
+        // Fetch communities, then categories, then group the former by the latter.
+        // Global (srcIndex 0) uses categories/list directly — list-by-parent-id/1
+        // returns only the top-level regional hubs, not individual communities.
 
         var apiId = Config.sources[srcIndex].id
         if (apiId === 0) apiId = 1
@@ -372,10 +362,8 @@ Item {
                                 }
                             }
 
-                            // Chevron icon (NL/US only) — anchored to the row's right
-                            // edge, inside the chevron tap zone (placing it in the Row
-                            // put it left of the zone, so arrow taps selected the source
-                            // and closed the sheet instead of expanding).
+                            // Anchored to the tap zone directly (in the Row it sat left
+                            // of the zone, so arrow taps selected the source instead)
                             Icon {
                                 anchors { right: parent.right; rightMargin: Style.spacingM
                                           verticalCenter: parent.verticalCenter }

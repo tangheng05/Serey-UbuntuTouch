@@ -1,14 +1,6 @@
 .pragma library
 .import QtQuick.LocalStorage 2.0 as LS
 
-/*
- * Local persistent set of blocked usernames, mirroring HiddenPosts.js. The
- * backend is the source of truth (AccountService.toggleBlock/listBlocked) and
- * already filters blocked authors from feeds *when a username is passed*, but
- * not every feed endpoint is authenticated — so we also filter client-side so
- * blocked users' posts never reappear on reload/pagination or when rendering
- * cached/offline content. Synced from the server list at startup (Main.qml).
- */
 var _db = null
 
 function _open() {

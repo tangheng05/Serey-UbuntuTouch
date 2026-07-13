@@ -7,11 +7,6 @@ import "../components"
 import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 
-/*
- * Gallery post detail — Instagram-style single-post view (header row, full-width
- * swipeable image carousel, action bar, "author caption" line, comments below),
- * as opposed to PostDetailPage's blog-article layout. Pushed from GalleryPage.
- */
 Page {
     id: page
 
@@ -85,11 +80,8 @@ Page {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
         Toast.success(Lang.tr("Comment deleted"));
-        // Server delete must run in this page-level scope: the CommentService JS
-        // import resolves to null inside the Repeater delegate's inline handler
-        // (and inside Loader-created nested reply rows), so calling it there threw
-        // "Cannot call method 'remove' of null" and the delete never reached the
-        // server. Here in the page root the import is valid.
+        // Must run in this page-level scope: the CommentService import resolves
+        // to null inside Loader-created reply row delegates.
         CommentService.remove(Config.baseUrl, permlinkToRemove, Session.username, Session.token,
             function () {},
             function (err) {
@@ -113,9 +105,7 @@ Page {
     function editComment(permlinkToEdit, newBody, parentAuthor, parentPermlink) {
         page.comments = page._editIn(page.comments, permlinkToEdit, newBody);
         Toast.success(Lang.tr("Comment updated"));
-        // Server update runs in this page-level scope, not in CommentItem: its
-        // CommentService import is null inside Loader-created reply rows (see
-        // removeComment). Passing the existing permlink updates that comment.
+        // Same page-level-scope reason as removeComment; existing permlink = update
         CommentService.create(Config.baseUrl,
             { parentAuthor: parentAuthor, parentPermlink: parentPermlink,
               body: newBody, permlink: permlinkToEdit },

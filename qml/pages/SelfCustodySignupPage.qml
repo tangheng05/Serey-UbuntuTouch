@@ -5,13 +5,6 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-/*
- * Self-custody (non-custodial) signup. Keys are generated ON-DEVICE by the
- * KeygenBridge (vendored sereyjs), so the server never sees the master key —
- * the user must save it. Steps:
- *   0 username (availability) → 1 email (sends OTP) → 2 OTP (generate + create)
- *   → 3 show the master key to save, then continue to login.
- */
 Page {
     id: page
 

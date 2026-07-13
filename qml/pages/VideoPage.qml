@@ -7,12 +7,11 @@ import "../services/VideoService.js" as VideoService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
 
-/*
- * Video section: list of videos. Tapping opens VideoDetailPage, passing the
- * already-loaded video view-model (it carries the embed URL).
- */
 Page {
     id: page
+
+    // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
+    readonly property real maxContentWidth: units.gu(60)
 
     property int offset: 0
     property bool loading: false
@@ -118,20 +117,15 @@ Page {
                         feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
-                // A page can be mostly/entirely filtered out (hidden/blocked); keep
-                // paging until there's a screenful or the server runs out, else the
-                // feed stalls or looks empty despite more content on later pages.
+                // Keep paging if filtering left less than a screenful
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
                 inflight = null;
                 page.refreshing = false;
-                // Also clear loading: if a loadMore was in flight when refresh
-                // started, refresh() aborted it and bumped reqEpoch, so its
-                // callback early-returns without resetting loading — otherwise a
-                // failed refresh (e.g. a 401 from a stale token) leaves the
-                // skeleton (loading && count === 0) stuck until the app restarts.
+                // Must also clear loading — an aborted in-flight loadMore's own
+                // callback early-returns and would leave the skeleton stuck otherwise.
                 page.loading = false;
             });
     }
@@ -206,7 +200,8 @@ Page {
 
     ListView {
         id: list
-        anchors { top: parent.top; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: feedModel
         cacheBuffer: units.gu(16)
@@ -239,11 +234,8 @@ Page {
 
         }
 
-        // VideoCard wrapped in a Lomiri ListItem so the row gains native swipe
-        // context actions (and the same actions via pointer right-click / keyboard
-        // MENU — convergence). Leading = Share, trailing = Hide, matching the
-        // blog/feed pages. Tap still opens the detail through VideoCard.onClicked,
-        // so navigation is unchanged even if the swipe gesture is unavailable.
+        // ListItem for swipe actions (leading = Hide, trailing = Share);
+        // tap still opens detail via VideoCard.onClicked either way.
         delegate: Item {
             id: rowWrap
             width: list.width
@@ -370,29 +362,9 @@ Page {
                 // avoid a double hairline.
                 divider.visible: false
 
+                // Lomiri HIG (Presenting data): leading = negative/destructive,
+                // trailing = positive/confirming.
                 leadingActions: ListItemActions {
-                    delegate: Item {
-                        width: units.gu(7)
-                        height: parent ? parent.height : units.gu(6)
-                        Icon {
-                            anchors.centerIn: parent
-                            width: units.gu(2.5); height: width
-                            name: action.iconName
-                            color: "black"
-                        }
-                    }
-                    actions: [
-                        Action {
-                            iconName: "share"
-                            text: Lang.tr("Share")
-                            onTriggered: {
-                                var vm = feedModel.get(index);
-                                if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
-                            }
-                        }
-                    ]
-                }
-                trailingActions: ListItemActions {
                     delegate: Rectangle {
                         width: units.gu(7)
                         height: parent ? parent.height : units.gu(6)
@@ -411,6 +383,28 @@ Page {
                             onTriggered: {
                                 var vm = feedModel.get(index);
                                 if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                            }
+                        }
+                    ]
+                }
+                trailingActions: ListItemActions {
+                    delegate: Item {
+                        width: units.gu(7)
+                        height: parent ? parent.height : units.gu(6)
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.5); height: width
+                            name: action.iconName
+                            color: "black"
+                        }
+                    }
+                    actions: [
+                        Action {
+                            iconName: "share"
+                            text: Lang.tr("Share")
+                            onTriggered: {
+                                var vm = feedModel.get(index);
+                                if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
                             }
                         }
                     ]

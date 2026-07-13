@@ -1,32 +1,5 @@
 .pragma library
 
-/*
- * Pure-QML YouTube stream extractor.
- *
- * The app's offline-download path (Session/Downloads.qml → Lomiri.DownloadManager)
- * only knows how to stream a *direct file URL*. YouTube has none — the watch page
- * hands out adaptive DASH streams. So this module asks YouTube's own InnerTube
- * `player` API (the private JSON API the mobile apps use) for the video's
- * streaming data and returns a single direct `googlevideo.com` URL that the
- * download daemon can then fetch like any other file. No C++, no yt-dlp binary —
- * see the architecture decision in HANDOFF.md.
- *
- * Why this works without solving signature ciphers: the IOS / ANDROID InnerTube
- * clients return *progressive* formats (combined audio+video, itag 18≈360p /
- * 22≈720p) with a ready-to-use `url` field and no `n`-throttling, unlike the WEB
- * client which ships `signatureCipher` blobs that need the player JS to decode.
- * We only ever pick from `streamingData.formats` (progressive) so the result is a
- * single self-contained MP4 — no ffmpeg merge step.
- *
- * Fragility: YouTube actively changes InnerTube (client versions, PoToken
- * requirements). If extraction starts failing, bump the client versions/keys
- * below or add a new client to CLIENTS — this is the one knob to turn.
- *
- *   extract(videoId, function (result, errMsg) { ... })
- *     result = { url, height, mimeType, title, durationSeconds } on success
- *     result = null + errMsg on failure
- */
-
 // InnerTube clients tried in order. Each returns progressive direct URLs without
 // a PoToken in practice; we fall through to the next on any failure.
 var CLIENTS = [

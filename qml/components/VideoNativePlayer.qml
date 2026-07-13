@@ -3,34 +3,20 @@ import QtMultimedia 5.12
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * QtMultimedia (media-hub) player. VideoDetailPage routes only *remote* .mov here
- * — Chromium's <video> decodes the QuickTime audio but not the video track, while
- * media-hub's GStreamer/qtdemux renders it. Everything else (mp4 and all local
- * downloads) plays in VideoWebView instead, because media-hub's AppArmor profile
- * can't read the app's downloaded files. On a playback error it emits `failed()`;
- * the caller then retries in the Chromium <video> as a last resort.
- */
 Item {
     id: root
     property string source: ""
 
-    // True only when the user tapped to pause. media-hub reports the initial
-    // buffering pre-roll as "paused" too, so we can't tell loading from a real
-    // pause by playbackState alone — without this flag the play glyph appears
-    // over the loading frame and the user taps play twice.
+    // True only on a real user pause — media-hub reports buffering pre-roll
+    // as "paused" too, so playbackState alone can't tell them apart.
     property bool _userPaused: false
 
-    // Emitted when GStreamer can't play the file (decode error or watchdog
-    // timeout). The caller retries in-app via a Chromium <video> rather than the
-    // external browser.
+    // GStreamer decode error or watchdog timeout — caller retries via Chromium <video>
     signal failed()
 
     onSourceChanged: {
-        // Set the player source explicitly (not via a binding + autoPlay) so the
-        // file is loaded exactly once. Doing both let autoPlay start a load that
-        // this handler's stop() immediately killed, then play() restarted it —
-        // doubling time-to-first-frame and leaving the stage black meanwhile.
+        // Explicit assign (not binding + autoPlay) so the file loads exactly
+        // once — both together raced a load against this handler's stop().
         player.stop();
         root._userPaused = false;
         if (source.length > 0) {
@@ -43,14 +29,11 @@ Item {
         }
     }
 
-    // Ensure the GStreamer pipeline is torn down when the Loader deactivates or
-    // the detail page is popped — otherwise it can keep buffering in background.
+    // Tear down the GStreamer pipeline on deactivate/pop — else it keeps buffering
     Component.onDestruction: player.stop()
 
     MediaPlayer {
         id: player
-        // source is assigned in onSourceChanged (single load — see above), not
-        // bound here, and autoPlay is off so it can't race that explicit load.
         onError: {
             watchdog.stop();
             root.failed();
@@ -60,14 +43,12 @@ Item {
         onStatusChanged: if (status === MediaPlayer.Buffered) watchdog.stop()
     }
 
-    // Watchdog for stalled/unreachable files: if nothing is playing/buffered
-    // after a few seconds, stop and emit failed() so the caller can retry in-app
-    // (Chromium <video>) instead of leaving the UI frozen on a spinner.
+    // Stalled/unreachable-file watchdog — stops and emits failed() if nothing's
+    // playing/buffered after a timeout, instead of freezing on a spinner.
     Timer {
         id: watchdog
-        // Generous: non-faststart .mov streams buffer ~7-10 s before the first
-        // frame on media-hub. A short timeout would abort them into the Chromium
-        // fallback, which can't render .mov at all — worse than waiting.
+        // Generous: non-faststart .mov streams buffer ~7-10s on media-hub, and
+        // the Chromium fallback can't render .mov at all — worse than waiting.
         interval: 20000
         repeat: false
         onTriggered: {

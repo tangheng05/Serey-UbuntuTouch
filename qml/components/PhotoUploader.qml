@@ -4,21 +4,6 @@ import "../Theme"
 import "../Session"
 import "../services/Uploads.js" as Uploads
 
-/*
- * Non-visual orchestrator for "pick → downscale → upload". Call upload(fileUrl)
- * with a local file:// URL (from PhotoPicker); it emits uploaded(url) with the
- * hosted image URL, or failed(message).
- *
- * Why downscale first: full-resolution gallery photos are several MB. Reading
- * those bytes and POSTing them over mobile is slow and — because QML's
- * XMLHttpRequest silently ignores `timeout`/`ontimeout` — a slow upload spins
- * forever (the "stuck in uploading" bug). A camera capture is small enough to
- * finish quickly, which is why it appeared to work and a gallery image didn't.
- * We decode the picture at a capped sourceSize and grab it to a temp JPEG so
- * every upload is small and fast. If decoding/grabbing fails for any reason we
- * fall back to uploading the original bytes, so this never does worse than
- * before. A watchdog Timer guarantees the spinner can't hang indefinitely.
- */
 Item {
     id: root
     width: 0; height: 0

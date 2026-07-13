@@ -1,16 +1,5 @@
 .pragma library
 
-/*
- * Country flag icons, ported from fe-serey-web (services/commons.js).
- *
- * The backend leaves `icon_url` empty for many country communities and only
- * carries a generic Serey `logo_url`, so the web frontend derives a flag from
- * the community's *title*: title -> ISO 3166-1 alpha-2 code -> a flagcdn.com
- * image. New countries auto-resolve as long as their title matches this table.
- *
- * Keep this in sync with fe-serey-web's COUNTRY_NAME_TO_ISO2 map.
- */
-
 var COUNTRY_NAME_TO_ISO2 = {
     // A
     "afghanistan": "af", "albania": "al", "algeria": "dz", "andorra": "ad", "angola": "ao",

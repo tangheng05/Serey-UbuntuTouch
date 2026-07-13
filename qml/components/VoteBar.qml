@@ -6,16 +6,6 @@ import "../Theme"
 import "../Session"
 import "../services/VoteService.js" as VoteService
 
-/*
- * Upvote / downvote / comment / share action row for a post, video or comment.
- * Self-contained: gates on login, posts to VoteService, updates its own counts
- * optimistically and reports outcome via Toast. `voteType` is "post" (default)
- * or "comment" (a like-toggle; flagging is disabled by the backend).
- *
- * Emits requireLogin() when an action needs auth, and commentRequested() when
- * the comment affordance is tapped. Styling follows the serey-ubutu action bar:
- * Suru icons + counts, right-aligned SEREY coin pill.
- */
 RowLayout {
     id: bar
 
@@ -31,10 +21,8 @@ RowLayout {
     property bool upvoted: false
     property bool flagged: false
     property bool busy: false
-    // When false the post is DB-only (off-chain): no curation weight or rewards.
-    // The like/dislike buttons stay (a plain DB-only like — see doUpvote), but the
-    // weight popover and the SEREY payout pill are suppressed. Mirrors the web's
-    // simpleVote + showCoins=false for off-chain posts.
+    // Off-chain (DB-only) posts: like/dislike stay, but weight popover and payout
+    // pill are suppressed (see doUpvote) — mirrors the web's simpleVote/showCoins.
     property bool onChain: true
     property bool showComments: true
     property bool showShare: true
@@ -57,11 +45,8 @@ RowLayout {
         }
         return !bar.busy;
     }
-    // NOTE: the vote count is updated OPTIMISTICALLY by each action below, not
-    // from r.voterCount. Serey signs/broadcasts the vote to the chain async, so
-    // the immediate response still carries the pre-vote count — trusting it left
-    // the icon blue while the number never moved. The authoritative count comes
-    // back on the next feed/detail reload.
+    // Vote count is updated optimistically, not from r.voterCount — the async
+    // chain broadcast means the immediate response still carries the pre-vote count.
     function _apply(r) {
         bar.busy = false;
         bar.flaggers = r.flaggerCount;
@@ -85,10 +70,8 @@ RowLayout {
         bar.busy = false;
         Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
     }
-    // Upvote-only failure handler. An "already voted" error means the server
-    // already has our vote and the local UI was out of sync — reconcile it to
-    // the voted state. Must NOT be shared with flag/removeVote, or a failed
-    // dislike/unvote would wrongly flip the item to "liked".
+    // "Already voted" means the server already has our vote — reconcile the UI.
+    // Must NOT be shared with flag/removeVote or a failed unvote flips to "liked".
     function _failUpvote(e) {
         bar.busy = false;
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
@@ -107,9 +90,7 @@ RowLayout {
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
                 function (r) { bar.upvoted = false; bar.votes = Math.max(0, bar.votes - 1); _apply(r); bar._cache(); Toast.show(Lang.tr("Vote removed")); }, _fail);
         } else if (bar.voteType === "comment" || !bar.onChain) {
-            // Simple one-tap like: comments, and off-chain (DB-only) posts. Off-
-            // chain posts have no curation weight, so skip the weight popover and
-            // record a plain 100% like — matches fe-serey-web's simpleVote.
+            // Comments and off-chain posts: simple one-tap like, no weight popover
             bar._sendUpvote(100);
         } else {
             PopupUtils.open(voteWeightDialog);

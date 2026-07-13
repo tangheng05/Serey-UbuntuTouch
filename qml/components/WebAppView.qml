@@ -14,6 +14,15 @@ import "../Theme"
  *     setAuthToken   -> stores a token pushed from the web side
  *     openCommunity  -> asks the shell to switch community
  *     openExternalBrowser -> opens a URL in the system browser
+ *     buyPlan        -> hands a plan purchase to the native payment flow
+ *                       ({ subscription_plan_id, method: "crypto"|"stripe" });
+ *                       rejected when there's no native session, so the site
+ *                       falls back to its own web payment flow
+ *
+ * Navigation to checkout.stripe.com is intercepted (onNavigationRequested)
+ * and re-routed to the native StripeCheckoutSheet — works against the
+ * production site even before it adopts the buyPlan bridge, and stops the
+ * mini app navigating away from the plan page.
  *
  * The page posts requests via `console.log("UBUNTU_BRIDGE:" + json)`, which we
  * intercept in onJavaScriptConsoleMessage and answer with receiveResponse().
@@ -52,9 +61,16 @@ Item {
     // immediately (Active is always legal).
     onSuspendedChanged: {
         if (suspended) {
+            // Active->Frozen is rejected while the page is visible. On a tab
+            // switch the parent stack hides us anyway, but when `suspended`
+            // comes from an overlay (the Stripe checkout sheet covering this
+            // tab) the view is still visible — hide it explicitly or the
+            // freeze silently fails and both Chromiums stay live.
+            webView.visible = false;
             freezeTimer.restart();
         } else {
             freezeTimer.stop();
+            if (webAppView.appActive) webView.visible = true;
             webView.lifecycleState = webAppView._lcActive;
         }
     }
@@ -88,6 +104,9 @@ Item {
     signal authTokenReceived(string token, string username)
     signal openCommunityRequested(string communityId)
     signal openExternalBrowserRequested(string url)
+    // params: { subscription_plan_id, method: "crypto"|"stripe" }
+    signal buyPlanRequested(var params)
+    signal stripeCheckoutIntercepted(string url)
 
     WebEngineProfile {
         id: mobileProfile
@@ -140,6 +159,18 @@ Item {
         onJavaScriptConsoleMessage: {
             if (message.indexOf("UBUNTU_BRIDGE:") === 0)
                 webAppView._handleBridgeMessage(message.substring(14));
+        }
+
+        // Keep the mini app on the plan page when the site redirects to Stripe
+        // Checkout — the shell shows it in the native StripeCheckoutSheet
+        // instead. Enum names can be undefined on UT's QtWebEngine (see the
+        // lifecycleState ints above), so use the raw value: IgnoreRequest=255.
+        onNavigationRequested: {
+            var u = request.url.toString();
+            if (u.indexOf("https://checkout.stripe.com") === 0) {
+                request.action = 255;
+                webAppView.stripeCheckoutIntercepted(u);
+            }
         }
     }
 
@@ -265,6 +296,19 @@ Item {
                 if (params.community_id)
                     webAppView.openCommunityRequested(String(params.community_id));
                 _sendResponse(id, { status: "ok", message: "Community opened" });
+                break;
+            case "buyPlan":
+                // Only claim the purchase when a native session exists — the
+                // payment endpoints need the native JWT. Rejecting makes the
+                // site's Promise fail so it falls back to its web flow.
+                if (!webAppView.authToken) {
+                    _sendError(id, "No native session");
+                } else if (!params.subscription_plan_id) {
+                    _sendError(id, "Missing subscription_plan_id");
+                } else {
+                    webAppView.buyPlanRequested(params);
+                    _sendResponse(id, { status: "ok", message: "Handled natively" });
+                }
                 break;
             case "openExternalBrowser":
                 if (params.url) {

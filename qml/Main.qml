@@ -11,6 +11,7 @@ import "services/AccountService.js" as AccountService
 import "services/Http.js" as Http
 import "services/NotificationService.js" as NotificationService
 import "services/BlockedUsers.js" as BlockedUsers
+import "services/PaymentService.js" as PaymentService
 
 /*
  * Application shell: a persistent bottom tab bar with one PageStack per tab so
@@ -233,6 +234,43 @@ MainView {
         }
     }
 
+    // Background check for a pending crypto plan payment. Crypto activation
+    // only happens when OUR client pings check-status (no webhook reliance),
+    // so if the user paid after closing the payment sheet — or the whole app —
+    // this is what still activates the plan. Payments.pendingCrypto is
+    // persisted in SQLite; the PaymentSheet's own 10 s poll takes over while
+    // it is open (hence !Payments.cryptoOpen).
+    Timer {
+        id: cryptoPendingPoller
+        interval: 60000
+        repeat: true
+        triggeredOnStart: true   // also fires on app launch/resume via `running`
+        running: Session.isLoggedIn && Payments.pendingCrypto !== null
+                 && !Payments.cryptoOpen && root.startupSettled
+        onTriggered: {
+            var p = Payments.pendingCrypto
+            if (!p) return
+            PaymentService.checkCryptoStatus(Config.baseUrl, Session.token, p.paymentId,
+                function (status) {
+                    if (status === "finished") {
+                        Payments.clearPendingCrypto()
+                        Toast.success(Lang.tr("Payment confirmed!"))
+                        Payments.paymentSucceeded()
+                    } else if (status === "failed" || status === "refunded" || status === "expired") {
+                        Payments.clearPendingCrypto()
+                    } else {
+                        // Still waiting/confirming. Give up well past expiry —
+                        // late blockchain confirmations can land after the
+                        // NOWPayments window, so keep checking for an extra day.
+                        var exp = Date.parse(p.expiresAt)
+                        if (!isNaN(exp) && Date.now() > exp + 24 * 3600 * 1000)
+                            Payments.clearPendingCrypto()
+                    }
+                },
+                function () { /* transient — next tick retries */ })
+        }
+    }
+
     Connections {
         target: Session
         // Keyed off the token (not isLoggedIn) so a direct account switch also
@@ -428,5 +466,7 @@ MainView {
     CommunityPicker { id: communityPicker }
     PostActionSheet { }
     ShareSheet { }
+    PaymentSheet { }
+    StripeCheckoutSheet { }
     Toaster { }
 }

@@ -21,6 +21,14 @@ Page {
     property bool loading: false
     property string errorMsg: ""
 
+    // Whether the signed-in user already owns/manages a community — flips the
+    // "Create your platform" row into "Manage platform". Re-evaluates whenever
+    // Main.qml (or the create wizard) reassigns the set.
+    readonly property bool hasPlatform: {
+        for (var k in Config.ownedCommunityIdSet) return true;
+        return false;
+    }
+
     property bool searching: false
     property bool searchOpen: false
     property int searchGeneration: 0
@@ -579,6 +587,23 @@ Page {
                 label: Lang.tr("Blocked Users")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
+            }
+            // One platform per user: creators see "Create", owners/managers see
+            // the CMS row instead (ownedCommunityIdSet is synced in Main.qml at
+            // startup/login and refreshed by the create wizard on success).
+            SettingsRow {
+                visible: Session.isLoggedIn && !page.hasPlatform
+                iconName: "add"
+                label: Lang.tr("Create your platform")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("CreatePlatformPage.qml"))
+            }
+            SettingsRow {
+                visible: Session.isLoggedIn && page.hasPlatform
+                iconName: "settings"
+                label: Lang.tr("Manage platform")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ManagePlatformPage.qml"))
             }
             // Not gated on isLoggedIn: downloads/saved articles work signed out too.
             SettingsRow {

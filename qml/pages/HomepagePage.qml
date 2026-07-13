@@ -36,9 +36,10 @@ Page {
     WebAppView {
         id: webApp
         anchors.fill: parent
-        // Freeze this Chromium renderer while another tab is showing so it doesn't
-        // compete for GPU/shared memory with the video player's WebView.
-        suspended: Config.currentTab !== 0
+        // Freeze this Chromium renderer while another tab is showing — or while
+        // the Stripe checkout's own WebEngineView is up — so two live Chromiums
+        // never compete for GPU/shared memory (the Pixel 3a SIGSEGV).
+        suspended: Config.currentTab !== 0 || Payments.stripeOpen
         url: page.siteUrl()
         authToken: Session.token
         username: Session.username
@@ -46,6 +47,20 @@ Page {
         communityId: String(Config.communityId)
         communityName: Config.communityName
         onOpenCommunityRequested: page.applyCommunity(communityId)
+
+        // Buy-plan: bridge calls and intercepted Stripe redirects both land in
+        // the native payment flow (PaymentSheet / StripeCheckoutSheet).
+        onBuyPlanRequested: {
+            if (params.method === "crypto") Payments.openCrypto(params.subscription_plan_id);
+            else Payments.openStripe(params.subscription_plan_id);
+        }
+        onStripeCheckoutIntercepted: Payments.openStripeUrl(url)
+    }
+
+    // After a confirmed payment, reload the site so it reflects the new plan.
+    Connections {
+        target: Payments
+        function onPaymentSucceeded() { webApp.reload(); }
     }
 
     // The web view's cookie session is persistent and otherwise survives a

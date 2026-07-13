@@ -492,7 +492,14 @@ Item {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
-                onClicked: sheet.closeSheet()
+                onClicked: {
+                    // The plan is active — funnel straight into creating the
+                    // platform, unless the user already owns one.
+                    var owns = false;
+                    for (var k in Config.ownedCommunityIdSet) { owns = true; break; }
+                    sheet.closeSheet();
+                    if (!owns) Nav.createPlatform();
+                }
                 Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: Style.brand }
                 Label {
                     anchors.centerIn: parent

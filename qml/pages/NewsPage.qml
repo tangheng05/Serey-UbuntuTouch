@@ -214,30 +214,8 @@ Page {
             width: list.width
             height: card.implicitHeight
 
+            // HIG polarity: LEADING = negative (red), TRAILING = positive.
             leadingActions: ListItemActions {
-                delegate: Item {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "black"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: {
-                            var p = feedModel.get(index)
-                            if (p) Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink)
-                        }
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -256,6 +234,29 @@ Page {
                         onTriggered: {
                             var p = feedModel.get(index)
                             if (p) PostActions.hideRequested(p.author, p.permlink)
+                        }
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: {
+                            var p = feedModel.get(index)
+                            if (p) Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink)
                         }
                     }
                 ]

@@ -85,6 +85,12 @@ Item {
         if (success) {
             Toast.success(Lang.tr("Payment successful!"));
             Payments.paymentSucceeded();
+            // Same funnel as the crypto sheet's Done: plan is active, so take
+            // the buyer straight into creating their platform (unless they
+            // already own one).
+            var owns = false;
+            for (var k in Config.ownedCommunityIdSet) { owns = true; break; }
+            if (!owns) Nav.createPlatform();
         } else {
             Toast.show(Lang.tr("Payment cancelled."));
         }

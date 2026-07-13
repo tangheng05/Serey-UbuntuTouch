@@ -75,28 +75,8 @@ Page {
             width: list.width
             height: videoCard.implicitHeight
 
+            // HIG polarity: LEADING = negative (red trash), TRAILING = positive.
             leadingActions: ListItemActions {
-                delegate: Item {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "black"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: Share.open(
-                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -113,6 +93,27 @@ Page {
                         iconName: "delete"
                         text: Lang.tr("Remove")
                         onTriggered: Downloads.remove(modelData.permlink)
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: Share.open(
+                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
                     }
                 ]
             }

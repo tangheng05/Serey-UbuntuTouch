@@ -357,7 +357,33 @@ Page {
             property var postData: feedModel.get(index)
             readonly property bool isVideo: postData && postData._kind === "video"
 
+            // HIG polarity: LEADING = negative (red), TRAILING = positive
+            // (founder feedback: delete/hide belongs on the leading side).
             leadingActions: ListItemActions {
+                delegate: Rectangle {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    color: Style.danger
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "white"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "close"
+                        text: Lang.tr("Hide")
+                        onTriggered: {
+                            var p = feedModel.get(index)
+                            if (p) PostActions.hideRequested(p.author, p.permlink)
+                        }
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
                 delegate: Item {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -379,30 +405,6 @@ Page {
                                 Share.open("https://serey.io/video-component/watch?author=" + p.author + "&permalink=" + p.permlink)
                             else
                                 Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink)
-                        }
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
-                delegate: Rectangle {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    color: Style.danger
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "white"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "close"
-                        text: Lang.tr("Hide")
-                        onTriggered: {
-                            var p = feedModel.get(index)
-                            if (p) PostActions.hideRequested(p.author, p.permlink)
                         }
                     }
                 ]

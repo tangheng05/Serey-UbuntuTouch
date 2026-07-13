@@ -296,6 +296,15 @@ MainView {
             while (settingsStack.depth > 1)
                 settingsStack.pop();
         }
+        // Buy-plan → create-platform funnel: land on Settings with the wizard
+        // pushed (its own gate re-checks the now-active subscription).
+        function onCreatePlatform() {
+            root.currentTab = 3;
+            root._ensureTab(3);
+            while (settingsStack.depth > 1)
+                settingsStack.pop();
+            settingsStack.push(Qt.resolvedUrl("pages/CreatePlatformPage.qml"));
+        }
     }
 
     // --- Global header (community pill + logo) ----------------------------

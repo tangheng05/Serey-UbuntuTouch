@@ -14,5 +14,9 @@ QtObject {
     // stack the auth flow was pushed onto.
     signal goToTab(int tab)
 
+    // Buy-plan → create-platform funnel: emitted by the payment sheets after a
+    // successful purchase; Main switches to Settings and pushes the wizard.
+    signal createPlatform()
+
     function home() { goToTab(0); }
 }

@@ -3,12 +3,6 @@ import QtQuick.Layouts 1.3
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Segmented tab strip (e.g. Trending / New) in the serey-ubutu style: tabs
- * share the row equally (1 row, N equal-width columns), the active one
- * tinted brand and underlined by a short pill. Set `model` to a list of
- * labels; emits selected(index) and exposes currentIndex.
- */
 Item {
     id: root
     property var model: []

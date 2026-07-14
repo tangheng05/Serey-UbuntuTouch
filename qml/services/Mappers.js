@@ -1,21 +1,11 @@
 .pragma library
 
-/*
- * Normalises raw Serey API JSON into stable view-models used by the QML.
- * All field-name quirks live here. The API sends several fields as Python-style
- * stringified lists, e.g. image_url = "['https://...']", categories = "['general']",
- * and "None" for nulls — parseList() handles those.
- */
-
 function toInt(v) {
     var n = parseInt(v, 10);
     return isNaN(n) ? 0 : n;
 }
 
-// Per-save "post to blockchain" flag. The server returns this on every post/
-// video/gallery read, reflecting what was saved. Default TRUE (on-chain): only
-// an explicit false/"false"/0 means the post was stored in the DB only — such a
-// post has no on-chain record, so it can't be voted on or earn rewards.
+// Default true (on-chain) — only an explicit false/"false"/0 means DB-only
 function onChainFlag(raw) {
     return raw.post_to_blockchain !== false
         && raw.post_to_blockchain !== "false"
@@ -59,8 +49,7 @@ function stripHtml(html, max) {
     return text;
 }
 
-// YouTube's maxresdefault.jpg is missing for many videos (404). hqdefault.jpg
-// always exists, so prefer it.
+// YouTube's maxresdefault.jpg is missing for many videos (404); hqdefault.jpg always exists, so prefer it.
 function fixThumb(url) {
     if (url && url.indexOf("img.youtube.com") >= 0)
         return url.replace("maxresdefault", "hqdefault");
@@ -79,8 +68,7 @@ function firstImage(raw) {
     return m ? fixThumb(m[1]) : "";
 }
 
-// Normalise a voters/flaggers list to plain usernames. The API sends either
-// ["alice", ...] (detail content) or [{voter:"alice"}, ...] (some endpoints).
+// Normalise a voters/flaggers list to plain usernames — the API sends either ["alice"] or [{voter:"alice"}] depending on endpoint.
 function voterNames(arr) {
     if (!arr || !Array.isArray(arr))
         return [];
@@ -111,8 +99,7 @@ function toPost(raw) {
         comments: toInt(raw.answer_count),
         payout: raw.serey_value || "",
         categories: parseList(raw.categories),
-        // Scalar copy of the first category: a dynamicRoles ListModel wraps the
-        // `categories` array (losing [] indexing), so edit-prefill reads this.
+        // Scalar copy of the first category since a dynamicRoles ListModel wraps the `categories` array (losing [] indexing); edit-prefill reads this.
         primaryCategory: parseList(raw.categories)[0] || "",
         voters: voterNames(raw.voters),
         voterStr: "," + voterNames(raw.voters).join(",") + ",",
@@ -124,10 +111,7 @@ function toPost(raw) {
     };
 }
 
-// A comment/reply node. Recurses into nested `replies` so the detail page can
-// flatten the tree with indentation.
-// Gallery post: like toPost, but keeps every image (not just the cover) for
-// the swipeable carousel.
+// Like toPost, but keeps every image (not just the cover) for the carousel
 function toGalleryPost(raw) {
     raw = raw || {};
     var imgs = parseList(raw.image_url).map(fixThumb);
@@ -138,10 +122,7 @@ function toGalleryPost(raw) {
         authorImage: raw.author_image_url || "",
         date: raw.publish_date || "",
         images: imgs,
-        // A dynamicRoles ListModel wraps the `images` array into a nested model
-        // whose .get(i) loses the bare URL strings (returns empty objects), so
-        // the feed card reads this newline-joined scalar instead — scalars
-        // survive the ListModel intact. URLs never contain a raw newline.
+        // A dynamicRoles ListModel wraps `images` and loses the bare URL strings — the feed card reads this scalar instead.
         imagesStr: imgs.join("\n"),
         caption: raw.title || "",
         votes: toInt(raw.voter_count),
@@ -167,8 +148,7 @@ function toComment(raw) {
     return {
         author: raw.author || "",
         permlink: raw.permlink || "",
-        // Needed to resubmit create-or-update-comment when editing (it always
-        // requires the parent it's attached to, not just its own permlink).
+        // Needed to resubmit create-or-update-comment when editing, since it always requires the parent it's attached to, not just its own permlink.
         parentAuthor: raw.parent_author || "",
         parentPermlink: raw.parent_permlink || "",
         body: stripHtml(raw.description || raw.body || ""),
@@ -220,22 +200,18 @@ function toCommunity(raw) {
         icon: raw.icon_url || raw.logo_url || "",
         country: raw.country || "",
         level: toInt(raw.level),
-        // is_allow_post=true → anyone may post; false → owner/managers only.
-        // Drives whether the compose buttons are shown for this community.
+        // is_allow_post=true means anyone may post, false means owner/managers only — drives whether the compose buttons are shown for this community.
         allowPost: !!raw.is_allow_post,
-        // video_is_allow_post=true → anyone may post a video; false → owner/
-        // managers only. Gates the Video upload FAB independently of the blog flag.
+        // video_is_allow_post gates the Video upload FAB independently of the blog flag (true = anyone, false = owner/managers only).
         videoAllowPost: !!raw.video_is_allow_post,
-        // Number of sub-communities under this one. Used to hide empty countries
-        // from the picker (a country with no communities yet).
+        // Number of sub-communities under this one, used to hide empty countries from the picker.
         childCount: Array.isArray(raw.child_communities) ? raw.child_communities.length : 0
     };
 }
 
 function toUser(username, raw) {
     raw = raw || {};
-    // `full_name` is an object { first_name, last_name } (it's the DB `name`
-    // column); flatten it. Fall back to the blockchain account `name` string.
+    // `full_name` is an object { first_name, last_name } (the DB `name` column) — flatten it, falling back to the blockchain account `name` string.
     var fn = "", ln = "";
     if (raw.full_name && typeof raw.full_name === "object") {
         fn = raw.full_name.first_name || "";
@@ -255,8 +231,7 @@ function toUser(username, raw) {
         firstName: fn,
         lastName: ln,
         fullName: full || username,
-        // Trim: stored bios often carry trailing newlines/spaces, which a
-        // word-wrapped Label renders as blank lines (a big empty gap below it).
+        // Trim: stored bios often carry trailing newlines/spaces, which a word-wrapped Label renders as a blank gap below it.
         bioHtml: (raw.bio || "").trim(),
         bio: (raw.bio || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").trim(),
         gender: raw.gender_title || "",

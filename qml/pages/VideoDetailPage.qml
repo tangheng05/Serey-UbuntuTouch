@@ -16,6 +16,8 @@ Page {
     id: page
 
     property var video: ({})
+    // Caps the title/author/action-row block on wide windows
+    readonly property real maxContentWidth: units.gu(60)
     property bool playing: false
     property bool nativeMode: false     // QtMultimedia (efficient, mp4/webm/m4v)
     property bool webVideoMode: false   // Chromium HTML5 <video> (mov / native fallback)
@@ -29,13 +31,10 @@ Page {
     property bool flagged:    false
     property bool voteBusy:   false
     property string payout:   ""
-    // Off-chain (DB-only) videos have no curation weight/rewards: the like/dislike
-    // stay (as a plain 100% like — see doUpvote), but the weight popover is skipped
-    // and the award is not shown. Default on-chain unless the saved video says so.
+    // Off-chain videos skip the vote-weight popover/award (see doUpvote)
     readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
     property bool commentSheetOpen: false
-    // YouTube stream extraction is in flight (resolving a direct URL before the
-    // download daemon can fetch it). Drives the download button's spinner.
+    // YouTube stream extraction is in flight, resolving a direct URL before the download daemon can fetch it; drives the download button's spinner.
     property bool ytExtracting: false
 
     property var comments: []
@@ -48,9 +47,7 @@ Page {
     // "More Videos" feed
     property var moreVideos: []
 
-    // A caption edit elsewhere (action sheet) changed this video's title or
-    // description — swap in a fresh object so bindings re-evaluate. The player
-    // source strings are unchanged, so playback isn't disturbed.
+    // Caption edit elsewhere — swap in a fresh object so bindings re-evaluate
     Connections {
         target: PostActions
         function onPostUpdated(author, permlink, title, body) {
@@ -63,9 +60,7 @@ Page {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
 
-    // The remote direct media URL for a Serey-hosted clip (empty for third-party
-    // embeds). This is also the "is this downloadable?" gate for the offline
-    // download button — embeds return "" because there are no bytes to fetch.
+    // Remote direct media URL (empty for embeds — also the download-button gate)
     function remoteDirectUrl() {
         var v = page.video;
         if (v.platform === "SEREY") return v.videoLink || v.embedUrl || "";
@@ -74,8 +69,7 @@ Page {
         return "";
     }
 
-    // The 11-char YouTube id, from the backend's video_id or parsed out of the
-    // embed/watch URL. Empty for non-YouTube videos.
+    // The 11-char YouTube id, from the backend's video_id or parsed out of the embed/watch URL; empty for non-YouTube videos.
     function youtubeId() {
         var v = page.video;
         if (v.platform === "YOUTUBE" && (v.videoId || "").length === 11) return v.videoId;
@@ -84,15 +78,12 @@ Page {
         return m ? m[1] : "";
     }
 
-    // YouTube videos have no direct file URL up front (so remoteDirectUrl() is
-    // empty), but they're still downloadable via InnerTube extraction.
+    // YouTube videos have no direct file URL up front, but they're still downloadable via InnerTube extraction.
     function isYouTube() {
         return page.video && page.video.platform === "YOUTUBE" && youtubeId().length > 0;
     }
 
-    // Resolve a YouTube clip to a direct stream URL, then hand it to the same
-    // offline-download path as Serey files. Extraction is async; ytExtracting
-    // gates the button so repeat taps and the post-extract handoff don't race.
+    // Resolves a YouTube clip to a direct URL, then reuses the Serey download path; ytExtracting gates the button against repeat taps.
     function downloadYouTube() {
         if (page.ytExtracting) return;
         var id = youtubeId();
@@ -110,19 +101,13 @@ Page {
         });
     }
 
-    // The URL to actually play: a saved offline copy when one exists, otherwise
-    // the remote file. Extension-based routing in startPlay() still applies (the
-    // local path keeps the original extension), so offline .mp4 → native player
-    // and offline .mov → Chromium <video>, exactly like the streamed case.
+    // Saved offline copy if one exists, else the remote file; startPlay()'s extension routing still applies since the local path keeps its extension.
     function directUrl() {
         var local = Downloads.pathFor((page.video && page.video.permlink) || "");
         return local.length > 0 ? local : page.remoteDirectUrl();
     }
 
-    // Build a playable third-party embed URL, mirroring the web's fallbackEmbedSrc:
-    // prefer the backend's embed_video, compute it from video_id when missing, and
-    // augment YouTube with the params it needs to actually play inline on mobile
-    // (a bare youtube.com/embed/<id> renders a black, unresponsive frame).
+    // Playable embed URL augments YouTube with params it needs to play inline on mobile (a bare embed URL renders a black frame).
     function embedSrc() {
         var v = page.video;
         var url = v.embedUrl || "";
@@ -148,22 +133,11 @@ Page {
         if (direct.length > 0) {
             var isLocal = direct.indexOf("file://") === 0;
             if (!isLocal && /\.mov(\?|$)/i.test(direct)) {
-                // Remote QuickTime .mov: Chromium's <video> decodes the audio but
-                // not the video track (black screen, stuttering). media-hub /
-                // GStreamer (qtdemux) renders it, and the AppArmor block that broke
-                // downloads only applies to *local* files — a remote stream is fine
-                // on the native player.
+                // Remote .mov: Chromium's <video> decodes audio but not the video track; media-hub/GStreamer renders it fine, and the AppArmor block below only applies to local files.
                 page.nativeMode = true;
                 page.webVideoMode = false;
             } else {
-                // All local downloads and remote mp4/webm/m4v → in-app Chromium
-                // <video> (VideoWebView), NOT QtMultimedia. On Ubuntu Touch
-                // QtMultimedia delegates to the out-of-process media-hub service,
-                // whose AppArmor profile can't read our download-manager file
-                // ("InsufficientAppArmorPermissions") → 0x0 surface then SIGSEGV.
-                // Chromium decodes in our own confinement, so it reads the app's own
-                // file, and for remote mp4 it range-requests the non-faststart moov
-                // tail.
+                // Local files and remote mp4/webm/m4v use Chromium <video>, not QtMultimedia, since media-hub's AppArmor profile can't read our download-manager file (SIGSEGV via 0x0 surface).
                 page.nativeMode = false;
                 page.webVideoMode = true;
             }
@@ -177,19 +151,13 @@ Page {
         }
     }
 
-    // Reparent the player Loader into the fullscreen host (or back to the inline
-    // stage). On this pushed page the app header and bottom nav are already hidden,
-    // so filling the page is genuinely fullscreen. webLoader keeps anchors.fill:
-    // parent, so it resizes to whichever container it lands in.
+    // Reparents the player Loader into the fullscreen host or back to the inline stage; webLoader's anchors.fill follows whichever it lands in.
     function setFullscreen(on) {
         page.isFullscreen = on;
         webLoader.parent = on ? fsHost : stage;
     }
 
-    // The native (.mov) player failed — retry in-app via Chromium's <video> rather
-    // than dropping the user into an external browser. The mode change re-evaluates
-    // the Loader's source. (Chromium can't render the .mov container, so this then
-    // usually falls through to the system-handler last resort below.)
+    // Native (.mov) player failed — retry via Chromium's <video> before falling back to the system handler.
     function onNativeFailed() {
         if (page.webVideoMode) {
             // Even Chromium failed — last resort is the system handler.
@@ -255,8 +223,7 @@ Page {
                 function (r) { page.upvoted = false; page.voteCount = Math.max(0, page.voteCount - 1); page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
                 page._voteFail);
         } else if (!page.onChain) {
-            // Off-chain (DB-only) video: plain one-tap like, no weight popover
-            // (matches fe-serey-web's simpleVote).
+            // Off-chain (DB-only) video: plain one-tap like, no weight popover, matching fe-serey-web's simpleVote.
             page._sendUpvote(100);
         } else {
             PopupUtils.open(voteWeightDialog);
@@ -347,14 +314,10 @@ Page {
                 var replies, serverCount, voters, me2;
                 replies = result.replies || [];
                 page.comments = replies;
-                // The backend's answer_count can be stale; trust the actual
-                // replies array when it's larger. (result.post can be absent if
-                // the detail fetch came back empty — guard it.)
+                // answer_count can be stale — trust replies.length when larger
                 serverCount = (result.post && result.post.comments) || 0;
                 page.commentCount = Math.max(serverCount, replies.length);
-                // Confirm upvoted from the authoritative voters list when no
-                // session-cache entry exists. Only set true — never override to
-                // false, since the detail API may return an incomplete voters list.
+                // Only ever set upvoted true from voters — the API's list can be incomplete, so never use it to override an already-true state.
                 if (!VoteService.getCached(video.author, video.permlink) && !page.upvoted) {
                     voters = (result.post && result.post.voters) || [];
                     me2 = Session.username || "";
@@ -381,11 +344,7 @@ Page {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
         Toast.success(Lang.tr("Comment deleted"));
-        // Server delete must run in this page-level scope: the CommentService JS
-        // import resolves to null inside the Repeater delegate's inline handler
-        // (and inside Loader-created nested reply rows), so calling it there threw
-        // "Cannot call method 'remove' of null" and the delete never reached the
-        // server. Here in the page root the import is valid.
+        // Must run in this page-level scope: the CommentService import resolves to null inside Loader-created reply row delegates.
         CommentService.remove(Config.baseUrl, permlinkToRemove, Session.username, Session.token,
             function () {},
             function (err) {
@@ -409,9 +368,7 @@ Page {
     function editComment(permlinkToEdit, newBody, parentAuthor, parentPermlink) {
         page.comments = page._editIn(page.comments, permlinkToEdit, newBody);
         Toast.success(Lang.tr("Comment updated"));
-        // Server update runs in this page-level scope, not in CommentItem: its
-        // CommentService import is null inside Loader-created reply rows (see
-        // removeComment). Passing the existing permlink updates that comment.
+        // Same page-level-scope reason as removeComment; existing permlink = update
         CommentService.create(Config.baseUrl,
             { parentAuthor: parentAuthor, parentPermlink: parentPermlink,
               body: newBody, permlink: permlinkToEdit },
@@ -481,8 +438,9 @@ Page {
             });
     }
 
-    Component.onCompleted: {
+    function _initVideoState() {
         // Check follow status
+        page.isFollowing = false;
         if (Session.isLoggedIn && video.author && video.author !== Session.username) {
             FollowService.status(Config.baseUrl, Session.username, video.author,
                 function (following) { page.isFollowing = following; },
@@ -510,9 +468,13 @@ Page {
                 page.voteCount = saved.votes
             }
         }
-        // Load comments
+        page.commentCount = page.video.comments || 0;
+        page.comments = [];
+        page.replyTarget = null;
         page.loadComments();
-        // Load more videos
+    }
+
+    function _loadMoreVideos() {
         var myPermlink = page.video ? page.video.permlink : "";
         VideoService.listVideos(Config.baseUrl, { limit: 6, offset: 0 }, Session.token,
             function (result) {
@@ -525,13 +487,17 @@ Page {
             function (err) { /* ignore */ });
     }
 
+    Component.onCompleted: {
+        page._initVideoState();
+        page._loadMoreVideos();
+    }
+
     // Confirm before forgetting an offline download.
     Component {
         id: removeDialog
         Dialog {
             id: rdlg
-            // Title carries the video name so the dialog reads clearly on its own
-            // (HIG "drop-the-title test"). Falls back when the title is missing.
+            // Title carries the video name so the dialog reads clearly on its own (HIG drop-the-title test); falls back when the title is missing.
             title: (page.video && page.video.title)
                    ? Lang.tr("Remove “%1”?").arg(page.video.title)
                    : Lang.tr("Remove download?")
@@ -600,8 +566,7 @@ Page {
                     id: webLoader
                     anchors.fill: parent
                     active: page.playing
-                    // Native player only for nativeMode; webVideoMode and embed
-                    // playback both use the WebView (HTML5 <video> vs iframe).
+                    // Native player only for nativeMode; webVideoMode and embed playback both use the WebView (HTML5 <video> vs iframe).
                     source: page.playing
                         ? (page.nativeMode ? Qt.resolvedUrl("../components/VideoNativePlayer.qml")
                                            : Qt.resolvedUrl("../components/VideoWebView.qml"))
@@ -617,8 +582,7 @@ Page {
                             item.wrap = true;
                             item.embedUrl = page.embedSrc();
                         }
-                        // Both WebView modes (<video> + YouTube iframe) can request
-                        // fullscreen; the native player can't.
+                        // Both WebView modes (<video> + YouTube iframe) can request fullscreen; the native player can't.
                         if (!page.nativeMode)
                             item.fullscreenToggled.connect(page.setFullscreen);
                     }
@@ -634,6 +598,18 @@ Page {
             }
 
             Item { width: 1; height: Style.spacingM }
+
+            // Capped/centered meta block; player + "More Videos" stay full-bleed
+            Item {
+                id: metaBlock
+                width: parent.width
+                height: metaCol.height
+
+            Column {
+                id: metaCol
+                width: Math.min(parent.width, page.maxContentWidth)
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 0
 
             // Title
             Label {
@@ -659,15 +635,10 @@ Page {
                 width: parent.width
                 height: units.gu(5)
 
-                MouseArea {
-                    anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: moreBtn.left }
-                    onClicked: page.openProfile()
-                }
-
                 Row {
+                    id: authorRow
                     anchors {
                         left: parent.left
-                        right: moreBtn.left
                         leftMargin: Style.spacingM
                         verticalCenter: parent.verticalCenter
                     }
@@ -712,6 +683,13 @@ Page {
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
+                }
+
+                // Hugs the row's actual rendered content, not the full width up to moreBtn, else the dead space in between wrongly opens the profile on tap.
+                MouseArea {
+                    anchors { left: authorRow.left; top: parent.top; bottom: parent.bottom }
+                    width: authorRow.width
+                    onClicked: page.openProfile()
                 }
 
                 AbstractButton {
@@ -843,8 +821,7 @@ Page {
                     }
                 }
 
-                // Download — icon with border; spinner + percentage while downloading,
-                // tick when saved.
+                // Download — icon with border
                 AbstractButton {
                     id: dlBtn
                     visible: page.remoteDirectUrl().length > 0 || page.isYouTube()
@@ -945,6 +922,9 @@ Page {
                 }
             }
 
+            } // metaCol
+            } // metaBlock
+
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
             Item { width: 1; height: Style.spacingM }
@@ -960,13 +940,83 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            Repeater {
-                model: page.moreVideos
-                delegate: VideoCard {
-                    width: contentCol.width
-                    video: modelData
-                    onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
-                        { video: modelData })
+            // Adapt, not scale: more columns as width allows, instead of one giant full-width card stretched to fill a wide window.
+            Item {
+                id: moreVideosGrid
+                width: contentCol.width
+                readonly property int columns: Math.max(1, Math.floor(width / units.gu(50)))
+                readonly property real cardWidth: (width - Style.spacingM * (columns - 1)) / columns
+                height: moreVideosGridLayout.height
+
+                Grid {
+                    id: moreVideosGridLayout
+                    width: parent.width
+                    columns: moreVideosGrid.columns
+                    spacing: Style.spacingM
+
+                    Repeater {
+                        model: page.moreVideos
+                        // Swipe actions only in the single-column (phone) layout;
+                        // tablet/desktop keep the plain multi-column grid card.
+                        delegate: Item {
+                            id: mvItem
+                            width: moreVideosGrid.cardWidth
+                            height: mvCard.height
+
+                            ListItem {
+                                id: mvListItem
+                                visible: moreVideosGrid.columns === 1
+                                width: parent.width
+                                height: mvCard.height
+                                divider.visible: false
+
+                                leadingActions: ListItemActions {
+                                    delegate: Rectangle {
+                                        width: units.gu(7); height: parent ? parent.height : units.gu(6)
+                                        color: Style.danger
+                                        Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: action.iconName; color: "white" }
+                                    }
+                                    actions: [
+                                        Action {
+                                            iconName: "close"
+                                            text: Lang.tr("Hide")
+                                            onTriggered: {
+                                                if (modelData) PostActions.hideRequested(modelData.author, modelData.permlink);
+                                            }
+                                        }
+                                    ]
+                                }
+                                trailingActions: ListItemActions {
+                                    delegate: Item {
+                                        width: units.gu(7); height: parent ? parent.height : units.gu(6)
+                                        Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: action.iconName; color: "black" }
+                                    }
+                                    actions: [
+                                        Action {
+                                            iconName: "share"
+                                            text: Lang.tr("Share")
+                                            onTriggered: {
+                                                if (modelData) Share.open("https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink);
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+
+                            VideoCard {
+                                id: mvCard
+                                parent: moreVideosGrid.columns === 1 ? mvListItem : mvItem
+                                width: mvItem.width
+                                showDivider: false
+                                video: modelData
+                                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
+                                    { video: modelData })
+                                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                                    { username: modelData.author })
+                                onMoreClicked: PostActions.open(modelData, "video")
+                            }
+                        }
+                    }
                 }
             }
 
@@ -974,8 +1024,7 @@ Page {
         }
     }
 
-    // Fullscreen host: setFullscreen() reparents the player Loader in here to fill
-    // the screen. Sits above the content and the bottom sheets (z 1500).
+    // Fullscreen host: setFullscreen() reparents the player Loader in here to fill the screen, above content and bottom sheets (z 1500).
     Item {
         id: fsHost
         anchors.fill: parent
@@ -1092,8 +1141,7 @@ Page {
             Column {
                 id: cmtFooter
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                // Ride above the on-screen keyboard; the comment list above is
-                // anchored to cmtFooter.top and shrinks to keep both visible.
+                // Ride above the on-screen keyboard; the comment list above is anchored to cmtFooter.top and shrinks to keep both visible.
                 anchors.bottomMargin: page.kbHeight
                 Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
 
@@ -1133,9 +1181,7 @@ Page {
                     x: Style.spacingM
                     spacing: Style.spacingS
 
-                    // Lomiri TextField (not a raw TextInput): only the styled
-                    // component wires up the native long-press selection +
-                    // Cut/Copy/Paste popover. StyleHints keep the gray-pill look.
+                    // Lomiri TextField (not a raw TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste; StyleHints keep the gray-pill look.
                     TextField {
                         id: composer
                         width: parent.width - cmtSendBtn.width - Style.spacingS
@@ -1374,8 +1420,7 @@ Page {
                                 t = t.replace(/<(?!\/?(?:b|i|u|a)\b)[^>]+>/g, "");
                                 t = t.replace(/&nbsp;/g, " ");
                                 t = t.replace(/&amp;/g, "&");
-                                // Decode numeric entities (smart quotes etc.) that
-                                // StyledText can't render; keep &,<,> encoded.
+                                // Decode numeric entities (smart quotes etc.) that StyledText can't render; keep &,<,> encoded.
                                 t = t.replace(/&#(\d+);/g, function (mm, n) {
                                     var code = parseInt(n, 10);
                                     return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);

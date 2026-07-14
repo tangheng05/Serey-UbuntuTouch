@@ -5,18 +5,13 @@ import "../Theme"
 import "../Session"
 import "../components"
 
-/*
- * Saved articles: blog/news posts saved via the ★ button on PostDetailPage.
- * Reachable from Settings. Tapping a row opens PostDetailPage with the saved
- * view-model (preloadedPost), so it renders instantly and reads offline. Swipe
- * a row (or use the ••• action) to remove.
- */
 Page {
     id: page
 
     header: Item { height: 0 }
 
     property string _pendingRemove: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     Component {
         id: removeDialog
@@ -70,7 +65,8 @@ Page {
 
     ListView {
         id: list
-        anchors { top: topBar.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: topBar.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: SavedPosts.items
         cacheBuffer: units.gu(20)

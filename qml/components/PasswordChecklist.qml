@@ -3,12 +3,6 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 
-/*
- * Live password-rule checklist, mirroring the web's standard-signup form.
- * Each rule is neutral grey before typing, green when satisfied, red when
- * still unmet. The four rules match the server's password regex:
- *   8–16 chars · uppercase · lowercase · number
- */
 Flow {
     id: root
 

@@ -1,7 +1,6 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
-// Lomiri.Notifications / Ubuntu.PushNotifications exist only on-device, so
-// they're created dynamically (see _initNotifications) to keep desktop builds alive.
+// Lomiri.Notifications/Ubuntu.PushNotifications exist only on-device, so they're created dynamically to keep desktop builds alive.
 import "Theme"
 import "Session"
 import "components"
@@ -13,10 +12,6 @@ import "services/NotificationService.js" as NotificationService
 import "services/BlockedUsers.js" as BlockedUsers
 import "services/PaymentService.js" as PaymentService
 
-/*
- * Application shell: a persistent bottom tab bar with one PageStack per tab so
- * each section keeps its own navigation history.
- */
 MainView {
     id: root
     objectName: "mainView"
@@ -26,11 +21,14 @@ MainView {
     width: units.gu(45)
     height: units.gu(80)
 
+    // Convergence breakpoint shared with AdaptiveStack.qml via Config — drives the side nav rail, independent of any tab's column state.
+    readonly property bool wideMode: width >= Config.convergenceBreakpoint
+    Binding { target: Config; property: "wideMode"; value: root.wideMode }
+
     property int currentTab: 0
     onCurrentTabChanged: { Config.currentTab = currentTab; _ensureTab(currentTab); body.opacity = 0; tabFadeIn.start(); }
 
-    // Tabs are created lazily on first visit: launching all four at once made
-    // the Homepage web view slow/janky on low-end devices (Pixel 3).
+    // Tabs are created lazily on first visit — launching all four at once made the Homepage web view janky on low-end devices.
     function _ensureTab(tab) {
         if (tab === 0 && homeStack.depth === 0)
             homeStack.push(Qt.resolvedUrl("pages/HomepagePage.qml"));
@@ -43,21 +41,20 @@ MainView {
     }
     NumberAnimation { id: tabFadeIn; target: body; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
 
-    // The global header/nav only show at a tab's root (depth 1); pushed
-    // sub-pages bring their own back-bar.
+    // Header/nav hide at depth > 1 on phone; stay up when AdaptivePageLayout's own columns show 2+, per Lomiri convergence HIG.
     property int activeDepth: currentTab === 0 ? homeStack.depth
                             : currentTab === 1 ? newsStack.depth
                             : currentTab === 2 ? videoStack.depth
                             : settingsStack.depth
-    readonly property bool showHeader: activeDepth <= 1 && currentTab !== 3
-    readonly property bool showNavBar: activeDepth <= 1
+    property int activeColumns: currentTab === 0 ? homeStack.columns
+                              : currentTab === 1 ? newsStack.columns
+                              : currentTab === 2 ? videoStack.columns
+                              : settingsStack.columns
+    readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3
+    readonly property bool showNavBar: activeColumns > 1 || activeDepth <= 1
 
     Component.onCompleted: {
-        // Expired tokens are caught lazily via 401 (they can't be checked
-        // up-front: /auth/authenticated needs a device JWT we never have and
-        // always 401s — validating on launch wrongly logged users out). Only
-        // clear if the rejected token is still the CURRENT one; a late 401
-        // from a logged-out account must not wipe a fresh session.
+        // Expired tokens are caught lazily via 401 (can't check up-front); only clear if the rejected token is still the current one.
         Http.setUnauthorizedHandler(function (tokenUsed) {
             if (!Session.isLoggedIn) return;
             if (tokenUsed !== Session.token) return;
@@ -78,10 +75,7 @@ MainView {
                 for (var b = 0; b < Config.baseSources.length; b++)
                     baseDns[Config.baseSources[b].dns] = true;
 
-                // Append every top-level country (except Cambodia) below the
-                // fixed Global / Netherlands / United States rows in the picker.
-                // Country icons follow fe-serey-web: derive a flagcdn flag from
-                // the title (backend leaves icon_url empty → generic Serey logo).
+                // Append every top-level country (except Cambodia) below the fixed rows; icons derive from a flagcdn flag since backend icon_url is empty.
                 var extra = [];
                 for (var i = 0; i < list.length; i++) {
                     var c = list[i];
@@ -99,8 +93,7 @@ MainView {
             function (err) { /* keep globe fallback */ });
     }
 
-    // Non-critical launch work is deferred a few seconds so the Homepage web
-    // view's first load gets the CPU/network to itself on slow devices.
+    // Non-critical launch work is deferred so the Homepage web view's first load gets the CPU/network to itself on slow devices.
     property bool startupSettled: false
     Timer {
         id: startupSettleTimer
@@ -129,8 +122,7 @@ MainView {
             function (err) { /* offline / failed — keep last-known local set */ });
     }
 
-    // Communities the user owns/manages — an owner may post even when the
-    // community is set to owner-only.
+    // Communities the user owns/manages — an owner may post even when the community is owner-only.
     function _syncOwnedCommunities() {
         if (!Session.isLoggedIn) { Config.ownedCommunityIdSet = ({}); return; }
         AccountService.ownedCommunityIds(Config.baseUrl, Session.token,
@@ -273,8 +265,7 @@ MainView {
 
     Connections {
         target: Session
-        // Keyed off the token (not isLoggedIn) so a direct account switch also
-        // resyncs — one account's blocks must never leak into another's feed.
+        // Keyed off the token (not isLoggedIn) so account switches resync — one account's blocks must never leak into another's feed.
         function onTokenChanged() { root._syncBlockedUsers(); root._syncOwnedCommunities() }
         function onIsLoggedInChanged() {
             if (!Session.isLoggedIn) {
@@ -285,8 +276,7 @@ MainView {
         }
     }
 
-    // Tab switch requested by a page (e.g. signup success → Homepage); also
-    // unwinds the auth pages left on the Settings stack.
+    // Tab switch requested by a page (e.g. signup success); also unwinds auth pages left on the Settings stack.
     Connections {
         target: Nav
         function onGoToTab(tab) {
@@ -310,16 +300,18 @@ MainView {
     // --- Global header (community pill + logo) ----------------------------
     AppHeader {
         id: appHeader
-        anchors { left: parent.left; right: parent.right; top: parent.top }
+        anchors { left: root.wideMode ? sideNavBar.right : parent.left; right: parent.right; top: parent.top }
         height: root.showHeader ? units.gu(6) : 0
         visible: root.showHeader
+        wide: root.wideMode
         onCommunityButtonClicked: communityPicker.open()
 
         center: AbstractButton {
             id: feedBtn
             visible: Session.isLoggedIn
             anchors.centerIn: parent
-            width: units.gu(4); height: width
+            width: root.wideMode ? units.gu(5) : units.gu(4)
+            height: width
             onClicked: {
                 var stack = root.currentTab === 0 ? homeStack
                           : root.currentTab === 1 ? newsStack
@@ -329,7 +321,8 @@ MainView {
             }
             Image {
                 anchors.centerIn: parent
-                width: units.gu(3.5); height: width
+                width: root.wideMode ? units.gu(4.5) : units.gu(3.5)
+                height: width
                 source: Qt.resolvedUrl("../assets/iconFeed.png")
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
@@ -345,7 +338,8 @@ MainView {
                 id: composeBtn
                 visible: Session.isLoggedIn && root.currentTab === 1
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(3.2); height: width
+                width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
+                height: width
                 onClicked: {
                     var np = newsStack.currentPage;
                     var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"));
@@ -360,19 +354,20 @@ MainView {
                 }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(2.2); height: width
+                    width: root.wideMode ? units.gu(3) : units.gu(2.2)
+                    height: width
                     name: "edit"
                     color: Style.brand
                 }
             }
 
-            // Upload video (Video tab only), gated on the community's video
-            // posting permission (see Config.canPostVideoCurrent).
+            // Upload video (Video tab only), gated on the community's video posting permission.
             AbstractButton {
                 id: uploadBtn
                 visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostVideoCurrent
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(3.2); height: width
+                width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
+                height: width
                 onClicked: {
                     var vp = videoStack.currentPage;
                     var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
@@ -387,7 +382,8 @@ MainView {
                 }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(2.2); height: width
+                    width: root.wideMode ? units.gu(3) : units.gu(2.2)
+                    height: width
                     name: "add"
                     color: Style.brand
                 }
@@ -399,42 +395,57 @@ MainView {
     Item {
         id: body
         anchors {
-            left: parent.left
+            left: root.wideMode ? sideNavBar.right : parent.left
             right: parent.right
             top: appHeader.bottom
-            bottom: root.showNavBar ? navBar.top : parent.bottom
+            bottom: (root.showNavBar && !root.wideMode) ? navBar.top : parent.bottom
         }
 
-        PageStack {
+        AdaptiveStack {
             id: homeStack
+            singleColumnUntilPushed: true
             anchors.fill: parent
             visible: root.currentTab === 0
             Component.onCompleted: push(Qt.resolvedUrl("pages/HomepagePage.qml"))
         }
         // News/Video/Settings are filled lazily by _ensureTab() on first visit.
-        PageStack {
+        AdaptiveStack {
             id: newsStack
+            emptyDetailIconName: "stock_note"
+            emptyDetailMessage: Lang.tr("Select a post to read")
             anchors.fill: parent
             visible: root.currentTab === 1
         }
-        PageStack {
+        AdaptiveStack {
             id: videoStack
+            emptyDetailIconName: "camcorder"
+            emptyDetailMessage: Lang.tr("Select a video to watch")
             anchors.fill: parent
             visible: root.currentTab === 2
         }
-        PageStack {
+        AdaptiveStack {
             id: settingsStack
+            emptyDetailIconName: "settings"
+            emptyDetailMessage: Lang.tr("Select a setting")
             anchors.fill: parent
             visible: root.currentTab === 3
         }
     }
 
-    // --- Bottom navigation ------------------------------------------------
+    // Shared by both nav layouts below, so the tab list only exists once.
+    readonly property var _tabs: [
+        { label: Lang.tr("Homepage"), icon: "home" },
+        { label: Lang.tr("News"),     icon: "stock_note" },
+        { label: Lang.tr("Video"),    icon: "camcorder" },
+        { label: Lang.tr("Settings"), icon: "settings" }
+    ]
+
+    // --- Bottom navigation (phone / narrow window) -------------------------
     Rectangle {
         id: navBar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: root.showNavBar ? units.gu(7) : 0
-        visible: root.showNavBar
+        height: (root.showNavBar && !root.wideMode) ? units.gu(7) : 0
+        visible: root.showNavBar && !root.wideMode
         color: Style.surface
 
         Rectangle {
@@ -447,12 +458,7 @@ MainView {
             anchors.fill: parent
 
             Repeater {
-                model: [
-                    { label: Lang.tr("Homepage"), icon: "home" },
-                    { label: Lang.tr("News"),     icon: "stock_note" },
-                    { label: Lang.tr("Video"),    icon: "camcorder" },
-                    { label: Lang.tr("Settings"), icon: "settings" }
-                ]
+                model: root._tabs
                 delegate: AbstractButton {
                     width: navBar.width / 4
                     height: navBar.height
@@ -461,6 +467,44 @@ MainView {
                     Icon {
                         anchors.centerIn: parent
                         width: units.gu(3)
+                        height: width
+                        name: modelData.icon
+                        color: active ? Style.brand : Style.textSecondary
+                    }
+                    onClicked: root.currentTab = index
+                }
+            }
+        }
+    }
+
+    // Side navigation: a separate vertical rail spanning full height, matching Lomiri's desktop shell convention — convergence, not scaling.
+    Rectangle {
+        id: sideNavBar
+        anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+        width: (root.showNavBar && root.wideMode) ? units.gu(9) : 0
+        visible: root.showNavBar && root.wideMode
+        color: Style.surface
+
+        Rectangle {
+            anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
+            width: units.dp(1)
+            color: Style.divider
+        }
+
+        Column {
+            anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: units.gu(2) }
+            spacing: units.gu(1)
+
+            Repeater {
+                model: root._tabs
+                delegate: AbstractButton {
+                    width: sideNavBar.width
+                    height: units.gu(7)
+                    property bool active: root.currentTab === index
+
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(4)
                         height: width
                         name: modelData.icon
                         color: active ? Style.brand : Style.textSecondary

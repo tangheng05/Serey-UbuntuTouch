@@ -1,7 +1,6 @@
 .pragma library
 
-// Dutch translations. Keys are the English source strings (matching Lang.tr() call sites).
-// Fallback: any missing key returns the original English string.
+// Dutch translations keyed by the English source strings (matching Lang.tr() call sites); missing keys fall back to English.
 var nl = {
     "%1 replies":                                       "%1 reacties",
     "...more":                                          "...meer",

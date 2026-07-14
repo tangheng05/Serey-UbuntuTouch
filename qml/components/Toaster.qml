@@ -2,11 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Renders Toast notifications as a bottom snackbar. Mount one instance in
- * Main.qml (anchored over everything). Reacts to Toast.seq changes: fades in,
- * holds, fades out.
- */
 Item {
     id: toaster
     anchors.fill: parent

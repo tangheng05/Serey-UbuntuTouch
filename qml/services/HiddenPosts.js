@@ -6,8 +6,7 @@ var _db = null
 function _open() {
     if (!_db) {
         _db = LS.LocalStorage.openDatabaseSync("SereyhiddenPosts", "1.0", "Hidden posts", 1000000)
-        // CREATE TABLE only on first open — running a write transaction on every
-        // isHidden()/loadAll() call was needless work on the hot feed path.
+        // CREATE TABLE only on first open, since running a write transaction on every isHidden()/loadAll() call was needless work on the hot feed path.
         _db.transaction(function (tx) {
             tx.executeSql("CREATE TABLE IF NOT EXISTS hidden (permlink TEXT PRIMARY KEY)")
         })

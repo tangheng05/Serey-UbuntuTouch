@@ -5,18 +5,13 @@ import "../Theme"
 import "../Session"
 import "../components"
 
-/*
- * Offline library: videos saved via the Download button on VideoDetailPage.
- * Reachable from the Video tab header and from Settings. Tapping a row opens
- * VideoDetailPage, which plays the local copy (VideoDetailPage.directUrl()
- * prefers Downloads.pathFor()). The "•••" button removes a download.
- */
 Page {
     id: page
 
     header: Item { height: 0 }
 
     property string _pendingRemove: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     Component {
         id: removeDialog
@@ -66,7 +61,8 @@ Page {
 
     ListView {
         id: list
-        anchors { top: topBar.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: topBar.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: Downloads.items
         cacheBuffer: units.gu(16)

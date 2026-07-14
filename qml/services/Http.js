@@ -1,20 +1,6 @@
 .pragma library
 
-/*
- * Low-level HTTP helper built on QML's XMLHttpRequest. Every API call in the
- * app goes through here. Callbacks are used (no Promises in this Qt JS engine):
- *   onOk(parsedJson)
- *   onErr({ status, message, data })
- *
- * Note: the Serey API returns HTTP 200 with `{ "status": false, "message": ... }`
- * for logical failures (e.g. "User not found!"), so we treat status===false as
- * an error too.
- */
-
-// Optional global hook fired when an authenticated request is rejected with 401
-// (an expired/invalid JWT). Registered once by the app (Main.qml) to clear the
-// session and prompt re-login — otherwise a dead token leaves the user shown as
-// "logged in" while every required-auth action (e.g. publishing) keeps failing.
+// Fired on a 401 (expired/invalid JWT) — Main.qml registers this once to clear the session and prompt re-login.
 var _onUnauthorized = null;
 function setUnauthorizedHandler(fn) { _onUnauthorized = fn; }
 
@@ -40,8 +26,7 @@ function send(method, url, token, bodyObj, onOk, onErr) {
     if (token)
         xhr.setRequestHeader("Authorization", "Bearer " + token);
 
-    // Without a timeout a stalled mobile request never resolves, leaving the
-    // caller's `loading` flag stuck true and permanently blocking pagination.
+    // Without a timeout a stalled mobile request never resolves, leaving the caller's `loading` flag stuck true and permanently blocking pagination.
     xhr.timeout = 15000;
     xhr.ontimeout = function () {
         onErr({ status: 0, message: "Request timed out. Check your connection." });
@@ -68,11 +53,7 @@ function send(method, url, token, bodyObj, onOk, onErr) {
         if (xhr.status >= 200 && xhr.status < 300 && !logicalFail) {
             onOk(data);
         } else {
-            // A 401 on a request we sent a token with means THAT token is no
-            // longer valid — hand off to the app's re-auth handler, passing the
-            // token this request used so the handler can ignore stale 401s from
-            // a previous account's dying requests (they must not clear a newer
-            // session established in the meantime).
+            // Pass the token this request used, so the handler can ignore a stale 401 from a previous account's dying request.
             if (xhr.status === 401 && token && _onUnauthorized)
                 _onUnauthorized(token);
             var msg = (data && data.message) ? data.message

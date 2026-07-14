@@ -7,22 +7,17 @@ import "../components"
 import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 
-/*
- * Gallery post detail — Instagram-style single-post view (header row, full-width
- * swipeable image carousel, action bar, "author caption" line, comments below),
- * as opposed to PostDetailPage's blog-article layout. Pushed from GalleryPage.
- */
 Page {
     id: page
 
     property string author: ""
     property string permlink: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     property var post: null
     property var comments: []
     property int commentCount: 0
-    // Broadcast so the feed card behind this page reflects adds/deletes when the
-    // user goes back; feed pages patch the row by permlink (like onPostDeleted).
+    // Broadcast so the feed card behind this page reflects adds/deletes when the user goes back; feed pages patch the row by permlink.
     onCommentCountChanged: if (page.permlink) PostActions.commentCountChanged(page.permlink, page.commentCount)
     property bool loading: false
     property bool posting: false
@@ -85,11 +80,7 @@ Page {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
         Toast.success(Lang.tr("Comment deleted"));
-        // Server delete must run in this page-level scope: the CommentService JS
-        // import resolves to null inside the Repeater delegate's inline handler
-        // (and inside Loader-created nested reply rows), so calling it there threw
-        // "Cannot call method 'remove' of null" and the delete never reached the
-        // server. Here in the page root the import is valid.
+        // Must run in this page-level scope: the CommentService import resolves to null inside Loader-created reply row delegates.
         CommentService.remove(Config.baseUrl, permlinkToRemove, Session.username, Session.token,
             function () {},
             function (err) {
@@ -113,9 +104,7 @@ Page {
     function editComment(permlinkToEdit, newBody, parentAuthor, parentPermlink) {
         page.comments = page._editIn(page.comments, permlinkToEdit, newBody);
         Toast.success(Lang.tr("Comment updated"));
-        // Server update runs in this page-level scope, not in CommentItem: its
-        // CommentService import is null inside Loader-created reply rows (see
-        // removeComment). Passing the existing permlink updates that comment.
+        // Same page-level-scope reason as removeComment; existing permlink = update
         CommentService.create(Config.baseUrl,
             { parentAuthor: parentAuthor, parentPermlink: parentPermlink,
               body: newBody, permlink: permlinkToEdit },
@@ -199,7 +188,8 @@ Page {
 
     KeyboardAwareFlickable {
         id: scroll
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: page.header.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         anchors.bottomMargin: footer.visible ? footer.height + page.kbHeight : 0
         contentWidth: width
         contentHeight: contentCol.height
@@ -379,7 +369,8 @@ Page {
 
     Column {
         id: footerCol
-        width: parent.width
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(parent.width, page.maxContentWidth)
         spacing: Style.spacingS
 
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
@@ -435,9 +426,7 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.spacingS
 
-            // Lomiri TextField (not a raw TextInput): only the styled component
-            // wires up the native long-press selection + Cut/Copy/Paste popover.
-            // StyleHints keep the existing gray-pill look.
+            // Lomiri TextField (not a raw TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste; StyleHints keep the gray-pill look.
             TextField {
                 id: composer
                 width: parent.width - sendButton.width - Style.spacingS

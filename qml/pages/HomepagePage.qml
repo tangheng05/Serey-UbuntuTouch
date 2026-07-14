@@ -4,17 +4,6 @@ import "../Theme"
 import "../Session"
 import "../components"
 
-/*
- * Homepage tab: Config.homeLandingPageUrl ("https://khmer.serey.io"), embedded
- * as a mini web app (WebAppView) with a forced mobile viewport and a JS bridge
- * that hands the site the native session token + API base, and lets it ask the
- * shell to switch community or open links externally. Matches serey-ubutu: a
- * single fixed site filtered by a `community_id` query param, rather than
- * switching domains per source.
- *
- * The community is chosen via the global AppHeader pill (Config.sourceIndex);
- * because `url` reads Config.communityId, switching the source reloads the site.
- */
 Page {
     id: page
 
@@ -36,10 +25,8 @@ Page {
     WebAppView {
         id: webApp
         anchors.fill: parent
-        // Freeze this Chromium renderer while another tab is showing — or while
-        // the Stripe checkout's own WebEngineView is up — so two live Chromiums
-        // never compete for GPU/shared memory (the Pixel 3a SIGSEGV).
-        suspended: Config.currentTab !== 0 || Payments.stripeOpen
+        // Freeze this Chromium renderer while another tab is showing so it doesn't compete for GPU/shared memory with the video player's WebView.
+        suspended: Config.currentTab !== 0
         url: page.siteUrl()
         authToken: Session.token
         username: Session.username
@@ -63,9 +50,7 @@ Page {
         function onPaymentSucceeded() { webApp.reload(); }
     }
 
-    // The web view's cookie session is persistent and otherwise survives a
-    // native logout/account switch — clear it and reload whenever the token
-    // changes so the site re-auths as the current user (or shows logged out).
+    // Persistent cookies otherwise survive a native logout/account switch
     Connections {
         target: Session
         function onTokenChanged() {

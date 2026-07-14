@@ -5,15 +5,6 @@ import "../Session"
 import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 
-/*
- * Bottom-sheet comment thread — a pure-QML overlay (no WebView), so it can be
- * shown on top of the reels player's live Chromium surface without tripping the
- * dual-Chromium crash (which is why reels used to bounce comments to the browser).
- * Mirrors VideoDetailPage's comment load/post/tree logic and reuses CommentItem.
- *
- * open(author, permlink) loads the thread; emits countChanged(delta) as comments
- * are added/removed so the caller can keep its count in sync.
- */
 Item {
     id: sheet
     anchors.fill: parent
@@ -89,11 +80,7 @@ Item {
     function removeComment(p) {
         sheet.comments = _removeFrom(sheet.comments, p);
         sheet.countChanged(-1);
-        // Server delete must run in this sheet-level scope: the CommentService JS
-        // import resolves to null inside the Repeater delegate's inline handler
-        // (and inside Loader-created nested reply rows), so calling it there threw
-        // "Cannot call method 'remove' of null" and the delete never reached the
-        // server. Here in the sheet root the import is valid.
+        // Server delete must run in this sheet-level scope — the CommentService import resolves to null inside Repeater/Loader-created reply row delegates.
         CommentService.remove(Config.baseUrl, p, Session.username, Session.token,
             function () {},
             function (err) {
@@ -102,9 +89,7 @@ Item {
     }
     function editComment(p, b, parentAuthor, parentPermlink) {
         sheet.comments = _editIn(sheet.comments, p, b);
-        // Server update runs in this sheet-level scope, not in CommentItem: its
-        // CommentService import is null inside Loader-created reply rows (see
-        // removeComment). Passing the existing permlink updates that comment.
+        // Server update runs in this sheet-level scope, not CommentItem, since its CommentService import is null inside Loader-created reply rows.
         CommentService.create(Config.baseUrl,
             { parentAuthor: parentAuthor, parentPermlink: parentPermlink,
               body: b, permlink: p },
@@ -159,8 +144,7 @@ Item {
     // --- Panel -------------------------------------------------------------
     Rectangle {
         id: panel
-        // Anchored above the keyboard; height clamps so it never runs off the top
-        // when the OSK is up.
+        // Anchored above the keyboard; height clamps so it never runs off the top when the OSK is up.
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: sheet.kbHeight }
         height: Math.min(sheet.height * 0.72, sheet.height - sheet.kbHeight - units.gu(2))
         color: Style.surface

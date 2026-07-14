@@ -7,11 +7,6 @@ import "../services/PostService.js" as PostService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
 
-/*
- * News feed: Trending / New posts, filtered by the selected regional source
- * (community_id from Config). The source is chosen via the global AppHeader
- * community pill and shared app-wide through Config.sourceIndex.
- */
 Page {
     id: page
 
@@ -20,19 +15,19 @@ Page {
     property bool endReached: false
     property string errorMsg: ""
     property int feedIndex: 0
-    // Request generation: bumped on reload() so a late response from a previous
-    // community/tab can't append stale rows into the freshly-cleared model.
+    // Request generation bumped on reload() so a late response from a previous community/tab can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
 
-    // Zero-height header: the global AppHeader provides the top bar, but giving
-    // the Page an explicit header keeps it off Lomiri's deprecated Page.head path.
+    // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
+    readonly property real maxContentWidth: units.gu(60)
+
+    // Zero-height header: the global AppHeader provides the top bar, but keeping an explicit header avoids Lomiri's deprecated Page.head path.
     header: Item { height: 0 }
 
     ListModel { id: feedModel; dynamicRoles: true }
 
-    // Source switching now lives in the global AppHeader community pill; the feed
-    // just reloads when Config.sourceIndex changes.
+    // Source switching lives in the global AppHeader community pill; the feed just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
         function onCommunityIdChanged() { page.reload(); }
@@ -86,18 +81,14 @@ Page {
         offset = 0;
         endReached = false;
         loading = false;
-        // Also clear refreshing: a reload (e.g. community switch or tab change)
-        // that interrupts an in-flight pull-to-refresh would otherwise leave
-        // refreshing stuck true, permanently disabling pull-to-refresh.
+        // Clear too, or an interrupted pull-to-refresh leaves this stuck true
         refreshing = false;
         errorMsg = "";
         feedModel.clear();
         loadMore();
     }
 
-    // Pull-to-refresh: re-fetch the first page but keep the current rows on
-    // screen (clearing only once the new ones arrive) so there's no skeleton
-    // flash — just the pull spinner, Facebook-style.
+    // Pull-to-refresh re-fetches the first page but keeps current rows on screen until new ones arrive, Facebook-style.
     property bool refreshing: false
     function refresh() {
         if (page.refreshing) return;
@@ -122,20 +113,14 @@ Page {
                         feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
-                // A page can be mostly/entirely filtered out (hidden/blocked); keep
-                // paging until there's a screenful or the server runs out, else the
-                // feed stalls or looks empty despite more content on later pages.
+                // Keep paging if filtering left less than a screenful, or the feed stalls looking empty despite more content on later pages.
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
                 inflight = null;
                 page.refreshing = false;
-                // A failed refresh (e.g. a 401 from a stale token) must also clear
-                // `loading`. If a loadMore was in flight when the refresh started,
-                // refresh() aborted it and bumped reqEpoch, so that loadMore's
-                // callback early-returns without resetting loading — leaving the
-                // skeleton (loading && count === 0) stuck on screen until restart.
+                // Must also clear loading — an aborted in-flight loadMore's own callback early-returns and would leave the skeleton stuck otherwise.
                 page.loading = false;
             });
     }
@@ -186,7 +171,8 @@ Page {
 
     ListView {
         id: list
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: feedModel
         cacheBuffer: units.gu(12)
@@ -194,12 +180,7 @@ Page {
         PullToRefresh {
             refreshing: page.refreshing
             onRefresh: page.refresh()
-            // Show "Pull to refresh" only while actively dragging, so it's gone
-            // the moment you release — no built-in "Release to refresh..." text and
-            // no flash during load/retract. We drive OPACITY (not visible): the
-            // PullToRefresh style imperatively sets the content's `visible` per its
-            // own state, which would clobber a `visible` binding; it never touches
-            // opacity, so this is the reliable lever.
+            // Opacity, not visible — PullToRefresh's style imperatively sets `visible` itself, which would clobber a visible binding.
             content: Label {
                 text: Lang.tr("Pull to refresh")
                 opacity: list.dragging ? 1 : 0
@@ -278,9 +259,7 @@ Page {
             }
         }
 
-        // Constant-height footer: a conditional height feeds back into
-        // contentHeight/atYEnd and trips a "height" binding loop, so keep it
-        // fixed and just toggle the spinner.
+        // Constant-height footer: a conditional height feeds back into contentHeight/atYEnd and trips a "height" binding loop, so keep it fixed and toggle the spinner.
         footer: Item {
             width: list.width
             height: units.gu(6)
@@ -314,6 +293,5 @@ Page {
         message: Lang.tr("No posts in %1").arg(Config.currentCommunityName)
     }
 
-    // Compose lives in the global header action now (see Main.qml, gated on the
-    // News tab) — Lomiri uses a header action, not a Material floating button.
+    // Compose lives in the global header action now (gated on the News tab) — Lomiri uses a header action, not a Material floating button.
 }

@@ -4,19 +4,6 @@ import Lomiri.Content 1.3
 import "../Theme"
 import "../Session"
 
-/*
- * Android/iOS-style share bottom sheet, mounted once in Main.qml. Pages call
- * Share.open(url). Offers Copy link and Open in browser, plus the ContentHub
- * peer grid: every app registered as a Share destination for Links (Telegram,
- * Morph, …) — the Ubuntu Touch counterpart of the system share sheet. Sharing
- * OUT requires the content_exchange_source apparmor policy group. On the
- * desktop container the hub has no peers; the grid is simply empty there and
- * the Copy/Browser rows still work.
- *
- * Layout note: ContentPeerPicker sizes itself with internal anchors, so it
- * must live inside a plain fixed-size Item — NOT a Column/positioner (there
- * its anchors are ignored and the whole sheet collapses).
- */
 Item {
     id: sheet
     anchors.fill: parent

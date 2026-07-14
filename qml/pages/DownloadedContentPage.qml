@@ -5,13 +5,6 @@ import "../Theme"
 import "../Session"
 import "../components"
 
-/*
- * Combined offline library: videos (Session.Downloads) and articles
- * (Session.SavedPosts) under one "Downloaded Content" entry, switched by a
- * Video/Articles tab strip. Replaces the separate DownloadsPage/SavedPostsPage
- * Settings rows; those pages still exist (e.g. reachable from the Video tab
- * header) and share the same stores.
- */
 Page {
     id: page
 
@@ -20,6 +13,7 @@ Page {
     property int tabIndex: 0
     property string _pendingRemoveVideo: ""
     property string _pendingRemoveArticle: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     Component {
         id: removeVideoDialog
@@ -95,7 +89,8 @@ Page {
 
     ListView {
         id: videoList
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         visible: page.tabIndex === 0
         model: Downloads.items
@@ -169,7 +164,8 @@ Page {
 
     ListView {
         id: articleList
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         visible: page.tabIndex === 1
         model: SavedPosts.items

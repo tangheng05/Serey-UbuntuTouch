@@ -13,29 +13,23 @@ Page {
     property bool submitting: false
     property string selectedCategory: ""
     property bool catSheetOpen: false
-    // On-screen-keyboard height; the formatting toolbar rides above it (same as
-    // the video comment composer) so B/I/U stay reachable while typing.
+    // On-screen-keyboard height; the formatting toolbar rides above it so B/I/U stay reachable while typing.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     readonly property int titleMaxLength: 250
+    readonly property real maxContentWidth: units.gu(60)
     property string coverImageUrl: ""
     property bool uploading: false
-    // Inline article images. The plain-text editor would show raw <img> HTML,
-    // so the editor holds readable "[image N]" placeholders instead; this array
-    // maps N (1-based) to the uploaded URL, and publish() swaps the tokens back
-    // into real <img> tags. Deleting a token in the editor drops that image.
+    // Maps editor placeholder "[image N]" -> uploaded URL; publish() swaps them back to <img>
     property var bodyImages: []
-    // "Post to blockchain": on = broadcast on-chain (default), off = save to the
-    // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
+    // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
-    // When set, this page edits an existing post (sends its permlink to update in
-    // place) instead of creating a new one. `saved` lets the opener refresh.
+    // When set, this page edits an existing post (sends its permlink to update in place) instead of creating a new one.
     property var editPost: null
     readonly property bool isEdit: !!editPost
     signal saved()
 
-    // Categories are per-community (each community defines its own set), loaded
-    // from the backend for the currently-selected source rather than hardcoded.
+    // Categories are per-community, loaded from the backend for the currently-selected source rather than hardcoded.
     property var categories: []
     property bool categoriesLoading: false
     property int catEpoch: 0
@@ -61,11 +55,9 @@ Page {
     Component.onCompleted: {
         if (page.editPost) {
             titleField.text = page.editPost.title || "";
-            // Strip the leading cover <img> we prepend on publish so it isn't
-            // duplicated; the cover is restored from the post's thumbnail.
+            // Strip the leading cover <img> we prepend on publish so it isn't duplicated; the cover is restored from the post's thumbnail.
             var b = (page.editPost.body || "").replace(/^\s*<img[^>]*>\s*/i, "");
-            // Turn remaining inline images into "[image N]" placeholders so the
-            // editor shows readable text, not raw HTML; publish() restores them.
+            // Turn remaining inline images into "[image N]" placeholders so the editor shows readable text; publish() restores them.
             var imgs = [];
             b = b.replace(/<img[^>]*src=["']([^"']*)["'][^>]*\/?>/gi, function (m, src) {
                 imgs.push(src);
@@ -74,16 +66,14 @@ Page {
             page.bodyImages = imgs;
             bodyArea.text = b;
             page.coverImageUrl = page.editPost.thumbnail || "";
-            // primaryCategory is a scalar (the categories array is wrapped by the
-            // feed ListModel and loses [] indexing).
+            // primaryCategory is a scalar since the categories array is wrapped by the feed ListModel and loses [] indexing.
             page.selectedCategory = page.editPost.primaryCategory || "";
             // Prefill the toggle from the saved post (default on if absent).
             page.postToBlockchain = (page.editPost.postToBlockchain !== false);
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
-    // The community can't change while this page is up (header is collapsed), but
-    // react anyway so the list is always correct for the active source.
+    // The community can't change while this page is up, but react anyway so the list is always correct for the active source.
     Connections {
         target: Config
         function onCommunityIdChanged() { page.loadCategories() }
@@ -148,9 +138,7 @@ Page {
         }
     }
 
-    // Where the next picked image goes: the cover slot, or inline into the
-    // article body at the cursor (toolbar image button). One shared
-    // picker/uploader serves both.
+    // Where the next picked image goes: the cover slot, or inline into the article body at the cursor — one shared picker/uploader serves both.
     property string imageTarget: "cover"
 
     function pickCoverImage() {
@@ -197,8 +185,7 @@ Page {
             return;
         }
         var body = bodyArea.text.trim();
-        // Swap "[image N]" placeholders back into real <img> tags (see
-        // bodyImages). Unknown numbers are left as typed.
+        // Swap "[image N]" placeholders back into real <img> tags; unknown numbers are left as typed.
         var imgs = page.bodyImages || [];
         body = body.replace(/\[image (\d+)\]/gi, function (m, n) {
             var u = imgs[parseInt(n, 10) - 1];
@@ -212,19 +199,14 @@ Page {
         PostService.createPost(Config.baseUrl, {
             title: titleField.text.trim(),
             body: body,
-            // On edit, keep the post in its own community (resolve by its title)
-            // rather than the currently-selected source.
+            // On edit, keep the post in its own community (resolve by its title) rather than the currently-selected source.
             communityId: page.isEdit ? 0 : Config.communityId,
             communityName: page.isEdit ? (page.editPost.community || Config.communityName)
                                        : Config.communityName,
             categories: page.selectedCategory || "general",
             postToBlockchain: page.postToBlockchain,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
-            // Also send the cover in `images` (→ json_meta.image), not just the
-            // body <img>. The web derives a post's thumbnail from json_meta.image,
-            // so without this the cover only shows inside the article, never as
-            // the card/thumbnail. (Our app body-scrapes as a fallback, which is
-            // why it looked fine on mobile.) The detail view dedupes it.
+            // Also send in `images` (json_meta.image) since the web derives the card thumbnail from that field, not from the body <img>.
             images: page.coverImageUrl.length > 0 ? [page.coverImageUrl] : []
         }, Session.token,
         function (data) {
@@ -256,9 +238,7 @@ Page {
         bodyArea.forceActiveFocus();
     }
 
-    // Move active focus onto a neutral item so the on-screen keyboard drops.
-    // Tapping any empty area of the form calls this (see the background
-    // MouseArea below) — previously only re-tapping a field would dismiss it.
+    // Move active focus onto a neutral item so the on-screen keyboard drops on tapping any empty area of the form.
     Item { id: focusSink }
     function dismissKeyboard() {
         focusSink.forceActiveFocus();
@@ -267,15 +247,14 @@ Page {
 
     Flickable {
         id: scroll
-        anchors { top: hdr.bottom; left: parent.left; right: parent.right; bottom: toolbar.top }
+        anchors { top: hdr.bottom; bottom: toolbar.top; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         contentHeight: col.height + Style.spacingL
         clip: true
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
-        // Sits behind the form (z -1); taps that miss a field fall through here
-        // and dismiss the keyboard. A plain tap still flicks fine because the
-        // Flickable steals drag gestures from child MouseAreas.
+        // Sits behind the form (z -1); taps that miss a field dismiss the keyboard, while a tap still flicks since Flickable steals drag gestures.
         MouseArea {
             width: scroll.width
             height: Math.max(scroll.height, col.height + Style.spacingL)
@@ -372,8 +351,7 @@ Page {
                 }
             }
 
-            // Category selector — hidden for communities that haven't defined any
-            // categories yet (publish() already falls back to "general" for them).
+            // Category selector hidden for communities that haven't defined any categories yet (publish() falls back to "general").
             AbstractButton {
                 width: parent.width
                 height: units.gu(6)

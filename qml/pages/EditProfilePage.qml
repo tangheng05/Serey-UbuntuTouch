@@ -7,13 +7,6 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-/*
- * Edit the signed-in user's profile: avatar (uploaded via Content Hub + the
- * media server), bio, name, email, gender and date of birth. Text fields save
- * in one call (`update-user-detail`); the avatar is uploaded + set active as
- * soon as it's picked. Prefilled from `initial` (the Settings profile) so it
- * opens populated with no reload flash.
- */
 Page {
     id: page
 
@@ -54,8 +47,7 @@ Page {
         else uploadAvatar(fileUrl);
     }
 
-    // Avatar + cover both downscale + upload through imgUploader, then set the
-    // hosted URL active. pickTarget routes the post-upload step (see imgUploader).
+    // Avatar + cover both downscale + upload through imgUploader, then set the hosted URL active; pickTarget routes the post-upload step.
     function uploadAvatar(fileUrl) { errorMsg = ""; uploading = true; imgUploader.upload(fileUrl); }
     function uploadCover(fileUrl)  { errorMsg = ""; coverUploading = true; imgUploader.upload(fileUrl); }
 
@@ -176,9 +168,7 @@ Page {
                 }
             }
 
-            // --- Avatar -------------------------------------------------------
-            // AbstractButton (not a raw MouseArea) so the tap is reliable inside
-            // the Flickable — matches how the rest of the app handles taps.
+            // Avatar uses AbstractButton (not a raw MouseArea) so the tap is reliable inside the Flickable.
             AbstractButton {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: units.gu(12); height: width
@@ -355,8 +345,7 @@ Page {
         }
     }
 
-    // Opened on demand (PopupUtils.open) so the Content Hub picker is a proper
-    // root-parented popup with a correct size — see PhotoPicker.qml.
+    // Opened on demand (PopupUtils.open) so the Content Hub picker is a proper root-parented popup with a correct size.
     Component {
         id: photoPickerComponent
         PhotoPicker {

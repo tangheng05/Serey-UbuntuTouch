@@ -4,16 +4,6 @@ import Lomiri.Components.Popups 1.3 as Popups
 import Lomiri.Content 1.3
 import "../Theme"
 
-/*
- * Photo importer built on Content Hub, modelled on the system's own
- * ContentPickerDialog (morph-browser). It MUST be a PopupBase parented to the
- * root item — a plain toggled-visibility Item anchored to a Page never gets a
- * correct size/stacking and so never paints (the dialog's own source notes the
- * parent must be set at construction time). Open it with PopupUtils.open(); it
- * emits picked(fileUrl) with a local file:// URL, then closes itself.
- *
- * Requires the `content_exchange` AppArmor policy group (see serey.apparmor).
- */
 Popups.PopupBase {
     id: picker
     objectName: "photoPickerDialog"

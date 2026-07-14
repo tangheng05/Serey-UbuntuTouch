@@ -1,21 +1,12 @@
 .pragma library
 .import QtQuick.LocalStorage 2.0 as LS
 
-/*
- * Local persistent set of blocked usernames, mirroring HiddenPosts.js. The
- * backend is the source of truth (AccountService.toggleBlock/listBlocked) and
- * already filters blocked authors from feeds *when a username is passed*, but
- * not every feed endpoint is authenticated — so we also filter client-side so
- * blocked users' posts never reappear on reload/pagination or when rendering
- * cached/offline content. Synced from the server list at startup (Main.qml).
- */
 var _db = null
 
 function _open() {
     if (!_db) {
         _db = LS.LocalStorage.openDatabaseSync("SereyBlockedUsers", "1.0", "Blocked users", 1000000)
-        // CREATE TABLE only on first open (not on every call) — a write
-        // transaction per call would be needless work on the hot feed path.
+        // CREATE TABLE only on first open, not on every call, since a write transaction per call would be needless work on the hot feed path.
         _db.transaction(function (tx) {
             tx.executeSql("CREATE TABLE IF NOT EXISTS blocked (username TEXT PRIMARY KEY)")
         })

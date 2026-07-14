@@ -5,27 +5,10 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-/*
- * Password reset — two modes:
- *
- * Logged-in (prefillUsername set by caller):
- *   step 0 — email → send OTP immediately (username already known)
- *   step 1 — enter OTP
- *   step 2 — new password
- *
- * Not logged-in (prefillUsername empty):
- *   step 0 — username → fetch masked email hint
- *   step 1 — fill masked email → send OTP
- *   step 2 — enter OTP
- *   step 3 — new password
- *
- * Phone support removed — email only.
- */
 Page {
     id: page
 
-    // Caller sets this when the user is already signed in so we can skip
-    // the username lookup and go straight to the email entry step.
+    // Caller sets this when the user is already signed in so we can skip the username lookup and go straight to the email entry step.
     property string prefillUsername: ""
 
     property int step: 0
@@ -37,8 +20,7 @@ Page {
     property string hintEmail: ""
     property string sentEmail: ""
 
-    // In logged-in mode we have 3 steps (0=email, 1=OTP, 2=newPW).
-    // In guest mode we have 4 (0=username, 1=maskedEmail, 2=OTP, 3=newPW).
+    // Logged-in mode has 3 steps (email, OTP, newPW); guest mode has 4 (username, maskedEmail, OTP, newPW).
     readonly property bool loggedInMode: prefillUsername.length > 0
     readonly property int totalSteps: loggedInMode ? 3 : 4
 

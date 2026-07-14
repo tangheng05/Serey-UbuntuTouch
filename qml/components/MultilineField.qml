@@ -2,11 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Multi-line branded text box — the FormField look (rounded cardRadius border
- * that turns brand-blue on focus) but with a wrapping, growing TextEdit. Used
- * for the profile bio. `maximumLength` caps input; `length` exposes the count.
- */
 Rectangle {
     id: root
 
@@ -45,8 +40,7 @@ Rectangle {
         Label {
             anchors.fill: parent
             text: root.placeholder
-            // Per-field only: NOT Qt.inputMethod.visible (a global singleton that
-            // would blank every other field's placeholder while any one is focused).
+            // Per-field only, not Qt.inputMethod.visible, which would blank every other field's placeholder while any one is focused.
             visible: input.text.length === 0 && !input.inputMethodComposing && !input.activeFocus
             wrapMode: Text.Wrap
             font.pixelSize: Style.fontRegular

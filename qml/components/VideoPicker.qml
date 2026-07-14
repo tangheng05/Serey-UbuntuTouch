@@ -4,15 +4,6 @@ import Lomiri.Components.Popups 1.3 as Popups
 import Lomiri.Content 1.3
 import "../Theme"
 
-/*
- * Video importer built on Content Hub — identical to PhotoPicker but for
- * ContentType.Videos. It MUST be a PopupBase parented to the root item (a plain
- * toggled-visibility Item never gets a correct size/stacking and never paints).
- * Open it with PopupUtils.open(); it emits picked(fileUrl) with a local file://
- * URL, then closes itself.
- *
- * Requires the `content_exchange` AppArmor policy group (see serey.apparmor).
- */
 Popups.PopupBase {
     id: picker
     objectName: "videoPickerDialog"

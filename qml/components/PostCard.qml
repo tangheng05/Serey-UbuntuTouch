@@ -6,21 +6,11 @@ import "../Theme"
 import "../Session"
 import "../services/VoteService.js" as VoteService
 
-/*
- * Feed post card (serey-ubutu FeedCard style): avatar + author + relative time
- * + Follow pill + ••• menu, title, rounded cover image with a red category
- * badge, then a live action row (VoteBar) and a hairline divider. Tapping the
- * title or image opens the detail page; the action row votes/comments inline.
- *
- * Consumes the Mappers.toPost view-model. Emits clicked() to open detail, and
- * re-exposes the VoteBar's requireLogin() so the page can route to login.
- */
 Item {
     id: root
 
     property var post: ({})
-    // Guard: the delegate may rebind `post` to undefined while the model is
-    // cleared/recycled. `p` is always a safe object to read from.
+    // Guard: the delegate may rebind `post` to undefined while the model is cleared/recycled — `p` is always a safe object to read from.
     readonly property var p: post ? post : ({})
 
     // Shared, reactive follow state — every button for this author stays in sync.
@@ -35,9 +25,7 @@ Item {
     width: parent ? parent.width : units.gu(45)
     implicitHeight: col.height
 
-    // The feed ListModel (dynamicRoles) wraps array fields as nested ListModels,
-    // which have `count` but no `indexOf`/`length`. These helpers read either a
-    // plain JS array (detail view-models) or a wrapped ListModel safely.
+    // The feed ListModel (dynamicRoles) wraps array fields as nested ListModels with `count` but no indexOf/length; these helpers read either shape safely.
     function _len(v) {
         if (!v) return 0;
         if (typeof v.length === "number") return v.length;
@@ -45,15 +33,12 @@ Item {
         return 0;
     }
 
-    // Ensure the shared store knows this author's state (queries once).
-    // Also refresh vote state from session cache or model voters.
+    // Ensure the shared store knows this author's state, then refresh vote state from session cache or model voters.
     onPChanged: {
         if (Session.isLoggedIn && p.author && p.author !== Session.username)
             FollowStore.load(Config.baseUrl, Session.username, p.author);
 
-        // Vote state: check session cache first (survives navigation), then
-        // fall back to the model's voters array. Set imperatively (no binding)
-        // so VoteBar's own state changes aren't overridden later.
+        // Vote state checks session cache first (survives navigation), falling back to the model's voters array; set imperatively so VoteBar's own changes aren't overridden.
         if (cardVoteBar) {
             var cached = VoteService.getCached(p.author || "", p.permlink || "");
             if (cached) {
@@ -65,9 +50,7 @@ Item {
                 var me = Session.username || "";
                 cardVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
                 cardVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
-                // Re-assert count/payout imperatively: a prior cached assignment
-                // breaks the QML binding on this pooled delegate, so a recycle to
-                // an uncached post would otherwise keep the previous post's numbers.
+                // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
                 cardVoteBar.votes = p.votes || 0;
                 cardVoteBar.payout = p.payout || "";
             }
@@ -189,8 +172,7 @@ Item {
                 }
             }
 
-            // More button — owner sees Edit/Delete, others see moderation
-            // actions (the sheet branches on ownership).
+            // More button — owner sees Edit/Delete, others see moderation actions (the sheet branches on ownership).
             AbstractButton {
                 Layout.preferredWidth: units.gu(3.5)
                 Layout.preferredHeight: units.gu(3.5)
@@ -208,9 +190,7 @@ Item {
             }
         }
 
-        // Title. Text.Wrap (not WordWrap): Khmer has no spaces between words,
-        // so WordWrap finds no break point and a long title is cut off on one
-        // line — Wrap falls back to breaking mid-run when a "word" overflows.
+        // Title uses Text.Wrap, not WordWrap, since Khmer has no spaces between words and WordWrap can't find a break point.
         Label {
             visible: (p.title || "") !== ""
             width: parent.width - Style.spacingM * 2
@@ -235,9 +215,7 @@ Item {
             x: Style.spacingM
             height: visible ? width * 0.56 : 0
 
-            // Rectangle.clip only clips to the bounding box (not rounded
-            // corners), so the Image is masked against a rounded Rectangle
-            // instead, for a true rounded crop.
+            // Rectangle.clip only clips to the bounding box, so the Image is masked against a rounded Rectangle instead for a true rounded crop.
             Rectangle {
                 anchors.fill: parent
                 radius: Style.thumbRadius
@@ -303,11 +281,13 @@ Item {
             MouseArea { anchors.fill: parent; onClicked: root.clicked() }
         }
 
+        // Bottom margin below the thumbnail (always visible, unlike the vote row)
         Item { width: 1; height: Style.spacingS }
 
-        // Action row (live voting)
+        // Vote/comment/share row shown narrow mode only — wide mode shows these in the detail column instead.
         VoteBar {
             id: cardVoteBar
+            visible: !Config.wideMode
             width: parent.width - Style.spacingM * 2
             x: Style.spacingM
             author: p.author || ""
@@ -322,7 +302,7 @@ Item {
             onCommentRequested: root.clicked()
         }
 
-        Item { width: 1; height: Style.spacingS }
+        Item { width: 1; height: Style.spacingS; visible: !Config.wideMode }
 
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }

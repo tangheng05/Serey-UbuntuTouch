@@ -2,16 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Branded text input matching the app's design tokens: a white field with a
- * rounded (cardRadius) hairline border that turns brand-blue on focus — the
- * same rounding/divider language as the feed cards. Used by the auth pages.
- *
- * The editor is a Lomiri TextField made chrome-less via StyleHints (this
- * Rectangle draws the frame instead), because only the styled TextField wires
- * up Lomiri's InputHandler: native long-press word-selection with handles and
- * the Cut/Copy/Paste popover. A raw TextInput has none of that on touch.
- */
 Rectangle {
     id: root
 
@@ -57,8 +47,7 @@ Rectangle {
         onAccepted: root.accepted()
     }
 
-    // Custom placeholder (kept out of the TextField so its per-field visibility
-    // logic stays ours; TextField's own placeholderText is unused).
+    // Custom placeholder kept out of the TextField so its per-field visibility logic stays ours; TextField's own placeholderText is unused.
     Label {
         anchors {
             left: parent.left; leftMargin: Style.spacingM

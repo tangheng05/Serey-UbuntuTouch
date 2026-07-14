@@ -13,6 +13,7 @@ Page {
     property bool uploading: false
     property var imageUrls: []
     readonly property int maxImages: 10
+    readonly property real maxContentWidth: units.gu(60)
 
     // When set, edits an existing gallery post (updates in place via its permlink).
     property var editPost: null
@@ -22,8 +23,7 @@ Page {
     Component.onCompleted: {
         if (page.editPost) {
             captionField.text = page.editPost.caption || "";
-            // imagesStr is the newline-joined scalar (the images array is wrapped
-            // by the feed ListModel and its URL strings don't survive .get()).
+            // imagesStr is the newline-joined scalar since the images array is wrapped by the feed ListModel and its URL strings don't survive .get().
             page.imageUrls = (page.editPost.imagesStr || "")
                 .split("\n").filter(function (s) { return s.length > 0; });
         }
@@ -159,8 +159,7 @@ Page {
         page.imageUrls = copy;
     }
 
-    // Move active focus onto a neutral item so the on-screen keyboard drops when
-    // tapping any empty area of the form (see the background MouseArea below).
+    // Move active focus onto a neutral item so the on-screen keyboard drops when tapping any empty area of the form.
     Item { id: focusSink }
     function dismissKeyboard() {
         focusSink.forceActiveFocus();
@@ -169,7 +168,8 @@ Page {
 
     Flickable {
         id: scroll
-        anchors { top: hdr.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: hdr.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         // Shrink above the OSK so the form stays scrollable while typing.
         anchors.bottomMargin: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
         contentHeight: col.height + Style.spacingL
@@ -177,9 +177,7 @@ Page {
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
-        // Sits behind the form (z -1); taps that miss the caption fall through
-        // here and dismiss the keyboard. Drags still flick (the Flickable steals
-        // drag gestures from child MouseAreas).
+        // Sits behind the form (z -1); taps that miss the caption dismiss the keyboard, while drags still flick since the Flickable steals drag gestures.
         MouseArea {
             width: scroll.width
             height: Math.max(scroll.height, col.height + Style.spacingL)

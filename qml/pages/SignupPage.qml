@@ -5,15 +5,6 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-/*
- * Standard (custodial) account signup, mirroring the web's email flow:
- *   step 0 — choose a username (checked for availability)
- *   step 1 — enter email + password (sends an OTP)
- *   step 2 — enter the OTP to create the account
- * The header back steps within the wizard before leaving; the OTP step has a
- * resend countdown. On success the account is created, auto-logged-in, and we
- * pop back. Styled with the shared design tokens.
- */
 Page {
     id: page
 

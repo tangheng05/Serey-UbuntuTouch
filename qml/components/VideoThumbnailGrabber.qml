@@ -2,29 +2,10 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import QtWebEngine 1.10
 
-/*
- * Best-effort, automatic thumbnail grabber for a locally-picked video.
- *
- * QtMultimedia/media-hub can't read the app's confined local files (→ 0x0
- * surface then SIGSEGV — see VideoDetailPage.startPlay), so we decode in-process
- * like VideoWebView: load the file:// video into an in-app Chromium <video> via
- * loadHtml() based at the file's own directory (so the <video src> is same-origin
- * and the canvas is NOT tainted), seek to an early frame, draw it to a <canvas>
- * and read canvas.toDataURL — exactly how the web captures its thumbnail.
- *
- * We deliberately do NOT grab the WebEngineView itself (grabToImage returns a
- * black frame on Ubuntu Touch because the video is a hardware overlay outside the
- * scene graph) — reading the canvas pixels is the only reliable path.
- *
- * grab(fileUrl) → emits grabbed(dataUrl) with a "data:image/jpeg;base64,…" string,
- * or failed(). The caller treats the thumbnail as optional and must NEVER block
- * the upload on it.
- */
 Item {
     id: root
 
-    // Kept on-screen at opacity 0 (NOT visible:false, which would drop the item
-    // from the scene graph) so the WebEngineView actually renders/decodes.
+    // Kept on-screen at opacity 0 (not visible:false, which drops it from the scene graph) so the WebEngineView actually renders/decodes.
     opacity: 0
     width: units.gu(40); height: units.gu(22.5)
 
@@ -36,9 +17,7 @@ Item {
     function grab(fileUrl) {
         root._done = false;
         var src = String(fileUrl);
-        // Base the wrapper document at the file's directory so the <video src>
-        // (an absolute file:// URL) is same-origin and the canvas isn't tainted —
-        // mirrors VideoWebView._baseUrl().
+        // Base the wrapper document at the file's directory so the <video src> is same-origin and the canvas isn't tainted.
         var i = src.lastIndexOf("/");
         var base = i > 6 ? src.substring(0, i + 1) : src;
         watchdog.restart();

@@ -13,29 +13,23 @@ Page {
     property bool submitting: false
     property string selectedCategory: ""
     property bool catSheetOpen: false
-    // On-screen-keyboard height; the formatting toolbar rides above it (same as
-    // the video comment composer) so B/I/U stay reachable while typing.
+    // On-screen-keyboard height; the formatting toolbar rides above it so B/I/U stay reachable while typing.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     readonly property int titleMaxLength: 250
+    readonly property real maxContentWidth: units.gu(60)
     property string coverImageUrl: ""
     property bool uploading: false
-    // Inline article images. The plain-text editor would show raw <img> HTML,
-    // so the editor holds readable "[image N]" placeholders instead; this array
-    // maps N (1-based) to the uploaded URL, and publish() swaps the tokens back
-    // into real <img> tags. Deleting a token in the editor drops that image.
+    // Maps editor placeholder "[image N]" -> uploaded URL; publish() swaps them back to <img>
     property var bodyImages: []
-    // "Post to blockchain": on = broadcast on-chain (default), off = save to the
-    // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
+    // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
-    // When set, this page edits an existing post (sends its permlink to update in
-    // place) instead of creating a new one. `saved` lets the opener refresh.
+    // When set, this page edits an existing post (sends its permlink to update in place) instead of creating a new one.
     property var editPost: null
     readonly property bool isEdit: !!editPost
     signal saved()
 
-    // Categories are per-community (each community defines its own set), loaded
-    // from the backend for the currently-selected source rather than hardcoded.
+    // Categories are per-community, loaded from the backend for the currently-selected source rather than hardcoded.
     property var categories: []
     property bool categoriesLoading: false
     property int catEpoch: 0
@@ -61,11 +55,9 @@ Page {
     Component.onCompleted: {
         if (page.editPost) {
             titleField.text = page.editPost.title || "";
-            // Strip the leading cover <img> we prepend on publish so it isn't
-            // duplicated; the cover is restored from the post's thumbnail.
+            // Strip the leading cover <img> we prepend on publish so it isn't duplicated; the cover is restored from the post's thumbnail.
             var b = (page.editPost.body || "").replace(/^\s*<img[^>]*>\s*/i, "");
-            // Turn remaining inline images into "[image N]" placeholders so the
-            // editor shows readable text, not raw HTML; publish() restores them.
+            // Turn remaining inline images into "[image N]" placeholders so the editor shows readable text; publish() restores them.
             var imgs = [];
             b = b.replace(/<img[^>]*src=["']([^"']*)["'][^>]*\/?>/gi, function (m, src) {
                 imgs.push(src);
@@ -74,16 +66,14 @@ Page {
             page.bodyImages = imgs;
             bodyArea.text = b;
             page.coverImageUrl = page.editPost.thumbnail || "";
-            // primaryCategory is a scalar (the categories array is wrapped by the
-            // feed ListModel and loses [] indexing).
+            // primaryCategory is a scalar since the categories array is wrapped by the feed ListModel and loses [] indexing.
             page.selectedCategory = page.editPost.primaryCategory || "";
             // Prefill the toggle from the saved post (default on if absent).
             page.postToBlockchain = (page.editPost.postToBlockchain !== false);
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
-    // The community can't change while this page is up (header is collapsed), but
-    // react anyway so the list is always correct for the active source.
+    // The community can't change while this page is up, but react anyway so the list is always correct for the active source.
     Connections {
         target: Config
         function onCommunityIdChanged() { page.loadCategories() }
@@ -123,7 +113,7 @@ Page {
             anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
             width: postPillLabel.implicitWidth + Style.spacingM * 2
             height: units.gu(4)
-            enabled: !page.submitting && titleField.text.trim().length > 0 && bodyArea.text.trim().length > 0
+            enabled: !page.submitting && titleField.text.trim().length > 0 && bodyArea.getText(0, bodyArea.length).trim().length > 0
             onClicked: page.publish()
 
             Rectangle {
@@ -148,9 +138,7 @@ Page {
         }
     }
 
-    // Where the next picked image goes: the cover slot, or inline into the
-    // article body at the cursor (toolbar image button). One shared
-    // picker/uploader serves both.
+    // Where the next picked image goes: the cover slot, or inline into the article body at the cursor — one shared picker/uploader serves both.
     property string imageTarget: "cover"
 
     function pickCoverImage() {
@@ -179,8 +167,7 @@ Page {
                 page.bodyImages = page.bodyImages.concat([url]);
                 var snippet = "[image " + page.bodyImages.length + "]";
                 var pos = bodyArea.cursorPosition;
-                var txt = bodyArea.text;
-                bodyArea.text = txt.substring(0, pos) + snippet + txt.substring(pos);
+                bodyArea.insert(pos, snippet);
                 bodyArea.cursorPosition = pos + snippet.length;
                 Toast.success(Lang.tr("Image added"));
             } else {
@@ -191,14 +178,31 @@ Page {
         onFailed: Toast.error(message)
     }
 
+    // Qt's RichText TextEdit re-serializes formatting as style-based spans
+    // (e.g. <span style="font-weight:600">) rather than the simple <b>/<i>/<s>
+    // tags the rest of the app's HTML renderers whitelist — collapse them back
+    // so bold/italic/strikethrough survive display elsewhere (feed, detail page).
+    function _richHtmlToSimple(html) {
+        var t = html || "";
+        var bodyMatch = t.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        if (bodyMatch) t = bodyMatch[1];
+        t = t.replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<\/?html[^>]*>/gi, "")
+             .replace(/<head>[\s\S]*?<\/head>/gi, "");
+        t = t.replace(/<span[^>]*style="[^"]*font-weight:\s*(?:600|700|bold)[^"]*"[^>]*>([\s\S]*?)<\/span>/gi, "<b>$1</b>");
+        t = t.replace(/<span[^>]*style="[^"]*font-style:\s*italic[^"]*"[^>]*>([\s\S]*?)<\/span>/gi, "<i>$1</i>");
+        t = t.replace(/<span[^>]*style="[^"]*text-decoration:[^"]*line-through[^"]*"[^>]*>([\s\S]*?)<\/span>/gi, "<s>$1</s>");
+        t = t.replace(/<p[^>]*>/gi, "<p>");
+        t = t.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>/gi, '<a href="$1">');
+        return t;
+    }
+
     function publish() {
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
             return;
         }
-        var body = bodyArea.text.trim();
-        // Swap "[image N]" placeholders back into real <img> tags (see
-        // bodyImages). Unknown numbers are left as typed.
+        var body = page._richHtmlToSimple(bodyArea.text).trim();
+        // Swap "[image N]" placeholders back into real <img> tags; unknown numbers are left as typed.
         var imgs = page.bodyImages || [];
         body = body.replace(/\[image (\d+)\]/gi, function (m, n) {
             var u = imgs[parseInt(n, 10) - 1];
@@ -212,19 +216,14 @@ Page {
         PostService.createPost(Config.baseUrl, {
             title: titleField.text.trim(),
             body: body,
-            // On edit, keep the post in its own community (resolve by its title)
-            // rather than the currently-selected source.
+            // On edit, keep the post in its own community (resolve by its title) rather than the currently-selected source.
             communityId: page.isEdit ? 0 : Config.communityId,
             communityName: page.isEdit ? (page.editPost.community || Config.communityName)
                                        : Config.communityName,
             categories: page.selectedCategory || "general",
             postToBlockchain: page.postToBlockchain,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
-            // Also send the cover in `images` (→ json_meta.image), not just the
-            // body <img>. The web derives a post's thumbnail from json_meta.image,
-            // so without this the cover only shows inside the article, never as
-            // the card/thumbnail. (Our app body-scrapes as a fallback, which is
-            // why it looked fine on mobile.) The detail view dedupes it.
+            // Also send in `images` (json_meta.image) since the web derives the card thumbnail from that field, not from the body <img>.
             images: page.coverImageUrl.length > 0 ? [page.coverImageUrl] : []
         }, Session.token,
         function (data) {
@@ -241,24 +240,67 @@ Page {
         });
     }
 
+    // Applies real formatting to the selection (rich text, not literal tags) —
+    // requires a selection since a plain TextEdit has no "current format" state
+    // to toggle for future-typed characters.
     function wrapSelection(tagOpen, tagClose) {
         var start = bodyArea.selectionStart;
         var end = bodyArea.selectionEnd;
-        var txt = bodyArea.text;
         if (start === end) {
-            bodyArea.text = txt.substring(0, start) + tagOpen + tagClose + txt.substring(start);
-            bodyArea.cursorPosition = start + tagOpen.length;
-        } else {
-            var sel = txt.substring(start, end);
-            bodyArea.text = txt.substring(0, start) + tagOpen + sel + tagClose + txt.substring(end);
-            bodyArea.cursorPosition = end + tagOpen.length + tagClose.length;
+            Toast.show(Lang.tr("Select some text first"));
+            return;
         }
+        var sel = bodyArea.selectedText;
+        bodyArea.remove(start, end);
+        bodyArea.insert(start, tagOpen + sel + tagClose);
         bodyArea.forceActiveFocus();
     }
 
-    // Move active focus onto a neutral item so the on-screen keyboard drops.
-    // Tapping any empty area of the form calls this (see the background
-    // MouseArea below) — previously only re-tapping a field would dismiss it.
+    property string _pendingLinkText: ""
+    property int _pendingLinkStart: 0
+    property int _pendingLinkEnd: 0
+
+    function promptLink() {
+        if (bodyArea.selectionStart === bodyArea.selectionEnd) {
+            Toast.show(Lang.tr("Select some text first"));
+            return;
+        }
+        page._pendingLinkText = bodyArea.selectedText;
+        page._pendingLinkStart = bodyArea.selectionStart;
+        page._pendingLinkEnd = bodyArea.selectionEnd;
+        Popups.PopupUtils.open(linkDialog);
+    }
+
+    function applyLink(url) {
+        if (url.length === 0) return;
+        bodyArea.remove(page._pendingLinkStart, page._pendingLinkEnd);
+        bodyArea.insert(page._pendingLinkStart, '<a href="' + url + '">' + page._pendingLinkText + '</a>');
+        bodyArea.forceActiveFocus();
+    }
+
+    Component {
+        id: linkDialog
+        Popups.Dialog {
+            id: ldlg
+            title: Lang.tr("Add link")
+            TextField {
+                id: linkUrlField
+                placeholderText: "https://"
+                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoPredictiveText
+            }
+            Button {
+                text: Lang.tr("Insert")
+                color: Style.brand
+                onClicked: { Popups.PopupUtils.close(ldlg); page.applyLink(linkUrlField.text.trim()); }
+            }
+            Button {
+                text: Lang.tr("Cancel")
+                onClicked: Popups.PopupUtils.close(ldlg)
+            }
+        }
+    }
+
+    // Move active focus onto a neutral item so the on-screen keyboard drops on tapping any empty area of the form.
     Item { id: focusSink }
     function dismissKeyboard() {
         focusSink.forceActiveFocus();
@@ -267,15 +309,14 @@ Page {
 
     Flickable {
         id: scroll
-        anchors { top: hdr.bottom; left: parent.left; right: parent.right; bottom: toolbar.top }
+        anchors { top: hdr.bottom; bottom: Config.wideMode ? parent.bottom : toolbar.top; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         contentHeight: col.height + Style.spacingL
         clip: true
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
-        // Sits behind the form (z -1); taps that miss a field fall through here
-        // and dismiss the keyboard. A plain tap still flicks fine because the
-        // Flickable steals drag gestures from child MouseAreas.
+        // Sits behind the form (z -1); taps that miss a field dismiss the keyboard, while a tap still flicks since Flickable steals drag gestures.
         MouseArea {
             width: scroll.width
             height: Math.max(scroll.height, col.height + Style.spacingL)
@@ -338,21 +379,28 @@ Page {
                 }
             }
 
-            // Body text area — outlined rounded box, tall
+            // Body text area — toolbar docks inside on desktop, above OSK on phone
             Rectangle {
+                id: bodyBox
+                readonly property real toolbarH: Config.wideMode ? units.gu(5.5) : 0
                 width: parent.width
-                height: Math.max(units.gu(25), bodyArea.contentHeight + Style.spacingM * 2)
+                height: Math.max(units.gu(25), bodyArea.contentHeight + Style.spacingM * 2) + toolbarH
                 radius: Style.cardRadius
                 color: "transparent"
+                clip: true
                 border.width: units.dp(1.5)
                 border.color: bodyArea.activeFocus ? Style.brand : Style.divider
 
                 TextEdit {
                     id: bodyArea
                     anchors {
-                        fill: parent
+                        left: parent.left; right: parent.right; top: parent.top
                         margins: Style.spacingM
                     }
+                    textFormat: Text.RichText
+                    selectByMouse: true
+                    persistentSelection: true
+                    selectionColor: Style.brand
                     font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
@@ -364,16 +412,32 @@ Page {
                         left: parent.left; top: parent.top
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
-                    visible: bodyArea.text.length === 0 && !bodyArea.activeFocus && !Qt.inputMethod.visible
+                    visible: bodyArea.getText(0, bodyArea.length).length === 0 && !bodyArea.activeFocus && !Qt.inputMethod.visible
                     text: Lang.tr("Write your article here...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFor(text)
                 }
+
+                Rectangle {
+                    visible: Config.wideMode
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: bodyBox.toolbarH
+                    color: Style.iconBackground
+
+                    Rectangle {
+                        anchors { left: parent.left; right: parent.right; top: parent.top }
+                        height: units.dp(1); color: Style.divider
+                    }
+
+                    Loader {
+                        anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                        sourceComponent: parent.visible ? formatButtonsComp : undefined
+                    }
+                }
             }
 
-            // Category selector — hidden for communities that haven't defined any
-            // categories yet (publish() already falls back to "general" for them).
+            // Category selector hidden for communities that haven't defined any categories yet (publish() falls back to "general").
             AbstractButton {
                 width: parent.width
                 height: units.gu(6)
@@ -554,22 +618,10 @@ Page {
         }
     }
 
-    // Formatting toolbar — rides above the on-screen keyboard while typing.
-    Rectangle {
-        id: toolbar
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        anchors.bottomMargin: page.kbHeight
-        Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
-        height: units.gu(5.5)
-        color: Style.surface
-
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; top: parent.top }
-            height: units.dp(1); color: Style.divider
-        }
-
+    // Shared formatting-button row — reused by the phone bottom dock and the desktop inline toolbar.
+    Component {
+        id: formatButtonsComp
         Row {
-            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             spacing: 0
 
             Repeater {
@@ -608,7 +660,7 @@ Page {
 
             AbstractButton {
                 width: units.gu(5); height: units.gu(4.5)
-                onClicked: page.wrapSelection("<a href=\"\">", "</a>")
+                onClicked: page.promptLink()
                 Rectangle {
                     anchors.fill: parent; anchors.margins: units.dp(4)
                     radius: Style.cardRadius; color: "transparent"
@@ -637,6 +689,28 @@ Page {
                     color: Style.textPrimary
                 }
             }
+        }
+    }
+
+    // Phone: docked above the OSK. Desktop has no OSK, so this stays hidden
+    // there and an inline copy sits directly under the body field instead.
+    Rectangle {
+        id: toolbar
+        visible: !Config.wideMode
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.bottomMargin: page.kbHeight
+        Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+        height: units.gu(5.5)
+        color: Style.surface
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: units.dp(1); color: Style.divider
+        }
+
+        Loader {
+            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            sourceComponent: toolbar.visible ? formatButtonsComp : undefined
         }
     }
 
@@ -670,7 +744,16 @@ Page {
 
         Rectangle {
             id: catSheetRect
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            // Full-width sheet on phone, centered width-capped card on desktop
+            readonly property bool wide: Config.wideMode
+            anchors {
+                left: catSheetRect.wide ? undefined : parent.left
+                right: catSheetRect.wide ? undefined : parent.right
+                horizontalCenter: catSheetRect.wide ? parent.horizontalCenter : undefined
+                bottom: parent.bottom
+                bottomMargin: catSheetRect.wide ? units.gu(4) : 0
+            }
+            width: catSheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(45)) : parent.width
             height: catSheetCol.height + units.gu(4)
             radius: units.gu(1)
             color: Style.surface

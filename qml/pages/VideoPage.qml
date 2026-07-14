@@ -7,19 +7,17 @@ import "../services/VideoService.js" as VideoService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
 
-/*
- * Video section: list of videos. Tapping opens VideoDetailPage, passing the
- * already-loaded video view-model (it carries the embed URL).
- */
 Page {
     id: page
+
+    // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
+    readonly property real maxContentWidth: units.gu(60)
 
     property int offset: 0
     property bool loading: false
     property bool endReached: false
     property string errorMsg: ""
-    // Request generation: bumped on reload() so a late response from a previous
-    // community can't append stale rows into the freshly-cleared model.
+    // Request generation bumped on reload() so a late response from a previous community can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
     property var reelsInflight: null
@@ -27,14 +25,12 @@ Page {
     readonly property bool hasReels: reels && reels.length > 0
     readonly property int reelsInsertIndex: feedModel.count > 1 ? 1 : 0
 
-    // Zero-height header keeps the Page off Lomiri's deprecated Page.head path;
-    // the global AppHeader is the real top bar.
+    // Zero-height header keeps the Page off Lomiri's deprecated Page.head path; the global AppHeader is the real top bar.
     header: Item { height: 0 }
 
     ListModel { id: feedModel; dynamicRoles: true }
 
-    // Source switching lives in the global AppHeader community pill; the list
-    // just reloads when Config.sourceIndex changes.
+    // Source switching lives in the global AppHeader community pill; the list just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
         function onCommunityIdChanged() { page.reload(); }
@@ -80,8 +76,7 @@ Page {
         offset = 0;
         endReached = false;
         loading = false;
-        // Also clear refreshing so a reload that interrupts an in-flight
-        // pull-to-refresh can't leave it stuck true (which disables refresh).
+        // Also clear refreshing so a reload that interrupts an in-flight pull-to-refresh can't leave it stuck true (disabling refresh).
         refreshing = false;
         errorMsg = "";
         reels = [];
@@ -90,8 +85,7 @@ Page {
         loadMore();
     }
 
-    // Pull-to-refresh: re-fetch page one but keep current rows until the new
-    // ones arrive (no skeleton flash — just the pull spinner).
+    // Pull-to-refresh re-fetches page one but keeps current rows until new ones arrive (no skeleton flash, just the pull spinner).
     property bool refreshing: false
     function refresh() {
         if (page.refreshing) return;
@@ -118,20 +112,14 @@ Page {
                         feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
-                // A page can be mostly/entirely filtered out (hidden/blocked); keep
-                // paging until there's a screenful or the server runs out, else the
-                // feed stalls or looks empty despite more content on later pages.
+                // Keep paging if filtering left less than a screenful
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
                 inflight = null;
                 page.refreshing = false;
-                // Also clear loading: if a loadMore was in flight when refresh
-                // started, refresh() aborted it and bumped reqEpoch, so its
-                // callback early-returns without resetting loading — otherwise a
-                // failed refresh (e.g. a 401 from a stale token) leaves the
-                // skeleton (loading && count === 0) stuck until the app restarts.
+                // Must also clear loading — an aborted in-flight loadMore's own callback early-returns and would leave the skeleton stuck otherwise.
                 page.loading = false;
             });
     }
@@ -206,7 +194,8 @@ Page {
 
     ListView {
         id: list
-        anchors { top: parent.top; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: feedModel
         cacheBuffer: units.gu(16)
@@ -239,11 +228,7 @@ Page {
 
         }
 
-        // VideoCard wrapped in a Lomiri ListItem so the row gains native swipe
-        // context actions (and the same actions via pointer right-click / keyboard
-        // MENU — convergence). Leading = Share, trailing = Hide, matching the
-        // blog/feed pages. Tap still opens the detail through VideoCard.onClicked,
-        // so navigation is unchanged even if the swipe gesture is unavailable.
+        // ListItem for swipe actions (leading = Hide, trailing = Share); tap still opens detail via VideoCard.onClicked either way.
         delegate: Item {
             id: rowWrap
             width: list.width
@@ -366,33 +351,11 @@ Page {
                 y: rowWrap.showReelShelf ? reelsShelf.implicitHeight : 0
                 width: parent.width
                 height: card.height
-                // VideoCard draws its own bottom divider — suppress ListItem's to
-                // avoid a double hairline.
+                // VideoCard draws its own bottom divider — suppress ListItem's to avoid a double hairline.
                 divider.visible: false
 
+                // HIG polarity: LEADING = negative (red), TRAILING = positive.
                 leadingActions: ListItemActions {
-                    delegate: Item {
-                        width: units.gu(7)
-                        height: parent ? parent.height : units.gu(6)
-                        Icon {
-                            anchors.centerIn: parent
-                            width: units.gu(2.5); height: width
-                            name: action.iconName
-                            color: "black"
-                        }
-                    }
-                    actions: [
-                        Action {
-                            iconName: "share"
-                            text: Lang.tr("Share")
-                            onTriggered: {
-                                var vm = feedModel.get(index);
-                                if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
-                            }
-                        }
-                    ]
-                }
-                trailingActions: ListItemActions {
                     delegate: Rectangle {
                         width: units.gu(7)
                         height: parent ? parent.height : units.gu(6)
@@ -415,6 +378,28 @@ Page {
                         }
                     ]
                 }
+                trailingActions: ListItemActions {
+                    delegate: Item {
+                        width: units.gu(7)
+                        height: parent ? parent.height : units.gu(6)
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.5); height: width
+                            name: action.iconName
+                            color: "black"
+                        }
+                    }
+                    actions: [
+                        Action {
+                            iconName: "share"
+                            text: Lang.tr("Share")
+                            onTriggered: {
+                                var vm = feedModel.get(index);
+                                if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
+                            }
+                        }
+                    ]
+                }
 
                 VideoCard {
                     id: card
@@ -429,8 +414,7 @@ Page {
             }
         }
 
-        // Constant-height footer: a conditional height feeds back into
-        // contentHeight/atYEnd and trips a "height" binding loop.
+        // Constant-height footer: a conditional height feeds back into contentHeight/atYEnd and trips a "height" binding loop.
         footer: Item {
             width: list.width
             height: units.gu(6)
@@ -465,6 +449,5 @@ Page {
         message: Lang.tr("No videos to show")
     }
 
-    // Upload lives in the global header action now (see Main.qml, gated on the
-    // Video tab) — Lomiri uses a header action, not a Material floating button.
+    // Upload lives in the global header action now (gated on the Video tab) — Lomiri uses a header action, not a Material floating button.
 }

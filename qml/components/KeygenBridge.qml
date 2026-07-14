@@ -1,13 +1,6 @@
 import QtQuick 2.7
 import QtWebEngine 1.10
 
-/*
- * Hidden WebView that generates Serey self-custody keys by running the vendored
- * @sereynetwork/sereyjs bundle (assets/keygen.html). QML calls generate() and
- * gets the keys back through runJavaScript's return-value callback — no console
- * bridge needed since QML is the initiator. Kept 1x1 + opacity 0 (rather than
- * visible:false) so QtWebEngine still loads the page and runs its JS.
- */
 Item {
     id: root
 
@@ -31,9 +24,7 @@ Item {
         }
     }
 
-    // Generate keys for `username`. Calls onKeys(keysObject) on success or
-    // onErr(message) on failure. keysObject has master_password, the four
-    // *_public_key fields and posting_private_key.
+    // Generate keys for `username`; onKeys(keysObject) on success has master_password, the four *_public_key fields, and posting_private_key.
     function generate(username, onKeys, onErr) {
         if (!_ready) {
             onErr(qsTr("Still preparing, please try again in a moment."));

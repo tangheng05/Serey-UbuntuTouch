@@ -4,21 +4,6 @@ import "../Theme"
 import "../Session"
 import "../services/Uploads.js" as Uploads
 
-/*
- * Non-visual orchestrator for "pick → downscale → upload". Call upload(fileUrl)
- * with a local file:// URL (from PhotoPicker); it emits uploaded(url) with the
- * hosted image URL, or failed(message).
- *
- * Why downscale first: full-resolution gallery photos are several MB. Reading
- * those bytes and POSTing them over mobile is slow and — because QML's
- * XMLHttpRequest silently ignores `timeout`/`ontimeout` — a slow upload spins
- * forever (the "stuck in uploading" bug). A camera capture is small enough to
- * finish quickly, which is why it appeared to work and a gallery image didn't.
- * We decode the picture at a capped sourceSize and grab it to a temp JPEG so
- * every upload is small and fast. If decoding/grabbing fails for any reason we
- * fall back to uploading the original bytes, so this never does worse than
- * before. A watchdog Timer guarantees the spinner can't hang indefinitely.
- */
 Item {
     id: root
     width: 0; height: 0
@@ -30,8 +15,7 @@ Item {
     signal uploaded(string url)
     signal failed(string message)
 
-    // Bumped per upload so a callback from a superseded/timed-out attempt (e.g. a
-    // grab that resolves after the watchdog fired) can't fire a second result.
+    // Bumped per upload so a callback from a superseded/timed-out attempt can't fire a second result.
     property int _gen: 0
 
     function upload(fileUrl) {
@@ -77,8 +61,7 @@ Item {
         }, Qt.size(w, h));
     }
 
-    // QML XMLHttpRequest does not honour its own `timeout`, so this is the only
-    // reliable ceiling: abort the request and report a timeout.
+    // QML XMLHttpRequest does not honour its own `timeout`, so this is the only reliable ceiling — abort and report a timeout.
     Timer {
         id: watchdog
         interval: root.timeoutMs
@@ -88,9 +71,7 @@ Item {
         }
     }
 
-    // Off-screen decoder. Kept at opacity 0 (NOT visible:false, which would drop
-    // it from the scene graph and make grabToImage return nothing) and sized to
-    // the capped decode size so the grab is a clean downscaled bitmap.
+    // Off-screen decoder kept at opacity 0 (not visible:false, which drops it from the scene graph) so grabToImage returns a clean downscaled bitmap.
     Image {
         id: resizer
         opacity: 0
@@ -98,9 +79,7 @@ Item {
         cache: false
         smooth: true
         mipmap: true
-        // Apply the EXIF orientation when decoding. Camera photos carry an
-        // orientation tag rather than rotated pixels; without this the grabbed +
-        // re-saved JPEG keeps the raw (sideways) pixels and uploads rotated.
+        // Apply the EXIF orientation when decoding, since camera photos carry an orientation tag rather than rotated pixels.
         autoTransform: true
         fillMode: Image.PreserveAspectFit
         sourceSize.width: root.maxDimension

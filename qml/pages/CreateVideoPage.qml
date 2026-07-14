@@ -9,21 +9,11 @@ import "../components"
 import "../services/PostService.js" as PostService
 import "../services/Uploads.js" as Uploads
 
-/*
- * Create a video post: pick a local video → upload it to the dedicated video
- * storage API (storage.serey.io, tus chunked upload + server-side processing),
- * auto-capture a thumbnail in-app (best-effort; the server's generated
- * thumbnail is the fallback), then publish via PostService.createVideoPost.
- * AI-generated flagging is omitted.
- *
- * A video requires a concrete community (Config.communityId > 0): "Global" is
- * rejected server-side, so publishing is gated until a real community is picked
- * from the global AppHeader pill.
- */
 Page {
     id: page
 
     property bool submitting: false
+    readonly property real maxContentWidth: units.gu(60)
 
     // Local picked file + hosted results.
     property string videoFileUrl: ""   // file:// of the picked video
@@ -33,8 +23,7 @@ Page {
     property bool uploadingVideo: false
     property int uploadPercent: 0      // chunked-upload progress (0-100)
     property bool grabbingThumb: false
-    // "Post to blockchain": on = broadcast on-chain (default), off = save to the
-    // Serey DB only (no on-chain record, so no voting/rewards). Sent per-save.
+    // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
     readonly property bool hasCommunity: Config.communityId > 0
@@ -68,13 +57,12 @@ Page {
         // Start the upload and the (optional) thumbnail capture in parallel.
         page.uploadingVideo = true;
         page.uploadPercent = 0;
-        Uploads.uploadVideo(Config.storageApiUrl, Config.storageUploadKey, fileUrl,
+        Uploads.uploadVideo(Config.storageCreateUploadUrl, Session.token, fileUrl,
             function (url, job) {
                 page.uploadingVideo = false;
                 page.videoUrl = url;
                 page.videoId = (job && job.id) ? job.id : "";
-                // Server-side thumbnail as fallback if the local frame grab
-                // failed or hasn't produced one.
+                // Server-side thumbnail as fallback if the local frame grab failed or hasn't produced one.
                 if (!page.thumbUrl && job && job.thumbnail_url)
                     page.thumbUrl = job.thumbnail_url;
                 Toast.success(Lang.tr("Video uploaded"));
@@ -94,11 +82,9 @@ Page {
 
     function clearVideo() {
         Uploads.abort();
-        // Upload had already finished (post-upload discard, e.g. Remove or
-        // back-out-before-publish) — clean up the now-orphaned file so it
-        // doesn't sit on the storage server forever.
+        // Upload had already finished (post-upload discard) — clean up the now-orphaned file so it doesn't sit on the storage server forever.
         if (page.videoId)
-            Uploads.deleteVideo(Config.storageApiUrl, Config.storageUploadKey, page.videoId);
+            Uploads.deleteVideo(Config.storageDeleteUploadUrl, Session.token, page.videoId);
         page.videoFileUrl = "";
         page.videoUrl = "";
         page.videoId = "";
@@ -136,8 +122,7 @@ Page {
     Item { id: focusSink }
     function dismissKeyboard() { focusSink.forceActiveFocus(); Qt.inputMethod.hide(); }
 
-    // Uploads.js has no setTimeout (QML JS library); this Timer drives the
-    // delay between status polls while the server processes the video.
+    // Uploads.js has no setTimeout (QML JS library); this Timer drives the delay between status polls.
     Timer {
         id: uploadDelayTimer
         repeat: false
@@ -149,12 +134,10 @@ Page {
         }
     }
 
-    // C++ streaming file reader: uploads read 25 MB slices from disk instead
-    // of loading the whole video into RAM (big files OOM-crashed phones).
+    // C++ streaming file reader: uploads read 25 MB slices from disk instead of loading the whole video into RAM (big files OOM-crashed phones).
     FileUtils.FileChunkReader { id: chunkReader }
 
-    // Survives app restarts: lets Uploads.js resume a half-finished upload of
-    // the same file instead of re-sending everything from byte 0.
+    // Survives app restarts, letting Uploads.js resume a half-finished upload instead of re-sending from byte 0.
     Settings {
         id: uploadResumeStore
         category: "VideoUpload"
@@ -181,9 +164,7 @@ Page {
         VideoPicker { onPicked: page.onVideoPicked(fileUrl) }
     }
 
-    // Captures a frame from the picked local video (as a JPEG data URL), then
-    // uploads it as the thumbnail image. Best-effort: any failure just leaves
-    // thumbUrl empty and the post publishes without a custom thumbnail.
+    // Captures a frame from the picked local video as a JPEG data URL and uploads it as the thumbnail; failure just leaves thumbUrl empty.
     VideoThumbnailGrabber {
         id: thumbGrabber
         onGrabbed: Uploads.uploadImageData(Config.uploadUrl, Config.uploadSecret, dataUrl,
@@ -250,7 +231,8 @@ Page {
 
     Flickable {
         id: scroll
-        anchors { top: hdr.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: hdr.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         contentHeight: col.height + Style.spacingL
         clip: true
         opacity: 0
@@ -458,8 +440,7 @@ Page {
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
                         visible: page.uploadingVideo
-                        // 100% = all chunks sent; the server is then
-                        // validating/remuxing before it returns the URL.
+                        // 100% = all chunks sent; the server is then validating/remuxing before it returns the URL.
                         text: page.uploadPercent >= 100
                               ? Lang.tr("Processing video…")
                               : (page.uploadPercent > 0

@@ -15,8 +15,7 @@ Item {
     z: 1500
 
     readonly property string authorName: PostActions.post ? (PostActions.post.author || "") : ""
-    // The viewer owns this post → show Edit/Delete instead of moderation actions
-    // (you can't report or block yourself).
+    // The viewer owns this post, so show Edit/Delete instead of moderation actions (you can't report or block yourself).
     readonly property bool isOwn: Session.isLoggedIn && authorName !== "" && authorName === Session.username
     // No video editor exists, so Edit is offered for blog/gallery only.
     readonly property bool canEdit: isOwn && PostActions.kind !== "video"
@@ -27,8 +26,7 @@ Item {
     property bool reportTypesLoaded: false
     property bool reportTypesLoading: false
     property string selectedReportTypeId: ""
-    // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm,
-    // 4 = edit video caption
+    // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm, 4 = edit video caption.
     property int step: 0
     property bool savingCaption: false
 
@@ -41,15 +39,13 @@ Item {
         if (!visible) {
             step = 0;
             selectedReportTypeId = "";
-            // Clear in-flight busy flags so a sheet dismissed mid-request doesn't
-            // reopen stuck on "Blocking…" / disabled report rows.
+            // Clear in-flight busy flags so a sheet dismissed mid-request doesn't reopen stuck on "Blocking…"/disabled rows.
             reporting = false;
             blocking = false;
         } else {
             backdropFade.start();
             sheetSlide.start();
-            // Guard on !reportTypesLoading too, so reopening before the first
-            // fetch resolves doesn't fire a duplicate concurrent request.
+            // Guard on !reportTypesLoading too, so reopening before the first fetch resolves doesn't fire a duplicate concurrent request.
             if (!reportTypesLoaded && !reportTypesLoading) _loadReportTypes();
         }
     }
@@ -60,13 +56,11 @@ Item {
             function (arr) {
                 sheet.reportTypesLoading = false;
                 sheet.reportTypes = arr || [];
-                // Only latch as "loaded" on a non-empty result; an empty list
-                // means try again next open rather than showing a dead panel.
+                // Only latch as "loaded" on a non-empty result; an empty list means try again next open rather than showing a dead panel.
                 sheet.reportTypesLoaded = sheet.reportTypes.length > 0;
             },
             function (err) {
-                // Leave reportTypesLoaded false so reopening the sheet retries
-                // (there is no hardcoded fallback — the backend owns the ids).
+                // Leave reportTypesLoaded false so reopening the sheet retries — there is no hardcoded fallback, the backend owns the ids.
                 sheet.reportTypesLoading = false;
                 sheet.reportTypesLoaded = false;
                 Toast.error((err && err.message) ? err.message
@@ -125,9 +119,7 @@ Item {
             });
     }
 
-    // The stored description is HTML; the caption editor is plain text. Strip
-    // tags (paragraph/line breaks become newlines) for editing, and rebuild
-    // <p> paragraphs — with the text re-escaped — when saving.
+    // The stored description is HTML; strip tags for editing and rebuild <p> paragraphs (text re-escaped) when saving.
     function _htmlToPlain(html) {
         return (html || "")
             .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
@@ -149,9 +141,7 @@ Item {
         return out.join("");
     }
 
-    // Update a video post's caption (title + description) in place. Reuses the
-    // create-or-update endpoint: sending the existing permlink updates rather
-    // than creates. All other fields are resent unchanged from the view-model.
+    // Update a video post's caption in place by reusing the create-or-update endpoint with the existing permlink; other fields resent unchanged.
     function doSaveCaption() {
         var p = PostActions.post;
         if (!p || sheet.savingCaption) return;
@@ -210,10 +200,18 @@ Item {
     NumberAnimation { id: backdropFade; target: backdrop; property: "opacity"; from: 0; to: 1; duration: 200 }
     NumberAnimation { id: backdropFadeOut; target: backdrop; property: "opacity"; to: 0; duration: 200 }
 
-    // Sheet
+    // Full-width sheet on phone, centered width-capped card on desktop
     Rectangle {
         id: sheetRect
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: sheet.kbHeight }
+        readonly property bool wide: Config.wideMode
+        anchors {
+            left: sheetRect.wide ? undefined : parent.left
+            right: sheetRect.wide ? undefined : parent.right
+            horizontalCenter: sheetRect.wide ? parent.horizontalCenter : undefined
+            bottom: parent.bottom
+            bottomMargin: sheet.kbHeight + (sheetRect.wide ? units.gu(4) : 0)
+        }
+        width: sheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(45)) : parent.width
         height: (sheet.step === 0 ? mainCol.height
                  : sheet.step === 1 ? reportCol.height
                  : sheet.step === 2 ? deleteCol.height
@@ -256,10 +254,7 @@ Item {
             }
             Item { width: 1; height: Style.spacingL }
 
-            // ----- Save for offline (blog articles only; video has its own
-            // download, gallery reads in its own viewer). The feed view-model
-            // carries only an excerpt, so we fetch the full article first, then
-            // persist it. Toggles to "Remove from saved" when already saved.
+            // Save for offline (blog only) fetches the full article first since the feed view-model only carries an excerpt, then persists it; toggles to "Remove from saved" when already saved.
             AbstractButton {
                 id: saveOfflineBtn
                 width: parent.width; height: units.gu(8)
@@ -307,8 +302,7 @@ Item {
                 }
             }
 
-            // ----- Owner actions (your own post): Edit / Delete -----
-            // Edit (blog/gallery only — no video editor)
+            // ----- Owner actions (your own post): Edit (blog/gallery only — no video editor) / Delete -----
             AbstractButton {
                 width: parent.width; height: units.gu(8)
                 visible: sheet.canEdit
@@ -334,8 +328,7 @@ Item {
                 }
             }
 
-            // Edit caption (own video — title/description only; the media
-            // itself can't be re-uploaded)
+            // Edit caption (own video — title/description only; the media itself can't be re-uploaded).
             AbstractButton {
                 width: parent.width; height: units.gu(8)
                 visible: sheet.isOwn && PostActions.kind === "video"
@@ -447,11 +440,28 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: units.gu(4.5); height: width; radius: width / 2
                         color: Style.iconBackground
-                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "contact"; color: Style.textPrimary }
+                        // No "block" icon in the Suru theme — draw it (circle + diagonal bar)
+                        Item {
+                            anchors.centerIn: parent
+                            width: units.gu(2.2); height: width
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: width / 2
+                                color: "transparent"
+                                border.width: units.dp(1.8)
+                                border.color: Style.danger
+                            }
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: parent.width * 0.7; height: units.dp(1.8)
+                                color: Style.danger
+                                rotation: 45
+                            }
+                        }
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
-                        Label { text: Lang.tr("Block %1").arg(sheet.authorName); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
+                        Label { text: Lang.tr("Block %1").arg(sheet.authorName); font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.danger }
                         Label { text: Lang.tr("You won't be able to see any posts from this person"); font.pixelSize: Style.fontSmall; color: Style.textSecondary }
                     }
                 }
@@ -507,9 +517,7 @@ Item {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Loading spinner while fetching report types (driven by the
-            // loading flag, not array length, so a failed/empty fetch doesn't
-            // spin forever).
+            // Loading spinner while fetching report types driven by the loading flag, not array length, so a failed/empty fetch doesn't spin forever.
             Item {
                 visible: sheet.reportTypesLoading
                 width: reportCol.width; height: units.gu(6)

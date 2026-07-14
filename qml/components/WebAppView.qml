@@ -3,25 +3,6 @@ import Lomiri.Components 1.3
 import QtWebEngine 1.10
 import "../Theme"
 
-/*
- * Embedded "mini app" web view (ported from serey-ubutu). Loads a Serey web
- * surface (e.g. a community site) in QtWebEngine with a forced mobile viewport,
- * and exposes a small JS bridge so the page can talk to the native shell:
- *
- *   window.messageHandler(method, params) -> Promise
- *     getDeviceInfo  -> { os, version, apiData:{ baseUrlV1, baseUrlV2 } }
- *     getUserInfo    -> { token, username, community_id, community_name }
- *     setAuthToken   -> stores a token pushed from the web side
- *     openCommunity  -> asks the shell to switch community
- *     openExternalBrowser -> opens a URL in the system browser
- *
- * The page posts requests via `console.log("UBUNTU_BRIDGE:" + json)`, which we
- * intercept in onJavaScriptConsoleMessage and answer with receiveResponse().
- *
- * Cleanups vs the reference: the bridge handlers read real component properties
- * (apiBaseV1/V2, authToken, username, communityName) instead of an undefined
- * `root.*`, and a single persistent WebEngineProfile is reused for caching.
- */
 Item {
     id: webAppView
 
@@ -34,38 +15,29 @@ Item {
     property string authToken: ""
     property string username: ""
 
-    // When true (the Homepage tab is hidden) the WebEngineView's Chromium
-    // renderer is moved to the Frozen lifecycle state: it stops background
-    // timers/rendering and lets Chromium reclaim memory, so it no longer
-    // competes for GPU/shared memory with the video player's separate WebView.
-    // Two live Chromium views on the Pixel 3a exhausted shared memory and
-    // SIGSEGV'd the app (see device log). Frozen keeps the DOM, so returning to
-    // the tab resumes instantly without reloading the site or losing the session.
+    // When true (Homepage tab hidden), freeze the Chromium renderer since two live Chromium views exhausted shared memory and SIGSEGV'd the app.
     property bool suspended: false
-    // WebEngineView.LifecycleState values. UT's QtWebEngine doesn't expose the
-    // enum names to QML (WebEngineView.Frozen reads as undefined), but the
-    // lifecycleState property accepts the underlying ints: Active=0, Frozen=1.
+    // UT's QtWebEngine doesn't expose LifecycleState enum names to QML
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
-    // Freezing is only legal once the view is actually hidden, and `visible`
-    // settles a tick after the tab switch — so defer the freeze, but resume
-    // immediately (Active is always legal).
+    // Freezing is only legal once `visible` has settled hidden, so defer it; resuming to Active is always legal.
     onSuspendedChanged: {
         if (suspended) {
+            // Active->Frozen is rejected while the page is visible. On a tab
+            // switch the parent stack hides us anyway, but when `suspended`
+            // comes from an overlay (the Stripe checkout sheet covering this
+            // tab) the view is still visible — hide it explicitly or the
+            // freeze silently fails and both Chromiums stay live.
+            webView.visible = false;
             freezeTimer.restart();
         } else {
             freezeTimer.stop();
+            if (webAppView.appActive) webView.visible = true;
             webView.lifecycleState = webAppView._lcActive;
         }
     }
 
-    // Also freeze on whole-app background/suspend, not just tab-hide: a live
-    // WebEngineView left Active across a long OS suspend loses its GPU/shared-mem
-    // context and SIGBUSes on resume (device log: status=7/BUS moments after a
-    // 54-min suspend). QtWebEngine rejects Active->Frozen while the page is
-    // visible, so hide the view first. This is done IMPERATIVELY and only on an
-    // actual state change — never at startup — so a quirky initial state can't
-    // leave the Homepage blank.
+    // Also freeze on app suspend — avoids a SIGBUS-on-resume
     property bool appActive: Qt.application.state === Qt.ApplicationActive
     onAppActiveChanged: {
         if (!appActive) {
@@ -82,25 +54,18 @@ Item {
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     readonly property string desktopUA: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    // Convergence: below this width we keep pretending to be a 412px phone (the
-    // site has no responsive desktop layout to fall back to otherwise). Once the
-    // view is wider than a phone — the window docked to a monitor, or just a
-    // tablet-size app window — stop faking a phone and let the site render (and
-    // the page itself pick) its own real desktop layout at its real size.
-    readonly property bool desktopMode: width >= 800
-
-    // Crossing the breakpoint (dock/undock, window resize) needs a reload: the
-    // forced-viewport script only re-runs on navigation, so a live page would
-    // otherwise keep rendering at the old width/UA until the next reload.
+    // Grid units, not raw pixels — a phone's native resolution can exceed a flat px threshold
+    readonly property bool desktopMode: webAppView.width >= Config.convergenceBreakpoint
     onDesktopModeChanged: reload()
 
     signal getUserInfoRequested()
-    // NOTE: never wire this to Session.setAuth — the web side's identity comes
-    // from its own persistent cookies and can be stale (a previous account);
-    // letting it write the native session would silently switch accounts.
+    // Never wire this to Session.setAuth — the web side's identity comes from its own persistent cookies and can be stale, silently switching accounts.
     signal authTokenReceived(string token, string username)
     signal openCommunityRequested(string communityId)
     signal openExternalBrowserRequested(string url)
+    // params: { subscription_plan_id, method: "crypto"|"stripe" }
+    signal buyPlanRequested(var params)
+    signal stripeCheckoutIntercepted(string url)
 
     WebEngineProfile {
         id: mobileProfile
@@ -112,9 +77,7 @@ Item {
     WebEngineView {
         id: webView
         anchors.fill: parent
-        // `visible` is left to inherit normally; onAppActiveChanged toggles it
-        // imperatively on app background/foreground so the Active->Frozen
-        // transition (rejected while visible) becomes legal.
+        // `visible` inherits normally; onAppActiveChanged toggles it imperatively on background/foreground so the Active->Frozen transition becomes legal.
         profile: mobileProfile
         // Desktop mode renders the site at its real width — no upscaling needed.
         zoomFactor: webAppView.desktopMode ? 1.0 : (webAppView.width > 0 ? webAppView.width / 412 : 1.0)
@@ -125,9 +88,7 @@ Item {
                 injectionPoint: WebEngineScript.DocumentCreation
                 worldId: WebEngineScript.MainWorld
                 runOnSubframes: true
-                // Empty in desktop mode: let the page see its real navigator/screen
-                // properties so its own responsive layout (not our phone fake-out)
-                // decides how to render.
+                // Empty in desktop mode — page uses its own real navigator/screen
                 sourceCode: webAppView.desktopMode ? "" : ("" +
                     "Object.defineProperty(navigator, 'userAgent', { get: function() { return '" + webAppView.mobileUA + "'; }, configurable: true });" +
                     "Object.defineProperty(navigator, 'platform', { get: function() { return 'Linux armv8l'; }, configurable: true });" +
@@ -158,6 +119,18 @@ Item {
             if (message.indexOf("UBUNTU_BRIDGE:") === 0)
                 webAppView._handleBridgeMessage(message.substring(14));
         }
+
+        // Keep the mini app on the plan page when the site redirects to Stripe
+        // Checkout — the shell shows it in the native StripeCheckoutSheet
+        // instead. Enum names can be undefined on UT's QtWebEngine (see the
+        // lifecycleState ints above), so use the raw value: IgnoreRequest=255.
+        onNavigationRequested: {
+            var u = request.url.toString();
+            if (u.indexOf("https://checkout.stripe.com") === 0) {
+                request.action = 255;
+                webAppView.stripeCheckoutIntercepted(u);
+            }
+        }
     }
 
     // Defer the load slightly so the profile/web view are ready first.
@@ -171,8 +144,7 @@ Item {
     onUrlChanged: if (url !== "") loadTimer.restart()
     Component.onCompleted: if (url !== "") loadTimer.start()
 
-    // Apply the Frozen state once the view has had a moment to become hidden.
-    // Guarded on `suspended` in case the tab was re-activated within the delay.
+    // Apply the Frozen state once the view has had a moment to become hidden, guarded on `suspended` in case the tab was re-activated within the delay.
     Timer {
         id: freezeTimer
         interval: 300
@@ -180,8 +152,7 @@ Item {
         onTriggered: if (webAppView.suspended) webView.lifecycleState = webAppView._lcFrozen
     }
 
-    // App-suspend counterpart: freeze once the view has been hidden (see
-    // onAppActiveChanged), guarded in case the app was re-activated within the delay.
+    // App-suspend counterpart: freeze once the view has been hidden, guarded in case the app was re-activated within the delay.
     Timer {
         id: appFreezeTimer
         interval: 300
@@ -205,15 +176,8 @@ Item {
         loadTimer.restart();
     }
 
-    // Drop the web side's login. The profile is persistent (offTheRecord:false),
-    // so without this the site keeps the PREVIOUS account's cookie session across
-    // a native logout/switch and the Homepage shows the old account. Guarded:
-    // cookieStore may be missing on older QtWebEngine — the caller's reload()
-    // still refreshes the page either way.
+    // Drops the web side's login since the persistent profile keeps the previous account's cookies across a native logout/switch; cookieStore may be missing on older QtWebEngine.
     function clearSession() {
-        // cookieStore is missing on older QtWebEngine — guard rather than let the
-        // call throw (which logged "deleteAllCookies of undefined" on every
-        // logout). The caller's reload() still refreshes the page either way.
         if (mobileProfile && mobileProfile.cookieStore
                 && typeof mobileProfile.cookieStore.deleteAllCookies === "function") {
             mobileProfile.cookieStore.deleteAllCookies();
@@ -282,6 +246,19 @@ Item {
                 if (params.community_id)
                     webAppView.openCommunityRequested(String(params.community_id));
                 _sendResponse(id, { status: "ok", message: "Community opened" });
+                break;
+            case "buyPlan":
+                // Only claim the purchase when a native session exists — the
+                // payment endpoints need the native JWT. Rejecting makes the
+                // site's Promise fail so it falls back to its web flow.
+                if (!webAppView.authToken) {
+                    _sendError(id, "No native session");
+                } else if (!params.subscription_plan_id) {
+                    _sendError(id, "Missing subscription_plan_id");
+                } else {
+                    webAppView.buyPlanRequested(params);
+                    _sendResponse(id, { status: "ok", message: "Handled natively" });
+                }
                 break;
             case "openExternalBrowser":
                 if (params.url) {

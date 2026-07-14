@@ -403,7 +403,9 @@ MainView {
 
         AdaptiveStack {
             id: homeStack
-            singleColumnUntilPushed: true
+            // The web app is the panel: never split — sub-pages (My Feed, Login)
+            // cover it full-screen instead of shrinking it into a master column.
+            neverSplit: true
             anchors.fill: parent
             visible: root.currentTab === 0
             Component.onCompleted: push(Qt.resolvedUrl("pages/HomepagePage.qml"))

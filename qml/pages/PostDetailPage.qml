@@ -379,10 +379,7 @@ Page {
 
         Column {
             id: contentCol
-            // Convergence readability cap: keep the article at a comfortable
-            // measure and centered instead of stretching across a wide window.
-            width: Math.min(scroll.width, Config.readingMaxWidth)
-            anchors.horizontalCenter: parent.horizontalCenter
+            width: scroll.width
             spacing: Style.spacingM
 
             Item { width: 1; height: Style.spacingS }

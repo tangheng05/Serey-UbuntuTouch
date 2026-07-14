@@ -525,17 +525,29 @@ Page {
 
         Column {
             id: contentCol
-            // Convergence readability cap: centered, comfortable measure on wide windows.
-            width: Math.min(scroll.width, Config.readingMaxWidth)
-            anchors.horizontalCenter: parent.horizontalCenter
+            width: scroll.width
 
-            // Player / thumbnail (full-bleed within the capped column)
-            Rectangle {
-                id: stage
+            // Player wrapper: full-width row. The stage centers within it and is
+            // capped by the available viewport height, so the title/description
+            // and upvote row stay visible without scrolling on wide windows; the
+            // leftover width becomes side padding. Phones (tall/narrow) stay
+            // full-width since the 16:9 height is well under the cap.
+            Item {
+                id: stageWrap
                 width: parent.width
-                height: width * 9 / 16
-                color: Style.videoStage
-                clip: true
+                height: stage.height
+
+                Rectangle {
+                    id: stage
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    // Height-cap keeps the title/description + upvote row above
+                    // the fold; then give back 50% of the side padding (Lomiri
+                    // prescribes no fixed media size). Stays 16:9.
+                    readonly property real _capW: Math.min(stageWrap.width, scroll.height * 0.5 * 16 / 9)
+                    width: _capW + (stageWrap.width - _capW) * 0.5
+                    height: width * 9 / 16
+                    color: Style.videoStage
+                    clip: true
 
                 Image {
                     anchors.fill: parent
@@ -596,6 +608,7 @@ Page {
                                 Qt.openUrlExternally(link);
                         }
                     }
+                }
                 }
             }
 

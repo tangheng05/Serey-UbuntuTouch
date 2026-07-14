@@ -79,6 +79,20 @@ Rectangle {
                 }
             }
 
+            // Community name — shown beside the flag on wide windows (there's
+            // room for it there; phones keep the compact icon-only chip).
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: appHeader.wide && text !== ""
+                text: appHeader.communityName
+                font.pixelSize: Style.fontMedium
+                font.weight: Font.DemiBold
+                font.family: Style.fontFor(text)   // community names may be Khmer
+                color: Style.textPrimary
+                elide: Text.ElideRight
+                width: Math.min(implicitWidth, units.gu(24))
+            }
+
             // Real vector caret — the old "▾" glyph rendered chunky and off-baseline.
             Icon {
                 anchors.verticalCenter: parent.verticalCenter

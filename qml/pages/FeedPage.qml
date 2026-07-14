@@ -14,6 +14,26 @@ Page {
     // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
     readonly property real maxContentWidth: units.gu(60)
 
+    // Master-detail (like the News/blog page) when the page itself is wide enough:
+    // the feed becomes a left side-list and the tapped article opens in a detail
+    // panel on the right. Based on the page's OWN width so it adapts whether it's
+    // full-screen (Homepage) or already inside a column. Narrow keeps the phone
+    // model: tapping a card pushes the article full-screen onto the outer stack.
+    readonly property bool wide: width >= Config.convergenceBreakpoint
+    readonly property real listPaneW: units.gu(40)
+
+    // Route a card tap: into the right detail panel when split, else a full-screen
+    // push onto the outer page stack. Replaces the current detail (no stacking) so
+    // picking another item swaps the article, exactly like News master-detail.
+    function openDetail(url, props) {
+        if (page.wide) {
+            while (innerDetail.depth > 0) innerDetail.pop();
+            innerDetail.push(url, props);
+        } else {
+            page.pageStack.push(url, props);
+        }
+    }
+
     // 0 = All (mixed), 1 = Blog only, 2 = Video only.
     property int filterMode: 0
     property bool filterMenuOpen: false
@@ -310,8 +330,12 @@ Page {
 
     ListView {
         id: list
-        anchors { top: topBar.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
-        width: Math.min(parent.width, page.maxContentWidth)
+        // Vertical via anchors; horizontal via x/width so the wide<->narrow switch
+        // is a plain binding (no conditional anchor to strand). Wide: left side-list
+        // at listPaneW. Narrow: centered reading column, capped at maxContentWidth.
+        anchors { top: topBar.bottom; bottom: parent.bottom }
+        width: page.wide ? page.listPaneW : Math.min(parent.width, page.maxContentWidth)
+        x: page.wide ? 0 : Math.max(0, (parent.width - width) / 2)
         clip: true
         model: feedModel
         cacheBuffer: units.gu(12)
@@ -399,9 +423,9 @@ Page {
                     PostCard {
                         width: parent ? parent.width : 0
                         post: feedItem.postData
-                        onClicked: page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
+                        onClicked: page.openDetail(Qt.resolvedUrl("PostDetailPage.qml"),
                             { author: feedItem.postData.author, permlink: feedItem.postData.permlink, title: feedItem.postData.title })
-                        onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                        onAuthorClicked: page.openDetail(Qt.resolvedUrl("ProfileViewPage.qml"),
                             { username: feedItem.postData.author })
                         onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
                         onMoreClicked: PostActions.open(feedItem.postData, "blog")
@@ -413,9 +437,9 @@ Page {
                     VideoCard {
                         width: parent ? parent.width : 0
                         video: feedItem.postData
-                        onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
+                        onClicked: page.openDetail(Qt.resolvedUrl("VideoDetailPage.qml"),
                             { video: feedItem.postData })
-                        onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                        onAuthorClicked: page.openDetail(Qt.resolvedUrl("ProfileViewPage.qml"),
                             { username: feedItem.postData.author })
                         onMoreClicked: PostActions.open(feedItem.postData, "video")
                     }
@@ -439,6 +463,35 @@ Page {
                 page.loadMore();
             }
         }
+    }
+
+    // Detail panel (split mode only): the tapped article/video renders here beside
+    // the feed list, so picking items feels like the News master-detail view.
+    Rectangle {
+        id: feedDivider
+        visible: page.wide
+        anchors { top: topBar.bottom; bottom: parent.bottom }
+        x: list.width
+        width: units.dp(1)
+        color: Style.divider
+    }
+    Item {
+        id: detailPane
+        visible: page.wide
+        anchors { top: topBar.bottom; bottom: parent.bottom; left: feedDivider.right; right: parent.right }
+
+        // Opaque panel background (Pages are transparent) + empty placeholder.
+        Rectangle {
+            anchors.fill: parent
+            color: Style.surface
+            EmptyState {
+                anchors.fill: parent
+                visible: innerDetail.depth === 0
+                iconName: "stock_note"
+                message: Lang.tr("Select a post to read")
+            }
+        }
+        PageStack { id: innerDetail; anchors.fill: parent }
     }
 
     LoadingState {

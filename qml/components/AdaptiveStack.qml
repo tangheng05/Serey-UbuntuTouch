@@ -31,6 +31,10 @@ Item {
 
     // --- Public API --------------------------------------------------------
     property bool singleColumnUntilPushed: false
+    // Never enter master-detail: the root fills the tab and every push covers it
+    // full-screen (the Homepage web app is the panel — a 320gu master would
+    // cram the full website and strand pushed pages beside it).
+    property bool neverSplit: false
     property string emptyDetailIconName: ""
     property string emptyDetailMessage: ""
 
@@ -43,7 +47,7 @@ Item {
     // Real detail pages, excluding the invisible placeholder at detailStack[0].
     readonly property int _detailCount: Math.max(0, detailStack.depth - 1)
 
-    readonly property bool split: width >= Config.convergenceBreakpoint
+    readonly property bool split: !neverSplit && width >= Config.convergenceBreakpoint
                                   && (!singleColumnUntilPushed || _detailCount > 0)
     readonly property int columns: split ? 2 : 1
 

@@ -309,7 +309,7 @@ Page {
 
     Flickable {
         id: scroll
-        anchors { top: hdr.bottom; bottom: toolbar.top; horizontalCenter: parent.horizontalCenter }
+        anchors { top: hdr.bottom; bottom: Config.wideMode ? parent.bottom : toolbar.top; horizontalCenter: parent.horizontalCenter }
         width: Math.min(parent.width, page.maxContentWidth)
         contentHeight: col.height + Style.spacingL
         clip: true
@@ -379,22 +379,28 @@ Page {
                 }
             }
 
-            // Body text area — outlined rounded box, tall
+            // Body text area — toolbar docks inside on desktop, above OSK on phone
             Rectangle {
+                id: bodyBox
+                readonly property real toolbarH: Config.wideMode ? units.gu(5.5) : 0
                 width: parent.width
-                height: Math.max(units.gu(25), bodyArea.contentHeight + Style.spacingM * 2)
+                height: Math.max(units.gu(25), bodyArea.contentHeight + Style.spacingM * 2) + toolbarH
                 radius: Style.cardRadius
                 color: "transparent"
+                clip: true
                 border.width: units.dp(1.5)
                 border.color: bodyArea.activeFocus ? Style.brand : Style.divider
 
                 TextEdit {
                     id: bodyArea
                     anchors {
-                        fill: parent
+                        left: parent.left; right: parent.right; top: parent.top
                         margins: Style.spacingM
                     }
                     textFormat: Text.RichText
+                    selectByMouse: true
+                    persistentSelection: true
+                    selectionColor: Style.brand
                     font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
@@ -411,6 +417,23 @@ Page {
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFor(text)
+                }
+
+                Rectangle {
+                    visible: Config.wideMode
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: bodyBox.toolbarH
+                    color: Style.iconBackground
+
+                    Rectangle {
+                        anchors { left: parent.left; right: parent.right; top: parent.top }
+                        height: units.dp(1); color: Style.divider
+                    }
+
+                    Loader {
+                        anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                        sourceComponent: parent.visible ? formatButtonsComp : undefined
+                    }
                 }
             }
 
@@ -595,22 +618,10 @@ Page {
         }
     }
 
-    // Formatting toolbar — rides above the on-screen keyboard while typing.
-    Rectangle {
-        id: toolbar
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        anchors.bottomMargin: page.kbHeight
-        Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
-        height: units.gu(5.5)
-        color: Style.surface
-
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; top: parent.top }
-            height: units.dp(1); color: Style.divider
-        }
-
+    // Shared formatting-button row — reused by the phone bottom dock and the desktop inline toolbar.
+    Component {
+        id: formatButtonsComp
         Row {
-            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             spacing: 0
 
             Repeater {
@@ -681,6 +692,28 @@ Page {
         }
     }
 
+    // Phone: docked above the OSK. Desktop has no OSK, so this stays hidden
+    // there and an inline copy sits directly under the body field instead.
+    Rectangle {
+        id: toolbar
+        visible: !Config.wideMode
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors.bottomMargin: page.kbHeight
+        Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+        height: units.gu(5.5)
+        color: Style.surface
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: units.dp(1); color: Style.divider
+        }
+
+        Loader {
+            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            sourceComponent: toolbar.visible ? formatButtonsComp : undefined
+        }
+    }
+
     // Loading overlay
     Rectangle {
         anchors.fill: parent
@@ -711,7 +744,16 @@ Page {
 
         Rectangle {
             id: catSheetRect
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            // Full-width sheet on phone, centered width-capped card on desktop
+            readonly property bool wide: Config.wideMode
+            anchors {
+                left: catSheetRect.wide ? undefined : parent.left
+                right: catSheetRect.wide ? undefined : parent.right
+                horizontalCenter: catSheetRect.wide ? parent.horizontalCenter : undefined
+                bottom: parent.bottom
+                bottomMargin: catSheetRect.wide ? units.gu(4) : 0
+            }
+            width: catSheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(45)) : parent.width
             height: catSheetCol.height + units.gu(4)
             radius: units.gu(1)
             color: Style.surface

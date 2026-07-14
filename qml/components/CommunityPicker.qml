@@ -240,9 +240,18 @@ Item {
     NumberAnimation { id: cpBackdropFadeOut; target: cpBackdrop; property: "opacity"; to: 0;            duration: 200 }
 
     // ── Sheet ─────────────────────────────────────────────────────────────────
+    // Full-width sheet on phone, centered width-capped card on desktop
     Rectangle {
         id: sheet
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        readonly property bool wide: Config.wideMode
+        anchors {
+            left: sheet.wide ? undefined : parent.left
+            right: sheet.wide ? undefined : parent.right
+            horizontalCenter: sheet.wide ? parent.horizontalCenter : undefined
+            bottom: parent.bottom
+            bottomMargin: sheet.wide ? units.gu(4) : 0
+        }
+        width: sheet.wide ? Math.min(parent.width - units.gu(4), units.gu(60)) : parent.width
         height: Math.min(sheetContent.height + units.gu(4), picker.height * 0.82)
         radius: units.gu(1)
         color: Style.surface

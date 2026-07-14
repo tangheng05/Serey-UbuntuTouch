@@ -22,10 +22,9 @@ Rectangle {
         anchors {
             left: parent.left
             leftMargin: Style.spacingM
-            right: trailingSlot.left
-            rightMargin: Style.spacingS
             verticalCenter: parent.verticalCenter
         }
+        width: titleRow.width
         height: units.gu(5)
         onClicked: appHeader.communityButtonClicked()
 

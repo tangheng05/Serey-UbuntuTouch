@@ -598,7 +598,7 @@ Page {
                                     function _fitHeight() { if (height < paintedHeight) height = paintedHeight; }
                                     // Long-press selection requires the field to already be focused
                                     activeFocusOnPress: true
-                                    font.pixelSize: Style.fontMedium
+                                    font.pixelSize: Config.wideMode ? Style.fontMedium * 1.2 : Style.fontMedium
                                     font.family: Style.fontFor(text)
                                     color: Style.textPrimary
                                     // Flat look — not a text field

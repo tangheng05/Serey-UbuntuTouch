@@ -54,8 +54,8 @@ Item {
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     readonly property string desktopUA: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    // Above this width, stop pretending to be a 412px phone
-    readonly property bool desktopMode: webAppView.width >= 800
+    // Grid units, not raw pixels — a phone's native resolution can exceed a flat px threshold
+    readonly property bool desktopMode: webAppView.width >= Config.convergenceBreakpoint
     onDesktopModeChanged: reload()
 
     signal getUserInfoRequested()

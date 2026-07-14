@@ -191,20 +191,6 @@ Page {
                 }
             }
 
-            AbstractButton {
-                width: parent.width
-                height: units.gu(4)
-                onClicked: Toast.show(Lang.tr("Not available yet."))
-                Label {
-                    anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-                    text: "› " + Lang.tr("Move to Superhub")
-                    font.pixelSize: Style.fontSmall
-                    font.weight: Font.DemiBold
-                    font.family: Style.fontFor(text)
-                    color: parent.pressed ? Style.brandDark : Style.brand
-                }
-            }
-
             Label {
                 text: Lang.tr("Category:")
                 font.pixelSize: Style.fontSmall; font.weight: Font.DemiBold

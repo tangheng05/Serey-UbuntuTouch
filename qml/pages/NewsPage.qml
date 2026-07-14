@@ -216,6 +216,12 @@ Page {
                     { author: p.author, permlink: p.permlink, title: p.title })
             }
 
+            // Touch equivalent of the removed ••• button — opens the same Hide/Report/Block sheet.
+            onPressAndHold: {
+                var p = feedModel.get(index)
+                if (p) PostActions.open(p, "blog")
+            }
+
             // HIG polarity: LEADING = negative (red), TRAILING = positive.
             leadingActions: ListItemActions {
                 delegate: Rectangle {
@@ -253,6 +259,17 @@ Page {
                     }
                 }
                 actions: [
+                    Action {
+                        iconName: "contact"
+                        text: Lang.tr("Follow")
+                        onTriggered: {
+                            var p = feedModel.get(index)
+                            if (!p || !p.author || p.author === Session.username) return
+                            if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
+                            var now = FollowStore.toggle(Config.baseUrl, p.author, Session.token)
+                            Toast.show(now ? Lang.tr("Following") : Lang.tr("Unfollowed"))
+                        }
+                    },
                     Action {
                         iconName: "share"
                         text: Lang.tr("Share")

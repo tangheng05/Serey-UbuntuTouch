@@ -524,7 +524,6 @@ Page {
         PostCard {
             width: parent ? parent.width : list.width
             post: rowData
-            showFollow: false       // the big Follow button already covers this user
             onClicked: page.openPost(rowData)
             onMoreClicked: PostActions.open(rowData, "blog")
             onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))

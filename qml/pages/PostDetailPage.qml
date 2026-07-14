@@ -15,6 +15,9 @@ Page {
     property string permlink: ""
     property string title: ""
 
+    // Adapt, not scale: caps the article to a centered column on wide windows
+    readonly property real maxContentWidth: units.gu(100)
+
     // Passed in when opened from Saved Articles, so it renders instantly offline
     property var preloadedPost: null
 
@@ -408,7 +411,8 @@ Page {
 
         Column {
             id: contentCol
-            width: scroll.width
+            width: Math.min(scroll.width, page.maxContentWidth)
+            anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.spacingM
 
             Item { width: 1; height: Style.spacingS }
@@ -724,7 +728,8 @@ Page {
 
     Column {
         id: footerCol
-        width: parent.width
+        width: Math.min(parent.width, page.maxContentWidth)
+        anchors.horizontalCenter: parent.horizontalCenter
         spacing: units.dp(4)
 
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }

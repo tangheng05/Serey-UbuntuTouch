@@ -367,6 +367,12 @@ Page {
                 // VideoCard draws its own bottom divider — suppress ListItem's to avoid a double hairline.
                 divider.visible: false
 
+                // Touch equivalent of the removed ••• button — opens the same Hide/Report/Block sheet.
+                onPressAndHold: {
+                    var vm = feedModel.get(index);
+                    if (vm) PostActions.open(vm, "video");
+                }
+
                 // HIG polarity: LEADING = negative (red), TRAILING = positive.
                 leadingActions: ListItemActions {
                     delegate: Rectangle {
@@ -403,6 +409,17 @@ Page {
                         }
                     }
                     actions: [
+                        Action {
+                            iconName: "contact"
+                            text: Lang.tr("Follow")
+                            onTriggered: {
+                                var vm = feedModel.get(index);
+                                if (!vm || !vm.author || vm.author === Session.username) return;
+                                if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
+                                var now = FollowStore.toggle(Config.baseUrl, vm.author, Session.token);
+                                Toast.show(now ? Lang.tr("Following") : Lang.tr("Unfollowed"));
+                            }
+                        },
                         Action {
                             iconName: "share"
                             text: Lang.tr("Share")

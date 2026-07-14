@@ -11,6 +11,9 @@ import "../services/CategoryService.js" as CategoryService
 Page {
     id: page
 
+    // Adapt, not scale: caps to a centered column on wide windows
+    readonly property real maxContentWidth: units.gu(60)
+
     header: PageHeader {
         title: Lang.tr("Blog Posts")
         leadingActionBar.actions: [
@@ -208,7 +211,8 @@ Page {
 
         Column {
             id: contentCol
-            width: list.width
+            width: Math.min(list.width, page.maxContentWidth)
+            anchors.horizontalCenter: parent.horizontalCenter
             spacing: 0
 
             SettingsSectionHeader { text: Lang.tr("Posting") }
@@ -292,7 +296,7 @@ Page {
             Repeater {
                 model: categoryModel
                 delegate: Item {
-                    width: list.width
+                    width: contentCol.width
                     height: units.gu(6)
 
                     Label {

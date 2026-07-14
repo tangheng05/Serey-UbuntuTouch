@@ -9,6 +9,9 @@ import "../services/PlatformService.js" as PlatformService
 Page {
     id: page
 
+    // Adapt, not scale: caps to a centered column on wide windows
+    readonly property real maxContentWidth: units.gu(60)
+
     header: PageHeader {
         title: Lang.tr("Videos")
         leadingActionBar.actions: [
@@ -145,7 +148,8 @@ Page {
 
         Column {
             id: contentCol
-            width: list.width
+            width: Math.min(list.width, page.maxContentWidth)
+            anchors.horizontalCenter: parent.horizontalCenter
             spacing: 0
 
             SettingsSectionHeader { text: Lang.tr("Posting") }

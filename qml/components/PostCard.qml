@@ -13,10 +13,6 @@ Item {
     // Guard: the delegate may rebind `post` to undefined while the model is cleared/recycled — `p` is always a safe object to read from.
     readonly property var p: post ? post : ({})
 
-    // Shared, reactive follow state — every button for this author stays in sync.
-    readonly property bool isFollowing: FollowStore.isFollowing(p.author)
-    property bool showFollow: true
-
     signal clicked()
     signal requireLogin()
     signal moreClicked()
@@ -55,16 +51,6 @@ Item {
                 cardVoteBar.payout = p.payout || "";
             }
         }
-    }
-
-    function toggleFollow() {
-        if (!Session.isLoggedIn) {
-            Toast.error(Lang.tr("Please log in first."));
-            root.requireLogin();
-            return;
-        }
-        var now = FollowStore.toggle(Config.baseUrl, p.author, Session.token);
-        Toast.show(now ? Lang.tr("Following") : Lang.tr("Unfollowed"));
     }
 
     Column {
@@ -145,49 +131,6 @@ Item {
                 }
             }
 
-            // Follow pill
-            Rectangle {
-                visible: root.showFollow && (p.author || "") !== "" && p.author !== Session.username
-                Layout.preferredWidth: followLabel.width + units.gu(3)
-                Layout.preferredHeight: units.gu(3.75)
-                Layout.fillHeight: false
-                Layout.alignment: Qt.AlignVCenter
-                radius: Style.pillRadius
-                color: root.isFollowing ? Style.surface : Style.brand
-                border.width: root.isFollowing ? units.dp(1.5) : 0
-                border.color: Style.brand
-
-                Label {
-                    id: followLabel
-                    anchors.centerIn: parent
-                    text: root.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
-                    font.pixelSize: Style.fontXSmall
-                    font.weight: Font.DemiBold
-                    color: root.isFollowing ? Style.brand : Style.textOnBrand
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: root.toggleFollow()
-                }
-            }
-
-            // More button — owner sees Edit/Delete, others see moderation actions (the sheet branches on ownership).
-            AbstractButton {
-                Layout.preferredWidth: units.gu(3.5)
-                Layout.preferredHeight: units.gu(3.5)
-                Layout.fillHeight: false
-                Layout.alignment: Qt.AlignVCenter
-                onClicked: root.moreClicked()
-
-                Label {
-                    anchors.centerIn: parent
-                    text: "•••"
-                    font.pixelSize: Style.fontLarge
-                    font.weight: Font.Bold
-                    color: Style.textSecondary
-                }
-            }
         }
 
         // Title uses Text.Wrap, not WordWrap, since Khmer has no spaces between words and WordWrap can't find a break point.

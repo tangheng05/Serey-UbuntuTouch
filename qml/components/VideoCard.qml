@@ -84,7 +84,7 @@ AbstractButton {
             }
         }
 
-        // Info: avatar + title/author + "•••" button
+        // Info: avatar + title/author
         Row {
             width: parent.width
             spacing: Style.spacingS
@@ -119,7 +119,7 @@ AbstractButton {
             }
 
             Column {
-                width: parent.width - units.gu(4.5) - Style.spacingS - moreBtn.width - Style.spacingS
+                width: parent.width - units.gu(4.5) - Style.spacingS
                 spacing: units.dp(2)
 
                 Label {
@@ -142,27 +142,6 @@ AbstractButton {
                 }
                 OffChainBadge {
                     onChain: v.postToBlockchain !== false
-                }
-            }
-
-            AbstractButton {
-                id: moreBtn
-                anchors.top: parent.top
-                width: units.gu(3.5); height: units.gu(3.5)
-                onClicked: root.moreClicked()
-
-                Column {
-                    anchors.centerIn: parent
-                    spacing: units.dp(3)
-                    Repeater {
-                        model: 3
-                        delegate: Rectangle {
-                            width: units.dp(4); height: units.dp(4)
-                            radius: width / 2
-                            color: Style.textSecondary
-                            anchors.horizontalCenter: parent.horizontalCenter
-                        }
-                    }
                 }
             }
         }

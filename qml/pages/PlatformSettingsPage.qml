@@ -34,10 +34,10 @@ Page {
 
     // Delete platform (soft delete server-side)
     property bool deleting: false
-    function deletePlatform(reason) {
+    function deletePlatform() {
         if (page.deleting) return
         page.deleting = true
-        PlatformService.deleteCommunity(Config.baseUrl, Session.token, Config.managedCommunityId, reason,
+        PlatformService.deleteCommunity(Config.baseUrl, Session.token, Config.managedCommunityId,
             function () {
                 page.deleting = false
                 // Drop the deleted platform from the owned set so Settings flips back to "Create your platform".
@@ -76,7 +76,7 @@ Page {
             width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
             anchors.horizontalCenter: parent.horizontalCenter
             y: Style.spacingL
-            spacing: Style.spacingM
+            spacing: Style.spacingS
 
             SettingsSectionHeader { text: Lang.tr("Subscription") }
             SettingsRow {
@@ -258,24 +258,20 @@ Page {
         }
     }
 
-    // Confirm + optional reason before the (soft) delete.
+    // Confirm before the (soft) delete.
     Component {
         id: deleteDialog
         Popups.Dialog {
             id: ddlg
             title: Lang.tr("Delete “%1”?").arg(page.managedTitle)
             text: Lang.tr("Your platform will be removed from Serey. This cannot be undone from the app.")
-            TextField {
-                id: reasonField
-                placeholderText: Lang.tr("Reason (optional)")
-            }
             Button {
                 text: page.deleting ? Lang.tr("Deleting…") : Lang.tr("Delete platform")
                 color: Style.danger
                 enabled: !page.deleting
                 onClicked: {
                     Popups.PopupUtils.close(ddlg)
-                    page.deletePlatform(reasonField.text.trim())
+                    page.deletePlatform()
                 }
             }
             Button {

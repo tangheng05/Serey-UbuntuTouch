@@ -4,30 +4,18 @@ import Lomiri.Components.Popups 1.3
 import "../Theme"
 import "../Session"
 import "../components"
-import "../services/BlogListOptionService.js" as BlogListOptionService
-import "../services/CustomMenuService.js" as CustomMenuService
 import "../services/LandingPageService.js" as LandingPageService
 import "../services/LandingPageV2Service.js" as LandingPageV2Service
 import "../services/CommunitySubscriberService.js" as CommunitySubscriberService
 import "../services/CommunityService.js" as CommunityService
+import "../services/PlatformService.js" as PlatformService
 
-/*
- * CMS hub for community owners/managers, trimmed to what the mobile app
- * needs from the web "Serey CMS" hub (docs/cms-endpoints-navbar-blog-video-platform.md):
- *   - Platform Information / Platform Setting cards (site content, premium fee)
- *   - Manage Navigation Bar: Blog + Video only, each with a Manage button and
- *     an ON/OFF visibility switch.
- * Reached from Settings > "Manage your platform" (gated on Config.hasAnyOwnedCommunity).
- */
+// CMS hub for community owners/managers, trimmed from the web "Serey CMS" hub (see docs/cms-endpoints-navbar-blog-video-platform.md)
 Page {
     id: page
 
-    property bool blogVisible: true
-    // 0 = no "Video" custom-menu entry exists yet (toggle off); >0 = its id.
-    property int videoMenuId: 0
-    readonly property bool videoVisible: videoMenuId > 0
-    property bool busyBlog: false
-    property bool busyVideo: false
+    // Adapt, not scale: banner stays full-bleed, actionable content caps to a centered column on wide windows
+    readonly property real maxContentWidth: units.gu(60)
 
     // Platform identity shown at the top of the hub — for the MANAGED
     // community (Config.managedCommunityId), not whatever happens to be
@@ -48,75 +36,33 @@ Page {
     // owns editing it (see loadHeroBanner below for where it's fetched from).
     property string platformBannerUrl: ""
 
+    // Inline rename (Settings > Edit Profile pattern)
+    property bool savingName: false
+    readonly property string nameText: nameField.text.trim()
+    readonly property bool nameValid: nameText.length >= 2 && /^[a-zA-Z0-9 ]+$/.test(nameText)
+    readonly property bool nameChanged: page.platformName.length > 0 && nameText !== page.platformName
+
+    function saveName() {
+        if (savingName || !nameValid || !nameChanged) return
+        savingName = true
+        PlatformService.updateCommunityName(Config.baseUrl, Session.token,
+            Config.managedCommunityId, nameText,
+            function () {
+                page.savingName = false
+                page.platformName = page.nameText
+                Toast.success(Lang.tr("Platform name updated."))
+            },
+            function (err) {
+                page.savingName = false
+                Toast.error((err && err.message) || Lang.tr("Couldn't update the name."))
+            })
+    }
+
     header: PageHeader {
         title: Lang.tr("Manage your platform")
         leadingActionBar.actions: [
             Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
         ]
-    }
-
-    function loadBlogVisibility() {
-        BlogListOptionService.getByCommunity(Config.baseUrl, Config.managedCommunityId, Session.token,
-            function (data) { page.blogVisible = data.is_show !== false },
-            function () { /* non-fatal: keep default */ })
-    }
-
-    function loadVideoVisibility() {
-        CustomMenuService.listByWebsiteAndCommunity(Config.baseUrl,
-            { community_id: Config.managedCommunityId }, Session.token,
-            function (list) {
-                var found = list.filter(function (m) {
-                    return (m.title || m.name || "").toLowerCase() === "video"
-                })[0]
-                page.videoMenuId = found ? found.id : 0
-            },
-            function () { /* non-fatal: keep default (off) */ })
-    }
-
-    function toggleBlogVisibility(checked) {
-        page.busyBlog = true
-        BlogListOptionService.updateIsShow(Config.baseUrl, Config.managedCommunityId, checked, Session.token,
-            function () {
-                page.busyBlog = false
-                page.blogVisible = checked
-                Toast.success(checked ? Lang.tr("Blog shown.") : Lang.tr("Blog hidden."))
-            },
-            function (err) {
-                page.busyBlog = false
-                Toast.error(err.message || Lang.tr("Failed to update."))
-            })
-    }
-
-    // No dedicated visibility endpoint for video is documented, so "showing"
-    // the Video section on the site is modeled as the presence/absence of a
-    // "Video" entry in the community's custom-menu list.
-    function toggleVideoVisibility(checked) {
-        page.busyVideo = true
-        if (checked) {
-            CustomMenuService.createOrUpdate(Config.baseUrl,
-                { title: "Video", url: "/video", community_id: Config.managedCommunityId }, Session.token,
-                function (data) {
-                    page.busyVideo = false
-                    page.videoMenuId = (data && data.id) ? data.id : -1
-                    if (page.videoMenuId < 0) page.loadVideoVisibility()
-                    Toast.success(Lang.tr("Video shown."))
-                },
-                function (err) {
-                    page.busyVideo = false
-                    Toast.error(err.message || Lang.tr("Failed to update."))
-                })
-        } else {
-            CustomMenuService.deleteMenu(Config.baseUrl, page.videoMenuId, Session.token,
-                function () {
-                    page.busyVideo = false
-                    page.videoMenuId = 0
-                    Toast.success(Lang.tr("Video hidden."))
-                },
-                function (err) {
-                    page.busyVideo = false
-                    Toast.error(err.message || Lang.tr("Failed to update."))
-                })
-        }
     }
 
     function loadPlatformIdentity() {
@@ -181,13 +127,10 @@ Page {
         page.platformLogoUrl = info ? info.icon : ""
         page.platformBannerUrl = ""
         page.subscriberCount = 0
-        page.videoMenuId = 0
         page.loadPlatformIdentity()
-        page.loadBlogVisibility()
-        page.loadVideoVisibility()
     }
 
-    Component.onCompleted: { page.loadPlatformIdentity(); page.loadBlogVisibility(); page.loadVideoVisibility() }
+    Component.onCompleted: page.loadPlatformIdentity()
 
     PhotoUploader {
         id: logoUploader
@@ -349,16 +292,48 @@ Page {
                     }
                 }
 
-                Label {
+                // Inline-editable platform name (tap to rename)
+                Item {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: page.platformName
+                    width: units.gu(30)
+                    height: nameField.height
+
+                    TextInput {
+                        id: nameField
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        text: page.platformName
+                        font.pixelSize: Style.fontLarge
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                        onTextChanged: if (text.length > 60) text = text.substring(0, 60)
+                        // Re-sync when platformName loads/changes from a switch, unless the user is mid-edit
+                        Connections {
+                            target: page
+                            function onPlatformNameChanged() { if (!nameField.activeFocus) nameField.text = page.platformName }
+                        }
+                    }
+                }
+                Label {
+                    visible: page.nameText.length > 0 && !page.nameValid
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: units.gu(30)
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    width: units.gu(30)
-                    font.pixelSize: Style.fontLarge
-                    font.weight: Font.DemiBold
+                    text: Lang.tr("Use letters, numbers and spaces only.")
+                    font.pixelSize: Style.fontSmall
                     font.family: Style.fontFor(text)
-                    color: Style.textPrimary
+                    color: Style.danger
+                }
+                SecondaryButton {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: page.nameChanged
+                    width: units.gu(30)
+                    height: units.gu(4)
+                    enabled: page.nameValid && !page.savingName
+                    text: page.savingName ? Lang.tr("Saving…") : Lang.tr("Save name")
+                    onClicked: page.saveName()
                 }
 
                 // "Switch Platform" — only shown when you own/manage more than one.
@@ -406,7 +381,7 @@ Page {
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: Lang.tr("Manage and oversee your platform seamlessly from here")
-                width: parent.width - Style.spacingL * 2
+                width: Math.min(parent.width, page.maxContentWidth) - Style.spacingL * 2
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
                 font.pixelSize: Style.fontRegular
@@ -417,7 +392,7 @@ Page {
             // ===== Top cards: Platform Information / Platform Setting =======
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width - Style.spacingL * 2
+                width: Math.min(parent.width, page.maxContentWidth) - Style.spacingL * 2
                 spacing: Style.spacingM
 
                 Rectangle {
@@ -485,12 +460,17 @@ Page {
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
             // ===== Manage Navigation Bar: Blog + Video only ==================
-            SettingsSectionHeader { text: Lang.tr("Manage Navigation Bar") }
+            SettingsSectionHeader {
+                text: Lang.tr("Manage Navigation Bar")
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(parent.width, page.maxContentWidth)
+            }
 
             // Own Column (spacing 0) so the outer Style.spacingL section-gap
             // doesn't get inserted between the Blog and Video rows too.
             Column {
-                width: parent.width
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(parent.width, page.maxContentWidth)
                 spacing: 0
 
                 Repeater {
@@ -499,7 +479,7 @@ Page {
                         { key: "video", label: Lang.tr("Video"), icon: "camcorder", page: "VideoManagementPage.qml" }
                     ]
                     delegate: Item {
-                        width: column.width
+                        width: parent.width
                         height: units.gu(6.5)
 
                         Row {
@@ -521,40 +501,23 @@ Page {
                             }
                         }
 
-                        Row {
+                        Rectangle {
                             anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                            spacing: Style.spacingM
-
-                            Rectangle {
-                                width: manageLabel.implicitWidth + Style.spacingM * 2
-                                height: units.gu(3.6)
-                                radius: Style.pillRadius
-                                color: Style.brand
-                                AbstractButton {
-                                    anchors.fill: parent
-                                    onClicked: page.pageStack.push(Qt.resolvedUrl(modelData.page))
-                                    Label {
-                                        id: manageLabel
-                                        anchors.centerIn: parent
-                                        text: Lang.tr("Manage")
-                                        font.pixelSize: Style.fontSmall
-                                        font.weight: Font.DemiBold
-                                        font.family: Style.fontFor(text)
-                                        color: Style.textOnBrand
-                                    }
-                                }
-                            }
-
-                            Switch {
-                                anchors.verticalCenter: parent.verticalCenter
-                                enabled: modelData.key === "blog" ? !page.busyBlog : !page.busyVideo
-                                checked: modelData.key === "blog" ? page.blogVisible : page.videoVisible
-                                onCheckedChanged: {
-                                    var next = checked
-                                    var current = modelData.key === "blog" ? page.blogVisible : page.videoVisible
-                                    if (next === current) return
-                                    if (modelData.key === "blog") page.toggleBlogVisibility(next)
-                                    else page.toggleVideoVisibility(next)
+                            width: manageLabel.implicitWidth + Style.spacingM * 2
+                            height: units.gu(3.6)
+                            radius: Style.pillRadius
+                            color: Style.brand
+                            AbstractButton {
+                                anchors.fill: parent
+                                onClicked: page.pageStack.push(Qt.resolvedUrl(modelData.page))
+                                Label {
+                                    id: manageLabel
+                                    anchors.centerIn: parent
+                                    text: Lang.tr("Manage")
+                                    font.pixelSize: Style.fontSmall
+                                    font.weight: Font.DemiBold
+                                    font.family: Style.fontFor(text)
+                                    color: Style.textOnBrand
                                 }
                             }
                         }
@@ -566,6 +529,16 @@ Page {
                         }
                     }
                 }
+            }
+
+            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+            // Everything else lives in the full web CMS.
+            LinkButton {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(parent.width, page.maxContentWidth) - Style.spacingL * 2
+                label: Lang.tr("Open full dashboard in browser")
+                onClicked: Qt.openUrlExternally("https://serey.io/social-media-owners")
             }
 
             Item { width: 1; height: Style.spacingL }

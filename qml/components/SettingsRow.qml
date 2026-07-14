@@ -35,7 +35,7 @@ AbstractButton {
     Label {
         anchors {
             left: rowIcon.visible ? rowIcon.right : parent.left
-            leftMargin: Style.spacingM
+            leftMargin: rowIcon.visible ? Style.spacingS : Style.spacingM
             right: trailing.left; rightMargin: Style.spacingS
             verticalCenter: parent.verticalCenter
         }

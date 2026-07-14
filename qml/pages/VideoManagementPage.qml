@@ -3,18 +3,11 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 import "../components"
-import "../services/VideoService.js" as VideoService
+import "../services/PlatformService.js" as PlatformService
 
-/*
- * Moderation list for the current community's videos
- * (youtube_component_route.js, /video-component). Reorder via up/down
- * buttons (up-or-down), pin/unpin and recommended/special toggles per row.
- */
+// Video posting permission for the managed community
 Page {
     id: page
-
-    property bool loading: false
-    property string errorMsg: ""
 
     header: PageHeader {
         title: Lang.tr("Videos")
@@ -23,162 +16,185 @@ Page {
         ]
     }
 
-    ListModel { id: videoModel; dynamicRoles: true }
+    // ── Posting permission (only_me | everyone) ───────────────────────────
+    property string videoMode: "only_me"
+    property bool permBusy: false
 
-    function load() {
-        page.loading = true
-        page.errorMsg = ""
-        videoModel.clear()
-        VideoService.listVideos(Config.baseUrl, { community_id: Config.managedCommunityId }, Session.token,
-            function (videos) {
-                page.loading = false
-                for (var i = 0; i < videos.length; i++) videoModel.append(videos[i])
+    function modeLabel(mode) { return mode === "everyone" ? Lang.tr("Everyone") : Lang.tr("Only me") }
+    readonly property var permOptions: [
+        { mode: "only_me",  label: Lang.tr("Only me"),  desc: Lang.tr("Only you and your managers can post.") },
+        { mode: "everyone", label: Lang.tr("Everyone"), desc: Lang.tr("Anyone can post videos.") }
+    ]
+
+    function loadPostingPermission() {
+        var info = Config.communityInfoFor(Config.managedCommunityId)
+        page.videoMode = (info && info.videoAllowPost) ? "everyone" : "only_me"
+    }
+
+    function setVideoMode(mode) {
+        if (permBusy || mode === videoMode) return
+        permBusy = true
+        var allow = (mode === "everyone")
+        PlatformService.updateVideoAllowPost(Config.baseUrl, Session.token, Config.managedCommunityId, allow,
+            function () {
+                page.permBusy = false
+                page.videoMode = mode
+                Toast.success(Lang.tr("Posting permission updated."))
             },
             function (err) {
-                page.loading = false
-                page.errorMsg = err.message || Lang.tr("Failed to load videos.")
+                page.permBusy = false
+                Toast.error((err && err.message) || Lang.tr("Action failed."))
             })
     }
 
-    function move(index, direction) {
-        var item = videoModel.get(index)
-        VideoService.reorder(Config.baseUrl, item.id, direction, Session.token,
-            function () { page.load() },
-            function (err) { Toast.error(err.message || Lang.tr("Failed to reorder.")) })
+    Component.onCompleted: {
+        page.loadPostingPermission()
     }
 
-    function pinOrUnpin(index) {
-        var item = videoModel.get(index)
-        VideoService.pinOrUnpin(Config.baseUrl, item.id, Session.token,
-            function () { page.load() },
-            function (err) { Toast.error(err.message || Lang.tr("Failed to update.")) })
-    }
+    Component {
+        id: permPickerPage
+        Page {
+            id: permPage
+            header: PageHeader {
+                title: Lang.tr("Video posting")
+                leadingActionBar.actions: [
+                    Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
+                ]
+            }
 
-    function toggleRecommended(index) {
-        var item = videoModel.get(index)
-        VideoService.toggleRecommended(Config.baseUrl, item.id, Session.token,
-            function () { page.load() },
-            function (err) { Toast.error(err.message || Lang.tr("Failed to update.")) })
-    }
-
-    function toggleSpecial(index) {
-        var item = videoModel.get(index)
-        VideoService.toggleSpecial(Config.baseUrl, item.id, Session.token,
-            function () { page.load() },
-            function (err) { Toast.error(err.message || Lang.tr("Failed to update.")) })
-    }
-
-    Component.onCompleted: page.load()
-
-    ListView {
-        id: list
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
-        model: videoModel
-        clip: true
-
-        delegate: Item {
-            width: list.width
-            height: units.gu(14)
+            ActivityIndicator {
+                anchors { top: permPage.header.bottom; topMargin: Style.spacingM; right: parent.right; rightMargin: Style.spacingM }
+                z: 2
+                running: page.permBusy
+                visible: running
+                implicitWidth: units.gu(2.5); implicitHeight: units.gu(2.5)
+            }
 
             Column {
-                anchors { left: parent.left; right: parent.right; top: parent.top; margins: Style.spacingM }
-                spacing: units.dp(3)
-                Label {
-                    text: model.title || ""
-                    width: parent.width
-                    elide: Text.ElideRight
-                    font.pixelSize: Style.fontRegular
-                    font.weight: Font.DemiBold
-                    font.family: Style.fontFor(text)
-                    color: Style.textPrimary
-                }
-                Label {
-                    text: "@" + (model.author || "")
-                    width: parent.width
-                    elide: Text.ElideRight
-                    font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFor(text)
-                    color: Style.textSecondary
-                }
-            }
+                anchors { top: permPage.header.bottom; left: parent.left; right: parent.right }
 
-            Row {
-                anchors { left: parent.left; leftMargin: Style.spacingM; bottom: parent.bottom; bottomMargin: Style.spacingS }
-                spacing: Style.spacingM
+                Repeater {
+                    model: page.permOptions
+                    Item {
+                        width: parent.width
+                        height: units.gu(9)
 
-                AbstractButton {
-                    width: units.gu(3.5); height: units.gu(3.5)
-                    onClicked: page.move(index, "up")
-                    Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "up"; color: Style.textSecondary }
-                }
-                AbstractButton {
-                    width: units.gu(3.5); height: units.gu(3.5)
-                    onClicked: page.move(index, "down")
-                    Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "down"; color: Style.textSecondary }
-                }
-                AbstractButton {
-                    width: units.gu(3.5); height: units.gu(3.5)
-                    onClicked: page.pinOrUnpin(index)
-                    Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "stock_lock"; color: Style.textSecondary }
-                    Label {
-                        anchors { top: parent.bottom; horizontalCenter: parent.horizontalCenter }
-                        text: Lang.tr("Pin")
-                        font.pixelSize: Style.fontXSmall
-                        font.family: Style.fontFor(text)
-                        color: Style.textSecondary
+                        Rectangle {
+                            anchors.fill: parent
+                            color: permOptTap.pressed ? Style.pressed : "transparent"
+                        }
+                        Rectangle {
+                            id: permOptRadio
+                            anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                            width: units.gu(2.5); height: width; radius: width / 2
+                            color: page.videoMode === modelData.mode ? Style.success : "transparent"
+                            border.width: page.videoMode === modelData.mode ? 0 : units.dp(1.5)
+                            border.color: Style.dotInactive
+                            Rectangle {
+                                anchors.centerIn: parent
+                                visible: page.videoMode === modelData.mode
+                                width: units.gu(1); height: width; radius: width / 2
+                                color: "white"
+                            }
+                        }
+                        Column {
+                            anchors {
+                                left: permOptRadio.right; leftMargin: Style.spacingM
+                                right: parent.right; rightMargin: Style.spacingM
+                                verticalCenter: parent.verticalCenter
+                            }
+                            spacing: units.dp(2)
+                            Label {
+                                text: modelData.label
+                                font.pixelSize: Style.fontRegular
+                                font.family: Style.fontFor(text)
+                                color: Style.textPrimary
+                            }
+                            Label {
+                                width: parent.width
+                                text: modelData.desc
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: Style.fontXSmall
+                                font.family: Style.fontFor(text)
+                                color: Style.textSecondary
+                            }
+                        }
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: units.dp(1)
+                            color: Style.divider
+                        }
+                        MouseArea {
+                            id: permOptTap
+                            anchors.fill: parent
+                            enabled: !page.permBusy
+                            onClicked: page.setVideoMode(modelData.mode)
+                        }
                     }
                 }
-                AbstractButton {
-                    width: units.gu(3.5); height: units.gu(3.5)
-                    onClicked: page.toggleRecommended(index)
-                    Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "starred"; color: Style.textSecondary }
-                    Label {
-                        anchors { top: parent.bottom; horizontalCenter: parent.horizontalCenter }
-                        text: Lang.tr("Recommend")
-                        font.pixelSize: Style.fontXSmall
-                        font.family: Style.fontFor(text)
-                        color: Style.textSecondary
-                    }
-                }
-                AbstractButton {
-                    width: units.gu(3.5); height: units.gu(3.5)
-                    onClicked: page.toggleSpecial(index)
-                    Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "tag"; color: Style.textSecondary }
-                    Label {
-                        anchors { top: parent.bottom; horizontalCenter: parent.horizontalCenter }
-                        text: Lang.tr("Special")
-                        font.pixelSize: Style.fontXSmall
-                        font.family: Style.fontFor(text)
-                        color: Style.textSecondary
-                    }
-                }
-            }
-
-            Rectangle {
-                anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
-                height: units.dp(1)
-                color: Style.divider
             }
         }
     }
 
-    ActivityIndicator {
-        anchors.centerIn: parent
-        running: page.loading
-        visible: running
-    }
-
-    EmptyState {
+    ListView {
+        id: list
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
-        visible: !page.loading && page.errorMsg === "" && videoModel.count === 0
-        iconName: "camcorder"
-        message: Lang.tr("No videos yet")
-    }
+        contentWidth: width
+        contentHeight: contentCol.height
+        clip: true
 
-    ErrorState {
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
-        visible: page.errorMsg !== "" && videoModel.count === 0
-        message: page.errorMsg
-        onRetry: page.load()
+        Column {
+            id: contentCol
+            width: list.width
+            spacing: 0
+
+            SettingsSectionHeader { text: Lang.tr("Posting") }
+            Item {
+                width: parent.width
+                height: units.gu(6.5)
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: postingRowTap.pressed ? Style.pressed : "transparent"
+                }
+                Label {
+                    anchors { left: parent.left; leftMargin: Style.spacingM; right: postingValue.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                    text: Lang.tr("Video posting")
+                    elide: Text.ElideRight
+                    font.pixelSize: Style.fontRegular
+                    font.family: Style.fontFor(text)
+                    color: Style.textPrimary
+                }
+                Row {
+                    id: postingValue
+                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    spacing: Style.spacingS
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.modeLabel(page.videoMode)
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                    }
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "next"
+                        width: units.gu(2); height: width
+                        color: Style.textSecondary
+                    }
+                }
+                Rectangle {
+                    anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: units.gu(2) }
+                    height: units.dp(1); color: Style.divider
+                }
+                MouseArea {
+                    id: postingRowTap
+                    anchors.fill: parent
+                    onClicked: page.pageStack.push(permPickerPage)
+                }
+            }
+
+            Item { width: 1; height: Style.spacingL }
+        }
     }
 }

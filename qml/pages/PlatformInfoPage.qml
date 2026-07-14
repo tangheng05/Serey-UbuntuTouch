@@ -4,102 +4,144 @@ import Lomiri.Components.Popups 1.3
 import "../Theme"
 import "../Session"
 import "../components"
-import "../services/CategoryService.js" as CategoryService
-import "../services/CommunityService.js" as CommunityService
+import "../services/PlatformService.js" as PlatformService
 
-/*
- * "Edit Platform Information" — matches the web CMS modal: platform name,
- * parent country (+ "Move to Superhub"), category, and a Google SEO
- * description with a 160-char counter.
- *
- * NOT YET WIRED to a save endpoint — the community_route.js endpoint for
- * updating name/parent/category/SEO description hasn't been documented yet
- * (distinct from POST /community/update-logo, which only manages images, and
- * from landing_page_v2's per-section content). Fields are prefilled only from
- * data we actually have (the cached community name); parent/category/SEO are
- * left blank until their real data source is confirmed. Save currently shows
- * a "not available yet" toast instead of silently no-oping or guessing an
- * endpoint that could corrupt real data.
- */
+// "Edit Platform Information" — platform name, parent country, category and SEO description (community_route.js update-community-* endpoints)
 Page {
     id: page
 
     property string platformNameValue: Config.communityInfoFor(Config.managedCommunityId)
         ? Config.communityInfoFor(Config.managedCommunityId).title : Config.currentCommunityName
-    // Prefilled from the community's own `country` field (the cached
-    // get-communities tree) — this is the community's actual parent, e.g.
-    // "Cambodia" for Cambodia Book Club.
-    property string parentCountryName: Config.communityInfoFor(Config.managedCommunityId)
-        ? Config.communityInfoFor(Config.managedCommunityId).country : ""
+    // Parent is structural in the get-communities tree (no `country` field on
+    // the node) — resolved by loadContext's tree walk.
+    property string parentCountryName: ""
+    property string parentCountryId: ""
     property string categoryName: ""
-    property var categoryOptions: []
-    // Full top-level country list for the picker. NOT Config.sources — that
-    // list is curated for the app's region picker and deliberately excludes
-    // Cambodia (see Main.qml), which would make a community's real parent
-    // unselectable here.
-    property var countryOptions: []
+    property int categoryId: 0
+    property var categoryOptions: []   // [{ id, name }] — community_category taxonomy
+    property var countryOptions: []    // [{ id, name }] — serey-countries (id is the UUID update-community-country needs)
+    property bool saving: false
 
-    function loadCategories() {
-        CategoryService.listMarketplaceCategories(Config.baseUrl, Session.token,
-            function (names) { page.categoryOptions = names },
-            function () { /* non-fatal: picker just stays empty */ })
+    // Initial values captured on load — Save only sends what actually changed.
+    property string _initialName: ""
+    property string _initialCountryId: ""
+    property int _initialCategoryId: 0
+    property string _initialSeo: ""
+
+    // categoryId (from the community) and categoryOptions (from the taxonomy)
+    // arrive from two async calls in either order — sync whenever both are in.
+    function _syncCategoryName() {
+        for (var i = 0; i < page.categoryOptions.length; i++) {
+            if (page.categoryOptions[i].id === page.categoryId) {
+                page.categoryName = page.categoryOptions[i].name
+                return
+            }
+        }
     }
 
-    function loadCountries() {
-        CommunityService.listAll(Config.baseUrl,
-            function (list) {
-                page.countryOptions = list
-                    .map(function (c) { return c.title })
-                    .filter(function (t) { return !!t })
+    // The tree may only give the parent's TITLE; resolve its serey-countries
+    // UUID by name match once the country list is in (either call order).
+    function _syncCountryId() {
+        if (page.parentCountryId.length > 0 || page.parentCountryName.length === 0) return
+        for (var i = 0; i < page.countryOptions.length; i++) {
+            if (page.countryOptions[i].name.toLowerCase() === page.parentCountryName.toLowerCase()) {
+                page.parentCountryId = page.countryOptions[i].id
+                page._initialCountryId = page.countryOptions[i].id
+                return
+            }
+        }
+    }
+
+    function loadCategories() {
+        PlatformService.getCategories(Config.baseUrl,
+            function (rows) {
+                page.categoryOptions = rows
+                page._syncCategoryName()
             },
             function () { /* non-fatal: picker just stays empty */ })
     }
 
-    Component.onCompleted: { page.loadCategories(); page.loadCountries() }
+    function loadContext() {
+        PlatformService.getCommunityContext(Config.baseUrl, Config.managedCommunityId,
+            function (ctx) {
+                page.parentCountryName = ctx.parentCountry
+                page.parentCountryId = ctx.countryId
+                page.categoryId = ctx.categoryId
+                seoField.text = ctx.metaDescription
+                page._initialName = page.platformNameValue
+                page._initialCountryId = ctx.countryId
+                page._initialCategoryId = ctx.categoryId
+                page._initialSeo = ctx.metaDescription
+                page._syncCategoryName()
+                page._syncCountryId()
+            },
+            function () { /* non-fatal: pickers just stay unset */ })
+    }
 
-    header: Item { height: 0 }
+    function loadCountries() {
+        // Country table rows with uuid ids — the country_id update-community-country needs
+        // (serey-countries only returns { icon_url, country_name }, no id).
+        PlatformService.getCountries(Config.baseUrl,
+            function (list) {
+                page.countryOptions = list
+                page._syncCountryId()
+            },
+            function () { /* non-fatal: picker just stays empty */ })
+    }
 
-    Rectangle {
-        id: modalHeader
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: units.gu(9)
-        color: Style.surface
+    Component.onCompleted: { page.loadCategories(); page.loadCountries(); page.loadContext() }
 
-        Column {
-            anchors { left: parent.left; right: closeBtn.left; leftMargin: Style.spacingM; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            spacing: units.dp(2)
-            Label {
-                text: Lang.tr("Edit Platform Information")
-                font.pixelSize: Style.fontLarge
-                font.weight: Font.DemiBold
-                font.family: Style.fontFor(text)
-                color: Style.textPrimary
+    // Fires one update per changed field in parallel; reports once all land.
+    function save() {
+        if (page.saving) return
+        var id = Config.managedCommunityId
+        var name = nameField.text.trim()
+        var seo = seoField.text.trim()
+        var pending = 0
+        var failed = []
+        function done(label, err) {
+            if (err) failed.push(label)
+            pending--
+            if (pending > 0) return
+            page.saving = false
+            if (failed.length === 0) {
+                Toast.success(Lang.tr("Platform info updated."))
+                page.pageStack.pop()
+            } else {
+                Toast.error(Lang.tr("Failed to update: %1").arg(failed.join(", ")))
             }
-            Label {
-                text: Lang.tr("Update your platform name, country, category and SEO")
-                width: parent.width
-                wrapMode: Text.WordWrap
-                font.pixelSize: Style.fontSmall
-                font.family: Style.fontFor(text)
-                color: Style.textSecondary
-            }
         }
-        AbstractButton {
-            id: closeBtn
-            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: units.gu(4)
-            onClicked: page.pageStack.pop()
-            Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "close"; color: Style.textSecondary }
+        var calls = []
+        if (name.length > 0 && name !== page._initialName)
+            calls.push(function () { PlatformService.updateCommunityName(Config.baseUrl, Session.token, id, name,
+                function () { done() }, function (e) { done(Lang.tr("name"), e) }) })
+        if (page.parentCountryId.length > 0 && page.parentCountryId !== page._initialCountryId)
+            calls.push(function () { PlatformService.updateCommunityCountry(Config.baseUrl, Session.token, id, page.parentCountryId,
+                function () { done() }, function (e) { done(Lang.tr("country"), e) }) })
+        if (page.categoryId > 0 && page.categoryId !== page._initialCategoryId)
+            calls.push(function () { PlatformService.updateCommunityCategory(Config.baseUrl, Session.token, id, page.categoryId,
+                function () { done() }, function (e) { done(Lang.tr("category"), e) }) })
+        if (seo !== page._initialSeo)
+            calls.push(function () { PlatformService.updateCommunityMetaDescription(Config.baseUrl, Session.token, id, seo,
+                function () { done() }, function (e) { done(Lang.tr("SEO description"), e) }) })
+        if (calls.length === 0) {
+            Toast.show(Lang.tr("No changes to save."))
+            return
         }
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: units.dp(1)
-            color: Style.divider
-        }
+        page.saving = true
+        pending = calls.length
+        for (var i = 0; i < calls.length; i++) calls[i]()
+    }
+
+    header: PageHeader {
+        title: Lang.tr("Edit Platform Information")
+        leadingActionBar.actions: [
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
+        ]
     }
 
     KeyboardAwareFlickable {
-        anchors { top: modalHeader.bottom; left: parent.left; right: parent.right; bottom: footer.top }
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: footer.top }
         contentWidth: width
         contentHeight: form.height + Style.spacingL * 2
         clip: true
@@ -246,9 +288,9 @@ Page {
             }
             PrimaryButton {
                 width: (parent.width - Style.spacingM) / 2
-                text: Lang.tr("Save Changes")
-                // Not wired yet — see file header comment.
-                onClicked: Toast.show(Lang.tr("Saving platform info isn't available yet."))
+                text: page.saving ? Lang.tr("Saving…") : Lang.tr("Save Changes")
+                busy: page.saving
+                onClicked: page.save()
             }
         }
     }
@@ -262,10 +304,11 @@ Page {
                 model: page.countryOptions
                 delegate: Button {
                     width: parent.width
-                    text: modelData
-                    color: page.parentCountryName === modelData ? Style.brand : Style.iconBackground
+                    text: modelData.name
+                    color: page.parentCountryId === modelData.id ? Style.brand : Style.iconBackground
                     onClicked: {
-                        page.parentCountryName = modelData
+                        page.parentCountryId = modelData.id
+                        page.parentCountryName = modelData.name
                         PopupUtils.close(dlg)
                     }
                 }
@@ -286,10 +329,11 @@ Page {
                 model: page.categoryOptions
                 delegate: Button {
                     width: parent.width
-                    text: modelData
-                    color: page.categoryName === modelData ? Style.brand : Style.iconBackground
+                    text: modelData.name
+                    color: page.categoryId === modelData.id ? Style.brand : Style.iconBackground
                     onClicked: {
-                        page.categoryName = modelData
+                        page.categoryId = modelData.id
+                        page.categoryName = modelData.name
                         PopupUtils.close(catDlg)
                     }
                 }

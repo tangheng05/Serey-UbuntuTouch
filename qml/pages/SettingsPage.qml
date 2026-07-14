@@ -13,20 +13,7 @@ Page {
     property var profile: null
     property bool loading: false
     property string errorMsg: ""
-    readonly property real maxContentWidth: units.gu(60)
-
-    // Whether the signed-in user already owns/manages a community — flips the
-    // "Create your platform" row into "Manage platform". Re-evaluates whenever
-    // Main.qml (or the create wizard) reassigns the set.
-    readonly property bool hasPlatform: {
-        for (var k in Config.ownedCommunityIdSet) return true;
-        return false;
-    }
-
-    // Convergence: on a phone this equals the full width, so nothing changes.
-    // On a tablet/desktop window, content stops stretching edge-to-edge and
-    // centers in a readable column instead — the header, list and search
-    // overlay all share this width so they line up.
+    // Caps content to a centered column on tablet/desktop; phone gets the full width
     readonly property real maxContentWidth: units.gu(60)
 
     property bool searching: false
@@ -588,22 +575,20 @@ Page {
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
             }
-            // One platform per user: creators see "Create", owners/managers see
-            // the CMS row instead (ownedCommunityIdSet is synced in Main.qml at
-            // startup/login and refreshed by the create wizard on success).
+            // One platform per user: creators see "Create", owners/managers see the CMS hub instead.
             SettingsRow {
-                visible: Session.isLoggedIn && !page.hasPlatform
+                visible: Session.isLoggedIn && !Config.hasAnyOwnedCommunity
                 iconName: "add"
                 label: Lang.tr("Create your platform")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("CreatePlatformPage.qml"))
             }
             SettingsRow {
-                visible: Session.isLoggedIn && page.hasPlatform
+                visible: Session.isLoggedIn && Config.hasAnyOwnedCommunity
                 iconName: "settings"
-                label: Lang.tr("Manage platform")
+                label: Lang.tr("Manage your platform")
                 showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ManagePlatformPage.qml"))
+                onClicked: page.pageStack.push(Qt.resolvedUrl("PlatformAdminPage.qml"))
             }
             // Not gated on isLoggedIn: downloads/saved articles work signed out too.
             SettingsRow {
@@ -611,18 +596,6 @@ Page {
                 label: Lang.tr("Downloaded Content")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadedContentPage.qml"))
-            }
-            // ===== Manage your platform (community owners/managers only) ===
-            // Gated on owning/managing ANY community, not just the one currently
-            // selected in the picker — CMS pages act on Config.managedCommunityId,
-            // which resolves to an owned community regardless of picker state.
-            SettingsSectionHeader { text: Lang.tr("Manage your platform"); visible: Config.hasAnyOwnedCommunity }
-            SettingsRow {
-                visible: Config.hasAnyOwnedCommunity
-                iconName: "share"
-                label: Lang.tr("Manage your platform")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("PlatformAdminPage.qml"))
             }
 
             // ===== About ==================================================

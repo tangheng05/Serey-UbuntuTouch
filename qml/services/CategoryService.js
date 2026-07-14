@@ -13,6 +13,18 @@ function listByCommunity(baseUrl, community, token, onOk, onErr) {
         }, onErr);
 }
 
+// POST /category/create-or-update (JWT) — omit `id` to create, pass it to rename/update.
+function createOrUpdate(baseUrl, token, params, onOk, onErr) {
+    var body = { community_id: params.communityId, name: params.name };
+    if (params.id) body.id = params.id;
+    Http.post(baseUrl, "/category/create-or-update", body, token, onOk, onErr);
+}
+
+// POST /category/delete (JWT)
+function remove(baseUrl, token, id, onOk, onErr) {
+    Http.post(baseUrl, "/category/delete", { id: id }, token, onOk, onErr);
+}
+
 // GET /general/list-marketplace-categories (general_route.js -> general_controller.js
 // getAllMarketplaceCategories). This is the taxonomy the web CMS's "Category"
 // picker on Edit Platform Information uses (e.g. "PRODUCTS & SERVICES") — a

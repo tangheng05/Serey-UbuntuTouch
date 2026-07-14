@@ -17,9 +17,15 @@ QtObject {
     // Emitted when a detail page's comment count changes so feed pages can patch the row's count without a full reload.
     signal commentCountChanged(string permlink, int count)
 
-    function open(postData, postKind) {
+    // Step the sheet should open on (see PostActionSheet.step). Lets a caller that
+    // already has its own buttons for the menu rows jump straight to a sub-flow
+    // (report reasons / block or delete confirm) instead of via the main menu.
+    property int startStep: 0
+
+    function open(postData, postKind, atStep) {
         post = postData;
         kind = postKind || "blog";
+        startStep = atStep || 0;
         visible = true;
     }
     function close() {

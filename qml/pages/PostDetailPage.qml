@@ -7,6 +7,7 @@ import "../components"
 import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 import "../services/VoteService.js" as VoteService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 Page {
     id: page
@@ -36,34 +37,125 @@ Page {
     // Set while replying to a specific comment rather than the post itself; cleared after posting or via the composer's Cancel.
     property var replyTarget: null
 
-    // Minimal header: just a back button, no title text
+    readonly property bool postReady: page.post !== null && (page.permlink || "").length > 0
+    readonly property bool isSaved: (SavedPosts.rev, SavedPosts.isSaved(page.permlink))
+    // Same URL shape the VoteBar's share button and the feed rows use.
+    readonly property string shareUrl: (page.author.length > 0 && page.permlink.length > 0)
+        ? ("https://serey.io/authors/" + page.author + "/" + page.permlink) : ""
+    // The viewer owns this post, so offer Edit/Delete instead of moderation (you can't report or block yourself).
+    readonly property bool isOwnPost: Session.isLoggedIn && page.author !== "" && page.author === Session.username
+
+    function toggleSaved() {
+        if (page.isSaved) SavedPosts.remove(page.permlink);
+        else SavedPosts.save(page.post);
+    }
+
+    // Same as the sheet's Hide row, plus a pop: you're looking at the post you just hid.
+    function hidePost() {
+        HiddenPosts.hide(page.permlink);
+        PostActions.hideRequested(page.author, page.permlink);
+        page.pageStack.pop();
+    }
+
+    function openEditor() {
+        var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { editPost: page.post });
+        if (ed && ed.saved) ed.saved.connect(page.load);
+    }
+
+    // Delete and Block run in the sheet and only reach us as signals; either way this
+    // page is left showing content that's gone, so unwind to the feed behind it.
+    Connections {
+        target: PostActions
+        function onPostDeleted(author, permlink) {
+            if (permlink === page.permlink) page.pageStack.pop();
+        }
+        function onUserBlocked(username) {
+            if (username === page.author) page.pageStack.pop();
+        }
+    }
+
+    // The post's own actions, mirroring the long-press sheet. Order matters: the
+    // ActionBar keeps the first actions in its slots and puts the rest behind the
+    // overflow drawer, so Save and Share stay on the header and the moderation
+    // actions live in the drawer. Report/Block/Delete need a reason picker or a
+    // confirm, so they hand off to the sheet at that step rather than duplicating
+    // those flows here.
     header: PageHeader {
+        id: postHeader
         title: ""
         leadingActionBar.actions: [
             Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
         ]
-    }
+        // Pinned, overriding PageHeader's own clamp(0.3*width/gu(4), 3, 6): that grows to
+        // 5-6 slots on a desktop-width header and would pull every action back out of the
+        // drawer. 3 = two actions + the overflow button, at every window size.
+        trailingActionBar.numberOfSlots: 3
 
-    // Save/unsave overlay is a sibling of the header, not inside it, since right-anchored children don't lay out reliably inside Page.header on Lomiri.
-    AbstractButton {
-        id: saveBtn
-        anchors { right: parent.right; rightMargin: Style.spacingM; top: parent.top }
-        height: page.header.height
-        width: units.gu(6)
-        z: 50
-        enabled: page.post !== null && (page.permlink || "").length > 0
-        readonly property bool isSaved: (SavedPosts.rev, SavedPosts.isSaved(page.permlink))
-        onClicked: {
-            if (saveBtn.isSaved) SavedPosts.remove(page.permlink);
-            else SavedPosts.save(page.post);
+        // Suru draws the stock overflow glyph (contextual-menu) as three 24-long bars on
+        // the same 96 canvas where save's artwork spans 64, so it reads as visibly smaller
+        // than the icons beside it. navigation-menu is the identical three-bar shape at
+        // 72 long. Set on the style instance because StyleHints is not available here:
+        // PageHeader owns this ActionBar and already declares one on it.
+        Binding {
+            target: postHeader.trailingActionBar.__styleInstance
+            property: "overflowIconName"
+            value: "navigation-menu"
+            when: postHeader.trailingActionBar.__styleInstance !== null
         }
-        Icon {
-            anchors.centerIn: parent
-            width: units.gu(2.6); height: width
-            name: "save"
-            color: saveBtn.isSaved ? Style.brand : Style.textSecondary
-            opacity: saveBtn.enabled ? 1 : 0.35
-        }
+        trailingActionBar.actions: [
+            Action {
+                iconName: "save"
+                text: page.isSaved ? Lang.tr("Remove from saved") : Lang.tr("Save for offline")
+                enabled: page.postReady
+                onTriggered: page.toggleSaved()
+            },
+            Action {
+                iconName: "share"
+                text: Lang.tr("Share")
+                enabled: page.shareUrl.length > 0
+                onTriggered: Share.open(page.shareUrl)
+            },
+            Action {
+                iconName: "edit"
+                text: Lang.tr("Edit post")
+                visible: page.isOwnPost
+                enabled: page.postReady
+                // Pushed here rather than via PostActions.editRequested: the feed pages
+                // that handle that signal bail on `!page.visible`, and they're covered
+                // by this page.
+                onTriggered: page.openEditor()
+            },
+            Action {
+                iconName: "delete"
+                text: Lang.tr("Delete post")
+                visible: page.isOwnPost
+                enabled: page.postReady
+                onTriggered: PostActions.open(page.post, "blog", 2)
+            },
+            Action {
+                // Not the sheet's "close": in a header that reads as dismissing the page.
+                iconName: "view-off"
+                text: Lang.tr("Hide this post")
+                visible: !page.isOwnPost
+                enabled: page.postReady
+                onTriggered: page.hidePost()
+            },
+            Action {
+                iconName: "dialog-warning-symbolic"
+                text: Lang.tr("Report Post")
+                visible: !page.isOwnPost
+                enabled: page.postReady
+                onTriggered: PostActions.open(page.post, "blog", 1)
+            },
+            Action {
+                // The sheet draws its own circle-and-bar; an ActionBar needs a theme icon.
+                iconName: "stop"
+                text: Lang.tr("Block %1").arg(page.author)
+                visible: !page.isOwnPost
+                enabled: page.postReady
+                onTriggered: PostActions.open(page.post, "blog", 3)
+            }
+        ]
     }
 
     function maincategory() {
@@ -745,6 +837,7 @@ Page {
             onChain: page.post ? (page.post.postToBlockchain !== false) : true
             showComments: false
             showVotersLabel: false
+            showShare: false   // Share now lives in the header action bar, not duplicated here
             onRequireLogin: page.pushLogin()
 
             // Apply cached vote state on every visibility change and on init, so the count always matches what the feed card shows.

@@ -43,6 +43,7 @@ Item {
             reporting = false;
             blocking = false;
         } else {
+            step = PostActions.startStep;
             backdropFade.start();
             sheetSlide.start();
             // Guard on !reportTypesLoading too, so reopening before the first fetch resolves doesn't fire a duplicate concurrent request.

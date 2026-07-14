@@ -5,13 +5,6 @@ import "../Theme"
 import "../Session"
 import "../components"
 
-/*
- * Combined offline library: videos (Session.Downloads) and articles
- * (Session.SavedPosts) under one "Downloaded Content" entry, switched by a
- * Video/Articles tab strip. Replaces the separate DownloadsPage/SavedPostsPage
- * Settings rows; those pages still exist (e.g. reachable from the Video tab
- * header) and share the same stores.
- */
 Page {
     id: page
 
@@ -20,6 +13,7 @@ Page {
     property int tabIndex: 0
     property string _pendingRemoveVideo: ""
     property string _pendingRemoveArticle: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     Component {
         id: removeVideoDialog
@@ -95,7 +89,8 @@ Page {
 
     ListView {
         id: videoList
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         visible: page.tabIndex === 0
         model: Downloads.items
@@ -105,28 +100,8 @@ Page {
             width: videoList.width
             height: videoCard.implicitHeight
 
+            // HIG polarity: LEADING = negative (red trash), TRAILING = positive.
             leadingActions: ListItemActions {
-                delegate: Item {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "black"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: Share.open(
-                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -143,6 +118,27 @@ Page {
                         iconName: "delete"
                         text: Lang.tr("Remove")
                         onTriggered: Downloads.remove(modelData.permlink)
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: Share.open(
+                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
                     }
                 ]
             }
@@ -168,7 +164,8 @@ Page {
 
     ListView {
         id: articleList
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         visible: page.tabIndex === 1
         model: SavedPosts.items
@@ -181,27 +178,8 @@ Page {
                 { author: modelData.author, permlink: modelData.permlink,
                   title: modelData.title, preloadedPost: modelData })
 
+            // HIG polarity: LEADING = negative (red trash), TRAILING = positive.
             leadingActions: ListItemActions {
-                delegate: Item {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "black"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -218,6 +196,26 @@ Page {
                         iconName: "delete"
                         text: Lang.tr("Remove")
                         onTriggered: SavedPosts.remove(modelData.permlink)
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
                     }
                 ]
             }

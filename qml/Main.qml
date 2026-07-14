@@ -1,91 +1,120 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
-// Lomiri.Notifications and Ubuntu.PushNotifications are only available on a
-// real Ubuntu Touch device, not in the clickable desktop container. We load
-// them dynamically so the desktop build doesn't crash.
+// Lomiri.Notifications/Ubuntu.PushNotifications exist only on-device, so they're created dynamically to keep desktop builds alive.
 import "Theme"
 import "Session"
 import "components"
 import "services/CommunityService.js" as CommunityService
+import "services/Flags.js" as Flags
 import "services/AccountService.js" as AccountService
 import "services/Http.js" as Http
 import "services/NotificationService.js" as NotificationService
 import "services/BlockedUsers.js" as BlockedUsers
+import "services/PaymentService.js" as PaymentService
 
-/*
- * Application shell: a persistent bottom tab bar with one PageStack per tab so
- * each section keeps its own navigation history. On launch we validate any
- * stored auth token in the background.
- */
 MainView {
     id: root
     objectName: "mainView"
-    applicationName: "serey.ubuntu"
+    applicationName: "serey.serey-io"
     automaticOrientation: true
 
     width: units.gu(45)
     height: units.gu(80)
 
+    // Convergence breakpoint shared with AdaptiveStack.qml via Config — drives the side nav rail, independent of any tab's column state.
+    readonly property bool wideMode: width >= Config.convergenceBreakpoint
+    Binding { target: Config; property: "wideMode"; value: root.wideMode }
+
     property int currentTab: 0
-    onCurrentTabChanged: { Config.currentTab = currentTab; body.opacity = 0; tabFadeIn.start(); }
+    onCurrentTabChanged: { Config.currentTab = currentTab; _ensureTab(currentTab); body.opacity = 0; tabFadeIn.start(); }
+
+    // Tabs are created lazily on first visit — launching all four at once made the Homepage web view janky on low-end devices.
+    function _ensureTab(tab) {
+        if (tab === 0 && homeStack.depth === 0)
+            homeStack.push(Qt.resolvedUrl("pages/HomepagePage.qml"));
+        else if (tab === 1 && newsStack.depth === 0)
+            newsStack.push(Qt.resolvedUrl("pages/NewsPage.qml"));
+        else if (tab === 2 && videoStack.depth === 0)
+            videoStack.push(Qt.resolvedUrl("pages/VideoPage.qml"));
+        else if (tab === 3 && settingsStack.depth === 0)
+            settingsStack.push(Qt.resolvedUrl("pages/SettingsPage.qml"));
+    }
     NumberAnimation { id: tabFadeIn; target: body; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
 
-    // Depth of the active tab's stack. The global header only shows at a tab's
-    // root (depth 1); pushed sub-pages (detail/login) bring their own back-bar.
+    // Header/nav hide at depth > 1 on phone; stay up when the stack shows 2 columns, per Lomiri convergence HIG.
     property int activeDepth: currentTab === 0 ? homeStack.depth
                             : currentTab === 1 ? newsStack.depth
                             : currentTab === 2 ? videoStack.depth
                             : settingsStack.depth
-    readonly property bool showHeader: activeDepth <= 1 && currentTab !== 3
-    readonly property bool showNavBar: activeDepth <= 1
+    property int activeColumns: currentTab === 0 ? homeStack.columns
+                              : currentTab === 1 ? newsStack.columns
+                              : currentTab === 2 ? videoStack.columns
+                              : settingsStack.columns
+    readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3
+    readonly property bool showNavBar: activeColumns > 1 || activeDepth <= 1
 
     Component.onCompleted: {
-        // A stale/expired JWT can't be detected up-front (see note below), so
-        // catch it lazily: any authed request that comes back 401 clears the
-        // session and prompts re-login, instead of leaving the user "logged in"
-        // with a dead token while publishing etc. silently fail. Guarded on
-        // isLoggedIn so concurrent 401s only clear + toast once.
+        // Expired tokens are caught lazily via 401 (can't check up-front); only clear if the rejected token is still the current one.
         Http.setUnauthorizedHandler(function (tokenUsed) {
             if (!Session.isLoggedIn) return;
-            // Only clear if the rejected token IS the current session's token.
-            // A late 401 from a previous account's in-flight request (its token
-            // was just invalidated by logout) must not wipe the fresh session.
             if (tokenUsed !== Session.token) return;
             Session.clear();
             Toast.error(Lang.tr("Your session expired. Please log in again."));
         });
 
-        // NOTE: we deliberately do NOT validate the token via /auth/authenticated
-        // on startup. That endpoint additionally requires a *device* JWT
-        // (isDeviceJwtAuthenticated) which the native client never has, so it
-        // always returns 401 — calling it would wrongly clear a perfectly valid
-        // session on every launch (the original "logged out on reopen" bug). The
-        // stored token is trusted; it works for every endpoint the app uses
-        // (those need only isJwtAuthenticated). A genuinely stale token simply
-        // surfaces as a normal API error when used.
-        _initNotifications()
-
+        // Needed immediately: the header pill icons and can-post gates read it.
         CommunityService.listAll(Config.baseUrl,
-            function (list) {
-                Config.iconByDns = CommunityService.iconMap(list);
+            function (list, superhubChildren) {
+                var icons = CommunityService.iconMap(list);
                 Config.allowPostByDns = CommunityService.allowPostMap(list);
                 Config.videoAllowPostByDns = CommunityService.videoAllowPostMap(list);
+                Config.superhubChildrenById = superhubChildren || ({});
+
+                // dns of the three fixed rows — leave their icons untouched.
+                var baseDns = {};
+                for (var b = 0; b < Config.baseSources.length; b++)
+                    baseDns[Config.baseSources[b].dns] = true;
+
+                // Append every top-level country (except Cambodia) below the fixed rows; icons derive from a flagcdn flag since backend icon_url is empty.
+                var extra = [];
+                for (var i = 0; i < list.length; i++) {
+                    var c = list[i];
+                    if (!c.dns || baseDns[c.dns]) continue;
+                    if ((c.country || "").toLowerCase() === "cambodia") continue;
+                    if (c.childCount <= 0) continue;   // hide countries with no communities yet
+                    var flag = Flags.flagUrl(c.title);
+                    if (flag) icons[c.dns] = flag;   // override generic logo with the flag
+                    extra.push({ name: c.title, id: c.id, dns: c.dns, icon: flag || c.icon || "" });
+                }
+
+                Config.iconByDns = icons;
+                Config.appendCountries(extra);
             },
             function (err) { /* keep globe fallback */ });
-
-        // A persisted session only carries token + username (see Session.qml);
-        // refetch the avatar so optimistic local comments can show it.
-        if (Session.isLoggedIn) {
-            AccountService.profile(Config.baseUrl, Session.username, Session.token,
-                function (user) { Session.avatarUrl = user.profileUrl; },
-                function (err) { /* keep letter-fallback avatar */ });
-        }
-        _syncBlockedUsers();
-        _syncOwnedCommunities();
     }
 
-    // Keep the local blocked-users set (used to filter feeds) in step with the
-    // server's authoritative list — on launch and whenever the session changes.
+    // Non-critical launch work is deferred so the Homepage web view's first load gets the CPU/network to itself on slow devices.
+    property bool startupSettled: false
+    Timer {
+        id: startupSettleTimer
+        interval: 3500
+        repeat: false
+        running: true
+        onTriggered: {
+            root.startupSettled = true;
+            _initNotifications();
+            // The avatar isn't persisted with the session — refetch it.
+            if (Session.isLoggedIn) {
+                AccountService.profile(Config.baseUrl, Session.username, Session.token,
+                    function (user) { Session.avatarUrl = user.profileUrl; },
+                    function (err) { /* keep letter-fallback avatar */ });
+            }
+            _syncBlockedUsers();
+            _syncOwnedCommunities();
+        }
+    }
+
+    // Mirror the server's blocked-users list (feeds filter on it).
     function _syncBlockedUsers() {
         if (!Session.isLoggedIn) { BlockedUsers.replaceAll([]); return; }
         AccountService.listBlocked(Config.baseUrl, Session.token,
@@ -93,9 +122,7 @@ MainView {
             function (err) { /* offline / failed — keep last-known local set */ });
     }
 
-    // Keep the set of communities the user owns/manages in step with the session
-    // — on launch and whenever the token changes. Lets an owner see the compose /
-    // video-upload buttons in their own community even when it is owner-only.
+    // Communities the user owns/manages — an owner may post even when the community is owner-only.
     function _syncOwnedCommunities() {
         if (!Session.isLoggedIn) { Config.ownedCommunityIdSet = ({}); return; }
         AccountService.ownedCommunityIds(Config.baseUrl, Session.token,
@@ -112,20 +139,15 @@ MainView {
     property var  pushClient: null   // Ubuntu.PushNotifications PushClient
     property string pushToken: ""
     property var  notifSound: null
-    // Unread count lives in the NotificationState singleton so pages pushed onto
-    // a PageStack (which can't resolve this shell's ids) can read it for a badge.
 
     function _showNotif(body) {
-        // Play sound
         if (root.notifSound) root.notifSound.play()
 
-        // System notification (lock screen / indicator)
         if (root.sysNotif) {
             root.sysNotif.body = body
             root.sysNotif.show()
         }
 
-        // In-app toast (always works)
         Toast.show(body)
     }
 
@@ -136,25 +158,23 @@ MainView {
     }
 
     function _initNotifications() {
-        // Notification sound (QtMultimedia Audio for ogg support)
+        // QtMultimedia Audio (not SoundEffect) for ogg support.
         try {
             root.notifSound = Qt.createQmlObject(
                 'import QtMultimedia 5.6; Audio { source: "/usr/share/sounds/lomiri/notifications/Xylo.ogg"; autoPlay: false }',
                 root, "notifSound")
         } catch (e) { /* QtMultimedia not available — silent */ }
 
-        // System notification (indicator + lock screen)
         try {
             root.sysNotif = Qt.createQmlObject(
                 'import Lomiri.Notifications 1.0; Notification { summary: "Serey" }',
                 root, "sysNotif")
         } catch (e) { /* Lomiri.Notifications not available on desktop — expected */ }
 
-        // Push client for background delivery
         try {
             root.pushClient = Qt.createQmlObject(
                 'import Ubuntu.PushNotifications 0.1; PushClient {' +
-                '  appId: "serey.ubuntu_serey"; }',
+                '  appId: "serey.serey-io_serey"; }',
                 root, "pushClient")
 
             root.pushClient.tokenChanged.connect(function () {
@@ -178,12 +198,12 @@ MainView {
         } catch (e) { console.warn("Push: PushClient failed to create:", e) }
     }
 
-    // Poll every 30 s while logged in
+    // Poll every 30 s while logged in; the first poll waits for startupSettled.
     Timer {
         id: notifPoller
         interval: 30000
         repeat: true
-        running: Session.isLoggedIn && Session.pushEnabled
+        running: Session.isLoggedIn && Session.pushEnabled && root.startupSettled
         triggeredOnStart: true
         onTriggered: {
             if (!Session.isLoggedIn || !Session.pushEnabled) return
@@ -206,16 +226,48 @@ MainView {
         }
     }
 
+    // Background check for a pending crypto plan payment. Crypto activation
+    // only happens when OUR client pings check-status (no webhook reliance),
+    // so if the user paid after closing the payment sheet — or the whole app —
+    // this is what still activates the plan. Payments.pendingCrypto is
+    // persisted in SQLite; the PaymentSheet's own 10 s poll takes over while
+    // it is open (hence !Payments.cryptoOpen).
+    Timer {
+        id: cryptoPendingPoller
+        interval: 60000
+        repeat: true
+        triggeredOnStart: true   // also fires on app launch/resume via `running`
+        running: Session.isLoggedIn && Payments.pendingCrypto !== null
+                 && !Payments.cryptoOpen && root.startupSettled
+        onTriggered: {
+            var p = Payments.pendingCrypto
+            if (!p) return
+            PaymentService.checkCryptoStatus(Config.baseUrl, Session.token, p.paymentId,
+                function (status) {
+                    if (status === "finished") {
+                        Payments.clearPendingCrypto()
+                        Toast.success(Lang.tr("Payment confirmed!"))
+                        Payments.paymentSucceeded()
+                    } else if (status === "failed" || status === "refunded" || status === "expired") {
+                        Payments.clearPendingCrypto()
+                    } else {
+                        // Still waiting/confirming. Give up well past expiry —
+                        // late blockchain confirmations can land after the
+                        // NOWPayments window, so keep checking for an extra day.
+                        var exp = Date.parse(p.expiresAt)
+                        if (!isNaN(exp) && Date.now() > exp + 24 * 3600 * 1000)
+                            Payments.clearPendingCrypto()
+                    }
+                },
+                function () { /* transient — next tick retries */ })
+        }
+    }
+
     Connections {
         target: Session
-        // The blocked set is per-account; resync (or clear) it whenever the auth
-        // token changes. Keying off the token (not isLoggedIn) means switching
-        // accounts reloads the new account's blocks even if the token is swapped
-        // directly, so one account's blocks never leak into another's feed.
+        // Keyed off the token (not isLoggedIn) so account switches resync — one account's blocks must never leak into another's feed.
         function onTokenChanged() { root._syncBlockedUsers(); root._syncOwnedCommunities() }
         function onIsLoggedInChanged() {
-            // Blocked-set sync is handled by onTokenChanged (token always changes
-            // on login/logout/switch), so it isn't repeated here.
             if (!Session.isLoggedIn) {
                 NotificationState.unread = -1
             } else if (root.pushToken !== "") {
@@ -224,32 +276,42 @@ MainView {
         }
     }
 
-    // A page requested a tab switch (e.g. signup success → Homepage). Switch
-    // tabs and unwind the Settings stack the auth flow was pushed onto, so we
-    // don't leave the signup pages behind it.
+    // Tab switch requested by a page (e.g. signup success); also unwinds auth pages left on the Settings stack.
     Connections {
         target: Nav
         function onGoToTab(tab) {
             root.currentTab = tab;
+            // tab may already equal currentTab (no change signal) — ensure explicitly.
+            root._ensureTab(tab);
             while (settingsStack.depth > 1)
                 settingsStack.pop();
+        }
+        // Buy-plan → create-platform funnel: land on Settings with the wizard
+        // pushed (its own gate re-checks the now-active subscription).
+        function onCreatePlatform() {
+            root.currentTab = 3;
+            root._ensureTab(3);
+            while (settingsStack.depth > 1)
+                settingsStack.pop();
+            settingsStack.push(Qt.resolvedUrl("pages/CreatePlatformPage.qml"));
         }
     }
 
     // --- Global header (community pill + logo) ----------------------------
     AppHeader {
         id: appHeader
-        anchors { left: parent.left; right: parent.right; top: parent.top }
+        anchors { left: root.wideMode ? sideNavBar.right : parent.left; right: parent.right; top: parent.top }
         height: root.showHeader ? units.gu(6) : 0
         visible: root.showHeader
+        wide: root.wideMode
         onCommunityButtonClicked: communityPicker.open()
 
-        // Center: "My feed" shortcut, now in the middle of the header.
         center: AbstractButton {
             id: feedBtn
             visible: Session.isLoggedIn
             anchors.centerIn: parent
-            width: units.gu(4); height: width
+            width: root.wideMode ? units.gu(5) : units.gu(4)
+            height: width
             onClicked: {
                 var stack = root.currentTab === 0 ? homeStack
                           : root.currentTab === 1 ? newsStack
@@ -259,25 +321,25 @@ MainView {
             }
             Image {
                 anchors.centerIn: parent
-                width: units.gu(3.5); height: width
+                width: root.wideMode ? units.gu(4.5) : units.gu(3.5)
+                height: width
                 source: Qt.resolvedUrl("../assets/iconFeed.png")
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
             }
         }
 
-        // Right: post actions, in the feed button's old trailing spot.
         Row {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.spacingS
 
-            // Compose (News tab only) — Lomiri header action, replacing the old
-            // Material floating button. Reloads the feed once a post is saved.
+            // Compose (News tab only). Reloads the feed once a post is saved.
             AbstractButton {
                 id: composeBtn
                 visible: Session.isLoggedIn && root.currentTab === 1
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(3.2); height: width
+                width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
+                height: width
                 onClicked: {
                     var np = newsStack.currentPage;
                     var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"));
@@ -292,22 +354,20 @@ MainView {
                 }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(2.2); height: width
+                    width: root.wideMode ? units.gu(3) : units.gu(2.2)
+                    height: width
                     name: "edit"
                     color: Style.brand
                 }
             }
 
-            // Upload video (Video tab only) — Lomiri header action, replacing the
-            // old Material floating button on VideoPage.
+            // Upload video (Video tab only), gated on the community's video posting permission.
             AbstractButton {
                 id: uploadBtn
-                // Only when the selected community lets everyone post a VIDEO
-                // (video_is_allow_post); hidden for Global and owner-only-video
-                // communities, independent of the blog posting flag.
                 visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostVideoCurrent
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(3.2); height: width
+                width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
+                height: width
                 onClicked: {
                     var vp = videoStack.currentPage;
                     var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
@@ -322,7 +382,8 @@ MainView {
                 }
                 Icon {
                     anchors.centerIn: parent
-                    width: units.gu(2.2); height: width
+                    width: root.wideMode ? units.gu(3) : units.gu(2.2)
+                    height: width
                     name: "add"
                     color: Style.brand
                 }
@@ -334,44 +395,57 @@ MainView {
     Item {
         id: body
         anchors {
-            left: parent.left
+            left: root.wideMode ? sideNavBar.right : parent.left
             right: parent.right
             top: appHeader.bottom
-            bottom: root.showNavBar ? navBar.top : parent.bottom
+            bottom: (root.showNavBar && !root.wideMode) ? navBar.top : parent.bottom
         }
 
-        PageStack {
+        AdaptiveStack {
             id: homeStack
+            singleColumnUntilPushed: true
             anchors.fill: parent
             visible: root.currentTab === 0
             Component.onCompleted: push(Qt.resolvedUrl("pages/HomepagePage.qml"))
         }
-        PageStack {
+        // News/Video/Settings are filled lazily by _ensureTab() on first visit.
+        AdaptiveStack {
             id: newsStack
+            emptyDetailIconName: "stock_note"
+            emptyDetailMessage: Lang.tr("Select a post to read")
             anchors.fill: parent
             visible: root.currentTab === 1
-            Component.onCompleted: push(Qt.resolvedUrl("pages/NewsPage.qml"))
         }
-        PageStack {
+        AdaptiveStack {
             id: videoStack
+            emptyDetailIconName: "camcorder"
+            emptyDetailMessage: Lang.tr("Select a video to watch")
             anchors.fill: parent
             visible: root.currentTab === 2
-            Component.onCompleted: push(Qt.resolvedUrl("pages/VideoPage.qml"))
         }
-        PageStack {
+        AdaptiveStack {
             id: settingsStack
+            emptyDetailIconName: "settings"
+            emptyDetailMessage: Lang.tr("Select a setting")
             anchors.fill: parent
             visible: root.currentTab === 3
-            Component.onCompleted: push(Qt.resolvedUrl("pages/SettingsPage.qml"))
         }
     }
 
-    // --- Bottom navigation ------------------------------------------------
+    // Shared by both nav layouts below, so the tab list only exists once.
+    readonly property var _tabs: [
+        { label: Lang.tr("Homepage"), icon: "home" },
+        { label: Lang.tr("News"),     icon: "stock_note" },
+        { label: Lang.tr("Video"),    icon: "camcorder" },
+        { label: Lang.tr("Settings"), icon: "settings" }
+    ]
+
+    // --- Bottom navigation (phone / narrow window) -------------------------
     Rectangle {
         id: navBar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: root.showNavBar ? units.gu(7) : 0
-        visible: root.showNavBar
+        height: (root.showNavBar && !root.wideMode) ? units.gu(7) : 0
+        visible: root.showNavBar && !root.wideMode
         color: Style.surface
 
         Rectangle {
@@ -384,12 +458,7 @@ MainView {
             anchors.fill: parent
 
             Repeater {
-                model: [
-                    { label: Lang.tr("Homepage"), icon: "home" },
-                    { label: Lang.tr("News"),     icon: "stock_note" },
-                    { label: Lang.tr("Video"),    icon: "camcorder" },
-                    { label: Lang.tr("Settings"), icon: "settings" }
-                ]
+                model: root._tabs
                 delegate: AbstractButton {
                     width: navBar.width / 4
                     height: navBar.height
@@ -408,15 +477,49 @@ MainView {
         }
     }
 
-    // --- Community / source selector (bottom sheet) overlay ---------------
+    // Side navigation: a separate vertical rail spanning full height, matching Lomiri's desktop shell convention — convergence, not scaling.
+    Rectangle {
+        id: sideNavBar
+        anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+        width: (root.showNavBar && root.wideMode) ? units.gu(9) : 0
+        visible: root.showNavBar && root.wideMode
+        color: Style.surface
+
+        Rectangle {
+            anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
+            width: units.dp(1)
+            color: Style.divider
+        }
+
+        Column {
+            anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: units.gu(2) }
+            spacing: units.gu(1)
+
+            Repeater {
+                model: root._tabs
+                delegate: AbstractButton {
+                    width: sideNavBar.width
+                    height: units.gu(7)
+                    property bool active: root.currentTab === index
+
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(4)
+                        height: width
+                        name: modelData.icon
+                        color: active ? Style.brand : Style.textSecondary
+                    }
+                    onClicked: root.currentTab = index
+                }
+            }
+        }
+    }
+
+    // --- Overlays (bottom sheets + toasts) ---------------------------------
     CommunityPicker { id: communityPicker }
-
-    // --- Post actions (Report / Hide / Block) bottom sheet ----------------
     PostActionSheet { }
-
-    // --- Share (ContentHub peer picker) bottom sheet -----------------------
     ShareSheet { }
-
-    // --- Transient notifications (snackbar) overlay -----------------------
+    PaymentSheet { }
+    StripeCheckoutSheet { }
     Toaster { }
 }

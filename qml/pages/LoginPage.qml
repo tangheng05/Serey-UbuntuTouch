@@ -5,11 +5,6 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-/*
- * Username/password login. On success stores the JWT in Session and pops back
- * to Settings (which then loads the profile). Styled with the app's shared
- * design tokens (logo hero, branded FormField inputs, PrimaryButton).
- */
 Page {
     id: page
 
@@ -33,9 +28,7 @@ Page {
         AccountService.login(Config.baseUrl, usernameField.text, passwordField.text,
             function (auth) {
                 busy = false;
-                // Account switch is always clear -> set, never an in-place
-                // overwrite: drop any previous session and its cached follow
-                // state so account B never inherits anything from account A.
+                // Clear -> set, never overwrite in place, so account B never inherits anything cached from account A.
                 Session.clear();
                 FollowStore.reset();
                 Session.setAuth(auth.token, usernameField.text);
@@ -61,7 +54,8 @@ Page {
             width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
             anchors.horizontalCenter: parent.horizontalCenter
             y: Style.spacingL
-            spacing: Style.spacingM
+            // Gaps use explicit Item spacers below, not uniform spacing
+            spacing: 0
 
             // Logo hero
             Image {
@@ -71,6 +65,8 @@ Page {
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
             }
+
+            Item { width: 1; height: Style.spacingM }
 
             Column {
                 width: parent.width
@@ -95,7 +91,7 @@ Page {
                 }
             }
 
-            Item { width: 1; height: Style.spacingXs }
+            Item { width: 1; height: Style.spacingL }
 
             FormField {
                 id: usernameField
@@ -105,6 +101,8 @@ Page {
                 onAccepted: passwordField.input.forceActiveFocus()
             }
 
+            Item { width: 1; height: Style.spacingM }
+
             FormField {
                 id: passwordField
                 width: parent.width
@@ -112,6 +110,17 @@ Page {
                 echoMode: TextInput.Password
                 onAccepted: page.submit()
             }
+
+            Item { width: 1; height: Style.spacingXs }
+
+            LinkButton {
+                width: parent.width
+                label: Lang.tr("Forgot password?")
+                horizontalAlignment: Text.AlignRight
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ForgotPasswordPage.qml"))
+            }
+
+            Item { width: 1; height: Style.spacingS }
 
             Label {
                 width: parent.width
@@ -123,6 +132,8 @@ Page {
                 visible: text.length > 0
             }
 
+            Item { width: 1; height: page.errorMsg.length > 0 ? Style.spacingS : 0 }
+
             PrimaryButton {
                 width: parent.width
                 text: page.busy ? Lang.tr("Signing in…") : Lang.tr("Log in")
@@ -132,15 +143,9 @@ Page {
 
             Item { width: 1; height: Style.spacingXs }
 
-            LinkButton {
+            SecondaryButton {
                 width: parent.width
-                label: Lang.tr("Forgot password?")
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ForgotPasswordPage.qml"))
-            }
-
-            LinkButton {
-                width: parent.width
-                label: Lang.tr("Sign up")
+                text: Lang.tr("Sign up")
                 onClicked: page.pageStack.push(Qt.resolvedUrl("CreateAccountPage.qml"))
             }
         }

@@ -2,11 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Primary call-to-action button in the brand-blue, rounded (cardRadius) style —
- * the same fill/rounding the Follow pill and feed actions use. Shows an inline
- * spinner while `busy`; disabled state dims the fill.
- */
 AbstractButton {
     id: root
 

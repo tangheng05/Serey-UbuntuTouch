@@ -1,17 +1,6 @@
 import QtQuick 2.7
 import Lomiri.DownloadManager 1.2
 
-/*
- * Per-download wrapper over Lomiri.DownloadManager's SingleDownload. This is the
- * ONLY file that imports the module, so its absence (e.g. the WSL desktop
- * preview, which has no download daemon) is contained: Downloads.qml creates
- * this via Qt.createComponent and tolerates a Component.Error status, exactly
- * like Main.qml guards PushClient.
- *
- * The system daemon streams the file to the app's confined download cache and
- * keeps going while the app is backgrounded; on completion it hands back an
- * absolute path which Downloads.qml persists for offline playback.
- */
 Item {
     id: dl
 
@@ -32,9 +21,7 @@ Item {
 
     SingleDownload {
         id: single
-        // autoStart (default true): download() begins immediately. With it false
-        // the transfer is created but never started — which left the button stuck
-        // at 0%.
+        // autoStart (default true): download() begins immediately — with it false the transfer is created but never started, leaving the button stuck at 0%.
         autoStart: true
         allowMobileDownload: true
         metadata: Metadata { showInIndicator: dl.showInIndicator; title: dl.title }
@@ -47,8 +34,7 @@ Item {
         onErrorChanged: if (errorMessage && errorMessage.length > 0) { stall.stop(); dl.failed(errorMessage); }
     }
 
-    // If nothing moves for a while — no download daemon (the desktop preview) or a
-    // dead stall — give up so the UI resets instead of sitting at 0% forever.
+    // If nothing moves for a while (no download daemon, or a dead stall), give up so the UI resets instead of sitting at 0% forever.
     Timer {
         id: stall
         interval: 30000

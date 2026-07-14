@@ -6,28 +6,17 @@ import "../Session"
 import "../services/CommentService.js" as CommentService
 import "../services/VoteService.js" as VoteService
 
-/*
- * A single comment row (iOS-style): circular avatar + author + relative time
- * + "•••" menu, body text, a like + reply action row, and — when the comment
- * has replies — a "Hide replies / N replies" toggle that reveals a nested,
- * left-indented sub-tree (recursive CommentItem). Own comments (with a
- * server-assigned permlink) can be edited or deleted via the "•••" menu;
- * each is reported up (edited()/deleted()) so the page updates its tree.
- */
 Item {
     id: item
     property var comment: ({})
     readonly property var c: comment ? comment : ({})
     readonly property var replies: c.replies || []
     property int depth: 0
-    // Top-level comments show their direct replies; deeper (nested) replies start
-    // collapsed behind the "N replies" toggle so a deep thread doesn't instantiate
-    // the whole sub-tree eagerly. The toggle flips this per comment.
+    // Nested replies start collapsed so a deep thread doesn't eagerly instantiate
     property bool repliesExpanded: depth < 1
     property bool topLevel: true
 
-    // Only the author can edit/delete, and only a comment that exists
-    // server-side (optimistic local comments carry an empty permlink).
+    // Only the author can edit/delete, and only a comment that exists server-side (optimistic local comments carry an empty permlink).
     readonly property bool canModify: Session.isLoggedIn
                                       && c.author === Session.username
                                       && (c.permlink || "").length > 0
@@ -38,7 +27,7 @@ Item {
     property bool saving: false
 
     signal deleted(string permlink)
-    signal edited(string permlink, string newBody)
+    signal edited(string permlink, string newBody, string parentAuthor, string parentPermlink)
     signal replyRequested(var comment)
     signal authorClicked(string author)
 
@@ -53,36 +42,16 @@ Item {
 
     function saveEdit() {
         var text = item.editText.trim();
-        if (text.length === 0 || item.saving)
+        if (text.length === 0)
             return;
-        item.saving = true;
-        CommentService.create(Config.baseUrl,
-            { parentAuthor: c.parentAuthor, parentPermlink: c.parentPermlink,
-              body: text, permlink: c.permlink },
-            Session.token,
-            function () {
-                item.saving = false;
-                item.editing = false;
-                item.edited(c.permlink, text);
-            },
-            function (err) {
-                item.saving = false;
-                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update comment."));
-            });
+        // Emit only — CommentItem is Loader-instantiated for nested replies where JS module imports resolve to null, so the host page's handler makes the server call.
+        item.editing = false;
+        item.edited(c.permlink, text, c.parentAuthor || "", c.parentPermlink || "");
     }
 
-    // Optimistic: drop it from the page's tree immediately rather than waiting
-    // on the round-trip, which made deleting feel sluggish. The DELETE request
-    // still fires — a failure just surfaces a toast (the comment doesn't come
-    // back, same as most apps' optimistic delete).
+    // Optimistic delete; same Loader/null-import reason as saveEdit for why the host page's onDeleted handler does the actual call.
     function doDelete() {
-        var permlinkToDelete = c.permlink;
-        item.deleted(permlinkToDelete);
-        CommentService.remove(Config.baseUrl, permlinkToDelete, Session.username, Session.token,
-            function () { /* already removed from the UI */ },
-            function (err) {
-                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't delete comment."));
-            });
+        item.deleted(c.permlink);
     }
 
     width: parent ? parent.width : units.gu(40)
@@ -177,8 +146,7 @@ Item {
                 }
             }
 
-            // Edit / Delete dropdown — Delete swaps to an inline confirm step
-            // rather than closing, so it's a single small popup either way.
+            // Edit / Delete dropdown
             Rectangle {
                 id: menu
                 visible: item.menuOpen
@@ -407,10 +375,7 @@ Item {
 
             Column {
                 id: repliesCol
-                // Capture owner depth here — inside a Loader delegate, 'item'
-                // refers to the Loader's loaded object (null at onCompleted time),
-                // shadowing the outer CommentItem id. Reading it on repliesCol
-                // avoids that shadowing.
+                // 'item' inside a Loader delegate shadows the outer CommentItem id
                 readonly property int ownerDepth: item.depth
                 x: ownerDepth === 0 ? units.gu(3.5) : 0
                 width: parent.width - x
@@ -418,14 +383,13 @@ Item {
                 function forwardSignals(loaderItem) {
                     if (!loaderItem) return;
                     loaderItem.deleted.connect(function(permlink) { item.deleted(permlink) })
-                    loaderItem.edited.connect(function(permlink, newBody) { item.edited(permlink, newBody) })
+                    loaderItem.edited.connect(function(permlink, newBody, pa, pp) { item.edited(permlink, newBody, pa, pp) })
                     loaderItem.replyRequested.connect(function(c) { item.replyRequested(c) })
                     loaderItem.authorClicked.connect(function(author) { item.authorClicked(author) })
                 }
 
                 Repeater {
-                    // Only instantiate reply rows while expanded — collapsing frees
-                    // them, and nested levels aren't built until the user expands.
+                    // Only instantiate reply rows while expanded — collapsing frees them, and nested levels aren't built until expanded.
                     model: item.repliesExpanded ? item.replies : []
                     delegate: Loader {
                         id: replyLoader

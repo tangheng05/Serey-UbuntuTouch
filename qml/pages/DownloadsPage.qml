@@ -5,18 +5,13 @@ import "../Theme"
 import "../Session"
 import "../components"
 
-/*
- * Offline library: videos saved via the Download button on VideoDetailPage.
- * Reachable from the Video tab header and from Settings. Tapping a row opens
- * VideoDetailPage, which plays the local copy (VideoDetailPage.directUrl()
- * prefers Downloads.pathFor()). The "•••" button removes a download.
- */
 Page {
     id: page
 
     header: Item { height: 0 }
 
     property string _pendingRemove: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     Component {
         id: removeDialog
@@ -66,7 +61,8 @@ Page {
 
     ListView {
         id: list
-        anchors { top: topBar.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: topBar.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: Downloads.items
         cacheBuffer: units.gu(16)
@@ -75,28 +71,8 @@ Page {
             width: list.width
             height: videoCard.implicitHeight
 
+            // HIG polarity: LEADING = negative (red trash), TRAILING = positive.
             leadingActions: ListItemActions {
-                delegate: Item {
-                    width: units.gu(7)
-                    height: parent ? parent.height : units.gu(6)
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: action.iconName
-                        color: "black"
-                    }
-                }
-                actions: [
-                    Action {
-                        iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: Share.open(
-                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
-                    }
-                ]
-            }
-
-            trailingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -113,6 +89,27 @@ Page {
                         iconName: "delete"
                         text: Lang.tr("Remove")
                         onTriggered: Downloads.remove(modelData.permlink)
+                    }
+                ]
+            }
+
+            trailingActions: ListItemActions {
+                delegate: Item {
+                    width: units.gu(7)
+                    height: parent ? parent.height : units.gu(6)
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: action.iconName
+                        color: "black"
+                    }
+                }
+                actions: [
+                    Action {
+                        iconName: "share"
+                        text: Lang.tr("Share")
+                        onTriggered: Share.open(
+                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
                     }
                 ]
             }

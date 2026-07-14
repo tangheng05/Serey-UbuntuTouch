@@ -2,10 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Compact SEREY payout pill: coin icon + value string (e.g. "1685.653 SEREY").
- * Hidden when there's no value. Used in cards and the post action bar.
- */
 Rectangle {
     id: coin
 
@@ -27,8 +23,7 @@ Rectangle {
             width: Style.coinIconSize
             height: Style.coinIconSize
             source: Qt.resolvedUrl("../../assets/serey-currency.png")
-            // Cap decoded size (this pill renders on every card/action bar) — the
-            // app-wide image-memory convention. 2x the box for crisp hiDPI.
+            // Cap decoded size (renders on every card/action bar) per the app-wide image-memory convention; 2x the box for crisp hiDPI.
             sourceSize.width: Style.coinIconSize * 2
             sourceSize.height: Style.coinIconSize * 2
             fillMode: Image.PreserveAspectFit

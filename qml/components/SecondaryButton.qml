@@ -2,10 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Outlined brand button — the iOS "Self Custody" style. Same size/rounding as
- * PrimaryButton but transparent with a brand border, for secondary actions.
- */
 AbstractButton {
     id: root
 

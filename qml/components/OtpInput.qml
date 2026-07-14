@@ -2,14 +2,6 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Segmented verification-code input (like the web's 6-box VerificationInput):
- * a row of boxes, each showing one typed digit, backed by a single hidden
- * TextInput that captures the keystrokes. The next box to fill is highlighted
- * in brand blue while focused. Drop-in for the auth OTP steps — exposes `text`
- * and `input` (so existing `otpField.text` / `otpField.input.forceActiveFocus()`
- * keep working) plus an `accepted()` signal.
- */
 Item {
     id: root
 

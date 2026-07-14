@@ -49,12 +49,8 @@ Page {
         anchors.fill: parent
 
         Column {
-            anchors {
-                left: parent.left
-                right: parent.right
-                leftMargin: Style.spacingM
-                rightMargin: Style.spacingM
-            }
+            width: Math.min(parent.width - Style.spacingM * 2, units.gu(50))
+            anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.spacingM
             topPadding: Style.spacingL
 

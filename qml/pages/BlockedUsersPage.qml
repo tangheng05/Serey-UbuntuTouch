@@ -10,6 +10,7 @@ Page {
 
     property bool loading: false
     property string errorMsg: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     header: PageHeader {
         title: Lang.tr("Blocked Users")
@@ -20,6 +21,13 @@ Page {
 
     ListModel { id: blockedModel; dynamicRoles: true }
 
+    // Fetches each user's profile (for a real avatar) after the block list itself loads
+    function _fetchAvatar(index, username) {
+        AccountService.profile(Config.baseUrl, username, Session.token,
+            function (user) { blockedModel.setProperty(index, "avatarUrl", user.profileUrl || "") },
+            function (err) { /* keep letter-fallback avatar */ })
+    }
+
     function load() {
         page.loading = true
         page.errorMsg = ""
@@ -28,7 +36,10 @@ Page {
             function (list) {
                 page.loading = false
                 for (var i = 0; i < list.length; i++) {
-                    if (list[i] !== "") blockedModel.append({ username: list[i], unblocking: false })
+                    if (list[i] !== "") {
+                        blockedModel.append({ username: list[i], unblocking: false, avatarUrl: "" })
+                        page._fetchAvatar(blockedModel.count - 1, list[i])
+                    }
                 }
             },
             function (err) {
@@ -54,7 +65,8 @@ Page {
 
     ListView {
         id: list
-        anchors { top: parent.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: parent.header.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         model: blockedModel
         clip: true
 
@@ -63,7 +75,7 @@ Page {
             height: units.gu(9)
             readonly property int btnWidth: units.gu(11)
 
-            // Tap row → open profile (declared first = lowest z; button MouseArea sits above it)
+            // Tap row
             MouseArea {
                 id: rowPress
                 anchors.fill: parent
@@ -88,13 +100,21 @@ Page {
                     anchors.fill: parent
                     radius: width / 2
                     color: Style.avatarTint ? Style.avatarTint(model.username || "") : Style.brand
+                    visible: (model.avatarUrl || "") === ""
                 }
                 Label {
                     anchors.centerIn: parent
+                    visible: (model.avatarUrl || "") === ""
                     text: (model.username || "?").charAt(0).toUpperCase()
                     font.pixelSize: Style.fontLarge
                     font.bold: true
                     color: "white"
+                }
+                CircleImage {
+                    anchors.fill: parent
+                    source: model.avatarUrl || ""
+                    decode: units.gu(12)
+                    visible: (model.avatarUrl || "") !== ""
                 }
             }
 

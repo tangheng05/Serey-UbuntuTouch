@@ -17,6 +17,7 @@ Page {
     property var inflight: null
     property int retryCount: 0
     property bool markingAllRead: false
+    readonly property real maxContentWidth: units.gu(60)
 
     header: PageHeader {
         id: pageHeader
@@ -145,10 +146,7 @@ Page {
         page.markingAllRead = true
         NotificationService.markAllRead(Config.baseUrl, Session.token,
             function () {
-                // Clear the global badge even if the page was torn down (e.g.
-                // logout) before this callback ran; NotificationState is a
-                // singleton and always safe. Then guard the page-local updates
-                // against that teardown (notifModel becomes null with the page).
+                // Singleton, always safe even if the page was torn down (logout) before this ran; notifModel below is guarded separately.
                 NotificationState.unread = 0
                 if (!notifModel) return
                 page.markingAllRead = false
@@ -167,9 +165,7 @@ Page {
         if (notifModel.get(index).isRead) return
         NotificationService.markOneRead(Config.baseUrl, Session.token, nid,
             function () {
-                // The page (and its notifModel) can be torn down — e.g. a logout
-                // that pops NotificationsPage — while this request is in flight;
-                // the stale callback must not touch the now-null model.
+                // Page can be torn down (logout) while this request is in flight
                 if (!notifModel) return
                 notifModel.setProperty(index, "isRead", true)
                 if (page.unreadCount > 0) {
@@ -185,7 +181,8 @@ Page {
     // ── Content ──────────────────────────────────────────────────────────────
     ListView {
         id: list
-        anchors { top: parent.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: parent.header.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         opacity: page.markingAllRead ? 0.4 : 1
         Behavior on opacity { NumberAnimation { duration: 150 } }
         model: notifModel

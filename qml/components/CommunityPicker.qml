@@ -5,12 +5,6 @@ import "../Theme"
 import "../Session"
 import "../services/CommunitySubscriberService.js" as SubscriberService
 
-/*
- * Bottom-sheet community picker. Each top-level source (Global / NL / US) has
- * a chevron that expands to show sub-communities fetched from
- * GET /community/categories/list?community_id=X, grouped by category.
- * Sub-community results are cached per source so we only fetch once.
- */
 Item {
     id: picker
     anchors.fill: parent
@@ -19,8 +13,8 @@ Item {
 
     // Which source row is currently expanded (-1 = none).
     property int expandedIndex: -1
-    // Per-source cache: null = not fetched yet, [] = fetched but empty, [...] = data.
-    property var cache: [null, null, null, null]
+    // Per-source cache: undefined = not fetched, [] = empty, [...] = data
+    property var cache: ({})
     property int loadingIndex: -1
     // Map of communityId (string) → true for communities the user is subscribed to.
     property var subscribedMap: ({})
@@ -66,14 +60,10 @@ Item {
     }
 
     function _fetch(srcIndex) {
-        if (picker.cache[srcIndex] !== null) return
+        if (picker.cache[srcIndex] !== undefined) return
         picker.loadingIndex = srcIndex
 
-        // All sources: step 1 — fetch the correct communities for this source,
-        // step 2 — fetch categories list and build id→categoryName map,
-        // step 3 — group step-1 communities by their category.
-        // Global (srcIndex 0) uses categories/list directly since list-by-parent-id/1
-        // returns only the top-level regional hubs, not the individual communities.
+        // Fetch communities, then categories, then group the former by the latter; Global uses categories/list directly since list-by-parent-id/1 returns only hubs.
 
         var apiId = Config.sources[srcIndex].id
         if (apiId === 0) apiId = 1
@@ -118,9 +108,7 @@ Item {
         }
 
         function _applyCategories(sourceComms, catArr) {
-            // Build community_category_id → {name, icon, color} map
-            // Communities from list-by-parent-id carry community_category_id;
-            // categories from categories/list also carry community_category_id.
+            // Build community_category_id -> {name, icon, color} map from both communities and categories, which both carry community_category_id.
             var catMap = {}
             for (var i = 0; i < catArr.length; i++) {
                 var meta = _catMeta(catArr[i], i)
@@ -145,8 +133,8 @@ Item {
         }
 
         function _store(si, cats) {
-            var nc = []
-            for (var i = 0; i < picker.cache.length; i++) nc.push(picker.cache[i])
+            var nc = {}
+            for (var k in picker.cache) nc[k] = picker.cache[k]
             nc[si] = cats
             picker.cache = nc
             picker.loadingIndex = -1
@@ -252,9 +240,18 @@ Item {
     NumberAnimation { id: cpBackdropFadeOut; target: cpBackdrop; property: "opacity"; to: 0;            duration: 200 }
 
     // ── Sheet ─────────────────────────────────────────────────────────────────
+    // Full-width sheet on phone, centered width-capped card on desktop
     Rectangle {
         id: sheet
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        readonly property bool wide: Config.wideMode
+        anchors {
+            left: sheet.wide ? undefined : parent.left
+            right: sheet.wide ? undefined : parent.right
+            horizontalCenter: sheet.wide ? parent.horizontalCenter : undefined
+            bottom: parent.bottom
+            bottomMargin: sheet.wide ? units.gu(4) : 0
+        }
+        width: sheet.wide ? Math.min(parent.width - units.gu(4), units.gu(60)) : parent.width
         height: Math.min(sheetContent.height + units.gu(4), picker.height * 0.82)
         radius: units.gu(1)
         color: Style.surface
@@ -290,7 +287,7 @@ Item {
                     x: Style.spacingM
                     Label {
                         width: parent.width - units.gu(4)
-                        text: Lang.tr("Choose community")
+                        text: Lang.tr("Choose platform")
                         font.pixelSize: units.dp(17)
                         font.weight: Font.DemiBold
                         color: Style.textTitle
@@ -311,9 +308,8 @@ Item {
                     delegate: Column {
                         id: sourceCol
                         width: sheetContent.width
-                        // Global (index 0) applies no community filter and is hidden
-                        // from the picker; Netherlands is the default source instead.
-                        visible: index !== 0
+                        // Global (index 0) applies no community filter and is shown as a plain selectable row with no chevron (no sub-communities).
+                        visible: true
                         property int srcIndex: index
                         property bool isExpanded: picker.expandedIndex === index
                         property var cats: picker.cache[index] || []
@@ -369,10 +365,7 @@ Item {
                                 }
                             }
 
-                            // Chevron icon (NL/US only) — anchored to the row's right
-                            // edge, inside the chevron tap zone (placing it in the Row
-                            // put it left of the zone, so arrow taps selected the source
-                            // and closed the sheet instead of expanding).
+                            // Anchored to the tap zone directly since it previously sat left of the zone, so arrow taps selected the source instead.
                             Icon {
                                 anchors { right: parent.right; rightMargin: Style.spacingM
                                           verticalCenter: parent.verticalCenter }
@@ -438,11 +431,11 @@ Item {
 
                             // Empty state
                             Item {
-                                visible: sourceCol.cats.length === 0 && picker.cache[sourceCol.srcIndex] !== null
+                                visible: sourceCol.cats.length === 0 && picker.cache[sourceCol.srcIndex] !== undefined
                                 width: parent.width; height: units.gu(5)
                                 Label {
                                     anchors.centerIn: parent
-                                    text: Lang.tr("No communities found")
+                                    text: Lang.tr("No platforms found")
                                     font.pixelSize: Style.fontSmall
                                     color: Style.textSecondary
                                 }
@@ -539,7 +532,11 @@ Item {
                                     Repeater {
                                         model: catData.communities
 
-                                        delegate: Item {
+                                        delegate: Column {
+                                            width: sheetContent.width
+
+                                            // ── Main platform card ─────────────────────────
+                                            Item {
                                             id: commBtn
                                             width: sheetContent.width
                                             height: units.gu(8.5)
@@ -550,6 +547,11 @@ Item {
                                             property bool isSelected: Config.selectedSubCommunity
                                                                       && Config.selectedSubCommunity.id === commBtn.commId
                                             property bool subscribed: picker.subscribedRev >= 0 && !!picker.subscribedMap[commBtn.commId]
+                                            // A superhub is a platform that itself contains child platforms.
+                                            property bool isSuperhub: !!(modelData.is_superhub)
+                                            property var hubChildren: commBtn.isSuperhub
+                                                                      ? (Config.superhubChildrenById[commBtn.commId] || [])
+                                                                      : []
 
                                             // Card
                                             Rectangle {
@@ -573,8 +575,9 @@ Item {
                                                             id: commBtn.commId,
                                                             name: commBtn.commName,
                                                             icon: commBtn.commIcon,
-                                                            // Posting permission for this sub-community (gates compose buttons).
-                                                            allowPost: !!modelData.is_allow_post
+                                                            // Posting permissions for this sub-community gate the compose buttons; modelData is a raw list-by-parent-id object using the API's snake_case names.
+                                                            allowPost: !!modelData.is_allow_post,
+                                                            videoAllowPost: !!modelData.video_is_allow_post
                                                         }
                                                         picker.closeAnimated()
                                                     }
@@ -604,13 +607,36 @@ Item {
                                                     // Name
                                                     Label {
                                                         anchors.verticalCenter: parent.verticalCenter
-                                                        width: parent.width - units.gu(5.5) - subBtn.width - Style.spacingM * 2
+                                                        width: parent.width - units.gu(5.5) - subBtn.width
+                                                               - (hubBadge.visible ? hubBadge.width + Style.spacingM : 0)
+                                                               - Style.spacingM * 2
                                                         text: commBtn.commName
                                                         font.pixelSize: Style.fontRegular
                                                         font.weight: commBtn.isSelected ? Font.DemiBold : Font.Normal
                                                         font.family: Style.fontFor(text)
                                                         color: commBtn.isSelected ? Style.brand : Style.textPrimary
                                                         elide: Text.ElideRight
+                                                    }
+
+                                                    // HUB badge — marks a superhub platform
+                                                    Rectangle {
+                                                        id: hubBadge
+                                                        visible: commBtn.isSuperhub
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: hubLbl.width + units.gu(1.6)
+                                                        height: units.gu(2.6)
+                                                        radius: Style.pillRadius
+                                                        color: "#FCE7F3"
+
+                                                        Label {
+                                                            id: hubLbl
+                                                            anchors.centerIn: parent
+                                                            text: "HUB"
+                                                            font.pixelSize: Style.fontXSmall
+                                                            font.weight: Font.Bold
+                                                            font.letterSpacing: units.dp(0.5)
+                                                            color: "#DB2777"
+                                                        }
                                                     }
 
                                                     // Subscribe button — defined last so it renders on top of the navigate MouseArea
@@ -637,6 +663,122 @@ Item {
                                                         MouseArea {
                                                             anchors.fill: parent
                                                             onClicked: picker._toggleSubscribe(commBtn.commId, commBtn.subscribed)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            }
+
+                                            // ── Superhub children (indented, with a connector line) ──
+                                            Repeater {
+                                                model: commBtn.hubChildren
+
+                                                delegate: Item {
+                                                    id: childBtn
+                                                    width: sheetContent.width
+                                                    height: units.gu(7.5)
+
+                                                    property string cId:   String(modelData.id || "")
+                                                    property string cName: modelData.title || modelData.name || ""
+                                                    property string cIcon: modelData.icon || modelData.icon_url || modelData.logo_url || ""
+                                                    property bool cSelected: Config.selectedSubCommunity
+                                                                             && Config.selectedSubCommunity.id === childBtn.cId
+                                                    property bool cSubscribed: picker.subscribedRev >= 0 && !!picker.subscribedMap[childBtn.cId]
+
+                                                    // Connector: vertical line down the indent gutter + short elbow into the card
+                                                    Rectangle {
+                                                        x: Style.spacingM + units.gu(1.6)
+                                                        y: 0
+                                                        width: units.dp(1.5)
+                                                        height: parent.height / 2
+                                                        color: Style.divider
+                                                    }
+                                                    Rectangle {
+                                                        x: Style.spacingM + units.gu(1.6)
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: units.gu(1.4); height: units.dp(1.5)
+                                                        color: Style.divider
+                                                    }
+
+                                                    // Child card (indented)
+                                                    Rectangle {
+                                                        anchors {
+                                                            fill: parent
+                                                            leftMargin: Style.spacingM + units.gu(3.2)
+                                                            rightMargin: Style.spacingM
+                                                            topMargin: units.dp(3)
+                                                            bottomMargin: units.dp(3)
+                                                        }
+                                                        radius: Style.cardRadius
+                                                        color: Style.surface
+                                                        border.width: childBtn.cSelected ? units.dp(2) : units.dp(1)
+                                                        border.color: childBtn.cSelected ? Style.brand : Style.divider
+
+                                                        MouseArea {
+                                                            anchors.fill: parent
+                                                            onClicked: {
+                                                                Config.selectedSubCommunity = {
+                                                                    id: childBtn.cId,
+                                                                    name: childBtn.cName,
+                                                                    icon: childBtn.cIcon,
+                                                                    // modelData is a mapped superhub child (M.toCommunity), so the fields use the mapper's camelCase names.
+                                                                    allowPost: !!modelData.allowPost,
+                                                                    videoAllowPost: !!modelData.videoAllowPost
+                                                                }
+                                                                picker.closeAnimated()
+                                                            }
+                                                        }
+
+                                                        Row {
+                                                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                                            spacing: Style.spacingM
+
+                                                            Rectangle {
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                width: units.gu(4.5); height: width; radius: width / 2
+                                                                color: Style.iconBackground
+                                                                CircleImage {
+                                                                    anchors { fill: parent; margins: units.dp(2) }
+                                                                    source: childBtn.cIcon
+                                                                }
+                                                            }
+
+                                                            Label {
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                width: parent.width - units.gu(4.5) - childSubBtn.width - Style.spacingM * 2
+                                                                text: childBtn.cName
+                                                                font.pixelSize: Style.fontRegular
+                                                                font.weight: childBtn.cSelected ? Font.DemiBold : Font.Normal
+                                                                font.family: Style.fontFor(text)
+                                                                color: childBtn.cSelected ? Style.brand : Style.textPrimary
+                                                                elide: Text.ElideRight
+                                                            }
+
+                                                            Rectangle {
+                                                                id: childSubBtn
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                width: childSubLbl.width + units.gu(3)
+                                                                height: units.gu(3.6)
+                                                                radius: Style.pillRadius
+                                                                color: childBtn.cSubscribed ? Style.surface : Style.brand
+                                                                border.width: childBtn.cSubscribed ? units.dp(1.5) : 0
+                                                                border.color: Style.brand
+
+                                                                Label {
+                                                                    id: childSubLbl
+                                                                    anchors.centerIn: parent
+                                                                    text: childBtn.cSubscribed ? Lang.tr("Subscribed") : Lang.tr("Subscribe")
+                                                                    font.pixelSize: Style.fontSmall
+                                                                    font.weight: Font.DemiBold
+                                                                    font.family: Style.fontFor(text)
+                                                                    color: childBtn.cSubscribed ? Style.brand : Style.textOnBrand
+                                                                }
+
+                                                                MouseArea {
+                                                                    anchors.fill: parent
+                                                                    onClicked: picker._toggleSubscribe(childBtn.cId, childBtn.cSubscribed)
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                 }

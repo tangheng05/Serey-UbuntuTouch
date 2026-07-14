@@ -7,19 +7,21 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-/*
- * Settings, in the iOS Serey app's grouped style: a welcome/identity header, then
- * a standalone Language row, then sections (Account · About) of rows, each with
- * a circular icon badge, label, and a trailing control/value/chevron, and a
- * Log out row pinned to the bottom. Signed out shows Log in / Sign up; signed in
- * shows the profile identity + stats.
- */
 Page {
     id: page
 
     property var profile: null
     property bool loading: false
     property string errorMsg: ""
+    readonly property real maxContentWidth: units.gu(60)
+
+    // Whether the signed-in user already owns/manages a community — flips the
+    // "Create your platform" row into "Manage platform". Re-evaluates whenever
+    // Main.qml (or the create wizard) reassigns the set.
+    readonly property bool hasPlatform: {
+        for (var k in Config.ownedCommunityIdSet) return true;
+        return false;
+    }
 
     property bool searching: false
     property bool searchOpen: false
@@ -77,12 +79,7 @@ Page {
             })
     }
 
-    // Flat Lomiri page header: left-aligned title + a search action + bottom
-    // hairline. Replaces the iOS sticky search field; search now reveals on the
-    // action (matches the reference, e.g. uNav's header search icon).
-    // Suppress Lomiri's default header and draw our own as a top-anchored child.
-    // (Page.header did not render the right-side action icon reliably; a normal
-    // child item — like the global AppHeader — does.)
+    // Suppress the default header and draw our own, since Page.header didn't render the right-side search action icon reliably.
     header: Item { height: 0 }
 
     Rectangle {
@@ -134,8 +131,7 @@ Page {
             }
         }
 
-        // ----- Active state: back chevron + inline search field (Lomiri header
-        // search — the field expands into the header, per the HIG reference). -----
+        // ----- Active state: back chevron + inline search field (Lomiri header-search pattern) -----
         AbstractButton {
             id: searchBack
             visible: page.searchActive
@@ -226,8 +222,7 @@ Page {
     }
 
     function refreshProfile() {
-        // Also reset `loading`: logging out mid-fetch would otherwise leave the
-        // earlier request's loading=true with profile nulled -> stuck spinner.
+        // Also reset `loading`: logging out mid-fetch would otherwise leave the earlier request's loading=true with profile nulled, a stuck spinner.
         if (!Session.isLoggedIn) { profile = null; loading = false; return; }
         loading = true;
         errorMsg = "";
@@ -255,11 +250,7 @@ Page {
 
     Component.onCompleted: refreshProfile()
 
-    // Re-fetch every time the Settings tab becomes active. The profile (incl. the
-    // following/followers counts) is held in memory, and following someone happens
-    // on another tab — so without this the count stays stale until something else
-    // (token change, sub-page pop) forces a refresh. The backend invalidates the
-    // profile cache on follow, so this re-fetch returns the up-to-date counts.
+    // Following someone happens on another tab, so the in-memory follower count would otherwise stay stale until this tab is revisited.
     onVisibleChanged: if (visible) refreshProfile()
 
     Connections {
@@ -267,8 +258,7 @@ Page {
         function onTokenChanged() { page.refreshProfile(); }
     }
 
-    // Re-fetch when returning from a pushed sub-page (e.g. Edit profile) so the
-    // header avatar/name reflect any just-saved changes.
+    // Re-fetch when returning from a pushed sub-page (e.g. Edit profile) so the header avatar/name reflect any just-saved changes.
     Connections {
         target: page.pageStack
         function onDepthChanged() {
@@ -298,7 +288,9 @@ Page {
     }
 
     Flickable {
-        anchors { top: settingsHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        id: scroll
+        anchors { top: settingsHeader.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         contentWidth: width
         contentHeight: col.height
         clip: true
@@ -580,6 +572,23 @@ Page {
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
             }
+            // One platform per user: creators see "Create", owners/managers see
+            // the CMS row instead (ownedCommunityIdSet is synced in Main.qml at
+            // startup/login and refreshed by the create wizard on success).
+            SettingsRow {
+                visible: Session.isLoggedIn && !page.hasPlatform
+                iconName: "add"
+                label: Lang.tr("Create your platform")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("CreatePlatformPage.qml"))
+            }
+            SettingsRow {
+                visible: Session.isLoggedIn && page.hasPlatform
+                iconName: "settings"
+                label: Lang.tr("Manage platform")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ManagePlatformPage.qml"))
+            }
             // Not gated on isLoggedIn: downloads/saved articles work signed out too.
             SettingsRow {
                 iconName: "save"
@@ -593,7 +602,7 @@ Page {
             SettingsRow {
                 iconName: "info"
                 label: Lang.tr("Version")
-                valueText: "0.1.0"
+                valueText: Config.appVersion
             }
             SettingsRow {
                 iconName: "external-link"
@@ -629,11 +638,9 @@ Page {
         anchors {
             top: parent.top
             topMargin: units.gu(7)
-            left: parent.left
-            right: parent.right
-            leftMargin: Style.spacingM
-            rightMargin: Style.spacingM
+            horizontalCenter: parent.horizontalCenter
         }
+        width: Math.min(parent.width, page.maxContentWidth) - Style.spacingM * 2
         height: Math.min(searchModel.count * units.gu(7.5), units.gu(40))
         radius: units.gu(1)
         color: Style.surface

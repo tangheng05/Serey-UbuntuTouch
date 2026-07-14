@@ -2,15 +2,13 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Renders Toast notifications as a bottom snackbar. Mount one instance in
- * Main.qml (anchored over everything). Reacts to Toast.seq changes: fades in,
- * holds, fades out.
- */
 Item {
     id: toaster
     anchors.fill: parent
-    z: 1000
+    // Above every overlay sheet (PostActionSheet/PaymentSheet 1500, Stripe
+    // checkout 1600) — toasts like "Address copied" fire while a sheet is
+    // open and must not be hidden behind it.
+    z: 2000
 
     Rectangle {
         id: bg

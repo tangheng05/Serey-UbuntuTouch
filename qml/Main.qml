@@ -25,6 +25,11 @@ MainView {
     readonly property bool wideMode: width >= Config.convergenceBreakpoint
     Binding { target: Config; property: "wideMode"; value: root.wideMode }
 
+    // Follow the OS light/dark setting: bind the Style singleton's `dark` switch to
+    // the active Suru theme so every color token re-skins centrally (no call-site
+    // change). Luminance of the theme background works regardless of the theme name.
+    Binding { target: Style; property: "dark"; value: root.theme.palette.normal.background.hslLightness < 0.5 }
+
     property int currentTab: 0
     onCurrentTabChanged: { Config.currentTab = currentTab; _ensureTab(currentTab); body.opacity = 0; tabFadeIn.start(); }
 

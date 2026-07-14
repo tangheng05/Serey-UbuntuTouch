@@ -1003,7 +1003,7 @@ Page {
                                 trailingActions: ListItemActions {
                                     delegate: Item {
                                         width: units.gu(7); height: parent ? parent.height : units.gu(6)
-                                        Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: action.iconName; color: "black" }
+                                        Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: action.iconName; color: Style.textPrimary }
                                     }
                                     actions: [
                                         Action {

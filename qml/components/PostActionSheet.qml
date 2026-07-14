@@ -204,10 +204,10 @@ Item {
     Rectangle {
         id: sheetRect
         readonly property bool wide: Config.wideMode
+        // Centered + explicit width handles both cases (full-width on phone, capped
+        // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
         anchors {
-            left: sheetRect.wide ? undefined : parent.left
-            right: sheetRect.wide ? undefined : parent.right
-            horizontalCenter: sheetRect.wide ? parent.horizontalCenter : undefined
+            horizontalCenter: parent.horizontalCenter
             bottom: parent.bottom
             bottomMargin: sheet.kbHeight + (sheetRect.wide ? units.gu(4) : 0)
         }

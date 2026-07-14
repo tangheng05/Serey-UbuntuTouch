@@ -748,10 +748,10 @@ Page {
             id: catSheetRect
             // Full-width sheet on phone, centered width-capped card on desktop
             readonly property bool wide: Config.wideMode
+            // Centered + explicit width handles both cases (full-width on phone, capped
+            // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
             anchors {
-                left: catSheetRect.wide ? undefined : parent.left
-                right: catSheetRect.wide ? undefined : parent.right
-                horizontalCenter: catSheetRect.wide ? parent.horizontalCenter : undefined
+                horizontalCenter: parent.horizontalCenter
                 bottom: parent.bottom
                 bottomMargin: catSheetRect.wide ? units.gu(4) : 0
             }

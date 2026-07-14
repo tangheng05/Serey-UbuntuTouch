@@ -13,6 +13,21 @@ AbstractButton {
     signal authorClicked()
     signal moreClicked()
 
+    // Keyboard: VideoCard IS the focus owner (an AbstractButton / FocusScope), so
+    // make it the single tab-stop — its own ring then shows. Its ContextActionArea
+    // child is set non-focusable below (its activeFocus doesn't propagate through
+    // this FocusScope the way it does inside PostCard's plain Item, which is why
+    // the ring was invisible here). Enter activates natively (-> clicked); MENU
+    // opens the ••• context menu.
+    activeFocusOnTab: true
+    Keys.onPressed: {
+        if (event.key === Qt.Key_Menu ||
+            (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+            root.moreClicked();
+            event.accepted = true;
+        }
+    }
+
     width: parent ? parent.width : units.gu(40)
     implicitHeight: column.height + Style.spacingM + Style.spacingS + (showDivider ? units.dp(1) : 0)
     height: implicitHeight
@@ -161,7 +176,27 @@ AbstractButton {
         color: Style.divider
     }
 
-    // Pointer/keyboard parity: right-click or the MENU key opens the same
-    // context actions as swipe / the ••• overflow (see ContextActionArea).
-    ContextActionArea { onTriggered: root.moreClicked() }
+    // Pointer parity: right-click opens the ••• context menu. Keyboard focus +
+    // Enter/MENU are handled by the AbstractButton root above (single focus
+    // owner), so this must NOT be a tab-stop or it competes and hides the ring.
+    ContextActionArea {
+        activeFocusOnTab: false
+        onTriggered: root.moreClicked()
+    }
+
+    // Keyboard-focus ring. VideoCard is an AbstractButton (a FocusScope), so it
+    // takes focus itself instead of letting its child show a ring like PostCard
+    // (a plain Item) does — draw the ring here so keyboard focus is visible and
+    // matches the blog card. root.activeFocus is true whether the button or its
+    // ContextActionArea child holds focus.
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: units.dp(1)
+        color: "transparent"
+        visible: root.activeFocus
+        border.width: units.dp(2)
+        border.color: Style.brand
+        radius: units.gu(0.5)
+        z: 100
+    }
 }

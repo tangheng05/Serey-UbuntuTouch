@@ -158,6 +158,13 @@ Page {
 
     Component.onCompleted: loadMore()
 
+    // After publishing a new post: jump to the Latest tab (newest-first) and
+    // reload, so the just-published post appears at the top.
+    function showLatest() {
+        page.feedIndex = 1;
+        page.reload();
+    }
+
     SectionTabs {
         id: tabs
         anchors { top: parent.top; left: parent.left; right: parent.right }
@@ -194,6 +201,15 @@ Page {
         delegate: ListItem {
             width: list.width
             height: card.implicitHeight
+
+            // Keyboard/whole-row activation: Lomiri ListItem emits clicked() on
+            // Enter when focused (and on a tap of any non-interactive area), so
+            // opening the post here is what makes Enter work in keyboard nav.
+            onClicked: {
+                var p = feedModel.get(index)
+                if (p) page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
+                    { author: p.author, permlink: p.permlink, title: p.title })
+            }
 
             // HIG polarity: LEADING = negative (red), TRAILING = positive.
             leadingActions: ListItemActions {

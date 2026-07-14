@@ -273,7 +273,10 @@ Item {
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }
 
-    // Pointer/keyboard parity: right-click or the MENU key opens the same
-    // context actions as swipe / the ••• overflow (see ContextActionArea).
-    ContextActionArea { onTriggered: root.moreClicked() }
+    // Pointer/keyboard parity: right-click or MENU opens the ••• context menu;
+    // Enter opens the post (same as a tap). See ContextActionArea.
+    ContextActionArea {
+        onTriggered: root.moreClicked()
+        onActivated: root.clicked()
+    }
 }

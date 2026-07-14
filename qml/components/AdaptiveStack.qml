@@ -55,6 +55,8 @@ Item {
     readonly property int depth: (rootStack.depth > 0 ? 1 : 0) + _detailCount
     readonly property var currentPage: _detailCount > 0 ? detailStack.currentPage
                                                         : rootStack.currentPage
+    // The tab's master/root page, regardless of what's in the detail column.
+    readonly property var rootPage: rootStack.currentPage
 
     // Invisible seed page: keeps every real detail at detailStack.depth >= 2 so
     // Lomiri shows the native back button on the first-pushed detail too.
@@ -67,6 +69,13 @@ Item {
     // Only the root page's `pageStack` is re-pointed here, so ITS pushes land in
     // the detail column; detail pages keep pageStack == detailStack so Lomiri's
     // native back button and their own pop() operate on the real stack.
+    //
+    // A push routed through HERE comes from the master list (a root page whose
+    // pageStack we set to `root`), so it REPLACES the current detail — Lomiri's
+    // AdaptivePageLayout semantics: the detail column shows the current
+    // selection, it does not accumulate a back-stack of every item you clicked.
+    // Deeper navigation *within* a detail page (article -> author profile) calls
+    // detailStack directly (its pageStack == detailStack) and still stacks.
     function push(pageUrl, properties) {
         var props = properties || {};
         if (rootStack.depth === 0) {
@@ -75,7 +84,9 @@ Item {
             return pg;
         }
         if (detailStack.depth === 0)
-            detailStack.push(detailPlaceholder);   // seed once, lazily
+            detailStack.push(detailPlaceholder);        // seed the invisible back-anchor
+        else
+            while (detailStack.depth > 1) detailStack.pop();   // clear prior selection
         return detailStack.push(pageUrl, props);
     }
 

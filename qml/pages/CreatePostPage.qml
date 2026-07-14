@@ -27,7 +27,9 @@ Page {
     // When set, this page edits an existing post (sends its permlink to update in place) instead of creating a new one.
     property var editPost: null
     readonly property bool isEdit: !!editPost
-    signal saved()
+    // isNew = true for a freshly published post (false for an in-place edit), so
+    // the feed can jump to Latest only when there's actually a new post to show.
+    signal saved(bool isNew)
 
     // Categories are per-community, loaded from the backend for the currently-selected source rather than hardcoded.
     property var categories: []
@@ -229,7 +231,7 @@ Page {
         function (data) {
             page.submitting = false;
             Toast.success(page.isEdit ? Lang.tr("Post updated!") : Lang.tr("Post published!"));
-            page.saved();
+            page.saved(!page.isEdit);
             page.pageStack.pop();
         },
         function (err) {

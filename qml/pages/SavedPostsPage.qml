@@ -118,6 +118,22 @@ Page {
                 ]
             }
 
+            // Pointer/keyboard parity: right-click or the MENU key opens the same
+            // Remove/Share actions the swipe exposes (see ContextActionArea).
+            ContextActionArea {
+                onActivated: page.open(modelData)   // Enter opens the saved post
+                menuActions: ActionList {
+                    Action {
+                        iconName: "delete"; text: Lang.tr("Remove")
+                        onTriggered: SavedPosts.remove(modelData.permlink)
+                    }
+                    Action {
+                        iconName: "share"; text: Lang.tr("Share")
+                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
+                    }
+                }
+            }
+
             Row {
                 id: row
                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter

@@ -272,15 +272,25 @@ Page {
                                 ? Qt.rgba(Style.danger.r, Style.danger.g, Style.danger.b, 0.16)
                                 : "transparent"
                         }
-                        // Prohibition / "no entry" badge.
-                        Image {
+                        // Prohibition / "no entry" mark — drawn as a vector (the
+                        // Suru theme has no "block" icon; this is the same shape
+                        // PostActionSheet uses), dropping the custom PNG asset.
+                        Item {
                             anchors.centerIn: parent
                             width: units.gu(3); height: width
-                            source: Qt.resolvedUrl("../../assets/prohibition.png")
-                            sourceSize.width: width * 2
-                            sourceSize.height: height * 2
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: width / 2
+                                color: "transparent"
+                                border.width: units.dp(2)
+                                border.color: Style.danger
+                            }
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: parent.width * 0.7; height: units.dp(2)
+                                color: Style.danger
+                                rotation: 45
+                            }
                         }
                     }
                 }

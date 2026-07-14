@@ -235,6 +235,14 @@ Page {
             readonly property bool showReelShelf: page.hasReels && index === page.reelsInsertIndex
             height: (showReelShelf ? reelsShelf.implicitHeight : 0) + videoRow.height
 
+            // Arrow-key nav: the ListView focuses its current delegate, which here
+            // is this plain wrapper (needed for the Reels shelf), not the Lomiri
+            // ListItem — so ListItem's keyNavigationFocus frame never shows (on
+            // NewsPage the ListItem IS the delegate root and draws it). Hand the
+            // focus to the VideoCard, which draws its own ring and handles
+            // Enter (open) / MENU (context menu).
+            onActiveFocusChanged: if (activeFocus) card.forceActiveFocus()
+
             Item {
                 id: reelsShelf
                 visible: rowWrap.showReelShelf

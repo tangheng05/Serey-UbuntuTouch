@@ -360,6 +360,19 @@ Page {
             property var postData: feedModel.get(index)
             readonly property bool isVideo: postData && postData._kind === "video"
 
+            // Keyboard/whole-row activation: Lomiri ListItem emits clicked() on
+            // Enter when key-nav focused (and on a tap of any non-interactive
+            // area) — same wiring as NewsPage; without this, Enter does nothing.
+            onClicked: {
+                var p = feedModel.get(index)
+                if (!p) return
+                if (p._kind === "video")
+                    page.openDetail(Qt.resolvedUrl("VideoDetailPage.qml"), { video: p })
+                else
+                    page.openDetail(Qt.resolvedUrl("PostDetailPage.qml"),
+                        { author: p.author, permlink: p.permlink, title: p.title })
+            }
+
             // Lomiri HIG (Presenting data): leading = negative/destructive, trailing = positive/confirming.
             leadingActions: ListItemActions {
                 delegate: Rectangle {

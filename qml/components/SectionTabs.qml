@@ -23,7 +23,11 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 property bool active: index === root.currentIndex
-                onClicked: { root.currentIndex = index; root.selected(index); }
+                // Controlled component: only emit; the parent updates the property that
+                // `currentIndex` is bound to. Writing currentIndex here would break that
+                // binding, so a later programmatic change (e.g. showLatest -> feedIndex=1)
+                // would reload the data but leave the highlight stuck on the old tab.
+                onClicked: root.selected(index)
 
                 Label {
                     id: tabLabel

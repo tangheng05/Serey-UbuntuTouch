@@ -16,6 +16,8 @@ Page {
     id: page
 
     property var video: ({})
+    // Caps the title/author/action-row block on wide windows
+    readonly property real maxContentWidth: units.gu(60)
     property bool playing: false
     property bool nativeMode: false     // QtMultimedia (efficient, mp4/webm/m4v)
     property bool webVideoMode: false   // Chromium HTML5 <video> (mov / native fallback)
@@ -32,8 +34,7 @@ Page {
     // Off-chain videos skip the vote-weight popover/award (see doUpvote)
     readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
     property bool commentSheetOpen: false
-    // YouTube stream extraction is in flight (resolving a direct URL before the
-    // download daemon can fetch it). Drives the download button's spinner.
+    // YouTube stream extraction is in flight, resolving a direct URL before the download daemon can fetch it; drives the download button's spinner.
     property bool ytExtracting: false
 
     property var comments: []
@@ -68,8 +69,7 @@ Page {
         return "";
     }
 
-    // The 11-char YouTube id, from the backend's video_id or parsed out of the
-    // embed/watch URL. Empty for non-YouTube videos.
+    // The 11-char YouTube id, from the backend's video_id or parsed out of the embed/watch URL; empty for non-YouTube videos.
     function youtubeId() {
         var v = page.video;
         if (v.platform === "YOUTUBE" && (v.videoId || "").length === 11) return v.videoId;
@@ -78,14 +78,12 @@ Page {
         return m ? m[1] : "";
     }
 
-    // YouTube videos have no direct file URL up front (so remoteDirectUrl() is
-    // empty), but they're still downloadable via InnerTube extraction.
+    // YouTube videos have no direct file URL up front, but they're still downloadable via InnerTube extraction.
     function isYouTube() {
         return page.video && page.video.platform === "YOUTUBE" && youtubeId().length > 0;
     }
 
-    // Resolves a YouTube clip to a direct URL, then reuses the Serey download
-    // path. ytExtracting gates the button against repeat taps mid-extraction.
+    // Resolves a YouTube clip to a direct URL, then reuses the Serey download path; ytExtracting gates the button against repeat taps.
     function downloadYouTube() {
         if (page.ytExtracting) return;
         var id = youtubeId();
@@ -103,15 +101,13 @@ Page {
         });
     }
 
-    // Saved offline copy if one exists, else the remote file — startPlay()'s
-    // extension routing still applies since the local path keeps its extension.
+    // Saved offline copy if one exists, else the remote file; startPlay()'s extension routing still applies since the local path keeps its extension.
     function directUrl() {
         var local = Downloads.pathFor((page.video && page.video.permlink) || "");
         return local.length > 0 ? local : page.remoteDirectUrl();
     }
 
-    // Playable embed URL — augments YouTube with params it needs to play
-    // inline on mobile (a bare youtube.com/embed/<id> renders a black frame).
+    // Playable embed URL augments YouTube with params it needs to play inline on mobile (a bare embed URL renders a black frame).
     function embedSrc() {
         var v = page.video;
         var url = v.embedUrl || "";
@@ -137,16 +133,11 @@ Page {
         if (direct.length > 0) {
             var isLocal = direct.indexOf("file://") === 0;
             if (!isLocal && /\.mov(\?|$)/i.test(direct)) {
-                // Remote .mov: Chromium's <video> decodes audio but not the video
-                // track. media-hub/GStreamer renders it fine, and the AppArmor
-                // block below only applies to local files.
+                // Remote .mov: Chromium's <video> decodes audio but not the video track; media-hub/GStreamer renders it fine, and the AppArmor block below only applies to local files.
                 page.nativeMode = true;
                 page.webVideoMode = false;
             } else {
-                // Local files and remote mp4/webm/m4v → Chromium <video>, not
-                // QtMultimedia: media-hub's AppArmor profile can't read our
-                // download-manager file (SIGSEGV via 0x0 surface). Chromium
-                // decodes in our own confinement instead.
+                // Local files and remote mp4/webm/m4v use Chromium <video>, not QtMultimedia, since media-hub's AppArmor profile can't read our download-manager file (SIGSEGV via 0x0 surface).
                 page.nativeMode = false;
                 page.webVideoMode = true;
             }
@@ -160,15 +151,13 @@ Page {
         }
     }
 
-    // Reparents the player Loader into the fullscreen host or back to the
-    // inline stage; webLoader's anchors.fill follows whichever it lands in.
+    // Reparents the player Loader into the fullscreen host or back to the inline stage; webLoader's anchors.fill follows whichever it lands in.
     function setFullscreen(on) {
         page.isFullscreen = on;
         webLoader.parent = on ? fsHost : stage;
     }
 
-    // Native (.mov) player failed — retry via Chromium's <video> before
-    // falling back to the system handler.
+    // Native (.mov) player failed — retry via Chromium's <video> before falling back to the system handler.
     function onNativeFailed() {
         if (page.webVideoMode) {
             // Even Chromium failed — last resort is the system handler.
@@ -234,8 +223,7 @@ Page {
                 function (r) { page.upvoted = false; page.voteCount = Math.max(0, page.voteCount - 1); page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
                 page._voteFail);
         } else if (!page.onChain) {
-            // Off-chain (DB-only) video: plain one-tap like, no weight popover
-            // (matches fe-serey-web's simpleVote).
+            // Off-chain (DB-only) video: plain one-tap like, no weight popover, matching fe-serey-web's simpleVote.
             page._sendUpvote(100);
         } else {
             PopupUtils.open(voteWeightDialog);
@@ -329,8 +317,7 @@ Page {
                 // answer_count can be stale — trust replies.length when larger
                 serverCount = (result.post && result.post.comments) || 0;
                 page.commentCount = Math.max(serverCount, replies.length);
-                // Only ever set upvoted true from voters — the API's list can be
-                // incomplete, so never use it to override an already-true state
+                // Only ever set upvoted true from voters — the API's list can be incomplete, so never use it to override an already-true state.
                 if (!VoteService.getCached(video.author, video.permlink) && !page.upvoted) {
                     voters = (result.post && result.post.voters) || [];
                     me2 = Session.username || "";
@@ -357,8 +344,7 @@ Page {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
         Toast.success(Lang.tr("Comment deleted"));
-        // Must run in this page-level scope: the CommentService import resolves
-        // to null inside Loader-created reply row delegates.
+        // Must run in this page-level scope: the CommentService import resolves to null inside Loader-created reply row delegates.
         CommentService.remove(Config.baseUrl, permlinkToRemove, Session.username, Session.token,
             function () {},
             function (err) {
@@ -452,10 +438,6 @@ Page {
             });
     }
 
-    // --- Shorts-style up/down navigation through a queue of videos ---------
-    property var _queue: []
-    property int _queueIndex: 0
-
     function _initVideoState() {
         // Check follow status
         page.isFollowing = false;
@@ -501,42 +483,8 @@ Page {
                     return v.permlink !== myPermlink;
                 });
                 page.moreVideos = filtered.slice(0, 5);
-                // Next/Previous queue: current video + fetched more videos
-                page._queue = [page.video].concat(page.moreVideos);
-                page._queueIndex = 0;
             },
             function (err) { /* ignore */ });
-    }
-
-    function goToVideo(v) {
-        if (!v) return;
-        page.playing = false;
-        page.nativeMode = false;
-        page.webVideoMode = false;
-        page.isFullscreen = false;
-        page.commentSheetOpen = false;
-        page.descSheetOpen = false;
-        page.video = v;
-        page._initVideoState();
-        scroll.contentY = 0;
-    }
-
-    function goToNext() {
-        if (page._queueIndex >= page._queue.length - 1) {
-            Toast.show(Lang.tr("No more videos"));
-            return;
-        }
-        page._queueIndex++;
-        page.goToVideo(page._queue[page._queueIndex]);
-    }
-
-    function goToPrevious() {
-        if (page._queueIndex <= 0) {
-            Toast.show(Lang.tr("This is the first video"));
-            return;
-        }
-        page._queueIndex--;
-        page.goToVideo(page._queue[page._queueIndex]);
     }
 
     Component.onCompleted: {
@@ -549,8 +497,7 @@ Page {
         id: removeDialog
         Dialog {
             id: rdlg
-            // Title carries the video name so the dialog reads clearly on its own
-            // (HIG "drop-the-title test"). Falls back when the title is missing.
+            // Title carries the video name so the dialog reads clearly on its own (HIG drop-the-title test); falls back when the title is missing.
             title: (page.video && page.video.title)
                    ? Lang.tr("Remove “%1”?").arg(page.video.title)
                    : Lang.tr("Remove download?")
@@ -597,26 +544,10 @@ Page {
                     visible: !page.playing && status === Image.Ready
                 }
 
-                // Tap to play, or swipe up/down for next/previous video
-                MouseArea {
-                    id: posterSwipe
+                AbstractButton {
                     anchors.fill: parent
                     visible: !page.playing
-                    property real _pressY: 0
-                    property bool _dragging: false
-                    onPressed: (mouse) => { _pressY = mouse.y; _dragging = false; }
-                    onPositionChanged: (mouse) => {
-                        if (Math.abs(mouse.y - _pressY) > units.gu(1)) _dragging = true;
-                    }
-                    onReleased: (mouse) => {
-                        var offset = mouse.y - _pressY;
-                        if (Math.abs(offset) > units.gu(4)) {
-                            if (offset < 0) page.goToNext();
-                            else page.goToPrevious();
-                        } else if (!_dragging) {
-                            page.startPlay();
-                        }
-                    }
+                    onClicked: page.startPlay()
                     Rectangle {
                         anchors.centerIn: parent
                         width: units.gu(6); height: width
@@ -631,48 +562,11 @@ Page {
                     }
                 }
 
-                // Mouse wheel: scroll to skip next/previous video
-                MouseArea {
-                    anchors.fill: parent
-                    z: 5
-                    acceptedButtons: Qt.NoButton
-                    property bool _coolingDown: false
-                    onWheel: (wheel) => {
-                        if (_coolingDown) return;
-                        _coolingDown = true;
-                        wheelCooldown.start();
-                        if (wheel.angleDelta.y < 0) page.goToNext();
-                        else if (wheel.angleDelta.y > 0) page.goToPrevious();
-                    }
-                    Timer { id: wheelCooldown; interval: 400; onTriggered: parent._coolingDown = false }
-                }
-
-                // Next/Previous buttons
-                Row {
-                    anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
-                    spacing: Style.spacingXs
-                    z: 10
-
-                    AbstractButton {
-                        width: units.gu(4); height: width
-                        onClicked: page.goToPrevious()
-                        Rectangle { anchors.fill: parent; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.5) }
-                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "up"; color: "white" }
-                    }
-                    AbstractButton {
-                        width: units.gu(4); height: width
-                        onClicked: page.goToNext()
-                        Rectangle { anchors.fill: parent; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.5) }
-                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "down"; color: "white" }
-                    }
-                }
-
                 Loader {
                     id: webLoader
                     anchors.fill: parent
                     active: page.playing
-                    // Native player only for nativeMode; webVideoMode and embed
-                    // playback both use the WebView (HTML5 <video> vs iframe).
+                    // Native player only for nativeMode; webVideoMode and embed playback both use the WebView (HTML5 <video> vs iframe).
                     source: page.playing
                         ? (page.nativeMode ? Qt.resolvedUrl("../components/VideoNativePlayer.qml")
                                            : Qt.resolvedUrl("../components/VideoWebView.qml"))
@@ -688,8 +582,7 @@ Page {
                             item.wrap = true;
                             item.embedUrl = page.embedSrc();
                         }
-                        // Both WebView modes (<video> + YouTube iframe) can request
-                        // fullscreen; the native player can't.
+                        // Both WebView modes (<video> + YouTube iframe) can request fullscreen; the native player can't.
                         if (!page.nativeMode)
                             item.fullscreenToggled.connect(page.setFullscreen);
                     }
@@ -705,6 +598,18 @@ Page {
             }
 
             Item { width: 1; height: Style.spacingM }
+
+            // Capped/centered meta block; player + "More Videos" stay full-bleed
+            Item {
+                id: metaBlock
+                width: parent.width
+                height: metaCol.height
+
+            Column {
+                id: metaCol
+                width: Math.min(parent.width, page.maxContentWidth)
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 0
 
             // Title
             Label {
@@ -730,15 +635,10 @@ Page {
                 width: parent.width
                 height: units.gu(5)
 
-                MouseArea {
-                    anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: moreBtn.left }
-                    onClicked: page.openProfile()
-                }
-
                 Row {
+                    id: authorRow
                     anchors {
                         left: parent.left
-                        right: moreBtn.left
                         leftMargin: Style.spacingM
                         verticalCenter: parent.verticalCenter
                     }
@@ -783,6 +683,13 @@ Page {
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
+                }
+
+                // Hugs the row's actual rendered content, not the full width up to moreBtn, else the dead space in between wrongly opens the profile on tap.
+                MouseArea {
+                    anchors { left: authorRow.left; top: parent.top; bottom: parent.bottom }
+                    width: authorRow.width
+                    onClicked: page.openProfile()
                 }
 
                 AbstractButton {
@@ -914,8 +821,7 @@ Page {
                     }
                 }
 
-                // Download — icon with border; spinner + percentage while downloading,
-                // tick when saved.
+                // Download — icon with border
                 AbstractButton {
                     id: dlBtn
                     visible: page.remoteDirectUrl().length > 0 || page.isYouTube()
@@ -1016,6 +922,9 @@ Page {
                 }
             }
 
+            } // metaCol
+            } // metaBlock
+
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
             Item { width: 1; height: Style.spacingM }
@@ -1031,13 +940,83 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            Repeater {
-                model: page.moreVideos
-                delegate: VideoCard {
-                    width: contentCol.width
-                    video: modelData
-                    onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
-                        { video: modelData })
+            // Adapt, not scale: more columns as width allows, instead of one giant full-width card stretched to fill a wide window.
+            Item {
+                id: moreVideosGrid
+                width: contentCol.width
+                readonly property int columns: Math.max(1, Math.floor(width / units.gu(50)))
+                readonly property real cardWidth: (width - Style.spacingM * (columns - 1)) / columns
+                height: moreVideosGridLayout.height
+
+                Grid {
+                    id: moreVideosGridLayout
+                    width: parent.width
+                    columns: moreVideosGrid.columns
+                    spacing: Style.spacingM
+
+                    Repeater {
+                        model: page.moreVideos
+                        // Swipe actions only in the single-column (phone) layout;
+                        // tablet/desktop keep the plain multi-column grid card.
+                        delegate: Item {
+                            id: mvItem
+                            width: moreVideosGrid.cardWidth
+                            height: mvCard.height
+
+                            ListItem {
+                                id: mvListItem
+                                visible: moreVideosGrid.columns === 1
+                                width: parent.width
+                                height: mvCard.height
+                                divider.visible: false
+
+                                leadingActions: ListItemActions {
+                                    delegate: Rectangle {
+                                        width: units.gu(7); height: parent ? parent.height : units.gu(6)
+                                        color: Style.danger
+                                        Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: action.iconName; color: "white" }
+                                    }
+                                    actions: [
+                                        Action {
+                                            iconName: "close"
+                                            text: Lang.tr("Hide")
+                                            onTriggered: {
+                                                if (modelData) PostActions.hideRequested(modelData.author, modelData.permlink);
+                                            }
+                                        }
+                                    ]
+                                }
+                                trailingActions: ListItemActions {
+                                    delegate: Item {
+                                        width: units.gu(7); height: parent ? parent.height : units.gu(6)
+                                        Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: action.iconName; color: "black" }
+                                    }
+                                    actions: [
+                                        Action {
+                                            iconName: "share"
+                                            text: Lang.tr("Share")
+                                            onTriggered: {
+                                                if (modelData) Share.open("https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink);
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+
+                            VideoCard {
+                                id: mvCard
+                                parent: moreVideosGrid.columns === 1 ? mvListItem : mvItem
+                                width: mvItem.width
+                                showDivider: false
+                                video: modelData
+                                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
+                                    { video: modelData })
+                                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                                    { username: modelData.author })
+                                onMoreClicked: PostActions.open(modelData, "video")
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1045,8 +1024,7 @@ Page {
         }
     }
 
-    // Fullscreen host: setFullscreen() reparents the player Loader in here to fill
-    // the screen. Sits above the content and the bottom sheets (z 1500).
+    // Fullscreen host: setFullscreen() reparents the player Loader in here to fill the screen, above content and bottom sheets (z 1500).
     Item {
         id: fsHost
         anchors.fill: parent
@@ -1163,8 +1141,7 @@ Page {
             Column {
                 id: cmtFooter
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                // Ride above the on-screen keyboard; the comment list above is
-                // anchored to cmtFooter.top and shrinks to keep both visible.
+                // Ride above the on-screen keyboard; the comment list above is anchored to cmtFooter.top and shrinks to keep both visible.
                 anchors.bottomMargin: page.kbHeight
                 Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
 
@@ -1204,9 +1181,7 @@ Page {
                     x: Style.spacingM
                     spacing: Style.spacingS
 
-                    // Lomiri TextField (not a raw TextInput): only the styled
-                    // component wires up the native long-press selection +
-                    // Cut/Copy/Paste popover. StyleHints keep the gray-pill look.
+                    // Lomiri TextField (not a raw TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste; StyleHints keep the gray-pill look.
                     TextField {
                         id: composer
                         width: parent.width - cmtSendBtn.width - Style.spacingS
@@ -1445,8 +1420,7 @@ Page {
                                 t = t.replace(/<(?!\/?(?:b|i|u|a)\b)[^>]+>/g, "");
                                 t = t.replace(/&nbsp;/g, " ");
                                 t = t.replace(/&amp;/g, "&");
-                                // Decode numeric entities (smart quotes etc.) that
-                                // StyledText can't render; keep &,<,> encoded.
+                                // Decode numeric entities (smart quotes etc.) that StyledText can't render; keep &,<,> encoded.
                                 t = t.replace(/&#(\d+);/g, function (mm, n) {
                                     var code = parseInt(n, 10);
                                     return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);

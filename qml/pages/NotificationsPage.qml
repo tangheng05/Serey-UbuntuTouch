@@ -17,6 +17,7 @@ Page {
     property var inflight: null
     property int retryCount: 0
     property bool markingAllRead: false
+    readonly property real maxContentWidth: units.gu(60)
 
     header: PageHeader {
         id: pageHeader
@@ -145,8 +146,7 @@ Page {
         page.markingAllRead = true
         NotificationService.markAllRead(Config.baseUrl, Session.token,
             function () {
-                // Singleton, always safe even if the page was torn down (logout)
-                // before this ran; notifModel below is guarded separately.
+                // Singleton, always safe even if the page was torn down (logout) before this ran; notifModel below is guarded separately.
                 NotificationState.unread = 0
                 if (!notifModel) return
                 page.markingAllRead = false
@@ -181,7 +181,8 @@ Page {
     // ── Content ──────────────────────────────────────────────────────────────
     ListView {
         id: list
-        anchors { top: parent.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: parent.header.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         opacity: page.markingAllRead ? 0.4 : 1
         Behavior on opacity { NumberAnimation { duration: 150 } }
         model: notifModel

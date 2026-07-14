@@ -16,8 +16,7 @@ function _contentType(fileUrl) {
     return { mime: "image/jpeg", ext: "jpg" };
 }
 
-// Current in-flight request — PhotoUploader's watchdog calls abort() when
-// XMLHttpRequest hangs without honouring its own `timeout`.
+// Current in-flight request — PhotoUploader's watchdog calls abort() when XMLHttpRequest hangs without honouring its own `timeout`.
 var _active = null;
 
 function abort() {
@@ -54,10 +53,7 @@ function uploadImage(uploadUrl, secret, fileUrl, onOk, onErr) {
     reader.send();
 }
 
-// --- Thumbnail (data URL) upload -----------------------------------------
-// VideoThumbnailGrabber hands us a "data:image/jpeg;base64,…" URL (canvas
-// pixels read in-page — grabToImage returns black on UT). QML's JS engine
-// has no atob, so decode base64 by hand.
+// Thumbnail upload: VideoThumbnailGrabber hands us a base64 data URL (grabToImage returns black on UT, so canvas pixels are read in-page); QML's JS engine has no atob, so decode base64 by hand.
 function _b64decode(s) {
     var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     var lookup = {};
@@ -83,17 +79,7 @@ function uploadImageData(uploadUrl, secret, dataUrl, onOk, onErr) {
     _post(uploadUrl, secret, { mime: "image/jpeg", ext: "jpg" }, bytes, onOk, onErr);
 }
 
-// --- Video upload (tus → storage.serey.io, scoped per-upload token) --------
-// Direct-creator-upload pattern (like S3 presigned URLs) — the app never
-// holds the storage master key. Serey web backend mints a scoped per-upload
-// token (POST createUploadUrl); chunks PATCH straight to storage.serey.io
-// under the 100 MB Cloudflare proxy cap; statusUrl is polled until server-side
-// processing (ffprobe/remux/thumbnail) finishes.
-//
-// Memory: CreateVideoPage's FileChunkReader (C++) streams each 25 MB chunk
-// from disk, so RAM stays constant up to the server's 2 GB limit. Without it
-// we fall back to a whole-file XHR read capped at 300 MB — bigger files OOM-
-// crashed phones (observed reboot at ~70-80% of a large upload).
+// Video upload uses tus to storage.serey.io via a scoped per-upload token (like S3 presigned URLs, app never holds the storage master key); CreateVideoPage's C++ FileChunkReader streams 25 MB slices from disk so RAM stays constant, since a whole-file XHR read previously OOM-crashed phones on large uploads.
 var MAX_VIDEO_BYTES_STREAM = 2 * 1024 * 1024 * 1024;   // server maxSize
 var MAX_VIDEO_BYTES_FALLBACK = 300 * 1024 * 1024;
 var CHUNK_BYTES = 25 * 1024 * 1024;
@@ -102,9 +88,7 @@ var CHUNK_BYTES = 25 * 1024 * 1024;
 var _fileReader = null;
 function setFileReader(reader) { _fileReader = reader; }
 
-// Persisted resume record (server keeps incomplete tus uploads for 24h). The
-// scoped token can't be re-derived, so the whole session is stored, not just
-// the fingerprint. CreateVideoPage installs a Qt Settings-backed store.
+// Persisted resume record (server keeps incomplete tus uploads for 24h); the scoped token can't be re-derived so the whole session is stored, not just the fingerprint.
 var _uploadStore = null;
 function setUploadStore(store) { _uploadStore = store; }
 
@@ -140,8 +124,7 @@ function _videoType(fileUrl) {
     return null;
 }
 
-// Cancellation: clearVideo() calls abort(), which kills the in-flight xhr; the
-// generation counter makes any still-scheduled continuation a no-op.
+// Cancellation: clearVideo() calls abort() to kill the in-flight xhr; the generation counter makes any still-scheduled continuation a no-op.
 var _generation = 0;
 
 function uploadVideo(createUploadUrl, sessionToken, fileUrl, onOk, onErr, onProgress) {
@@ -214,9 +197,7 @@ function uploadVideo(createUploadUrl, sessionToken, fileUrl, onOk, onErr, onProg
     reader.send();
 }
 
-// `source`: { size: <bytes>, read: function (offset, end) -> ArrayBuffer }
-// Resumes a saved partial upload for this fingerprint if one exists, else
-// starts a fresh session.
+// `source` is { size, read(offset,end)->ArrayBuffer }; resumes a saved partial upload for this fingerprint if one exists, else starts fresh.
 function _tusCreate(createUploadUrl, sessionToken, type, source, fingerprint, gen, onOk, onErr, onProgress) {
     var saved = _loadResume(fingerprint);
     if (!saved) {
@@ -249,8 +230,7 @@ function _tusCreate(createUploadUrl, sessionToken, type, source, fingerprint, ge
     head.send();
 }
 
-// Asks the Serey web backend (logged-in users only) to create the upload on
-// the storage API and hand back the session: { uploadUrl, token, statusUrl }.
+// Asks the Serey web backend (logged-in users only) to create the upload on the storage API and hand back { uploadUrl, token, statusUrl }.
 function _tusStart(createUploadUrl, sessionToken, type, source, fingerprint, gen, onOk, onErr, onProgress) {
     var xhr = new XMLHttpRequest();
     _active = xhr;
@@ -294,8 +274,7 @@ function _tusStart(createUploadUrl, sessionToken, type, source, fingerprint, gen
     }));
 }
 
-// `session` is { uploadUrl, token, statusUrl } — the scoped upload session
-// minted by the web backend in _tusStart (or restored from the resume store).
+// `session` is { uploadUrl, token, statusUrl }, the scoped upload session minted by the web backend in _tusStart (or restored from the resume store).
 function _tusPatch(session, source, offset, attempt, gen, onOk, onErr, onProgress) {
     var end = Math.min(offset + CHUNK_BYTES, source.size);
     var chunk = source.read(offset, end);
@@ -325,8 +304,7 @@ function _tusPatch(session, source, offset, attempt, gen, onOk, onErr, onProgres
                 _tusPatch(session, source, newOffset, 0, gen, onOk, onErr, onProgress);
             }
         } else if (attempt < CHUNK_RETRIES && (xhr.status === 0 || xhr.status >= 500 || xhr.status === 409)) {
-            // Transient failure: ask the server where it actually is (HEAD),
-            // then resume from that offset. This is tus's whole point.
+            // Transient failure: ask the server where it actually is (HEAD), then resume from that offset — this is tus's whole point.
             _tusResume(session, source, attempt + 1, gen, onOk, onErr, onProgress);
         } else if (xhr.status === 0) {
             onErr({ message: "Network error during upload." });
@@ -359,9 +337,7 @@ function _tusResume(session, source, attempt, gen, onOk, onErr, onProgress) {
     xhr.send();
 }
 
-// After the last chunk the server queues ffprobe/remux/thumbnail work; poll
-// statusUrl until it lands on ready (→ public URL) or failed. The scoped
-// token authorizes reading this one upload's status.
+// After the last chunk the server queues ffprobe/remux/thumbnail work; poll statusUrl (authorized by the scoped token) until ready or failed.
 function _pollStatus(session, tries, gen, onOk, onErr) {
     if (gen !== _generation)
         return;
@@ -400,8 +376,7 @@ function _pollStatus(session, tries, gen, onOk, onErr) {
     xhr.send();
 }
 
-// No setTimeout in QML JS libraries — the poll delay is driven by a Timer the
-// QML page provides via _delayHook.
+// No setTimeout in QML JS libraries — the poll delay is driven by a Timer the QML page provides via _delayHook.
 var _delayHook = null;   // set by the QML page: function (ms, fn)
 function setDelayHook(fn) { _delayHook = fn; }
 function _delay(ms, fn) {
@@ -409,9 +384,7 @@ function _delay(ms, fn) {
     fn();   // no hook installed: poll immediately (still correct, just chattier)
 }
 
-// Deletes a video that finished uploading but was never published (the
-// scoped upload token can't delete, so this goes through the web backend).
-// Fire-and-forget: an orphaned file is a minor storage cost, not a bug.
+// Deletes a video that finished uploading but was never published, via the web backend (the scoped token can't delete); fire-and-forget since an orphaned file is a minor storage cost, not a bug.
 function deleteVideo(deleteUploadUrl, sessionToken, id) {
     if (!id) return;
     _clearResume();   // user discarded it; don't resume into a deleted upload
@@ -445,8 +418,7 @@ function _post(uploadUrl, secret, type, fileBytes, onOk, onErr) {
             return;
         _active = null;
         if (xhr.status === 0) {
-            // status 0 at DONE means the request was aborted (by the watchdog)
-            // or the network dropped; the caller surfaces the message.
+            // status 0 at DONE means the request was aborted (by the watchdog) or the network dropped; the caller surfaces the message.
             onErr({ message: "Network error during upload." });
             return;
         }

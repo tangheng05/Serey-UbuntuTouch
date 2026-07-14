@@ -5,8 +5,7 @@ import QtWebEngine 1.10
 Item {
     id: root
 
-    // Kept on-screen at opacity 0 (NOT visible:false, which would drop the item
-    // from the scene graph) so the WebEngineView actually renders/decodes.
+    // Kept on-screen at opacity 0 (not visible:false, which drops it from the scene graph) so the WebEngineView actually renders/decodes.
     opacity: 0
     width: units.gu(40); height: units.gu(22.5)
 
@@ -18,9 +17,7 @@ Item {
     function grab(fileUrl) {
         root._done = false;
         var src = String(fileUrl);
-        // Base the wrapper document at the file's directory so the <video src>
-        // (an absolute file:// URL) is same-origin and the canvas isn't tainted —
-        // mirrors VideoWebView._baseUrl().
+        // Base the wrapper document at the file's directory so the <video src> is same-origin and the canvas isn't tainted.
         var i = src.lastIndexOf("/");
         var base = i > 6 ? src.substring(0, i + 1) : src;
         watchdog.restart();

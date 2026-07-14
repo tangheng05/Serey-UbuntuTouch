@@ -15,6 +15,7 @@ Page {
     property string username: ""
     property var profile: null
     property bool profileLoading: false
+    readonly property real maxContentWidth: units.gu(60)
 
     // `st` is mutated in place, so `rev` is bumped to make `cur*` bindings re-evaluate
     property int tab: 0          // 0 posts, 1 gallery, 2 video
@@ -175,8 +176,7 @@ Page {
                 }
             }
         }
-        // Sync if blocked/unblocked elsewhere, or a stale state re-sends a
-        // duplicate block the backend rejects with a 400.
+        // Sync if blocked/unblocked elsewhere, or a stale state re-sends a duplicate block the backend rejects with a 400.
         function onUserBlocked(username) { if (username === page.username) page.isBlocked = true; }
         function onUserUnblocked(username) { if (username === page.username) page.isBlocked = false; }
         function onEditRequested(post) {
@@ -213,7 +213,8 @@ Page {
 
     ListView {
         id: list
-        anchors.fill: parent
+        anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: page.curModel
         cacheBuffer: units.gu(12)
@@ -263,8 +264,7 @@ Page {
                         z: 10
                         onClicked: PopupUtils.open(blockDialog)
 
-                        // Subtle disc behind the mark; tints red when the
-                        // user is currently blocked to signal the active state.
+                        // Subtle disc behind the mark
                         Rectangle {
                             anchors.fill: parent
                             radius: width / 2

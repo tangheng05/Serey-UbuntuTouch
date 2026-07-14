@@ -23,8 +23,7 @@ Rectangle {
             width: Style.coinIconSize
             height: Style.coinIconSize
             source: Qt.resolvedUrl("../../assets/serey-currency.png")
-            // Cap decoded size (this pill renders on every card/action bar) — the
-            // app-wide image-memory convention. 2x the box for crisp hiDPI.
+            // Cap decoded size (renders on every card/action bar) per the app-wide image-memory convention; 2x the box for crisp hiDPI.
             sourceSize.width: Style.coinIconSize * 2
             sourceSize.height: Style.coinIconSize * 2
             fillMode: Image.PreserveAspectFit

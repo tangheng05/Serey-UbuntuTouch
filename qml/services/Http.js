@@ -1,7 +1,6 @@
 .pragma library
 
-// Fired on a 401 (expired/invalid JWT) — Main.qml registers this once to
-// clear the session and prompt re-login.
+// Fired on a 401 (expired/invalid JWT) — Main.qml registers this once to clear the session and prompt re-login.
 var _onUnauthorized = null;
 function setUnauthorizedHandler(fn) { _onUnauthorized = fn; }
 
@@ -27,8 +26,7 @@ function send(method, url, token, bodyObj, onOk, onErr) {
     if (token)
         xhr.setRequestHeader("Authorization", "Bearer " + token);
 
-    // Without a timeout a stalled mobile request never resolves, leaving the
-    // caller's `loading` flag stuck true and permanently blocking pagination.
+    // Without a timeout a stalled mobile request never resolves, leaving the caller's `loading` flag stuck true and permanently blocking pagination.
     xhr.timeout = 15000;
     xhr.ontimeout = function () {
         onErr({ status: 0, message: "Request timed out. Check your connection." });
@@ -55,8 +53,7 @@ function send(method, url, token, bodyObj, onOk, onErr) {
         if (xhr.status >= 200 && xhr.status < 300 && !logicalFail) {
             onOk(data);
         } else {
-            // Pass the token this request used, so the handler can ignore a
-            // stale 401 from a previous account's dying request.
+            // Pass the token this request used, so the handler can ignore a stale 401 from a previous account's dying request.
             if (xhr.status === 401 && token && _onUnauthorized)
                 _onUnauthorized(token);
             var msg = (data && data.message) ? data.message

@@ -7,12 +7,14 @@ AbstractButton {
     id: root
     property var video: ({})
     readonly property var v: video ? video : ({})
+    // Off in a grid — divider is for vertical-list usage only
+    property bool showDivider: true
 
     signal authorClicked()
     signal moreClicked()
 
     width: parent ? parent.width : units.gu(40)
-    implicitHeight: column.height + Style.spacingM + Style.spacingM + units.dp(1)
+    implicitHeight: column.height + Style.spacingM + Style.spacingS + (showDivider ? units.dp(1) : 0)
     height: implicitHeight
 
     Column {
@@ -45,10 +47,7 @@ AbstractButton {
                 source: v.localThumb || v.thumbnail || ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
-                // HIG scaling: snap the decode size to a breakpoint instead of a
-                // continuous `width * N`, so the image isn't re-rasterized on every
-                // width change (only when crossing the threshold). See
-                // docs/ubports-other-considerations/02-scaling-images.md.
+                // HIG scaling: snap the decode size to a breakpoint instead of `width * N` so the image isn't re-rasterized on every width change.
                 sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
                 Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -156,6 +155,7 @@ AbstractButton {
 
     // Divider between cards
     Rectangle {
+        visible: root.showDivider
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: units.dp(1)
         color: Style.divider

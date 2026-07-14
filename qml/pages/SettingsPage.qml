@@ -13,6 +13,7 @@ Page {
     property var profile: null
     property bool loading: false
     property string errorMsg: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     property bool searching: false
     property bool searchOpen: false
@@ -70,8 +71,7 @@ Page {
             })
     }
 
-    // Suppress the default header and draw our own — Page.header didn't
-    // render the right-side search action icon reliably.
+    // Suppress the default header and draw our own, since Page.header didn't render the right-side search action icon reliably.
     header: Item { height: 0 }
 
     Rectangle {
@@ -123,8 +123,7 @@ Page {
             }
         }
 
-        // ----- Active state: back chevron + inline search field (Lomiri header
-        // search — the field expands into the header, per the HIG reference). -----
+        // ----- Active state: back chevron + inline search field (Lomiri header-search pattern) -----
         AbstractButton {
             id: searchBack
             visible: page.searchActive
@@ -215,8 +214,7 @@ Page {
     }
 
     function refreshProfile() {
-        // Also reset `loading`: logging out mid-fetch would otherwise leave the
-        // earlier request's loading=true with profile nulled -> stuck spinner.
+        // Also reset `loading`: logging out mid-fetch would otherwise leave the earlier request's loading=true with profile nulled, a stuck spinner.
         if (!Session.isLoggedIn) { profile = null; loading = false; return; }
         loading = true;
         errorMsg = "";
@@ -244,8 +242,7 @@ Page {
 
     Component.onCompleted: refreshProfile()
 
-    // Following someone happens on another tab, so the in-memory follower
-    // count would otherwise stay stale until this tab is revisited.
+    // Following someone happens on another tab, so the in-memory follower count would otherwise stay stale until this tab is revisited.
     onVisibleChanged: if (visible) refreshProfile()
 
     Connections {
@@ -253,8 +250,7 @@ Page {
         function onTokenChanged() { page.refreshProfile(); }
     }
 
-    // Re-fetch when returning from a pushed sub-page (e.g. Edit profile) so the
-    // header avatar/name reflect any just-saved changes.
+    // Re-fetch when returning from a pushed sub-page (e.g. Edit profile) so the header avatar/name reflect any just-saved changes.
     Connections {
         target: page.pageStack
         function onDepthChanged() {
@@ -284,7 +280,9 @@ Page {
     }
 
     Flickable {
-        anchors { top: settingsHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        id: scroll
+        anchors { top: settingsHeader.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         contentWidth: width
         contentHeight: col.height
         clip: true
@@ -615,11 +613,9 @@ Page {
         anchors {
             top: parent.top
             topMargin: units.gu(7)
-            left: parent.left
-            right: parent.right
-            leftMargin: Style.spacingM
-            rightMargin: Style.spacingM
+            horizontalCenter: parent.horizontalCenter
         }
+        width: Math.min(parent.width, page.maxContentWidth) - Style.spacingM * 2
         height: Math.min(searchModel.count * units.gu(7.5), units.gu(40))
         radius: units.gu(1)
         color: Style.surface

@@ -17,8 +17,7 @@ Page {
     property bool loading: false
     property bool endReached: false
     property string errorMsg: ""
-    // Request generation: bumped on reload() so a late response from a previous
-    // community can't append stale rows into the freshly-cleared model.
+    // Request generation bumped on reload() so a late response from a previous community can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
     property var reelsInflight: null
@@ -26,14 +25,12 @@ Page {
     readonly property bool hasReels: reels && reels.length > 0
     readonly property int reelsInsertIndex: feedModel.count > 1 ? 1 : 0
 
-    // Zero-height header keeps the Page off Lomiri's deprecated Page.head path;
-    // the global AppHeader is the real top bar.
+    // Zero-height header keeps the Page off Lomiri's deprecated Page.head path; the global AppHeader is the real top bar.
     header: Item { height: 0 }
 
     ListModel { id: feedModel; dynamicRoles: true }
 
-    // Source switching lives in the global AppHeader community pill; the list
-    // just reloads when Config.sourceIndex changes.
+    // Source switching lives in the global AppHeader community pill; the list just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
         function onCommunityIdChanged() { page.reload(); }
@@ -79,8 +76,7 @@ Page {
         offset = 0;
         endReached = false;
         loading = false;
-        // Also clear refreshing so a reload that interrupts an in-flight
-        // pull-to-refresh can't leave it stuck true (which disables refresh).
+        // Also clear refreshing so a reload that interrupts an in-flight pull-to-refresh can't leave it stuck true (disabling refresh).
         refreshing = false;
         errorMsg = "";
         reels = [];
@@ -89,8 +85,7 @@ Page {
         loadMore();
     }
 
-    // Pull-to-refresh: re-fetch page one but keep current rows until the new
-    // ones arrive (no skeleton flash — just the pull spinner).
+    // Pull-to-refresh re-fetches page one but keeps current rows until new ones arrive (no skeleton flash, just the pull spinner).
     property bool refreshing: false
     function refresh() {
         if (page.refreshing) return;
@@ -124,8 +119,7 @@ Page {
                 if (epoch !== page.reqEpoch) return;
                 inflight = null;
                 page.refreshing = false;
-                // Must also clear loading — an aborted in-flight loadMore's own
-                // callback early-returns and would leave the skeleton stuck otherwise.
+                // Must also clear loading — an aborted in-flight loadMore's own callback early-returns and would leave the skeleton stuck otherwise.
                 page.loading = false;
             });
     }
@@ -234,8 +228,7 @@ Page {
 
         }
 
-        // ListItem for swipe actions (leading = Hide, trailing = Share);
-        // tap still opens detail via VideoCard.onClicked either way.
+        // ListItem for swipe actions (leading = Hide, trailing = Share); tap still opens detail via VideoCard.onClicked either way.
         delegate: Item {
             id: rowWrap
             width: list.width
@@ -358,12 +351,10 @@ Page {
                 y: rowWrap.showReelShelf ? reelsShelf.implicitHeight : 0
                 width: parent.width
                 height: card.height
-                // VideoCard draws its own bottom divider — suppress ListItem's to
-                // avoid a double hairline.
+                // VideoCard draws its own bottom divider — suppress ListItem's to avoid a double hairline.
                 divider.visible: false
 
-                // Lomiri HIG (Presenting data): leading = negative/destructive,
-                // trailing = positive/confirming.
+                // Lomiri HIG (Presenting data): leading = negative/destructive, trailing = positive/confirming.
                 leadingActions: ListItemActions {
                     delegate: Rectangle {
                         width: units.gu(7)
@@ -423,8 +414,7 @@ Page {
             }
         }
 
-        // Constant-height footer: a conditional height feeds back into
-        // contentHeight/atYEnd and trips a "height" binding loop.
+        // Constant-height footer: a conditional height feeds back into contentHeight/atYEnd and trips a "height" binding loop.
         footer: Item {
             width: list.width
             height: units.gu(6)
@@ -459,6 +449,5 @@ Page {
         message: Lang.tr("No videos to show")
     }
 
-    // Upload lives in the global header action now (see Main.qml, gated on the
-    // Video tab) — Lomiri uses a header action, not a Material floating button.
+    // Upload lives in the global header action now (gated on the Video tab) — Lomiri uses a header action, not a Material floating button.
 }

@@ -7,16 +7,14 @@ Item {
     id: root
     property string source: ""
 
-    // True only on a real user pause — media-hub reports buffering pre-roll
-    // as "paused" too, so playbackState alone can't tell them apart.
+    // True only on a real user pause — media-hub reports buffering pre-roll as "paused" too, so playbackState alone can't tell them apart.
     property bool _userPaused: false
 
     // GStreamer decode error or watchdog timeout — caller retries via Chromium <video>
     signal failed()
 
     onSourceChanged: {
-        // Explicit assign (not binding + autoPlay) so the file loads exactly
-        // once — both together raced a load against this handler's stop().
+        // Explicit assign (not binding + autoPlay) so the file loads exactly once — both together raced a load against this handler's stop().
         player.stop();
         root._userPaused = false;
         if (source.length > 0) {
@@ -43,12 +41,10 @@ Item {
         onStatusChanged: if (status === MediaPlayer.Buffered) watchdog.stop()
     }
 
-    // Stalled/unreachable-file watchdog — stops and emits failed() if nothing's
-    // playing/buffered after a timeout, instead of freezing on a spinner.
+    // Stalled/unreachable-file watchdog — stops and emits failed() if nothing's playing/buffered after a timeout, instead of freezing on a spinner.
     Timer {
         id: watchdog
-        // Generous: non-faststart .mov streams buffer ~7-10s on media-hub, and
-        // the Chromium fallback can't render .mov at all — worse than waiting.
+        // Generous timeout: non-faststart .mov streams buffer ~7-10s on media-hub, and the Chromium fallback can't render .mov at all.
         interval: 20000
         repeat: false
         onTriggered: {
@@ -67,8 +63,7 @@ Item {
         fillMode: VideoOutput.PreserveAspectFit
     }
 
-    // Tap to toggle play / pause. Track an *explicit* user pause so the overlay
-    // can tell it apart from media-hub's buffering "paused".
+    // Tap to toggle play/pause; tracks an explicit user pause so the overlay can tell it apart from media-hub's buffering "paused".
     MouseArea {
         anchors.fill: parent
         onClicked: {
@@ -82,9 +77,7 @@ Item {
         }
     }
 
-    // Loading spinner: shown for the whole "play requested but no frames yet"
-    // window — including media-hub's buffering pre-roll, which reports as paused.
-    // Hidden only once actually playing, ended, or deliberately paused by the user.
+    // Loading spinner shown for the whole "play requested but no frames yet" window, hidden only once actually playing, ended, or user-paused.
     ActivityIndicator {
         anchors.centerIn: parent
         running: root.source.length > 0
@@ -95,8 +88,7 @@ Item {
         visible: running
     }
 
-    // Centre play glyph: only on a real user pause (or at end for replay) — never
-    // over the loading frame, where the spinner owns the stage.
+    // Centre play glyph shown only on a real user pause (or at end for replay), never over the loading frame.
     Icon {
         anchors.centerIn: parent
         width: units.gu(7)

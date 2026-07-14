@@ -30,8 +30,7 @@ QtObject {
 
     function set(author, val) { _map[author] = !!val; rev++; }
 
-    // Optimistically flip now, confirm with the server, revert on failure.
-    // Returns the optimistic new state so the caller can show a toast.
+    // Optimistically flip now, confirm with the server, revert on failure — returns the optimistic state so the caller can toast.
     function toggle(baseUrl, author, token) {
         var was = !!_map[author];
         _map[author] = !was; rev++;

@@ -40,8 +40,7 @@ Rectangle {
         Label {
             anchors.fill: parent
             text: root.placeholder
-            // Per-field only: NOT Qt.inputMethod.visible (a global singleton that
-            // would blank every other field's placeholder while any one is focused).
+            // Per-field only, not Qt.inputMethod.visible, which would blank every other field's placeholder while any one is focused.
             visible: input.text.length === 0 && !input.inputMethodComposing && !input.activeFocus
             wrapMode: Text.Wrap
             font.pixelSize: Style.fontRegular

@@ -3,8 +3,7 @@
 .import "Mappers.js" as M
 
 function login(baseUrl, username, password, onOk, onErr) {
-    // `device_name` mints a NON-expiring token (auth_service: hasExpired =
-    // !device_name) — without it the token hard-expires in 24h.
+    // `device_name` mints a NON-expiring token (auth_service: hasExpired = !device_name); without it the token hard-expires in 24h.
     Http.post(baseUrl, "/auth/login",
               { username: username, password: password, device_name: "Ubuntu Touch" },
               null, function (data) {
@@ -17,8 +16,7 @@ function login(baseUrl, username, password, onOk, onErr) {
     }, onErr);
 }
 
-// No startup token-verify: /auth/authenticated needs a device JWT the native
-// client never has, so it always 401s — calling it on launch would wrongly log out.
+// No startup token-verify: /auth/authenticated needs a device JWT the native client never has, so it always 401s — calling it on launch would wrongly log out.
 
 function logout(baseUrl, token, onOk, onErr) {
     Http.del(baseUrl, "/auth/logout", token, onOk, onErr);
@@ -60,8 +58,7 @@ var USERNAME_RE = /^[a-z0-9-]{5,30}$/;
 function isValidPassword(p) { return PASSWORD_RE.test(p || ""); }
 function isValidUsername(u) { return USERNAME_RE.test(u || ""); }
 
-// Backend returns HTTP 200 status:false when taken, which Http.js treats as a
-// failure — so onOk means available, onErr means taken (or a network error).
+// Backend returns HTTP 200 status:false when taken, which Http.js treats as a failure — so onOk means available, onErr means taken (or a network error).
 function checkUsernameAvailable(baseUrl, username, onOk, onErr) {
     Http.get(baseUrl, "/accounts/check-existing-username/" + encodeURIComponent(username),
              null, null, onOk, onErr);
@@ -73,8 +70,7 @@ function sendSignupOtp(baseUrl, username, email, onOk, onErr) {
               { username: username, email: email }, null, onOk, onErr);
 }
 
-// Step 2 of signup: create the account, then auto-login (the create endpoint
-// returns no token, so we follow it with /auth/login like the web does).
+// Step 2 of signup: create the account, then auto-login, since the create endpoint returns no token.
 function createStandardAccount(baseUrl, username, email, otp, password, onOk, onErr) {
     Http.post(baseUrl, "/accounts/create-account-standard", {
         username: username,
@@ -91,8 +87,7 @@ function createStandardAccount(baseUrl, username, email, otp, password, onOk, on
     }, onErr);
 }
 
-// Self-custody: keypair generated on-device (KeygenBridge), server only
-// receives public keys + posting private key. Master password is never sent.
+// Self-custody: keypair generated on-device (KeygenBridge); server only receives public keys + posting private key, never the master password.
 function createSelfCustodyAccount(baseUrl, username, email, otp, keys, onOk, onErr) {
     Http.post(baseUrl, "/accounts/create-account", {
         username: username,
@@ -112,8 +107,7 @@ function createSelfCustodyAccount(baseUrl, username, email, otp, keys, onOk, onE
     }, null, onOk, onErr);
 }
 
-// Empty optional fields are dropped, so a blank field never overwrites a
-// value the user didn't touch.
+// Empty optional fields are dropped, so a blank field never overwrites a value the user didn't touch.
 function updateUserDetail(baseUrl, token, fields, onOk, onErr) {
     var body = {};
     var keys = ["firstname", "lastname", "email", "phone", "gender_id", "dob", "bio"];
@@ -150,15 +144,12 @@ function changePassword(baseUrl, token, currentPassword, newPassword, onOk, onEr
               token, onOk, onErr);
 }
 
-// Step 0 of password reset: look up the account's masked contact hint so the UI
-// can tell the user which email/phone the code will go to. onOk receives the
-// parsed response; the masked values are at data.data.{email,phone}.
+// Step 0 of password reset: look up the account's masked contact hint (data.data.{email,phone}) so the UI can tell the user where the code will go.
 function getContactHint(baseUrl, username, onOk, onErr) {
     Http.get(baseUrl, "/accounts/contact-hint", { username: username }, null, onOk, onErr);
 }
 
-// Step 1 of password reset: send an OTP to the chosen contact. `contact` is
-// { email: "…" } or { phone: "…" }; the backend verifies it matches the account.
+// Step 1 of password reset: send an OTP to the chosen contact ({email} or {phone}); the backend verifies it matches the account.
 function requestPasswordReset(baseUrl, username, contact, onOk, onErr) {
     var body = { username: username };
     if (contact.email) body.email = contact.email;
@@ -179,8 +170,7 @@ function toggleBlock(baseUrl, token, username, actionType, onOk, onErr) {
               { username: username, action_type: actionType }, token, onOk, onErr);
 }
 
-// Returns the list of usernames the current user has blocked.
-// Response: { blocking_users: [{ username, owner, ... }] }
+// Returns the list of usernames the current user has blocked: { blocking_users: [{ username, owner, ... }] }.
 function listBlocked(baseUrl, token, onOk, onErr) {
     Http.get(baseUrl, "/blocking-user/list-by-current-user", null, token, function (data) {
         var arr = (data && data.blocking_users) || [];

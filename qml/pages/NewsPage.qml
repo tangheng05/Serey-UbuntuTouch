@@ -15,22 +15,19 @@ Page {
     property bool endReached: false
     property string errorMsg: ""
     property int feedIndex: 0
-    // Request generation: bumped on reload() so a late response from a previous
-    // community/tab can't append stale rows into the freshly-cleared model.
+    // Request generation bumped on reload() so a late response from a previous community/tab can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
 
     // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
     readonly property real maxContentWidth: units.gu(60)
 
-    // Zero-height header: the global AppHeader provides the top bar, but giving
-    // the Page an explicit header keeps it off Lomiri's deprecated Page.head path.
+    // Zero-height header: the global AppHeader provides the top bar, but keeping an explicit header avoids Lomiri's deprecated Page.head path.
     header: Item { height: 0 }
 
     ListModel { id: feedModel; dynamicRoles: true }
 
-    // Source switching now lives in the global AppHeader community pill; the feed
-    // just reloads when Config.sourceIndex changes.
+    // Source switching lives in the global AppHeader community pill; the feed just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
         function onCommunityIdChanged() { page.reload(); }
@@ -91,9 +88,7 @@ Page {
         loadMore();
     }
 
-    // Pull-to-refresh: re-fetch the first page but keep the current rows on
-    // screen (clearing only once the new ones arrive) so there's no skeleton
-    // flash — just the pull spinner, Facebook-style.
+    // Pull-to-refresh re-fetches the first page but keeps current rows on screen until new ones arrive, Facebook-style.
     property bool refreshing: false
     function refresh() {
         if (page.refreshing) return;
@@ -118,16 +113,14 @@ Page {
                         feedModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
-                // Keep paging if filtering left less than a screenful, or the feed
-                // stalls looking empty despite more content on later pages.
+                // Keep paging if filtering left less than a screenful, or the feed stalls looking empty despite more content on later pages.
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
                 inflight = null;
                 page.refreshing = false;
-                // Must also clear loading — an aborted in-flight loadMore's own
-                // callback early-returns and would leave the skeleton stuck otherwise.
+                // Must also clear loading — an aborted in-flight loadMore's own callback early-returns and would leave the skeleton stuck otherwise.
                 page.loading = false;
             });
     }
@@ -187,8 +180,7 @@ Page {
         PullToRefresh {
             refreshing: page.refreshing
             onRefresh: page.refresh()
-            // Opacity, not visible — PullToRefresh's style imperatively sets
-            // `visible` itself, which would clobber a visible binding.
+            // Opacity, not visible — PullToRefresh's style imperatively sets `visible` itself, which would clobber a visible binding.
             content: Label {
                 text: Lang.tr("Pull to refresh")
                 opacity: list.dragging ? 1 : 0
@@ -203,8 +195,7 @@ Page {
             width: list.width
             height: card.implicitHeight
 
-            // Lomiri HIG (Presenting data): leading = negative/destructive,
-            // trailing = positive/confirming.
+            // Lomiri HIG (Presenting data): leading = negative/destructive, trailing = positive/confirming.
             leadingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
@@ -268,9 +259,7 @@ Page {
             }
         }
 
-        // Constant-height footer: a conditional height feeds back into
-        // contentHeight/atYEnd and trips a "height" binding loop, so keep it
-        // fixed and just toggle the spinner.
+        // Constant-height footer: a conditional height feeds back into contentHeight/atYEnd and trips a "height" binding loop, so keep it fixed and toggle the spinner.
         footer: Item {
             width: list.width
             height: units.gu(6)
@@ -304,6 +293,5 @@ Page {
         message: Lang.tr("No posts in %1").arg(Config.currentCommunityName)
     }
 
-    // Compose lives in the global header action now (see Main.qml, gated on the
-    // News tab) — Lomiri uses a header action, not a Material floating button.
+    // Compose lives in the global header action now (gated on the News tab) — Lomiri uses a header action, not a Material floating button.
 }

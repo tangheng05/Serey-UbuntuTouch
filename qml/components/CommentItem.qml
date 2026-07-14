@@ -16,8 +16,7 @@ Item {
     property bool repliesExpanded: depth < 1
     property bool topLevel: true
 
-    // Only the author can edit/delete, and only a comment that exists
-    // server-side (optimistic local comments carry an empty permlink).
+    // Only the author can edit/delete, and only a comment that exists server-side (optimistic local comments carry an empty permlink).
     readonly property bool canModify: Session.isLoggedIn
                                       && c.author === Session.username
                                       && (c.permlink || "").length > 0
@@ -45,15 +44,12 @@ Item {
         var text = item.editText.trim();
         if (text.length === 0)
             return;
-        // Emit only — the host page's onEdited handler does the server call.
-        // CommentItem is Loader-instantiated for nested replies, where JS module
-        // imports (CommentService) resolve to null, so calling them here throws.
+        // Emit only — CommentItem is Loader-instantiated for nested replies where JS module imports resolve to null, so the host page's handler makes the server call.
         item.editing = false;
         item.edited(c.permlink, text, c.parentAuthor || "", c.parentPermlink || "");
     }
 
-    // Optimistic delete (feels instant); same Loader/null-import reason as
-    // saveEdit for why the host page's onDeleted handler does the actual call.
+    // Optimistic delete; same Loader/null-import reason as saveEdit for why the host page's onDeleted handler does the actual call.
     function doDelete() {
         item.deleted(c.permlink);
     }
@@ -150,8 +146,7 @@ Item {
                 }
             }
 
-            // Edit / Delete dropdown — Delete swaps to an inline confirm step
-            // rather than closing, so it's a single small popup either way.
+            // Edit / Delete dropdown
             Rectangle {
                 id: menu
                 visible: item.menuOpen
@@ -394,8 +389,7 @@ Item {
                 }
 
                 Repeater {
-                    // Only instantiate reply rows while expanded — collapsing frees
-                    // them, and nested levels aren't built until the user expands.
+                    // Only instantiate reply rows while expanded — collapsing frees them, and nested levels aren't built until expanded.
                     model: item.repliesExpanded ? item.replies : []
                     delegate: Loader {
                         id: replyLoader

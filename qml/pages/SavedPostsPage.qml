@@ -11,6 +11,7 @@ Page {
     header: Item { height: 0 }
 
     property string _pendingRemove: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     Component {
         id: removeDialog
@@ -64,7 +65,8 @@ Page {
 
     ListView {
         id: list
-        anchors { top: topBar.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: topBar.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: SavedPosts.items
         cacheBuffer: units.gu(20)
@@ -74,8 +76,7 @@ Page {
             height: row.height + Style.spacingM * 2
             onClicked: page.open(modelData)
 
-            // Lomiri HIG (Presenting data): leading = negative/destructive,
-            // trailing = positive/confirming.
+            // Lomiri HIG (Presenting data): leading = negative/destructive, trailing = positive/confirming.
             leadingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)

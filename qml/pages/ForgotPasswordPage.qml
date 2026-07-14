@@ -8,8 +8,7 @@ import "../services/AccountService.js" as AccountService
 Page {
     id: page
 
-    // Caller sets this when the user is already signed in so we can skip
-    // the username lookup and go straight to the email entry step.
+    // Caller sets this when the user is already signed in so we can skip the username lookup and go straight to the email entry step.
     property string prefillUsername: ""
 
     property int step: 0
@@ -21,8 +20,7 @@ Page {
     property string hintEmail: ""
     property string sentEmail: ""
 
-    // In logged-in mode we have 3 steps (0=email, 1=OTP, 2=newPW).
-    // In guest mode we have 4 (0=username, 1=maskedEmail, 2=OTP, 3=newPW).
+    // Logged-in mode has 3 steps (email, OTP, newPW); guest mode has 4 (username, maskedEmail, OTP, newPW).
     readonly property bool loggedInMode: prefillUsername.length > 0
     readonly property int totalSteps: loggedInMode ? 3 : 4
 

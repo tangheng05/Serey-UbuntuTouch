@@ -21,9 +21,7 @@ Item {
 
     SingleDownload {
         id: single
-        // autoStart (default true): download() begins immediately. With it false
-        // the transfer is created but never started — which left the button stuck
-        // at 0%.
+        // autoStart (default true): download() begins immediately — with it false the transfer is created but never started, leaving the button stuck at 0%.
         autoStart: true
         allowMobileDownload: true
         metadata: Metadata { showInIndicator: dl.showInIndicator; title: dl.title }
@@ -36,8 +34,7 @@ Item {
         onErrorChanged: if (errorMessage && errorMessage.length > 0) { stall.stop(); dl.failed(errorMessage); }
     }
 
-    // If nothing moves for a while — no download daemon (the desktop preview) or a
-    // dead stall — give up so the UI resets instead of sitting at 0% forever.
+    // If nothing moves for a while (no download daemon, or a dead stall), give up so the UI resets instead of sitting at 0% forever.
     Timer {
         id: stall
         interval: 30000

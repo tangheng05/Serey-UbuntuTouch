@@ -13,6 +13,7 @@ Page {
     property int tabIndex: 0
     property string _pendingRemoveVideo: ""
     property string _pendingRemoveArticle: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     Component {
         id: removeVideoDialog
@@ -88,7 +89,8 @@ Page {
 
     ListView {
         id: videoList
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         visible: page.tabIndex === 0
         model: Downloads.items
@@ -98,8 +100,7 @@ Page {
             width: videoList.width
             height: videoCard.implicitHeight
 
-            // Lomiri HIG (Presenting data): leading = negative/destructive,
-            // trailing = positive/confirming.
+            // Lomiri HIG (Presenting data): leading = negative/destructive, trailing = positive/confirming.
             leadingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)
@@ -163,7 +164,8 @@ Page {
 
     ListView {
         id: articleList
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         visible: page.tabIndex === 1
         model: SavedPosts.items
@@ -176,8 +178,7 @@ Page {
                 { author: modelData.author, permlink: modelData.permlink,
                   title: modelData.title, preloadedPost: modelData })
 
-            // Lomiri HIG (Presenting data): leading = negative/destructive,
-            // trailing = positive/confirming.
+            // Lomiri HIG (Presenting data): leading = negative/destructive, trailing = positive/confirming.
             leadingActions: ListItemActions {
                 delegate: Rectangle {
                     width: units.gu(7)

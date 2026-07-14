@@ -10,8 +10,7 @@ Item {
 
     property var post: ({})
     readonly property var p: post ? post : ({})
-    // Computed once per bind — _images() splits a string / walks the model and
-    // was previously re-run 3–4× per card inside bindings.
+    // Computed once per bind — _images() splits a string/walks the model and was previously re-run 3-4x per card inside bindings.
     readonly property var imgs: _images()
     // Shared, reactive follow state (see Theme/FollowStore.qml).
     readonly property bool isFollowing: FollowStore.isFollowing(p.author)
@@ -38,9 +37,7 @@ Item {
                 var me = Session.username || "";
                 galVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
                 galVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
-                // Re-assert count/payout imperatively: a prior cached assignment
-                // breaks the QML binding on this pooled delegate, so a recycle to
-                // an uncached post would otherwise keep the previous post's numbers.
+                // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
                 galVoteBar.votes = p.votes || 0;
                 galVoteBar.payout = p.payout || "";
             }
@@ -63,12 +60,9 @@ Item {
         if (typeof v.count === "number") return v.count;
         return 0;
     }
-    // images may arrive as a plain JS array (fresh map) or a wrapped
-    // ListModel (dynamicRoles re-binding); normalise to a plain array.
+    // images may arrive as a plain JS array or a wrapped ListModel (dynamicRoles re-binding); normalise to a plain array.
     function _images() {
-        // Prefer the scalar `imagesStr` — a dynamicRoles ListModel destroys the
-        // wrapped `images` array (its .get(i) returns empty objects, not URLs),
-        // whereas the joined string survives intact.
+        // Prefer the scalar `imagesStr` since a dynamicRoles ListModel destroys the wrapped `images` array, whereas the joined string survives intact.
         if (typeof p.imagesStr === "string" && p.imagesStr.length > 0)
             return p.imagesStr.split("\n");
         var v = p.images;
@@ -196,8 +190,7 @@ Item {
             }
         }
 
-        // Cover: feed cards show only the first image (a SwipeView per recycled
-        // delegate is expensive); the swipeable carousel lives on the detail page.
+        // Cover shows only the first image (a SwipeView per recycled delegate is expensive); the swipeable carousel lives on the detail page.
         Item {
             id: cover
             width: parent.width
@@ -212,8 +205,7 @@ Item {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 autoTransform: true     // honour EXIF orientation (camera photos)
-                // Showcase photo in a square crop — decode at 2× display width so
-                // PreserveAspectCrop downsamples (sharp) instead of upscaling (blur).
+                // Showcase photo decodes at 2x display width so PreserveAspectCrop downsamples (sharp) instead of upscaling (blur).
                 sourceSize.width: cover.width * 2
                 Behavior on opacity { NumberAnimation { duration: 200 } }
                 opacity: status === Image.Ready ? 1.0 : 0.0
@@ -259,9 +251,7 @@ Item {
             onCommentRequested: root.clicked()
         }
 
-        // Caption (Lomiri Label has no top/bottomPadding in Components 1.3,
-        // so spacing is provided by visible-gated spacer Items — the Column
-        // positioner skips invisible children.)
+        // Caption spacing uses visible-gated spacer Items since Lomiri Label has no top/bottomPadding in Components 1.3.
         Item { width: 1; height: Style.spacingXs; visible: (p.caption || "") !== "" }
 
         Label {

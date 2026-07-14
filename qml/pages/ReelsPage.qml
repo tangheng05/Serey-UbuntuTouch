@@ -10,6 +10,18 @@ import "../services/VoteService.js" as VoteService
 Page {
     id: page
 
+    // Keyboard equivalent of swipe-between-reels
+    focus: true
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Down || event.key === Qt.Key_PageDown) {
+            pager.incrementCurrentIndex();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Up || event.key === Qt.Key_PageUp) {
+            pager.decrementCurrentIndex();
+            event.accepted = true;
+        }
+    }
+
     property var reels: []
     property bool loading: true
     property string errorMsg: ""
@@ -19,6 +31,29 @@ Page {
     property var    _voteReel:    null
     property string _voteAuthor:  ""
     property string _votePermlink: ""
+
+    // Full-description sheet — set by whichever reel's "more" was tapped
+    property string _descTitle: ""
+    property string _descBody: ""
+    property bool descSheetOpen: false
+
+    // One-line plain-text preview of an HTML description
+    function _descPreview(body) {
+        var t = (body || "");
+        t = t.replace(/<br\s*\/?>/gi, " ").replace(/<\/p>/gi, " ").replace(/<[^>]+>/g, "");
+        t = t.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
+        t = t.replace(/&#(\d+);/g, function (m, n) { return String.fromCharCode(parseInt(n, 10)); });
+        return t.replace(/\s+/g, " ").trim();
+    }
+
+    // Full plain-text description with paragraph breaks preserved
+    function _descFull(body) {
+        var t = (body || "");
+        t = t.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "");
+        t = t.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
+        t = t.replace(/&#(\d+);/g, function (m, n) { return String.fromCharCode(parseInt(n, 10)); });
+        return t.replace(/\n{3,}/g, "\n\n").trim();
+    }
 
     function _sendUpvote(weight) {
         var reel = page._voteReel;
@@ -111,8 +146,7 @@ Page {
             });
     }
 
-    // Model is a plain JS array — reassign (not mutate) to refresh delegates,
-    // and restore pager position. The current reel remounts (video restarts).
+    // Model is a plain JS array — reassign (not mutate) to refresh delegates, and restore pager position; the current reel remounts.
     Connections {
         target: PostActions
         function onPostUpdated(author, permlink, title, body) {
@@ -176,13 +210,11 @@ Page {
         highlightMoveDuration: 130          // snappier page-snap (was 200)
         maximumFlickVelocity: units.gu(700) // let a flick page promptly
         boundsBehavior: Flickable.StopAtBounds
-        // Pre-creates neighbouring delegates so posters decode ahead of scroll
-        // (only the current reel mounts a WebView — gated on isCurrentItem)
+        // Pre-creates neighbouring delegates so posters decode ahead of scroll (only the current reel mounts a WebView).
         cacheBuffer: pager.height
         clip: true
 
-        // End-of-feed hint: dragging up past the last reel reveals this, then the
-        // pager snaps back (StrictlyEnforceRange keeps the last reel in range).
+        // End-of-feed hint: dragging up past the last reel reveals this, then the pager snaps back (StrictlyEnforceRange keeps the last reel in range).
         footer: Item {
             width: pager.width
             height: units.gu(12)
@@ -214,8 +246,7 @@ Page {
             height: pager.height
             readonly property bool current: ListView.isCurrentItem
 
-            // Vote state — prefer the session cache (reflects votes cast this
-            // session), fall back to the voters list the API returned.
+            // Vote state prefers the session cache (reflects votes cast this session), falling back to the voters list the API returned.
             readonly property var _vc: VoteService.getCached(modelData.author || "", modelData.permlink || "")
             property bool upvoted: _vc ? _vc.upvoted : (modelData.voters || []).indexOf(Session.username) >= 0
             property bool flagged: _vc ? _vc.flagged : false
@@ -230,8 +261,7 @@ Page {
                 VoteService._updateCache(modelData.author, modelData.permlink,
                                          reel.upvoted, reel.flagged, reel.votes, modelData.payout || "");
             }
-            // Optimistic: flip icon/count immediately (async broadcast lags a
-            // couple seconds), revert only if the request fails.
+            // Optimistic: flip icon/count immediately since the async broadcast lags a couple seconds, revert only if the request fails.
             function _revert(wasUp, wasFlag, prevVotes, e) {
                 reel.upvoted = wasUp; reel.flagged = wasFlag; reel.votes = prevVotes;
                 reel.busy = false; reel._vcache();
@@ -272,8 +302,7 @@ Page {
                 }
             }
 
-            // Stays mounted under the player, which fades in once loaded —
-            // the WebView's initial blank frame never shows.
+            // Stays mounted under the player, which fades in once loaded, so the WebView's initial blank frame never shows.
             Image {
                 anchors.fill: parent
                 source: modelData.thumbnail || ""
@@ -294,8 +323,7 @@ Page {
                 Behavior on opacity { NumberAnimation { duration: 180 } }
             }
 
-            // Tap-to-pause overlay — sits above the video but below the action rail
-            // and caption so taps on those still reach their targets.
+            // Tap-to-pause overlay sits above the video but below the action rail and caption so taps on those still reach their targets.
             MouseArea {
                 anchors.fill: parent
                 z: 1
@@ -340,12 +368,12 @@ Page {
                     GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.6) }
                 }
             }
-            // Caption — Lomiri author treatment (avatar disc + name), mirroring
-            // VideoCard's author row, not a bare TikTok @handle.
+            // Caption uses Lomiri author treatment (avatar disc + name), mirroring VideoCard's author row, not a bare TikTok @handle.
             Row {
                 anchors { left: parent.left; right: actionRail.left; bottom: parent.bottom
                           leftMargin: Style.spacingM; rightMargin: Style.spacingS; bottomMargin: Style.spacingM }
                 spacing: Style.spacingS
+                z: 3 // above the tap-to-pause overlay (z:1) and pause icon (z:2)
 
                 Item {
                     width: units.gu(4.5); height: width
@@ -403,17 +431,53 @@ Page {
                         width: parent.width
                         text: modelData.title || ""
                         color: "white"
-                        font.pixelSize: Style.fontSmall
+                        font.pixelSize: Style.fontRegular
+                        font.weight: Font.DemiBold
                         font.family: Style.fontFor(text)
                         wrapMode: Text.Wrap
                         maximumLineCount: 2
                         elide: Text.ElideRight
                     }
+
+                    Row {
+                        width: parent.width
+                        spacing: units.dp(4)
+                        visible: page._descPreview(modelData.body || "").length > 0
+
+                        Label {
+                            id: descPreviewLabel
+                            width: parent.width - (moreLabel.visible ? moreLabel.width + units.dp(4) : 0)
+                            text: page._descPreview(modelData.body || "")
+                            color: Qt.rgba(1, 1, 1, 0.85)
+                            font.pixelSize: Style.fontSmall
+                            font.family: Style.fontFor(text)
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
+                        }
+
+                        AbstractButton {
+                            id: moreLabel
+                            visible: descPreviewLabel.truncated
+                            width: moreLabelText.implicitWidth
+                            height: moreLabelText.implicitHeight
+                            onClicked: {
+                                page._descTitle = modelData.title || "";
+                                page._descBody = modelData.body || "";
+                                page.descSheetOpen = true;
+                            }
+                            Label {
+                                id: moreLabelText
+                                text: Lang.tr("more")
+                                color: "white"
+                                font.pixelSize: Style.fontSmall
+                                font.weight: Font.DemiBold
+                            }
+                        }
+                    }
                 }
             }
 
-            // Comment/share open in the system browser — a second WebView
-            // over this live reel would trip the dual-Chromium crash.
+            // Comment/share open in the system browser — a second WebView over this live reel would trip the dual-Chromium crash.
             Rectangle {
                 id: actionRail
                 anchors { right: parent.right; rightMargin: Style.spacingS
@@ -529,6 +593,24 @@ Page {
         }
     }
 
+    // Mouse-wheel equivalent of swipe/keyboard reel navigation
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.NoButton
+        z: 10
+        property bool cooling: false
+        onWheel: (wheel) => {
+            if (!cooling) {
+                if (wheel.angleDelta.y < 0) pager.incrementCurrentIndex();
+                else if (wheel.angleDelta.y > 0) pager.decrementCurrentIndex();
+                cooling = true;
+                wheelCooldown.restart();
+            }
+            wheel.accepted = true;
+        }
+        Timer { id: wheelCooldown; interval: 350; onTriggered: parent.cooling = false }
+    }
+
     // Back button (the app header/nav are hidden on this pushed page).
     BackButton {
         anchors { left: parent.left; top: parent.top; leftMargin: Style.spacingS; topMargin: Style.spacingS }
@@ -539,6 +621,114 @@ Page {
 
     // In-app comment thread (no WebView — safe to overlay the live reel player).
     CommentsSheet { id: commentSheet }
+
+    // Full-description bottom sheet, opened from a reel's "more" tap
+    Item {
+        id: descSheet
+        anchors.fill: parent
+        visible: page.descSheetOpen
+        z: 1500
+        onVisibleChanged: if (visible) { descBdFade.start(); descSlideAnim.start(); }
+        function closeAnimated() { descBdFadeOut.start(); descSlideOut.start(); }
+
+        Rectangle {
+            id: descBd
+            anchors.fill: parent
+            color: Qt.rgba(0, 0, 0, 0.4)
+            opacity: 0
+            MouseArea { anchors.fill: parent; onClicked: descSheet.closeAnimated() }
+        }
+        NumberAnimation { id: descBdFade; target: descBd; property: "opacity"; from: 0; to: 1; duration: 200 }
+        NumberAnimation { id: descBdFadeOut; target: descBd; property: "opacity"; to: 0; duration: 200 }
+
+        Rectangle {
+            id: descSheetRect
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: Math.min(descCol.height + units.gu(4), parent.height * 0.75)
+            radius: units.gu(1)
+            color: Style.surface
+            clip: true
+            transform: Translate { id: descSlideT; y: 0 }
+            NumberAnimation { id: descSlideAnim; target: descSlideT; property: "y"; from: descSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }
+            NumberAnimation { id: descSlideOut; target: descSlideT; property: "y"; to: descSheetRect.height; duration: 250; easing.type: Easing.InCubic; onStopped: page.descSheetOpen = false }
+
+            Rectangle {
+                anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
+                width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
+                color: Style.lightGray
+            }
+
+            Item {
+                id: descHeader
+                anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
+                height: units.gu(5)
+
+                Label {
+                    anchors.centerIn: parent
+                    text: Lang.tr("Description")
+                    font.pixelSize: Style.fontMedium
+                    font.weight: Font.DemiBold
+                    color: Style.textPrimary
+                }
+
+                AbstractButton {
+                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    width: units.gu(3.5); height: units.gu(3.5)
+                    onClicked: descSheet.closeAnimated()
+                    Icon {
+                        anchors.centerIn: parent
+                        width: units.gu(2.5); height: width
+                        name: "close"
+                        color: Style.textPrimary
+                    }
+                }
+            }
+
+            Rectangle {
+                id: descDivider
+                anchors { top: descHeader.bottom; left: parent.left; right: parent.right }
+                height: units.dp(1); color: Style.divider
+            }
+
+            Flickable {
+                anchors { top: descDivider.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+                contentWidth: width
+                contentHeight: descCol.height
+                clip: true
+
+                Column {
+                    id: descCol
+                    width: parent.width
+                    spacing: Style.spacingM
+
+                    Item { width: 1; height: Style.spacingS }
+
+                    Label {
+                        width: parent.width - Style.spacingM * 2
+                        x: Style.spacingM
+                        text: page._descTitle
+                        font.pixelSize: Style.fontLarge
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                        wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        width: parent.width - Style.spacingM * 2
+                        x: Style.spacingM
+                        text: page._descFull(page._descBody)
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                        wrapMode: Text.Wrap
+                    }
+
+                    Item { width: 1; height: Style.spacingL }
+                }
+            }
+        }
+    }
 
     ActivityIndicator {
         anchors.centerIn: parent

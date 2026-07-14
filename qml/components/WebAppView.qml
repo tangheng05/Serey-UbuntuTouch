@@ -15,15 +15,12 @@ Item {
     property string authToken: ""
     property string username: ""
 
-    // When true (Homepage tab hidden), freeze the Chromium renderer so it stops
-    // competing for GPU/shared memory with the video player's WebView — two
-    // live Chromium views exhausted shared memory and SIGSEGV'd the app.
+    // When true (Homepage tab hidden), freeze the Chromium renderer since two live Chromium views exhausted shared memory and SIGSEGV'd the app.
     property bool suspended: false
     // UT's QtWebEngine doesn't expose LifecycleState enum names to QML
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
-    // Freezing is only legal once `visible` has settled hidden (a tick after
-    // the tab switch) — so defer it; resuming to Active is always legal.
+    // Freezing is only legal once `visible` has settled hidden, so defer it; resuming to Active is always legal.
     onSuspendedChanged: {
         if (suspended) {
             freezeTimer.restart();
@@ -33,10 +30,7 @@ Item {
         }
     }
 
-    // Also freeze on whole-app background/suspend: a live WebEngineView left
-    // Active across a long OS suspend SIGBUSes on resume. QtWebEngine rejects
-    // Active->Frozen while visible, so hide the view first — imperatively, only
-    // on an actual state change (never at startup, or Homepage could start blank).
+    // Also freeze on app suspend — avoids a SIGBUS-on-resume
     property bool appActive: Qt.application.state === Qt.ApplicationActive
     onAppActiveChanged: {
         if (!appActive) {
@@ -58,9 +52,7 @@ Item {
     onDesktopModeChanged: reload()
 
     signal getUserInfoRequested()
-    // NOTE: never wire this to Session.setAuth — the web side's identity comes
-    // from its own persistent cookies and can be stale (a previous account);
-    // letting it write the native session would silently switch accounts.
+    // Never wire this to Session.setAuth — the web side's identity comes from its own persistent cookies and can be stale, silently switching accounts.
     signal authTokenReceived(string token, string username)
     signal openCommunityRequested(string communityId)
     signal openExternalBrowserRequested(string url)
@@ -75,9 +67,7 @@ Item {
     WebEngineView {
         id: webView
         anchors.fill: parent
-        // `visible` is left to inherit normally; onAppActiveChanged toggles it
-        // imperatively on app background/foreground so the Active->Frozen
-        // transition (rejected while visible) becomes legal.
+        // `visible` inherits normally; onAppActiveChanged toggles it imperatively on background/foreground so the Active->Frozen transition becomes legal.
         profile: mobileProfile
         zoomFactor: webAppView.desktopMode ? 1.0
             : (webAppView.width > 0 ? webAppView.width / 412 : 1.0)
@@ -131,8 +121,7 @@ Item {
     onUrlChanged: if (url !== "") loadTimer.restart()
     Component.onCompleted: if (url !== "") loadTimer.start()
 
-    // Apply the Frozen state once the view has had a moment to become hidden.
-    // Guarded on `suspended` in case the tab was re-activated within the delay.
+    // Apply the Frozen state once the view has had a moment to become hidden, guarded on `suspended` in case the tab was re-activated within the delay.
     Timer {
         id: freezeTimer
         interval: 300
@@ -140,8 +129,7 @@ Item {
         onTriggered: if (webAppView.suspended) webView.lifecycleState = webAppView._lcFrozen
     }
 
-    // App-suspend counterpart: freeze once the view has been hidden (see
-    // onAppActiveChanged), guarded in case the app was re-activated within the delay.
+    // App-suspend counterpart: freeze once the view has been hidden, guarded in case the app was re-activated within the delay.
     Timer {
         id: appFreezeTimer
         interval: 300
@@ -165,9 +153,7 @@ Item {
         loadTimer.restart();
     }
 
-    // Drops the web side's login — the persistent profile otherwise keeps the
-    // PREVIOUS account's cookies across a native logout/switch. cookieStore may
-    // be missing on older QtWebEngine, so guard it; reload() still runs either way.
+    // Drops the web side's login since the persistent profile keeps the previous account's cookies across a native logout/switch; cookieStore may be missing on older QtWebEngine.
     function clearSession() {
         if (mobileProfile && mobileProfile.cookieStore
                 && typeof mobileProfile.cookieStore.deleteAllCookies === "function") {

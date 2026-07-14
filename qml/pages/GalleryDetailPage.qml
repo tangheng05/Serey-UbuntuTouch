@@ -12,12 +12,12 @@ Page {
 
     property string author: ""
     property string permlink: ""
+    readonly property real maxContentWidth: units.gu(60)
 
     property var post: null
     property var comments: []
     property int commentCount: 0
-    // Broadcast so the feed card behind this page reflects adds/deletes when the
-    // user goes back; feed pages patch the row by permlink (like onPostDeleted).
+    // Broadcast so the feed card behind this page reflects adds/deletes when the user goes back; feed pages patch the row by permlink.
     onCommentCountChanged: if (page.permlink) PostActions.commentCountChanged(page.permlink, page.commentCount)
     property bool loading: false
     property bool posting: false
@@ -80,8 +80,7 @@ Page {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
         Toast.success(Lang.tr("Comment deleted"));
-        // Must run in this page-level scope: the CommentService import resolves
-        // to null inside Loader-created reply row delegates.
+        // Must run in this page-level scope: the CommentService import resolves to null inside Loader-created reply row delegates.
         CommentService.remove(Config.baseUrl, permlinkToRemove, Session.username, Session.token,
             function () {},
             function (err) {
@@ -189,7 +188,8 @@ Page {
 
     KeyboardAwareFlickable {
         id: scroll
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: page.header.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
         anchors.bottomMargin: footer.visible ? footer.height + page.kbHeight : 0
         contentWidth: width
         contentHeight: contentCol.height
@@ -369,7 +369,8 @@ Page {
 
     Column {
         id: footerCol
-        width: parent.width
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: Math.min(parent.width, page.maxContentWidth)
         spacing: Style.spacingS
 
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
@@ -425,9 +426,7 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.spacingS
 
-            // Lomiri TextField (not a raw TextInput): only the styled component
-            // wires up the native long-press selection + Cut/Copy/Paste popover.
-            // StyleHints keep the existing gray-pill look.
+            // Lomiri TextField (not a raw TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste; StyleHints keep the gray-pill look.
             TextField {
                 id: composer
                 width: parent.width - sendButton.width - Style.spacingS

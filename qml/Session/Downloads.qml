@@ -25,8 +25,7 @@ QtObject {
         return _dbHandle;
     }
 
-    // Scoped to the signed-in account so switching accounts shows a fresh list;
-    // logged-out downloads (owner "") are their own bucket.
+    // Scoped to the signed-in account so switching accounts shows a fresh list; logged-out downloads (owner "") are their own bucket.
     function _owner() {
         return Session.isLoggedIn ? Session.username : "";
     }
@@ -36,8 +35,7 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS downloads(permlink TEXT, local_path TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                // Add `owner` to tables created before per-account scoping existed;
-                // harmlessly throws (and is caught) once the column is present.
+                // Add `owner` to tables created before per-account scoping existed; harmlessly throws (caught) once the column is present.
                 try { tx.executeSql("ALTER TABLE downloads ADD COLUMN owner TEXT DEFAULT ''"); } catch (e2) { }
                 var rs = tx.executeSql("SELECT permlink, local_path, data FROM downloads WHERE owner = ? ORDER BY saved_at DESC", [store._owner()]);
                 for (var i = 0; i < rs.rows.length; i++) {
@@ -56,9 +54,7 @@ QtObject {
         store.rev++;
     }
 
-    // `owner` is passed explicitly for downloads that finish after an account
-    // switch (captured when the download started); it defaults to the current
-    // account for the synchronous save paths.
+    // `owner` is passed explicitly for downloads finishing after an account switch; defaults to the current account for synchronous saves.
     function _persist(vm, localPath, owner) {
         var o = (owner === undefined) ? store._owner() : owner;
         try {
@@ -114,8 +110,7 @@ QtObject {
         if (!video || !url || url.length === 0) return;
         var permlink = video.permlink || "";
         if (permlink.length === 0 || isSaved(permlink) || _active[permlink]) return;
-        // Capture the account that started this download; if it finishes after an
-        // account switch, it's still filed under the account that requested it.
+        // Capture the account that started this download so it's filed under the requester even if the account switches mid-download.
         var startOwner = store._owner();
 
         var comp = _downloaderComponent();
@@ -179,8 +174,7 @@ QtObject {
         tdl.start(thumb);
     }
 
-    // Patch an already-saved row with the local poster path (poster finished after
-    // the video did).
+    // Patch an already-saved row with the local poster path (poster finished after the video did).
     function _updateThumb(permlink, fp) {
         for (var i = 0; i < items.length; i++) {
             if (items[i].permlink !== permlink) continue;
@@ -201,8 +195,7 @@ QtObject {
 
     Component.onCompleted: _load()
 
-    // QtObject has no default property, so this must be assigned, not a child.
-    // setAuth() sets username before token, so react to both changes.
+    // QtObject has no default property so this must be assigned, not a child; react to both username and token changes.
     property Connections _sessionWatcher: Connections {
         target: Session
         onUsernameChanged: store._load()

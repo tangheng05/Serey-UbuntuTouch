@@ -9,14 +9,12 @@ Item {
     // Detail playback shows native controls; reels hide them + loop
     property bool controls: true
     property bool loop: false
-    // True once the <video> has a decoded frame — hosts fade in on this so
-    // the WebView's blank first frame never flashes
+    // True once the <video> has a decoded frame — hosts fade in on this so the WebView's blank first frame never flashes.
     property bool ready: false
     property bool paused: false
     signal fullscreenToggled(bool on)
 
-    // Freeze the Chromium renderer on app background/suspend — same
-    // SIGBUS-on-resume issue and lifecycleState int trap as WebAppView.
+    // Freeze the Chromium renderer on app background/suspend — same SIGBUS-on-resume issue and lifecycleState int trap as WebAppView.
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
     property bool appActive: Qt.application.state === Qt.ApplicationActive
@@ -68,15 +66,13 @@ Item {
         anchors.fill: parent
         profile: videoProfile
 
-        // Autoplay without a user gesture (our overlay tap is the gesture);
-        // local-file access lets an offline file:// <video> load from its wrapper.
+        // Autoplay without a user gesture (our overlay tap is the gesture); local-file access lets an offline file:// <video> load from its wrapper.
         settings.playbackRequiresUserGesture: false
         settings.fullScreenSupportEnabled: true
         settings.localContentCanAccessFileUrls: true
         settings.localContentCanAccessRemoteUrls: true
 
-        // Make every frame (runOnSubframes — reaches the YouTube iframe) report a
-        // mobile navigator, defeating client-side desktop sniffing.
+        // Make every frame report a mobile navigator, defeating client-side desktop sniffing.
         userScripts: [
             WebEngineScript {
                 injectionPoint: WebEngineScript.DocumentCreation
@@ -94,9 +90,7 @@ Item {
             root.fullscreenToggled(request.toggleOn);
         }
 
-        // LoadSucceededStatus == 2 (same enum-not-exposed trap). directVideo
-        // waits for the __SEREY_READY__ sentinel instead — page-load fires
-        // before the first frame paints, which would flash black.
+        // LoadSucceededStatus == 2 (enum-not-exposed trap); directVideo waits for the __SEREY_READY__ sentinel instead of page-load, which fires before the first frame paints.
         onLoadingChanged: function (loadRequest) {
             if (loadRequest.status === 2 && !root.directVideo)
                 root.ready = true;
@@ -108,9 +102,7 @@ Item {
         }
     }
 
-    // Wrapper is "served from" serey.io so embeds see a normal referrer
-    // (youtube.com trips YouTube's embed check); offline copies base on the
-    // file's own directory so <video src> is same-origin.
+    // Wrapper is served from serey.io so embeds see a normal referrer; offline copies base on the file's own directory so <video src> is same-origin.
     readonly property string _origin: "https://serey.io"
     function _baseUrl() {
         if (directVideo && embedUrl.indexOf("file://") === 0) {

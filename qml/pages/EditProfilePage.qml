@@ -47,8 +47,7 @@ Page {
         else uploadAvatar(fileUrl);
     }
 
-    // Avatar + cover both downscale + upload through imgUploader, then set the
-    // hosted URL active. pickTarget routes the post-upload step (see imgUploader).
+    // Avatar + cover both downscale + upload through imgUploader, then set the hosted URL active; pickTarget routes the post-upload step.
     function uploadAvatar(fileUrl) { errorMsg = ""; uploading = true; imgUploader.upload(fileUrl); }
     function uploadCover(fileUrl)  { errorMsg = ""; coverUploading = true; imgUploader.upload(fileUrl); }
 
@@ -169,9 +168,7 @@ Page {
                 }
             }
 
-            // --- Avatar -------------------------------------------------------
-            // AbstractButton (not a raw MouseArea) so the tap is reliable inside
-            // the Flickable — matches how the rest of the app handles taps.
+            // Avatar uses AbstractButton (not a raw MouseArea) so the tap is reliable inside the Flickable.
             AbstractButton {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: units.gu(12); height: width
@@ -348,8 +345,7 @@ Page {
         }
     }
 
-    // Opened on demand (PopupUtils.open) so the Content Hub picker is a proper
-    // root-parented popup with a correct size — see PhotoPicker.qml.
+    // Opened on demand (PopupUtils.open) so the Content Hub picker is a proper root-parented popup with a correct size.
     Component {
         id: photoPickerComponent
         PhotoPicker {

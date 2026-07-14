@@ -17,8 +17,7 @@ Page {
     property bool loading: false
     property bool endReached: false
     property string errorMsg: ""
-    // Request generation: bumped on reload() so a late response from a previous
-    // community can't append stale rows into the freshly-cleared model.
+    // Request generation bumped on reload() so a late response from a previous community can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
 
@@ -71,8 +70,7 @@ Page {
         loadMore();
     }
 
-    // Pull-to-refresh: re-fetch page one but keep current rows until the new
-    // ones arrive (no skeleton flash — just the pull spinner).
+    // Pull-to-refresh re-fetches page one but keeps current rows until new ones arrive (no skeleton flash, just the pull spinner).
     property bool refreshing: false
     function refresh() {
         if (page.refreshing) return;
@@ -125,8 +123,7 @@ Page {
                 for (var i = 0; i < result.length; i++)
                     if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
                         galleryModel.append(result[i]);
-                // Advance by RAW server count (not the image-filtered length) so
-                // the next page doesn't re-request already-seen rows.
+                // Advance by RAW server count (not the image-filtered length) so the next page doesn't re-request already-seen rows.
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
                 // Keep paging if this page fell below a screenful (see refresh()).
@@ -163,9 +160,7 @@ Page {
             }
         }
 
-        // GalleryCard wrapped in a Lomiri ListItem for native swipe context
-        // actions (leading = Hide, trailing = Share), mirroring VideoPage. Tap
-        // still opens the detail via GalleryCard.onClicked.
+        // GalleryCard wrapped in a Lomiri ListItem for native swipe actions (leading = Hide, trailing = Share), mirroring VideoPage.
         delegate: ListItem {
             width: list.width
             height: card.height
@@ -212,8 +207,7 @@ Page {
             }
         }
 
-        // Constant-height footer: a conditional height feeds back into
-        // contentHeight/atYEnd and trips a "height" binding loop.
+        // Constant-height footer: a conditional height feeds back into contentHeight/atYEnd and trips a "height" binding loop.
         footer: Item {
             width: list.width
             height: units.gu(6)

@@ -6,8 +6,7 @@ function listVideos(baseUrl, params, token, onOk, onErr) {
     var path = params.community_id
         ? "/video-component/"
         : "/video-component/list-all-videos-by-author"
-    // Community endpoint defaults to curated order, burying fresh uploads —
-    // type=new sorts by created_at DESC to match the Global feed instead.
+    // Community endpoint defaults to curated order, burying fresh uploads — type=new sorts by created_at DESC to match the Global feed instead.
     if (params.community_id)
         params.type = "new";
     return Http.get(baseUrl, path, params, token, function (data) {

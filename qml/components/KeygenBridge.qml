@@ -24,9 +24,7 @@ Item {
         }
     }
 
-    // Generate keys for `username`. Calls onKeys(keysObject) on success or
-    // onErr(message) on failure. keysObject has master_password, the four
-    // *_public_key fields and posting_private_key.
+    // Generate keys for `username`; onKeys(keysObject) on success has master_password, the four *_public_key fields, and posting_private_key.
     function generate(username, onKeys, onErr) {
         if (!_ready) {
             onErr(qsTr("Still preparing, please try again in a moment."));

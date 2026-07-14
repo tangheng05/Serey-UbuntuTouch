@@ -1,8 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-// ListView recycling re-asks for follow state per card — cache per author for
-// the session and coalesce concurrent first-time requests via `_pending`.
+// ListView recycling re-asks for follow state per card — cache per author for the session and coalesce concurrent first-time requests via `_pending`.
 var _cache = {};            // author -> bool
 var _pending = {};          // author -> [ {onOk, onErr}, ... ]
 var _cacheViewer = null;
@@ -19,8 +18,7 @@ function status(baseUrl, viewerUsername, author, onOk, onErr) {
 
     Http.get(baseUrl, "/follow/status", { username: viewerUsername, author: author }, null,
         function (data) {
-            // The backend returns `following_status` (boolean). The older field
-            // names are kept as fallbacks in case the endpoint shape changes.
+            // The backend returns `following_status` (boolean); older field names are kept as fallbacks in case the endpoint shape changes.
             var f = !!(data && (data.following_status || data.is_following || data.following));
             _cache[author] = f;
             var waiters = _pending[author] || []; delete _pending[author];

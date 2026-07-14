@@ -47,8 +47,7 @@ QtObject {
     readonly property int fontLarge: units.dp(16)
     readonly property int fontTitle: units.dp(22)
 
-    // --- Radii ----------------------------------------------------------------
-    // Lomiri/Suru is low-radius and flat — subtle rounding, not iOS-style pills
+    // Radii: Lomiri/Suru is low-radius and flat — subtle rounding, not iOS-style pills.
     readonly property real radius: units.gu(0.6)
     readonly property real thumbRadius: units.gu(0.8)
     readonly property real cardRadius: units.gu(0.6)
@@ -64,39 +63,39 @@ QtObject {
     readonly property real coinIconSize: units.dp(16)
     readonly property real fabSize: units.gu(7)
 
-    // --- Typography / fonts ---------------------------------------------------
-    // Bundled Noto Sans Khmer has no CJK glyphs and vice versa for Noto Sans SC;
-    // Qt's glyph fallback ignores app-added fonts, so a missing glyph renders as
-    // tofu (□) rather than borrowing the other bundled font. Pick the right face
-    // per label via `fontFor(text)`; pure-Latin chrome can use `fontFamily`.
+    // Bundled Noto Sans Khmer/SC fonts don't cover each other's glyphs and Qt won't fall back between them, so pick the right face via `fontFor(text)` to avoid tofu (□).
     property FontLoader fontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansKhmer-Regular.ttf")
     }
     readonly property string fontFamily: fontLoader.status === FontLoader.Ready
                                          ? fontLoader.name : "Ubuntu"
 
-    // CJK face (~8 MB, so not the default) — also covers Latin, so a mixed
-    // Latin/Chinese title renders entirely from this one face.
+    // CJK face (~8 MB, so not the default) — also covers Latin, so mixed Latin/Chinese titles render from one face.
     property FontLoader cjkFontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansSC-Regular.otf")
     }
     readonly property string cjkFamily: cjkFontLoader.status === FontLoader.Ready
                                         ? cjkFontLoader.name : fontFamily
 
-    // CJK face if the text contains any CJK codepoint, else Khmer/Latin.
-    // (Khmer+Chinese mixed in one label is rare and would tofu the Khmer run.)
+    property FontLoader bengaliFontLoader: FontLoader {
+        source: Qt.resolvedUrl("../../assets/fonts/NotoSansBengali-Regular.ttf")
+    }
+    readonly property string bengaliFamily: bengaliFontLoader.status === FontLoader.Ready
+                                            ? bengaliFontLoader.name : fontFamily
+
+    // Script face by codepoint, else Khmer/Latin default.
     function fontFor(text) {
         if (text && /[⺀-鿿豈-﫿＀-￯]/.test(text))
             return cjkFamily;
+        if (text && /[ঀ-৿]/.test(text))
+            return bengaliFamily;
         return fontFamily;
     }
 
-    // Khmer combining vowel signs can ink past their advance-width box, so
-    // wrapped text gets clipped at the edge without this margin subtracted.
+    // Khmer combining vowel signs can ink past their advance-width box, so wrapped text needs this margin subtracted to avoid clipping.
     readonly property real wrapSafeMargin: units.gu(0.5)
 
-    // --- Helpers --------------------------------------------------------------
-    // Relative timestamp: "just now / Xm / Xh / Xd ago / DD Mon [YYYY]".
+    // Helpers: relative timestamp formatted as "just now / Xm / Xh / Xd ago / DD Mon [YYYY]".
     function formatTimeAgo(dateStr) {
         if (!dateStr)
             return "";

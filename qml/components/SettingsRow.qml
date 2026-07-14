@@ -46,8 +46,7 @@ AbstractButton {
         color: root.danger ? Style.danger : Style.textPrimary
     }
 
-    // A Row sizes to its single visible child intrinsically (invisible children
-    // are excluded), so there's no childrenRect/right-anchor feedback loop.
+    // A Row sizes to its single visible child, so there's no right-anchor feedback loop.
     Row {
         id: trailing
         anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }

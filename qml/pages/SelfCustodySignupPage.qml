@@ -25,8 +25,7 @@ Page {
         ]
     }
 
-    // Steps 1–2 go back within the wizard; step 0 and the post-creation key
-    // screen (3) leave the page (back must not re-trigger account creation).
+    // Steps 1-2 go back within the wizard; step 0 and the post-creation key screen (3) leave the page so back can't re-trigger account creation.
     function goBack() {
         if (page.step === 1 || page.step === 2) { page.errorMsg = ""; page.step -= 1; }
         else page.pageStack.pop();
@@ -310,8 +309,7 @@ Page {
                     else if (page.step === 1) page.sendOtp();
                     else if (page.step === 2) page.createAccount();
                     else {
-                        // Drop the self-custody page + the chooser beneath it,
-                        // then land on the login page (sign in with the saved key).
+                        // Drop the self-custody page + the chooser beneath it, then land on the login page to sign in with the saved key.
                         var stack = page.pageStack;
                         Toast.success(Lang.tr("Account created. Log in with your key."));
                         stack.pop();   // this self-custody page

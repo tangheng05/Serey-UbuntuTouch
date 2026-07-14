@@ -1,7 +1,6 @@
 .pragma library
 
-// InnerTube clients tried in order. Each returns progressive direct URLs without
-// a PoToken in practice; we fall through to the next on any failure.
+// InnerTube clients tried in order — each returns progressive direct URLs without a PoToken in practice; fall through to the next on failure.
 var CLIENTS = [
     {
         name: "IOS",

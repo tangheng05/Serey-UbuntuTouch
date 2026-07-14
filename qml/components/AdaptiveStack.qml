@@ -13,12 +13,11 @@ AdaptivePageLayout {
         header: Item { height: 0 }
     }
 
-    // Stay single-column until something's actually pushed (opt-in per stack —
-    // avoids a permanent blank detail column on tabs with no master-detail use).
+    // Stay single-column until something's actually pushed (opt-in per stack) to avoid a permanent blank detail column on tabs with no master-detail use.
     property bool singleColumnUntilPushed: false
 
     layouts: PageColumnsLayout {
-        when: root.width >= units.gu(80) && (!root.singleColumnUntilPushed || root.depth > 1)
+        when: root.width >= Config.convergenceBreakpoint && (!root.singleColumnUntilPushed || root.depth > 1)
         PageColumn { minimumWidth: units.gu(30); maximumWidth: units.gu(60); preferredWidth: units.gu(40) }
         PageColumn { fillWidth: true }
     }
@@ -30,7 +29,7 @@ AdaptivePageLayout {
     // Approximates the column-0 boundary (no real API for it)
     Item {
         anchors { left: parent.left; leftMargin: units.gu(40); right: parent.right; top: parent.top; bottom: parent.bottom }
-        visible: root.emptyDetailMessage !== "" && root.width >= units.gu(80) && root.depth <= 1
+        visible: root.emptyDetailMessage !== "" && root.width >= Config.convergenceBreakpoint && root.depth <= 1
 
         Column {
             anchors.centerIn: parent
@@ -55,8 +54,7 @@ AdaptivePageLayout {
     readonly property int depth: _pages.length
     property int _seq: 0
 
-    // addPageToNextColumn/addPageToCurrentColumn's return value can't be
-    // trusted — find the created page by a tag instead.
+    // addPageToNextColumn/addPageToCurrentColumn's return value can't be trusted — find the created page by a tag instead.
     function _findByObjectName(item, name) {
         if (!item) return null;
         if (item.objectName === name) return item;
@@ -78,8 +76,7 @@ AdaptivePageLayout {
         for (var k in given) props[k] = given[k];
         props.objectName = tag;
 
-        // First push replaces the invisible placeholder's column instead of
-        // adding beside it (the placeholder isn't a valid addPageToNextColumn source)
+        // First push replaces the invisible placeholder's column instead of adding beside it, since the placeholder isn't a valid addPageToNextColumn source.
         if (isFirstPage)
             root.addPageToCurrentColumn(sourcePage, pageUrl, props);
         else

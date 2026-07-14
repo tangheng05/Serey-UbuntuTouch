@@ -2,8 +2,7 @@
 .import "Http.js" as Http
 .import "Mappers.js" as M
 
-// onOk receives (posts, rawCount) — rawCount is the pre-filter server count,
-// so callers paginate against the true offset, not a filtered length.
+// onOk receives (posts, rawCount) — rawCount is the pre-filter server count so callers paginate against the true offset, not a filtered length.
 function _list(baseUrl, path, params, token, onOk, onErr) {
     return Http.get(baseUrl, path, params, token, function (data) {
         var raw = data.posts || [];
@@ -11,8 +10,7 @@ function _list(baseUrl, path, params, token, onOk, onErr) {
     }, onErr);
 }
 
-// Only posts from authors the user follows — excludes community-subscription
-// posts (unlike the old list-by-feed-mixed). Same params/response shape.
+// Only posts from authors the user follows, excluding community-subscription posts (unlike the old list-by-feed-mixed); same params/response shape.
 function listFeedFollowing(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-feed-following", params, token, onOk, onErr);
 }
@@ -43,8 +41,7 @@ function listNew(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-new", params, token, onOk, onErr);
 }
 
-// The dedicated image-post feed. Auth is optional (token personalises
-// voters/flaggers). Mapped via toGalleryPost for this endpoint's field shape.
+// The dedicated image-post feed; auth is optional (personalises voters/flaggers), mapped via toGalleryPost for this endpoint's field shape.
 function listGallery(baseUrl, params, token, onOk, onErr) {
     return Http.get(baseUrl, "/serey-web/list-gallery-post-by-new", params, token, function (data) {
         var raw = data.posts || [];
@@ -82,8 +79,7 @@ function detail(baseUrl, author, permlink, token, onOk, onErr) {
     }, onErr);
 }
 
-// Same endpoint as detail(), mapped via toGalleryPost so the carousel keeps
-// every image (not just the cover) for GalleryDetailPage's Instagram-style view.
+// Same endpoint as detail(), mapped via toGalleryPost so the carousel keeps every image, not just the cover, for GalleryDetailPage's Instagram-style view.
 function detailGallery(baseUrl, author, permlink, token, onOk, onErr) {
     Http.get(baseUrl, "/serey-web/details-by-permlink-and-author",
              { author: author, permlink: permlink }, token, function (data) {
@@ -93,19 +89,7 @@ function detailGallery(baseUrl, author, permlink, token, onOk, onErr) {
     }, onErr);
 }
 
-// POST /serey-web/create-or-update-post — create a blog or gallery post.
-//
-// Backend contract (serey-api postSchema + createOrUpdatePost service):
-//   - `categories` is a REQUIRED string. The literal "gallery" routes the post
-//     into the community's gallery (governed by gallery_is_allow_post); any
-//     other value is a normal blog category.
-//   - `subcategories` MUST be an array — the service calls subcategories.forEach
-//     unconditionally, so omitting it 500s the request.
-//   - `community_id` is a NUMBER and must resolve to a real community. Note the
-//     server treats 0 as falsy and then looks up by country_name, so a post
-//     needs a concrete (>0) community id.
-//   - `images` is an array of hosted image URLs (the gallery carousel; for a
-//     blog post the cover lives in the body HTML).
+// POST /serey-web/create-or-update-post contract: categories is required ("gallery" routes to the gallery), subcategories must be an array (unconditional .forEach, or it 500s), community_id must be a real >0 number, images is the gallery's hosted URLs.
 function createPost(baseUrl, params, token, onOk, onErr) {
     var body = {
         title: params.title,
@@ -121,37 +105,21 @@ function createPost(baseUrl, params, token, onOk, onErr) {
     body.post_to_blockchain = (params.postToBlockchain !== false);
     if (params.communityId)            // omit when 0/empty so we don't post a falsy id
         body.community_id = Number(params.communityId);
-    // Server resolves by id when present, else by title — lets "Global" (id 0)
-    // and any source whose id we don't hold still resolve server-side.
+    // Server resolves by id when present, else by title, letting "Global" (id 0) and unheld ids still resolve server-side.
     if (params.communityName)
         body.country_name = params.communityName;
     Http.post(baseUrl, "/serey-web/create-or-update-post", body,
               token, function (data) { onOk(data || {}); }, onErr);
 }
 
-// POST /serey-web/create-or-update-post — create a VIDEO post. A "video" is a
-// normal Post carrying the uploaded media URL plus the video-component flags;
-// the backend's createOrUpdatePost also creates the YoutubeComponent row (so it
-// surfaces in the curated video feed) and broadcasts on-chain.
-//
-// Backend contract (verified against serey-api):
-//   - `categories` MUST be the literal "video".
-//   - `subcategories` MUST be an array (the service calls .forEach on it).
-//   - `community_id` must resolve to a real community > 0 — "Global" (id 0) is
-//     rejected for videos (it's also used to allocate the html_section_id), so
-//     the caller must pick a concrete community first.
-//   - `videos` is [hostedVideoUrl]; the URL must be on a Serey upload host or the
-//     server can't classify it as platform SEREY.
-//   - `images` is [thumbnailUrl] (optional; the post's card thumbnail).
-//   - Rate limited to 10 videos / 48h per author (enforced server-side).
+// POST /serey-web/create-or-update-post for video: categories must be literal "video", subcategories must be an array, community_id must be a real >0 community (Global/id 0 rejected), videos is [hostedVideoUrl] on a Serey upload host, images is [thumbnailUrl], rate-limited to 10 videos/48h per author.
 function createVideoPost(baseUrl, params, token, onOk, onErr) {
     var body = {
         title: params.title,
         desc: params.desc || "",
         body: params.body || params.desc || "",
         videos: [params.videoUrl],
-        // Backend only persists a SEREY thumbnail when images.length > 1 — a
-        // single entry is dropped, so send the captured thumbnail twice.
+        // Backend only persists a SEREY thumbnail when images.length > 1 — a single entry is dropped, so send the captured thumbnail twice.
         images: params.thumbUrl ? [params.thumbUrl, params.thumbUrl] : [],
         categories: "video",
         subcategories: [],
@@ -162,8 +130,7 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
     };
     // "Post to blockchain" toggle (see createPost): explicit bool, false = DB-only.
     body.post_to_blockchain = (params.postToBlockchain !== false);
-    // Editing an existing video post: sending its permlink makes the backend
-    // update in place (same contract as createPost).
+    // Editing an existing video post: sending its permlink makes the backend update in place (same contract as createPost).
     if (params.permlink)
         body.permlink = params.permlink;
     if (params.communityId)
@@ -174,8 +141,7 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
               token, function (data) { onOk(data || {}); }, onErr);
 }
 
-// POST alias — QML's XMLHttpRequest can't send a DELETE body. Backend
-// authorizes by the token's username, so only your own content can be deleted.
+// POST alias since QML's XMLHttpRequest can't send a DELETE body; backend authorizes by the token's username so only your own content can be deleted.
 function deletePost(baseUrl, username, permlink, token, onOk, onErr) {
     Http.post(baseUrl, "/serey-web/delete-post-or-comment",
               { username: username, permlink: permlink }, token,

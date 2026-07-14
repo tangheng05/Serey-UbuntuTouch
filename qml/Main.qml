@@ -1,7 +1,6 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
-// Lomiri.Notifications / Ubuntu.PushNotifications exist only on-device, so
-// they're created dynamically (see _initNotifications) to keep desktop builds alive.
+// Lomiri.Notifications/Ubuntu.PushNotifications exist only on-device, so they're created dynamically to keep desktop builds alive.
 import "Theme"
 import "Session"
 import "components"
@@ -21,15 +20,14 @@ MainView {
     width: units.gu(45)
     height: units.gu(80)
 
-    // Convergence breakpoint (matches AdaptivePageLayout's own default)
-    readonly property bool wideMode: width >= units.gu(80)
+    // Convergence breakpoint shared with AdaptiveStack.qml via Config — drives the side nav rail, independent of any tab's column state.
+    readonly property bool wideMode: width >= Config.convergenceBreakpoint
     Binding { target: Config; property: "wideMode"; value: root.wideMode }
 
     property int currentTab: 0
     onCurrentTabChanged: { Config.currentTab = currentTab; _ensureTab(currentTab); body.opacity = 0; tabFadeIn.start(); }
 
-    // Tabs are created lazily on first visit: launching all four at once made
-    // the Homepage web view slow/janky on low-end devices (Pixel 3).
+    // Tabs are created lazily on first visit — launching all four at once made the Homepage web view janky on low-end devices.
     function _ensureTab(tab) {
         if (tab === 0 && homeStack.depth === 0)
             homeStack.push(Qt.resolvedUrl("pages/HomepagePage.qml"));
@@ -42,21 +40,20 @@ MainView {
     }
     NumberAnimation { id: tabFadeIn; target: body; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
 
-    // Header/nav hide at depth > 1 on phone (sub-page takes over the screen);
-    // stay up on a wide window since the list is still visible beside it.
+    // Header/nav hide at depth > 1 on phone; stay up when AdaptivePageLayout's own columns show 2+, per Lomiri convergence HIG.
     property int activeDepth: currentTab === 0 ? homeStack.depth
                             : currentTab === 1 ? newsStack.depth
                             : currentTab === 2 ? videoStack.depth
                             : settingsStack.depth
-    readonly property bool showHeader: (root.wideMode || activeDepth <= 1) && currentTab !== 3
-    readonly property bool showNavBar: root.wideMode || activeDepth <= 1
+    property int activeColumns: currentTab === 0 ? homeStack.columns
+                              : currentTab === 1 ? newsStack.columns
+                              : currentTab === 2 ? videoStack.columns
+                              : settingsStack.columns
+    readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3
+    readonly property bool showNavBar: activeColumns > 1 || activeDepth <= 1
 
     Component.onCompleted: {
-        // Expired tokens are caught lazily via 401 (they can't be checked
-        // up-front: /auth/authenticated needs a device JWT we never have and
-        // always 401s — validating on launch wrongly logged users out). Only
-        // clear if the rejected token is still the CURRENT one; a late 401
-        // from a logged-out account must not wipe a fresh session.
+        // Expired tokens are caught lazily via 401 (can't check up-front); only clear if the rejected token is still the current one.
         Http.setUnauthorizedHandler(function (tokenUsed) {
             if (!Session.isLoggedIn) return;
             if (tokenUsed !== Session.token) return;
@@ -77,10 +74,7 @@ MainView {
                 for (var b = 0; b < Config.baseSources.length; b++)
                     baseDns[Config.baseSources[b].dns] = true;
 
-                // Append every top-level country (except Cambodia) below the
-                // fixed Global / Netherlands / United States rows in the picker.
-                // Country icons follow fe-serey-web: derive a flagcdn flag from
-                // the title (backend leaves icon_url empty → generic Serey logo).
+                // Append every top-level country (except Cambodia) below the fixed rows; icons derive from a flagcdn flag since backend icon_url is empty.
                 var extra = [];
                 for (var i = 0; i < list.length; i++) {
                     var c = list[i];
@@ -98,8 +92,7 @@ MainView {
             function (err) { /* keep globe fallback */ });
     }
 
-    // Non-critical launch work is deferred a few seconds so the Homepage web
-    // view's first load gets the CPU/network to itself on slow devices.
+    // Non-critical launch work is deferred so the Homepage web view's first load gets the CPU/network to itself on slow devices.
     property bool startupSettled: false
     Timer {
         id: startupSettleTimer
@@ -128,8 +121,7 @@ MainView {
             function (err) { /* offline / failed — keep last-known local set */ });
     }
 
-    // Communities the user owns/manages — an owner may post even when the
-    // community is set to owner-only.
+    // Communities the user owns/manages — an owner may post even when the community is owner-only.
     function _syncOwnedCommunities() {
         if (!Session.isLoggedIn) { Config.ownedCommunityIdSet = ({}); return; }
         AccountService.ownedCommunityIds(Config.baseUrl, Session.token,
@@ -235,8 +227,7 @@ MainView {
 
     Connections {
         target: Session
-        // Keyed off the token (not isLoggedIn) so a direct account switch also
-        // resyncs — one account's blocks must never leak into another's feed.
+        // Keyed off the token (not isLoggedIn) so account switches resync — one account's blocks must never leak into another's feed.
         function onTokenChanged() { root._syncBlockedUsers(); root._syncOwnedCommunities() }
         function onIsLoggedInChanged() {
             if (!Session.isLoggedIn) {
@@ -247,8 +238,7 @@ MainView {
         }
     }
 
-    // Tab switch requested by a page (e.g. signup success → Homepage); also
-    // unwinds the auth pages left on the Settings stack.
+    // Tab switch requested by a page (e.g. signup success); also unwinds auth pages left on the Settings stack.
     Connections {
         target: Nav
         function onGoToTab(tab) {
@@ -324,8 +314,7 @@ MainView {
                 }
             }
 
-            // Upload video (Video tab only), gated on the community's video
-            // posting permission (see Config.canPostVideoCurrent).
+            // Upload video (Video tab only), gated on the community's video posting permission.
             AbstractButton {
                 id: uploadBtn
                 visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostVideoCurrent
@@ -441,10 +430,7 @@ MainView {
         }
     }
 
-    // --- Side navigation (docked / desktop / tablet-wide window) -----------
-    // Convergence, not scaling: this isn't the bottom bar resized — it's a
-    // separate vertical rail, spanning full height on the left edge, matching
-    // Lomiri's own desktop shell convention (its app dash lives the same way).
+    // Side navigation: a separate vertical rail spanning full height, matching Lomiri's desktop shell convention — convergence, not scaling.
     Rectangle {
         id: sideNavBar
         anchors { left: parent.left; top: parent.top; bottom: parent.bottom }

@@ -1,16 +1,13 @@
 .pragma library
 .import "Http.js" as Http
 
-// Session-level vote state cache. Survives delegate recycling and page
-// navigation so a post the user just upvoted still shows blue when they
-// navigate back. Keyed by "author/permlink".
+// Session-level vote state cache, keyed by "author/permlink", so a post the user just upvoted still shows blue after navigating back.
 var _cache = {};
 
 function _key(author, permlink) { return author + "/" + permlink; }
 
 function getCached(author, permlink) {
-    // Optimistic local comments have an empty permlink; they'd all collapse to
-    // the key "author/" and bleed vote state into each other — skip the cache.
+    // Optimistic local comments have an empty permlink; they'd all collapse to the key "author/" and bleed vote state into each other — skip the cache.
     if (!permlink) return null;
     return _cache[_key(author, permlink)] || null;
 }

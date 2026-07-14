@@ -47,8 +47,7 @@ Rectangle {
         onAccepted: root.accepted()
     }
 
-    // Custom placeholder (kept out of the TextField so its per-field visibility
-    // logic stays ours; TextField's own placeholderText is unused).
+    // Custom placeholder kept out of the TextField so its per-field visibility logic stays ours; TextField's own placeholderText is unused.
     Label {
         anchors {
             left: parent.left; leftMargin: Style.spacingM

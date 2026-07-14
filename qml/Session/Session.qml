@@ -21,8 +21,7 @@ QtObject {
         return _dbHandle;
     }
 
-    // Own database (unbounded, written every vote) so it can't interfere with
-    // the small, critical auth rows below.
+    // Own database (unbounded, written every vote) so it can't interfere with the small, critical auth rows below.
     property var _votesDbHandle: null
     function _votesDb() {
         if (!_votesDbHandle)
@@ -48,8 +47,7 @@ QtObject {
         }
     }
 
-    // Write then read back and verify — a silent write failure is how an old
-    // account resurrects next launch (B logs in, write fails, _load() restores A).
+    // Write then read back and verify — a silent write failure is how an old account resurrects next launch.
     function _writeAuthOnce() {
         _db().transaction(function (tx) {
             tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
@@ -93,8 +91,7 @@ QtObject {
     }
 
     function setAuth(newToken, newUsername) {
-        // Username first: token fires onTokenChanged synchronously, and
-        // listeners fetch the profile by username immediately.
+        // Username first: token fires onTokenChanged synchronously, and listeners fetch the profile by username immediately.
         username = newUsername;
         token = newToken;
         _save();
@@ -151,12 +148,7 @@ QtObject {
         token = "";
         username = "";
         avatarUrl = "";
-        // Logout: DELETE the stored credentials rather than persisting empty
-        // strings via _save(). _save()'s write-verify exists to catch a failed
-        // *login* write; running it for an empty session just logs a spurious
-        // "auth write VERIFY FAILED for user ''" on every logout. Deleting the
-        // rows is the correct "restore nothing on next launch" outcome, and
-        // leaves the language/pushEnabled rows untouched.
+        // Logout deletes the stored credentials rather than persisting empty strings, since _save()'s write-verify would log a spurious failure for an empty session.
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");

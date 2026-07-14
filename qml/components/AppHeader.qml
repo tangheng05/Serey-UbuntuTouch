@@ -16,9 +16,7 @@ Rectangle {
     height: units.gu(6)
     color: Style.surface
 
-    // Left: community selector — a flag chip with a caret (Lomiri "title with
-    // dropdown"). Flat by default; a soft pill only surfaces on press for touch
-    // feedback, so it reads as one control without permanent header chrome.
+    // Left: community selector — a flag chip with a caret; flat by default, with a soft pill only on press for touch feedback.
     AbstractButton {
         id: titleBtn
         anchors {
@@ -72,8 +70,7 @@ Rectangle {
                     color: Style.textSecondary
                     visible: !cIcon.loaded
                 }
-                // Hairline ring so a light-edged flag (e.g. the Dutch white
-                // stripe) stays crisp against the white header instead of bleeding.
+                // Hairline ring so a light-edged flag (e.g. the Dutch white stripe) stays crisp against the white header instead of bleeding.
                 Rectangle {
                     anchors.fill: parent
                     radius: width / 2
@@ -93,9 +90,7 @@ Rectangle {
         }
     }
 
-    // Center: horizontally centered action slot (e.g. the "My feed" shortcut).
-    // Fixed width (not childrenRect-based) — a child anchored via centerIn to
-    // this Item would otherwise create a width binding loop.
+    // Center action slot uses a fixed width (not childrenRect) since a child anchored via centerIn would otherwise create a width binding loop.
     Item {
         id: centerSlot
         anchors {

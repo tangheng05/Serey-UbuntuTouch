@@ -63,9 +63,7 @@ Item {
         if (picker.cache[srcIndex] !== undefined) return
         picker.loadingIndex = srcIndex
 
-        // Fetch communities, then categories, then group the former by the latter.
-        // Global (srcIndex 0) uses categories/list directly — list-by-parent-id/1
-        // returns only the top-level regional hubs, not individual communities.
+        // Fetch communities, then categories, then group the former by the latter; Global uses categories/list directly since list-by-parent-id/1 returns only hubs.
 
         var apiId = Config.sources[srcIndex].id
         if (apiId === 0) apiId = 1
@@ -110,9 +108,7 @@ Item {
         }
 
         function _applyCategories(sourceComms, catArr) {
-            // Build community_category_id → {name, icon, color} map
-            // Communities from list-by-parent-id carry community_category_id;
-            // categories from categories/list also carry community_category_id.
+            // Build community_category_id -> {name, icon, color} map from both communities and categories, which both carry community_category_id.
             var catMap = {}
             for (var i = 0; i < catArr.length; i++) {
                 var meta = _catMeta(catArr[i], i)
@@ -303,9 +299,7 @@ Item {
                     delegate: Column {
                         id: sourceCol
                         width: sheetContent.width
-                        // Global (index 0) applies no community filter (combined
-                        // feed) and is the default/main source. Shown as a plain
-                        // selectable row with no chevron (it has no sub-communities).
+                        // Global (index 0) applies no community filter and is shown as a plain selectable row with no chevron (no sub-communities).
                         visible: true
                         property int srcIndex: index
                         property bool isExpanded: picker.expandedIndex === index
@@ -362,8 +356,7 @@ Item {
                                 }
                             }
 
-                            // Anchored to the tap zone directly (in the Row it sat left
-                            // of the zone, so arrow taps selected the source instead)
+                            // Anchored to the tap zone directly since it previously sat left of the zone, so arrow taps selected the source instead.
                             Icon {
                                 anchors { right: parent.right; rightMargin: Style.spacingM
                                           verticalCenter: parent.verticalCenter }
@@ -573,9 +566,7 @@ Item {
                                                             id: commBtn.commId,
                                                             name: commBtn.commName,
                                                             icon: commBtn.commIcon,
-                                                            // Posting permissions for this sub-community (gate the
-                                                            // compose buttons). modelData is a raw list-by-parent-id
-                                                            // object, so the fields use the API's snake_case names.
+                                                            // Posting permissions for this sub-community gate the compose buttons; modelData is a raw list-by-parent-id object using the API's snake_case names.
                                                             allowPost: !!modelData.is_allow_post,
                                                             videoAllowPost: !!modelData.video_is_allow_post
                                                         }
@@ -721,8 +712,7 @@ Item {
                                                                     id: childBtn.cId,
                                                                     name: childBtn.cName,
                                                                     icon: childBtn.cIcon,
-                                                                    // modelData is a mapped superhub child (M.toCommunity),
-                                                                    // so the fields use the mapper's camelCase names.
+                                                                    // modelData is a mapped superhub child (M.toCommunity), so the fields use the mapper's camelCase names.
                                                                     allowPost: !!modelData.allowPost,
                                                                     videoAllowPost: !!modelData.videoAllowPost
                                                                 }

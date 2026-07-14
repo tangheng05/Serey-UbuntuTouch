@@ -6,8 +6,7 @@ var _db = null
 function _open() {
     if (!_db) {
         _db = LS.LocalStorage.openDatabaseSync("SereyBlockedUsers", "1.0", "Blocked users", 1000000)
-        // CREATE TABLE only on first open (not on every call) — a write
-        // transaction per call would be needless work on the hot feed path.
+        // CREATE TABLE only on first open, not on every call, since a write transaction per call would be needless work on the hot feed path.
         _db.transaction(function (tx) {
             tx.executeSql("CREATE TABLE IF NOT EXISTS blocked (username TEXT PRIMARY KEY)")
         })

@@ -21,8 +21,7 @@ RowLayout {
     property bool upvoted: false
     property bool flagged: false
     property bool busy: false
-    // Off-chain (DB-only) posts: like/dislike stay, but weight popover and payout
-    // pill are suppressed (see doUpvote) — mirrors the web's simpleVote/showCoins.
+    // Off-chain (DB-only) posts: like/dislike stay, but weight popover and payout pill are suppressed, mirroring the web's simpleVote/showCoins.
     property bool onChain: true
     property bool showComments: true
     property bool showShare: true
@@ -45,8 +44,7 @@ RowLayout {
         }
         return !bar.busy;
     }
-    // Vote count is updated optimistically, not from r.voterCount — the async
-    // chain broadcast means the immediate response still carries the pre-vote count.
+    // Vote count updated optimistically, not from r.voterCount, since the async chain broadcast means the immediate response still carries the pre-vote count.
     function _apply(r) {
         bar.busy = false;
         bar.flaggers = r.flaggerCount;
@@ -70,8 +68,7 @@ RowLayout {
         bar.busy = false;
         Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
     }
-    // "Already voted" means the server already has our vote — reconcile the UI.
-    // Must NOT be shared with flag/removeVote or a failed unvote flips to "liked".
+    // "Already voted" means the server already has our vote — reconcile the UI; must not be shared with flag/removeVote or a failed unvote flips to "liked".
     function _failUpvote(e) {
         bar.busy = false;
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
@@ -245,9 +242,7 @@ RowLayout {
         }
     }
 
-    // "Voters" caption (used on the post-detail summary bar, in place of a
-    // redundant comment-count icon that's already covered by the Comments
-    // section above it)
+    // "Voters" caption used on the post-detail summary bar in place of a redundant comment-count icon already covered above.
     Label {
         visible: bar.showVotersLabel
         Layout.alignment: Qt.AlignVCenter

@@ -32,8 +32,7 @@ Rectangle {
     border.color: hidden.activeFocus ? Style.brand : Style.divider
     Behavior on border.color { ColorAnimation { duration: 120 } }
 
-    // Visible composed display: typed chars, remaining dots, then the revealed
-    // suffix and domain. Sits behind the transparent input.
+    // Visible composed display: typed chars, remaining dots, then the revealed suffix and domain — sits behind the transparent input.
     Row {
         anchors {
             left: parent.left; leftMargin: Style.spacingM
@@ -48,8 +47,7 @@ Rectangle {
         Label { text: root.domain.length ? "@" + root.domain : ""; font.pixelSize: Style.fontRegular; font.family: Style.fontFor(text); color: Style.textSecondary }
     }
 
-    // Transparent capture field on top (its own glyphs are invisible; the Row
-    // shows the composed value). A custom caret keeps the cursor visible.
+    // Transparent capture field on top (its own glyphs invisible); a custom caret keeps the cursor visible.
     TextInput {
         id: hidden
         anchors {

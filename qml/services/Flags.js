@@ -87,8 +87,7 @@ var COUNTRY_NAME_TO_ISO2 = {
     "zambia": "zm", "zimbabwe": "zw"
 };
 
-// title -> ISO2 code, mirroring fe-serey-web's getFlagCodeFromTitle: exact match
-// first, then a substring match (e.g. "Serey USA", "Voetbal Nederland").
+// title -> ISO2 code, mirroring fe-serey-web's getFlagCodeFromTitle: exact match first, then a substring match.
 function flagCodeFromTitle(title) {
     if (!title) return null;
     var key = ("" + title).trim().toLowerCase();

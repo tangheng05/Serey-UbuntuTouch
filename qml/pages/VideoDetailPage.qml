@@ -599,7 +599,7 @@ Page {
 
             Item { width: 1; height: Style.spacingM }
 
-            // Capped/centered meta block; player + "More Videos" stay full-bleed
+            // Full-width meta block (title/author/action-row/comments header)
             Item {
                 id: metaBlock
                 width: parent.width
@@ -607,8 +607,7 @@ Page {
 
             Column {
                 id: metaCol
-                width: Math.min(parent.width, page.maxContentWidth)
-                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width
                 spacing: 0
 
             // Title

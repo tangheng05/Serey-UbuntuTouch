@@ -113,7 +113,7 @@ Page {
             anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
             width: postPillLabel.implicitWidth + Style.spacingM * 2
             height: units.gu(4)
-            enabled: !page.submitting && titleField.text.trim().length > 0 && bodyArea.text.trim().length > 0
+            enabled: !page.submitting && titleField.text.trim().length > 0 && bodyArea.getText(0, bodyArea.length).trim().length > 0
             onClicked: page.publish()
 
             Rectangle {
@@ -167,8 +167,7 @@ Page {
                 page.bodyImages = page.bodyImages.concat([url]);
                 var snippet = "[image " + page.bodyImages.length + "]";
                 var pos = bodyArea.cursorPosition;
-                var txt = bodyArea.text;
-                bodyArea.text = txt.substring(0, pos) + snippet + txt.substring(pos);
+                bodyArea.insert(pos, snippet);
                 bodyArea.cursorPosition = pos + snippet.length;
                 Toast.success(Lang.tr("Image added"));
             } else {
@@ -179,12 +178,30 @@ Page {
         onFailed: Toast.error(message)
     }
 
+    // Qt's RichText TextEdit re-serializes formatting as style-based spans
+    // (e.g. <span style="font-weight:600">) rather than the simple <b>/<i>/<s>
+    // tags the rest of the app's HTML renderers whitelist — collapse them back
+    // so bold/italic/strikethrough survive display elsewhere (feed, detail page).
+    function _richHtmlToSimple(html) {
+        var t = html || "";
+        var bodyMatch = t.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        if (bodyMatch) t = bodyMatch[1];
+        t = t.replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<\/?html[^>]*>/gi, "")
+             .replace(/<head>[\s\S]*?<\/head>/gi, "");
+        t = t.replace(/<span[^>]*style="[^"]*font-weight:\s*(?:600|700|bold)[^"]*"[^>]*>([\s\S]*?)<\/span>/gi, "<b>$1</b>");
+        t = t.replace(/<span[^>]*style="[^"]*font-style:\s*italic[^"]*"[^>]*>([\s\S]*?)<\/span>/gi, "<i>$1</i>");
+        t = t.replace(/<span[^>]*style="[^"]*text-decoration:[^"]*line-through[^"]*"[^>]*>([\s\S]*?)<\/span>/gi, "<s>$1</s>");
+        t = t.replace(/<p[^>]*>/gi, "<p>");
+        t = t.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>/gi, '<a href="$1">');
+        return t;
+    }
+
     function publish() {
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
             return;
         }
-        var body = bodyArea.text.trim();
+        var body = page._richHtmlToSimple(bodyArea.text).trim();
         // Swap "[image N]" placeholders back into real <img> tags; unknown numbers are left as typed.
         var imgs = page.bodyImages || [];
         body = body.replace(/\[image (\d+)\]/gi, function (m, n) {
@@ -223,19 +240,64 @@ Page {
         });
     }
 
+    // Applies real formatting to the selection (rich text, not literal tags) —
+    // requires a selection since a plain TextEdit has no "current format" state
+    // to toggle for future-typed characters.
     function wrapSelection(tagOpen, tagClose) {
         var start = bodyArea.selectionStart;
         var end = bodyArea.selectionEnd;
-        var txt = bodyArea.text;
         if (start === end) {
-            bodyArea.text = txt.substring(0, start) + tagOpen + tagClose + txt.substring(start);
-            bodyArea.cursorPosition = start + tagOpen.length;
-        } else {
-            var sel = txt.substring(start, end);
-            bodyArea.text = txt.substring(0, start) + tagOpen + sel + tagClose + txt.substring(end);
-            bodyArea.cursorPosition = end + tagOpen.length + tagClose.length;
+            Toast.show(Lang.tr("Select some text first"));
+            return;
         }
+        var sel = bodyArea.selectedText;
+        bodyArea.remove(start, end);
+        bodyArea.insert(start, tagOpen + sel + tagClose);
         bodyArea.forceActiveFocus();
+    }
+
+    property string _pendingLinkText: ""
+    property int _pendingLinkStart: 0
+    property int _pendingLinkEnd: 0
+
+    function promptLink() {
+        if (bodyArea.selectionStart === bodyArea.selectionEnd) {
+            Toast.show(Lang.tr("Select some text first"));
+            return;
+        }
+        page._pendingLinkText = bodyArea.selectedText;
+        page._pendingLinkStart = bodyArea.selectionStart;
+        page._pendingLinkEnd = bodyArea.selectionEnd;
+        Popups.PopupUtils.open(linkDialog);
+    }
+
+    function applyLink(url) {
+        if (url.length === 0) return;
+        bodyArea.remove(page._pendingLinkStart, page._pendingLinkEnd);
+        bodyArea.insert(page._pendingLinkStart, '<a href="' + url + '">' + page._pendingLinkText + '</a>');
+        bodyArea.forceActiveFocus();
+    }
+
+    Component {
+        id: linkDialog
+        Popups.Dialog {
+            id: ldlg
+            title: Lang.tr("Add link")
+            TextField {
+                id: linkUrlField
+                placeholderText: "https://"
+                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoPredictiveText
+            }
+            Button {
+                text: Lang.tr("Insert")
+                color: Style.brand
+                onClicked: { Popups.PopupUtils.close(ldlg); page.applyLink(linkUrlField.text.trim()); }
+            }
+            Button {
+                text: Lang.tr("Cancel")
+                onClicked: Popups.PopupUtils.close(ldlg)
+            }
+        }
     }
 
     // Move active focus onto a neutral item so the on-screen keyboard drops on tapping any empty area of the form.
@@ -332,6 +394,7 @@ Page {
                         fill: parent
                         margins: Style.spacingM
                     }
+                    textFormat: Text.RichText
                     font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
@@ -343,7 +406,7 @@ Page {
                         left: parent.left; top: parent.top
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
-                    visible: bodyArea.text.length === 0 && !bodyArea.activeFocus && !Qt.inputMethod.visible
+                    visible: bodyArea.getText(0, bodyArea.length).length === 0 && !bodyArea.activeFocus && !Qt.inputMethod.visible
                     text: Lang.tr("Write your article here...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
@@ -586,7 +649,7 @@ Page {
 
             AbstractButton {
                 width: units.gu(5); height: units.gu(4.5)
-                onClicked: page.wrapSelection("<a href=\"\">", "</a>")
+                onClicked: page.promptLink()
                 Rectangle {
                     anchors.fill: parent; anchors.margins: units.dp(4)
                     radius: Style.cardRadius; color: "transparent"

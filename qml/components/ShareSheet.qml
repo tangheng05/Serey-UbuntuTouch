@@ -38,7 +38,10 @@ Item {
 
     Rectangle {
         id: panel
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        // Convergence: present as a centered, gu-capped panel on wide windows
+        // instead of stretching a phone sheet across the desktop.
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
+        width: Math.min(parent.width, Config.sheetMaxWidth)
         height: Math.min(sheet.height * 0.75, units.gu(58))
         radius: units.dp(16)
         color: Style.surface

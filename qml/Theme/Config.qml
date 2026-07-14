@@ -5,10 +5,16 @@ QtObject {
     id: config
 
     // App version shown in Settings and reported to the web bridge — keep in sync with manifest.json.in "version" on every release.
-    readonly property string appVersion: "1.0.0"
+    readonly property string appVersion: "1.1.0"
 
     // Single source of truth for the convergence breakpoint, shared by Main.qml and AdaptiveStack.qml so the two never drift out of sync.
     readonly property real convergenceBreakpoint: units.gu(80)
+
+    // Convergence readability caps (HIG: adapt, not scale — don't let a column
+    // stretch edge-to-edge on a desktop window). Long-form reading/detail columns
+    // cap at readingMaxWidth centered; bottom sheets/pickers at sheetMaxWidth.
+    readonly property real readingMaxWidth: units.gu(80)
+    readonly property real sheetMaxWidth: units.gu(50)
 
     readonly property string prodBase: "https://global-api.serey.io/api/v2"
     readonly property string devBase: "http://localhost:5050/api/v2"

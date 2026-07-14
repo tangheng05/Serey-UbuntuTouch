@@ -160,4 +160,8 @@ AbstractButton {
         height: units.dp(1)
         color: Style.divider
     }
+
+    // Pointer/keyboard parity: right-click or the MENU key opens the same
+    // context actions as swipe / the ••• overflow (see ContextActionArea).
+    ContextActionArea { onTriggered: root.moreClicked() }
 }

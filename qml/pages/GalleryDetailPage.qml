@@ -200,7 +200,9 @@ Page {
 
         Column {
             id: contentCol
-            width: scroll.width
+            // Convergence readability cap: centered, comfortable measure on wide windows.
+            width: Math.min(scroll.width, Config.readingMaxWidth)
+            anchors.horizontalCenter: parent.horizontalCenter
 
             // Post header: avatar + author + time (Instagram-style row above the image)
             AbstractButton {

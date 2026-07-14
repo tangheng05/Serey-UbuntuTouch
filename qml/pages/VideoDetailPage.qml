@@ -525,9 +525,11 @@ Page {
 
         Column {
             id: contentCol
-            width: scroll.width
+            // Convergence readability cap: centered, comfortable measure on wide windows.
+            width: Math.min(scroll.width, Config.readingMaxWidth)
+            anchors.horizontalCenter: parent.horizontalCenter
 
-            // Player / thumbnail (full-bleed)
+            // Player / thumbnail (full-bleed within the capped column)
             Rectangle {
                 id: stage
                 width: parent.width

@@ -41,7 +41,7 @@ MainView {
     }
     NumberAnimation { id: tabFadeIn; target: body; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
 
-    // Header/nav hide at depth > 1 on phone; stay up when AdaptivePageLayout's own columns show 2+, per Lomiri convergence HIG.
+    // Header/nav hide at depth > 1 on phone; stay up when the stack shows 2 columns, per Lomiri convergence HIG.
     property int activeDepth: currentTab === 0 ? homeStack.depth
                             : currentTab === 1 ? newsStack.depth
                             : currentTab === 2 ? videoStack.depth

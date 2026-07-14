@@ -207,7 +207,9 @@ Item {
 
     Rectangle {
         id: sheetRect
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        // Convergence: centered, gu-capped panel on wide windows.
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
+        width: Math.min(parent.width, Config.sheetMaxWidth)
         height: (sheet.step === 0 ? pickCol.height
                  : sheet.step === 1 ? payCol.height
                  : sheet.step === 2 ? doneCol.height

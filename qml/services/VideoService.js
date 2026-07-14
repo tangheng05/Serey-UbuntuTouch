@@ -22,3 +22,27 @@ function detail(baseUrl, author, permlink, token, onOk, onErr) {
         onOk(M.toVideo(raw));
     }, onErr);
 }
+
+// --- Admin/CMS moderation (requires an owner/manager token) ----------------
+
+// POST /video-component/up-or-down — move a video's position; direction is
+// the obvious "up"/"down" string (backend schema not available in this repo).
+function reorder(baseUrl, id, direction, token, onOk, onErr) {
+    Http.post(baseUrl, "/video-component/up-or-down", { id: id, direction: direction }, token,
+              function (data) { onOk(data || {}); }, onErr);
+}
+
+function pinOrUnpin(baseUrl, id, token, onOk, onErr) {
+    Http.post(baseUrl, "/video-component/pin-or-unpin", { id: id }, token,
+              function (data) { onOk(data || {}); }, onErr);
+}
+
+function toggleRecommended(baseUrl, id, token, onOk, onErr) {
+    Http.post(baseUrl, "/video-component/add-or-remove-recommended", { id: id }, token,
+              function (data) { onOk(data || {}); }, onErr);
+}
+
+function toggleSpecial(baseUrl, id, token, onOk, onErr) {
+    Http.post(baseUrl, "/video-component/add-or-remove-special", { id: id }, token,
+              function (data) { onOk(data || {}); }, onErr);
+}

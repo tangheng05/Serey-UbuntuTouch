@@ -79,8 +79,8 @@ Item {
         anchors.fill: parent
         // `visible` inherits normally; onAppActiveChanged toggles it imperatively on background/foreground so the Active->Frozen transition becomes legal.
         profile: mobileProfile
-        zoomFactor: webAppView.desktopMode ? 1.0
-            : (webAppView.width > 0 ? webAppView.width / 412 : 1.0)
+        // Desktop mode renders the site at its real width — no upscaling needed.
+        zoomFactor: webAppView.desktopMode ? 1.0 : (webAppView.width > 0 ? webAppView.width / 412 : 1.0)
         settings.showScrollBars: false
 
         userScripts: [
@@ -88,6 +88,7 @@ Item {
                 injectionPoint: WebEngineScript.DocumentCreation
                 worldId: WebEngineScript.MainWorld
                 runOnSubframes: true
+                // Empty in desktop mode — page uses its own real navigator/screen
                 sourceCode: webAppView.desktopMode ? "" : ("" +
                     "Object.defineProperty(navigator, 'userAgent', { get: function() { return '" + webAppView.mobileUA + "'; }, configurable: true });" +
                     "Object.defineProperty(navigator, 'platform', { get: function() { return 'Linux armv8l'; }, configurable: true });" +

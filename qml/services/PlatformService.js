@@ -20,14 +20,76 @@
  *  - `dns` is the SUBDOMAIN SLUG — the server appends ".serey.io" itself.
  */
 
+// Resolved by username from the JWT (req.token_info) — no community_id involved.
 function getActiveSubscription(baseUrl, token, onOk, onErr) {
     Http.get(baseUrl, "/subscription/active", {}, token, function (data) {
+        var sub = (data && data.subscription) || {};
         onOk({
             hasActive: !!(data && data.has_active_subscription),
             status: (data && data.subscription_status) || "none",
-            planType: (data && data.subscription && data.subscription.plan_type) || ""
+            planName: sub.plan_name || "",
+            planType: sub.plan_type || "",
+            validStartDate: sub.valid_start_date || "",
+            validEndDate: sub.valid_end_date || "",
+            daysUntilExpiry: (data && data.days_until_expiry !== undefined) ? data.days_until_expiry : null,
+            isTrial: !!(data && data.is_trial),
+            isRecurring: !!(data && data.is_recurring),
+            autoRenew: !!(data && data.auto_renew),
+            isCancelling: !!(data && data.is_cancelling),
+            isPastDue: !!(data && data.is_past_due)
         });
     }, onErr);
+}
+
+// Field names for the paid amount are unconfirmed (no documented schema) —
+// this tries the common candidates and falls back to "" rather than guessing wrong.
+function getLatestPayment(baseUrl, token, onOk, onErr) {
+    Http.get(baseUrl, "/subscription/payment-history", { page: 1, limit: 1 }, token, function (data) {
+        var rows = (data && (data.payments || data.data || data.history)) || [];
+        if (!Array.isArray(rows) || rows.length === 0) { onOk(null); return; }
+        var p = rows[0];
+        var amount = p.amount_paid !== undefined ? p.amount_paid
+                   : p.amount !== undefined ? p.amount
+                   : p.total !== undefined ? p.total : null;
+        onOk({ amount: amount, currency: p.currency || "", date: p.created_at || p.date || "" });
+    }, onErr);
+}
+
+// Banned users — `community` is the community TITLE string, not the numeric id
+// (unlike every other community endpoint).
+function listBannedUsers(baseUrl, communityTitle, token, onOk, onErr) {
+    Http.get(baseUrl, "/banning-user/list-by-community", { community: communityTitle }, token,
+        function (data) {
+            var raw = (data && (data.banning_users || data.banned_users || data.users || data.data)) || [];
+            if (!Array.isArray(raw)) raw = [];
+            var out = [];
+            for (var i = 0; i < raw.length; i++) {
+                var r = raw[i];
+                out.push({
+                    username: (typeof r === "string") ? r : (r.username || ""),
+                    reason: (r && r.reason) || ""
+                });
+            }
+            onOk(out.filter(function (u) { return u.username.length > 0; }));
+        }, onErr);
+}
+
+function banUser(baseUrl, token, communityTitle, username, reason, onOk, onErr) {
+    var body = { username: username, community: communityTitle };
+    if (reason) body.reason = reason;
+    Http.post(baseUrl, "/banning-user/add", body, token, onOk, onErr);
+}
+
+function unbanUser(baseUrl, token, communityTitle, username, onOk, onErr) {
+    Http.delWithBody(baseUrl, "/banning-user/remove",
+                     { username: username, community: communityTitle }, token, onOk, onErr);
+}
+
+// Soft delete — sets deleted/deleted_at/deleted_reason on the Community row.
+function deleteCommunity(baseUrl, token, id, reason, onOk, onErr) {
+    var body = { id: id };
+    if (reason) body.deleted_reason = reason;
+    Http.post(baseUrl, "/community/delete-community", body, token, onOk, onErr);
 }
 
 // onOk(isTaken) — true when the subdomain already exists.
@@ -125,6 +187,38 @@ function findManagedCommunities(baseUrl, idSet, onOk, onErr) {
 }
 
 /*
+ * Resolve a community's parent country (its top-level ancestor in the
+ * get-communities tree — the parent is structural, not a field on the node)
+ * and its community_category_id. onOk({ parentCountry, categoryId }).
+ */
+function getCommunityContext(baseUrl, id, onOk, onErr) {
+    Http.get(baseUrl, "/general/get-communities", {}, "", function (data) {
+        var groups = ["globals", "locals", "foreigns", "independents"];
+        var result = null;
+        function walk(node, ancestorTitle) {
+            if (!node || result) return;
+            if (node.id === id) {
+                result = {
+                    parentCountry: ancestorTitle,
+                    categoryId: parseInt(node.community_category_id, 10) || 0,
+                    countryId: String(node.country_id || ""),
+                    metaDescription: node.meta_description || ""
+                };
+                return;
+            }
+            var kids = node.child_communities || [];
+            for (var i = 0; i < kids.length; i++)
+                walk(kids[i], ancestorTitle || node.title || "");
+        }
+        for (var g = 0; g < groups.length && !result; g++) {
+            var arr = (data && data[groups[g]]) || [];
+            for (var i = 0; i < arr.length && !result; i++) walk(arr[i], "");
+        }
+        onOk(result || { parentCountry: "", categoryId: 0, countryId: "", metaDescription: "" });
+    }, onErr);
+}
+
+/*
  * Whether the community has POSTER members (CommunityManager role 2; role 1 is
  * the owner). The web dashboard derives the blog-posting mode from this:
  * is_allow_post=true → "everyone"; false + posters → "custom"; false → "only me".
@@ -142,6 +236,22 @@ function hasPosterMembers(baseUrl, communityId, onOk, onErr) {
 function updateCommunityName(baseUrl, token, id, name, onOk, onErr) {
     Http.post(baseUrl, "/community/update-community-name",
               { id: id, community_name: name }, token, onOk, onErr);
+}
+
+function updateCommunityCountry(baseUrl, token, id, countryId, onOk, onErr) {
+    Http.post(baseUrl, "/community/update-community-country",
+              { id: id, country_id: countryId }, token, onOk, onErr);
+}
+
+function updateCommunityCategory(baseUrl, token, id, categoryId, onOk, onErr) {
+    Http.post(baseUrl, "/community/update-community-category",
+              { id: id, community_category_id: categoryId }, token, onOk, onErr);
+}
+
+// meta_description is nullable, max 160 chars (the SEO field's counter).
+function updateCommunityMetaDescription(baseUrl, token, id, desc, onOk, onErr) {
+    Http.post(baseUrl, "/community/update-community-meta-description",
+              { id: id, meta_description: desc }, token, onOk, onErr);
 }
 
 /*

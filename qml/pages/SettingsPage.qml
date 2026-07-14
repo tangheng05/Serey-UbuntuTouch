@@ -13,15 +13,8 @@ Page {
     property var profile: null
     property bool loading: false
     property string errorMsg: ""
+    // Caps content to a centered column on tablet/desktop; phone gets the full width
     readonly property real maxContentWidth: units.gu(60)
-
-    // Whether the signed-in user already owns/manages a community — flips the
-    // "Create your platform" row into "Manage platform". Re-evaluates whenever
-    // Main.qml (or the create wizard) reassigns the set.
-    readonly property bool hasPlatform: {
-        for (var k in Config.ownedCommunityIdSet) return true;
-        return false;
-    }
 
     property bool searching: false
     property bool searchOpen: false
@@ -89,120 +82,129 @@ Page {
         color: Style.surface
         z: 50
 
-        // ----- Default state: title + search action -----
-        Label {
-            visible: !page.searchActive
-            anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            text: Lang.tr("Settings")
-            font.pixelSize: Style.fontTitle
-            font.family: Style.fontFor(text)
-            color: Style.textPrimary
-        }
-        AbstractButton {
-            visible: !page.searchActive
-            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: width
-            onClicked: { page.searchActive = true; searchField.forceActiveFocus(); }
-            Icon {
-                anchors.centerIn: parent
-                width: units.gu(2.6); height: width
-                name: "find"
+        // Centered column that caps at maxContentWidth; on phone widths this
+        // just equals settingsHeader's full width, so the layout is unchanged.
+        Item {
+            id: headerContent
+            anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+            width: Math.min(parent.width, page.maxContentWidth)
+
+            // ----- Default state: title + search action -----
+            Label {
+                visible: !page.searchActive
+                anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                text: Lang.tr("Settings")
+                font.pixelSize: Style.fontTitle
+                font.family: Style.fontFor(text)
                 color: Style.textPrimary
             }
-        }
-        AbstractButton {
-            id: notifButton
-            visible: !page.searchActive && Session.isLoggedIn
-            anchors { right: parent.right; rightMargin: Style.spacingM + units.gu(4); verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: width
-            onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
-            Icon {
-                anchors.centerIn: parent
-                width: units.gu(2.6); height: width
-                name: "notification"
-                color: Style.textPrimary
+            AbstractButton {
+                visible: !page.searchActive
+                anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                width: units.gu(4); height: width
+                onClicked: { page.searchActive = true; searchField.forceActiveFocus(); }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.6); height: width
+                    name: "find"
+                    color: Style.textPrimary
+                }
+            }
+            AbstractButton {
+                id: notifButton
+                visible: !page.searchActive && Session.isLoggedIn
+                anchors { right: parent.right; rightMargin: Style.spacingM + units.gu(4); verticalCenter: parent.verticalCenter }
+                width: units.gu(4); height: width
+                onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.6); height: width
+                    name: "notification"
+                    color: Style.textPrimary
+                }
+                Rectangle {
+                    visible: NotificationState.unread > 0
+                    anchors { top: parent.top; right: parent.right; topMargin: units.gu(0.6); rightMargin: units.gu(0.6) }
+                    width: units.gu(1.4); height: width
+                    radius: width / 2
+                    color: Style.danger
+                }
+            }
+
+            // ----- Active state: back chevron + inline search field (Lomiri header
+            // search — the field expands into the header, per the HIG reference). -----
+            AbstractButton {
+                id: searchBack
+                visible: page.searchActive
+                anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                width: units.gu(4); height: width
+                onClicked: {
+                    page.searchActive = false;
+                    searchField.text = "";
+                    searchField.focus = false;
+                    searchModel.clear();
+                    page.searchOpen = false;
+                }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.4); height: width
+                    name: "back"
+                    color: Style.textPrimary
+                }
             }
             Rectangle {
-                visible: NotificationState.unread > 0
-                anchors { top: parent.top; right: parent.right; topMargin: units.gu(0.6); rightMargin: units.gu(0.6) }
-                width: units.gu(1.4); height: width
-                radius: width / 2
-                color: Style.danger
-            }
-        }
+                visible: page.searchActive
+                anchors { left: searchBack.right; leftMargin: Style.spacingXs; right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                height: units.gu(4.5)
+                radius: Style.cardRadius
+                color: Style.iconBackground
 
-        // ----- Active state: back chevron + inline search field (Lomiri header-search pattern) -----
-        AbstractButton {
-            id: searchBack
-            visible: page.searchActive
-            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: width
-            onClicked: {
-                page.searchActive = false;
-                searchField.text = "";
-                searchField.focus = false;
-                searchModel.clear();
-                page.searchOpen = false;
-            }
-            Icon {
-                anchors.centerIn: parent
-                width: units.gu(2.4); height: width
-                name: "back"
-                color: Style.textPrimary
-            }
-        }
-        Rectangle {
-            visible: page.searchActive
-            anchors { left: searchBack.right; leftMargin: Style.spacingXs; right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            height: units.gu(4.5)
-            radius: Style.cardRadius
-            color: Style.iconBackground
+                Row {
+                    anchors { fill: parent; leftMargin: units.gu(1.5); rightMargin: units.gu(1) }
+                    spacing: units.gu(1)
 
-            Row {
-                anchors { fill: parent; leftMargin: units.gu(1.5); rightMargin: units.gu(1) }
-                spacing: units.gu(1)
-
-                Icon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "find"
-                    width: units.gu(2); height: width
-                    color: Style.textSecondary
-                }
-                Item {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - units.gu(2) - units.gu(1)
-                    height: units.gu(3)
-
-                    TextInput {
-                        id: searchField
-                        anchors.fill: parent
-                        verticalAlignment: TextInput.AlignVCenter
-                        font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFor(text)
-                        color: Style.textPrimary
-                        clip: true
-                        inputMethodHints: Qt.ImhNoPredictiveText
-                        onTextChanged: {
-                            if (searchField.text.trim().length < 2) {
-                                page.searchOpen = false
-                                searchModel.clear()
-                            }
-                            searchDebounce.restart()
-                        }
-                        Keys.onReturnPressed: {
-                            searchDebounce.stop()
-                            page.doSearch(searchField.text.trim())
-                            searchField.focus = false
-                        }
-                    }
-                    Label {
-                        anchors.fill: parent
-                        verticalAlignment: Text.AlignVCenter
-                        text: Lang.tr("Search users...")
-                        font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFor(text)
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "find"
+                        width: units.gu(2); height: width
                         color: Style.textSecondary
-                        visible: searchField.text.length === 0
+                    }
+                    Item {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - units.gu(2) - units.gu(1)
+                        height: units.gu(3)
+
+                        TextInput {
+                            id: searchField
+                            anchors.fill: parent
+                            verticalAlignment: TextInput.AlignVCenter
+                            font.pixelSize: Style.fontRegular
+                            font.family: Style.fontFor(text)
+                            color: Style.textPrimary
+                            clip: true
+                            inputMethodHints: Qt.ImhNoPredictiveText
+                            onTextChanged: {
+                                if (searchField.text.trim().length < 2) {
+                                    page.searchOpen = false
+                                    searchModel.clear()
+                                }
+                                searchDebounce.restart()
+                            }
+                            Keys.onReturnPressed: {
+                                searchDebounce.stop()
+                                page.doSearch(searchField.text.trim())
+                                searchField.focus = false
+                            }
+                        }
+                        Label {
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            text: Lang.tr("Search users...")
+                            font.pixelSize: Style.fontRegular
+                            font.family: Style.fontFor(text)
+                            color: Style.textSecondary
+                            visible: searchField.text.length === 0
+                        }
                     }
                 }
             }
@@ -297,7 +299,8 @@ Page {
 
         Column {
             id: col
-            width: parent.width
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(parent.width, page.maxContentWidth)
 
             // ===== Profile card row (signed-in) / Welcome row (signed-out) =====
             Item {
@@ -572,22 +575,20 @@ Page {
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
             }
-            // One platform per user: creators see "Create", owners/managers see
-            // the CMS row instead (ownedCommunityIdSet is synced in Main.qml at
-            // startup/login and refreshed by the create wizard on success).
+            // One platform per user: creators see "Create", owners/managers see the CMS hub instead.
             SettingsRow {
-                visible: Session.isLoggedIn && !page.hasPlatform
+                visible: Session.isLoggedIn && !Config.hasAnyOwnedCommunity
                 iconName: "add"
                 label: Lang.tr("Create your platform")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("CreatePlatformPage.qml"))
             }
             SettingsRow {
-                visible: Session.isLoggedIn && page.hasPlatform
+                visible: Session.isLoggedIn && Config.hasAnyOwnedCommunity
                 iconName: "settings"
-                label: Lang.tr("Manage platform")
+                label: Lang.tr("Manage your platform")
                 showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ManagePlatformPage.qml"))
+                onClicked: page.pageStack.push(Qt.resolvedUrl("PlatformAdminPage.qml"))
             }
             // Not gated on isLoggedIn: downloads/saved articles work signed out too.
             SettingsRow {
@@ -596,6 +597,7 @@ Page {
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadedContentPage.qml"))
             }
+
             // ===== About ==================================================
             SettingsSectionHeader { text: Lang.tr("About") }
 

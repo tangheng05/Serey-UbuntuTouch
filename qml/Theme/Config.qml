@@ -96,6 +96,15 @@ QtObject {
     // Map of superhub community id -> its child communities, built from the get-communities tree so the picker can nest them under a hub row.
     property var superhubChildrenById: ({})
 
+    // Map of every community (string id -> {id,title,dns,icon,...}) at any nesting depth, unlike superhubChildrenById
+    property var communityById: ({})
+
+    // Looks up a community's {title, icon, dns, ...} by id from the cached tree, or null if unknown
+    function communityInfoFor(id) {
+        var c = communityById[String(id)];
+        return c || null;
+    }
+
     // Map of community dns -> is_allow_post, gating the compose buttons per backend rule (true = anyone may post, false = owner/managers only).
     property var allowPostByDns: ({})
 
@@ -105,6 +114,19 @@ QtObject {
     // Whether the signed-in user owns/manages the selected community — OR-ed into the compose gates since an owner may post even when owner-only.
     readonly property bool isOwnerCurrent: communityId > 0
                                            && !!ownedCommunityIdSet[communityId]
+
+    // Owns/manages any community at all — drives the "Manage your platform" entry point in Settings
+    readonly property bool hasAnyOwnedCommunity: Object.keys(ownedCommunityIdSet).length > 0
+
+    // Explicit "Switch Platform" pick from the CMS hub for owners of more than one community; 0 = no override
+    property int overrideManagedCommunityId: 0
+
+    // The community CMS pages act on: override if still owned, else the selected community if owned, else the first owned one
+    readonly property int managedCommunityId: (overrideManagedCommunityId > 0 && !!ownedCommunityIdSet[overrideManagedCommunityId])
+        ? overrideManagedCommunityId
+        : (isOwnerCurrent
+            ? communityId
+            : (hasAnyOwnedCommunity ? Number(Object.keys(ownedCommunityIdSet)[0]) : 0))
 
     // Can the signed-in user post to the currently selected community? Global (id 0) never postable; owners/managers always can.
     readonly property bool canPostCurrent: communityId > 0

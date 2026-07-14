@@ -10,8 +10,11 @@ import "../services/PlatformService.js" as PlatformService
 Page {
     id: page
 
+    // Filled from a fresh get-communities walk in loadContext. The startup
+    // community cache can be stale right after creating a platform, and the old
+    // fallback to the SELECTED source name rendered "Global" here.
     property string platformNameValue: Config.communityInfoFor(Config.managedCommunityId)
-        ? Config.communityInfoFor(Config.managedCommunityId).title : Config.currentCommunityName
+        ? Config.communityInfoFor(Config.managedCommunityId).title : ""
     // Parent is structural in the get-communities tree (no `country` field on
     // the node) — resolved by loadContext's tree walk.
     property string parentCountryName: ""
@@ -64,6 +67,7 @@ Page {
     function loadContext() {
         PlatformService.getCommunityContext(Config.baseUrl, Config.managedCommunityId,
             function (ctx) {
+                if (ctx.name && ctx.name.length > 0) page.platformNameValue = ctx.name
                 page.parentCountryName = ctx.parentCountry
                 page.parentCountryId = ctx.countryId
                 page.categoryId = ctx.categoryId

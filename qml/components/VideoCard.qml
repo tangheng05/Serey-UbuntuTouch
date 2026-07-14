@@ -20,6 +20,9 @@ AbstractButton {
     // the ring was invisible here). Enter activates natively (-> clicked); MENU
     // opens the ••• context menu.
     activeFocusOnTab: true
+
+    onPressAndHold: root.moreClicked()
+
     Keys.onPressed: {
         if (event.key === Qt.Key_Menu ||
             (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
@@ -115,7 +118,7 @@ AbstractButton {
                     visible: (v.authorImage || "") !== ""
                 }
 
-                MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
+                MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
             }
 
             Column {

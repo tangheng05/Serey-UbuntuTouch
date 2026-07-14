@@ -120,7 +120,7 @@ Item {
                         visible: (p.authorImage || "") !== ""
                     }
 
-                    MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
+                    MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
                 }
 
                 ColumnLayout {
@@ -135,7 +135,7 @@ Item {
                         font.weight: Font.DemiBold
                         color: Style.textPrimary
                         elide: Text.ElideRight
-                        MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
+                        MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
                     }
                     Label {
                         text: Style.formatTimeAgo(p.date || "")
@@ -211,7 +211,7 @@ Item {
                 opacity: status === Image.Ready ? 1.0 : 0.0
             }
 
-            MouseArea { anchors.fill: parent; onClicked: root.clicked() }
+            MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
 
             // "+N" badge when the post has multiple photos.
             Rectangle {

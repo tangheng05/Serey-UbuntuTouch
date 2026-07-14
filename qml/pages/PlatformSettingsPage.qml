@@ -10,8 +10,16 @@ import "../services/PlatformService.js" as PlatformService
 Page {
     id: page
 
-    readonly property string managedTitle: Config.communityInfoFor(Config.managedCommunityId)
-        ? Config.communityInfoFor(Config.managedCommunityId).title : Config.currentCommunityName
+    // Filled from a fresh get-communities walk (loadName). The startup community
+    // cache can be stale right after creating a platform, and the old fallback to
+    // the SELECTED source name rendered "Delete Global" here.
+    property string managedTitle: Config.communityInfoFor(Config.managedCommunityId)
+        ? Config.communityInfoFor(Config.managedCommunityId).title : Lang.tr("this platform")
+    function loadName() {
+        PlatformService.getCommunityContext(Config.baseUrl, Config.managedCommunityId,
+            function (ctx) { if (ctx.name && ctx.name.length > 0) page.managedTitle = ctx.name },
+            function () { /* keep the fallback */ })
+    }
 
     // My Subscription (GET /subscription/active — resolved from the JWT, not per-community)
     property string subscriptionText: ""
@@ -63,7 +71,7 @@ Page {
         ]
     }
 
-    Component.onCompleted: page.loadSubscription()
+    Component.onCompleted: { page.loadSubscription(); page.loadName() }
 
     KeyboardAwareFlickable {
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }

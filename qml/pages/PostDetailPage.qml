@@ -455,6 +455,7 @@ Page {
             }
 
             Row {
+                visible: !Config.wideMode
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width - Style.spacingM * 2
                 spacing: Style.spacingS

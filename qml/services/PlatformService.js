@@ -86,10 +86,12 @@ function unbanUser(baseUrl, token, communityTitle, username, onOk, onErr) {
 }
 
 // Soft delete — sets deleted/deleted_at/deleted_reason on the Community row.
-function deleteCommunity(baseUrl, token, id, reason, onOk, onErr) {
-    var body = { id: id };
-    if (reason) body.deleted_reason = reason;
-    Http.post(baseUrl, "/community/delete-community", body, token, onOk, onErr);
+function deleteCommunity(baseUrl, token, id, onOk, onErr) {
+    // POST alias (added to serey-api). Qt's QML XMLHttpRequest drops the body on
+    // DELETE, so the DELETE route arrives with no id ("id is a required field").
+    // POST delivers the body reliably; the alias reuses the same controller/schema.
+    // deleted_reason is optional server-side, so it's omitted.
+    Http.post(baseUrl, "/community/delete-community", { id: id }, token, onOk, onErr);
 }
 
 // onOk(isTaken) — true when the subdomain already exists.
@@ -105,6 +107,9 @@ function getCountries(baseUrl, onOk, onErr) {
         var rows = (data && data.countries) || [];
         var out = [];
         for (var i = 0; i < rows.length; i++) {
+            // Cambodia is hidden for now (product decision) — omit it from every
+            // country picker (Create Platform and Edit > Parent Country both use this).
+            if ((rows[i].name || "").toLowerCase() === "cambodia") continue;
             out.push({
                 id: String(rows[i].id),
                 name: rows[i].name || "",
@@ -199,6 +204,7 @@ function getCommunityContext(baseUrl, id, onOk, onErr) {
             if (!node || result) return;
             if (node.id === id) {
                 result = {
+                    name: node.title || "",
                     parentCountry: ancestorTitle,
                     categoryId: parseInt(node.community_category_id, 10) || 0,
                     countryId: String(node.country_id || ""),
@@ -214,7 +220,7 @@ function getCommunityContext(baseUrl, id, onOk, onErr) {
             var arr = (data && data[groups[g]]) || [];
             for (var i = 0; i < arr.length && !result; i++) walk(arr[i], "");
         }
-        onOk(result || { parentCountry: "", categoryId: 0, countryId: "", metaDescription: "" });
+        onOk(result || { name: "", parentCountry: "", categoryId: 0, countryId: "", metaDescription: "" });
     }, onErr);
 }
 

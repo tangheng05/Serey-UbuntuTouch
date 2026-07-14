@@ -99,7 +99,7 @@ Item {
                     visible: (p.authorImage || "") !== ""
                 }
 
-                MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
+                MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
             }
 
             ColumnLayout {
@@ -114,7 +114,7 @@ Item {
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
                     elide: Text.ElideRight
-                    MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
+                    MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
                 }
                 Row {
                     spacing: Style.spacingS
@@ -145,7 +145,7 @@ Item {
             wrapMode: Text.Wrap
             maximumLineCount: 3
             elide: Text.ElideRight
-            MouseArea { anchors.fill: parent; onClicked: root.clicked() }
+            MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
         }
 
         Item { width: 1; height: Style.spacingS }
@@ -206,7 +206,7 @@ Item {
                 }
             }
 
-            MouseArea { anchors.fill: parent; onClicked: root.clicked() }
+            MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
         }
 
         // Excerpt (shown when there is no cover image)
@@ -221,7 +221,7 @@ Item {
             wrapMode: Text.Wrap
             maximumLineCount: 2
             elide: Text.ElideRight
-            MouseArea { anchors.fill: parent; onClicked: root.clicked() }
+            MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
         }
 
         // Bottom margin below the thumbnail (always visible, unlike the vote row)

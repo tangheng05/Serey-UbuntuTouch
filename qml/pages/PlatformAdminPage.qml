@@ -65,10 +65,20 @@ Page {
         ]
     }
 
+    // The community's real name — from the community record, not the landing-page
+    // title (which can diverge after a rename, e.g. still "Globalasdfasf"). Re-run
+    // on every appearance so returning from a rename shows the new name.
+    function loadPlatformName() {
+        PlatformService.getCommunityContext(Config.baseUrl, Config.managedCommunityId,
+            function (ctx) { if (ctx.name && ctx.name.length > 0) page.platformName = ctx.name },
+            function () { /* keep current */ })
+    }
+
     function loadPlatformIdentity() {
         LandingPageService.getByCommunity(Config.baseUrl, Config.managedCommunityId, Session.token,
             function (data) {
-                if (data.title || data.site_title) page.platformName = data.title || data.site_title
+                // Name comes from loadPlatformName (the community record); only the
+                // logo is taken from the landing page here.
                 var logo = data.logo || data.logo_url || data.icon_url || data.image
                 if (logo) page.platformLogoUrl = logo
             },
@@ -128,9 +138,13 @@ Page {
         page.platformBannerUrl = ""
         page.subscriberCount = 0
         page.loadPlatformIdentity()
+        page.loadPlatformName()
     }
 
     Component.onCompleted: page.loadPlatformIdentity()
+    // Refresh the name whenever the hub reappears (e.g. back from a rename in the
+    // Platform Information page), and on first show. onCompleted covers logo/subs.
+    onVisibleChanged: if (visible) page.loadPlatformName()
 
     PhotoUploader {
         id: logoUploader

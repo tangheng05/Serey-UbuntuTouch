@@ -192,6 +192,9 @@ Page {
         loadMore();
     }
 
+    // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
+    property Item keyboardFocusItem: list
+
     ListView {
         id: list
         anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
@@ -199,6 +202,8 @@ Page {
         clip: true
         model: feedModel
         cacheBuffer: units.gu(16)
+        // Right arrow steps into the open detail's pane (split windows).
+        Keys.onRightPressed: Nav.focusDetail()
 
         PullToRefresh {
             refreshing: page.refreshing
@@ -394,7 +399,7 @@ Page {
                             anchors.centerIn: parent
                             width: units.gu(2.5); height: width
                             name: action.iconName
-                            color: "black"
+                            color: Style.textPrimary
                         }
                     }
                     actions: [

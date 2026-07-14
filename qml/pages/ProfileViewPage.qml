@@ -15,7 +15,9 @@ Page {
     property string username: ""
     property var profile: null
     property bool profileLoading: false
-    readonly property real maxContentWidth: units.gu(60)
+    // Wider reading column on desktop/tablet so the profile doesn't sit as a thin
+    // strip in the detail panel; phones stay full-width (parent.width wins the min).
+    readonly property real maxContentWidth: Config.wideMode ? units.gu(72) : units.gu(60)
 
     // `st` is mutated in place, so `rev` is bumped to make `cur*` bindings re-evaluate
     property int tab: 0          // 0 posts, 1 gallery, 2 video
@@ -264,31 +266,34 @@ Page {
                         z: 10
                         onClicked: PopupUtils.open(blockDialog)
 
-                        // Subtle disc behind the mark
+                        // Scrim disc so the control stays legible over any cover
+                        // photo and in both themes: dark by default, solid red
+                        // once the user is blocked.
                         Rectangle {
                             anchors.fill: parent
                             radius: width / 2
                             color: page.isBlocked
-                                ? Qt.rgba(Style.danger.r, Style.danger.g, Style.danger.b, 0.16)
-                                : "transparent"
+                                ? Qt.rgba(Style.danger.r, Style.danger.g, Style.danger.b, 0.92)
+                                : Qt.rgba(0, 0, 0, 0.38)
                         }
                         // Prohibition / "no entry" mark — drawn as a vector (the
                         // Suru theme has no "block" icon; this is the same shape
                         // PostActionSheet uses), dropping the custom PNG asset.
+                        // White so it reads on the dark/red scrim.
                         Item {
                             anchors.centerIn: parent
-                            width: units.gu(3); height: width
+                            width: units.gu(2.4); height: width
                             Rectangle {
                                 anchors.fill: parent
                                 radius: width / 2
                                 color: "transparent"
                                 border.width: units.dp(2)
-                                border.color: Style.danger
+                                border.color: "white"
                             }
                             Rectangle {
                                 anchors.centerIn: parent
                                 width: parent.width * 0.7; height: units.dp(2)
-                                color: Style.danger
+                                color: "white"
                                 rotation: 45
                             }
                         }

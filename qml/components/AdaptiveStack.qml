@@ -47,7 +47,12 @@ Item {
     // Real detail pages, excluding the invisible placeholder at detailStack[0].
     readonly property int _detailCount: Math.max(0, detailStack.depth - 1)
 
-    readonly property bool split: !neverSplit && width >= Config.convergenceBreakpoint
+    // Decide split on Config.wideMode (driven by the WINDOW width) rather than this
+    // component's own width. Reading `width` here created a binding loop: width ->
+    // body.width -> side-nav-rail presence (showNavBar -> activeColumns -> columns)
+    // -> split -> width. Config.wideMode is a root-level quantity, so it breaks the
+    // cycle and also aligns the split point with the nav rail's own breakpoint.
+    readonly property bool split: !neverSplit && Config.wideMode
                                   && (!singleColumnUntilPushed || _detailCount > 0)
     readonly property int columns: split ? 2 : 1
 
@@ -93,6 +98,38 @@ Item {
     function pop() {
         if (_detailCount > 0) detailStack.pop();
         else if (rootStack.depth > 1) rootStack.pop();
+    }
+
+    // Keyboard master-detail: move focus between the two panels (split only). Pages
+    // opt in by exposing `property Item keyboardFocusItem` (the list/flick that should
+    // own arrow-key focus); otherwise the page itself is focused.
+    function focusMaster() {
+        var p = rootStack.currentPage;
+        if (!p) return;
+        (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
+    }
+    function focusDetail() {
+        var p = detailStack.currentPage;
+        if (!p) return;
+        (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
+    }
+    // Only the visible, split stack reacts (one tab is visible at a time). If the
+    // open detail runs its OWN nested master-detail (My Feed), it exposes
+    // `_ownsKeyboardNav` and handles these itself — defer so focus stays inside it.
+    Connections {
+        target: Nav
+        function onFocusMaster() {
+            if (!(root.visible && root.split)) return;
+            var d = detailStack.currentPage;
+            if (d && d._ownsKeyboardNav) return;
+            root.focusMaster();
+        }
+        function onFocusDetail() {
+            if (!(root.visible && root.split && root._detailCount > 0)) return;
+            var d = detailStack.currentPage;
+            if (d && d._ownsKeyboardNav) return;
+            root.focusDetail();
+        }
     }
 
     // --- Leading (master) panel --------------------------------------------

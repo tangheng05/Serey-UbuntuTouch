@@ -5,32 +5,46 @@ import Lomiri.Components 1.3
 QtObject {
     id: style
 
-    // --- Brand ----------------------------------------------------------------
+    // --- Theme ----------------------------------------------------------------
+    // Single light/dark switch. Main.qml binds this to the system theme
+    // (MainView.theme) so every neutral/semantic token below re-skins centrally
+    // for SuruDark, with no call site changing. Left of each `dark ? …` ternary
+    // is Ambiance (light), right is SuruDark; values are the Suru palette hexes
+    // (see docs/ubports-design-concepts/01-system-palette.md). Brand tokens stay
+    // fixed — Serey blue is a deliberate identity, not a theme role.
+    property bool dark: false
+
+    // --- Brand (fixed across themes) ------------------------------------------
     readonly property color brand: "#0083FA"        // primary blue
     readonly property color brandDark: "#0067C8"
     readonly property color accentRed: "#D30020"     // category badge / downvote
-    readonly property color danger: "#C7162B"        // destructive (delete)
-    readonly property color dangerTint: "#FBEAEC"     // danger background wash
-    readonly property color success: "#52C41A"       // satisfied rule / positive
+
+    // --- Semantic state roles (mirror theme.palette normal.positive/negative/focus)
+    readonly property color negative: dark ? "#ED3146" : "#C7162B"   // Suru Red / Light Red
+    readonly property color positive: dark ? "#3EB34F" : "#0E8420"   // Suru Green / Light Green
+    readonly property color focus:    dark ? "#19B6EE" : "#335280"   // Suru Blue / Light Blue (selection/neutral)
+    readonly property color danger: negative          // destructive (delete) — alias to the negative role
+    readonly property color dangerTint: dark ? "#3A1519" : "#FBEAEC"  // danger background wash
+    readonly property color success: dark ? "#3EB34F" : "#52C41A"     // positive accent (keeps the app's green in light)
 
     // --- Text -----------------------------------------------------------------
-    readonly property color textPrimary: "#262626"
-    readonly property color textTitle: "#373737"
-    readonly property color textSecondary: "#5F5F5F"
-    readonly property color textOnBrand: "#FFFFFF"
+    readonly property color textPrimary: dark ? "#F7F7F7" : "#262626"    // Porcelain / near-Jet
+    readonly property color textTitle:   dark ? "#FFFFFF" : "#373737"
+    readonly property color textSecondary: dark ? "#ABABAB" : "#5F5F5F"  // Ash / Slate
+    readonly property color textOnBrand: "#FFFFFF"                        // on the blue button (fixed)
 
     // --- Surfaces -------------------------------------------------------------
-    readonly property color surface: "#FFFFFF"
-    readonly property color card: "#FFFFFF"
-    readonly property color navigationBg: "#FFFFFF"
-    readonly property color divider: "#E4E4E4"        // neutral Suru hairline
-    readonly property color iconBackground: "#F3F3F3" // pills, chips, avatar bg
-    readonly property color pressed: "#F0F0F0"
-    readonly property color dotInactive: "#CECECE"
-    readonly property color lightGray: "#D3D3D3"      // image placeholder
-    readonly property color skeleton: "#E0E0E0"       // shimmer base
-    readonly property color toastBg: "#323232"
-    readonly property color videoStage: "#000000"
+    readonly property color surface: dark ? "#111111" : "#FFFFFF"        // Jet / White
+    readonly property color card:    dark ? "#1B1B1B" : "#FFFFFF"
+    readonly property color navigationBg: dark ? "#161616" : "#FFFFFF"
+    readonly property color divider: dark ? "#2E2E2E" : "#E4E4E4"        // neutral Suru hairline
+    readonly property color iconBackground: dark ? "#262626" : "#F3F3F3" // pills, chips, avatar bg
+    readonly property color pressed: dark ? "#2A2A2A" : "#F0F0F0"
+    readonly property color dotInactive: dark ? "#4D4D4D" : "#CECECE"
+    readonly property color lightGray: dark ? "#3B3B3B" : "#D3D3D3"      // image placeholder
+    readonly property color skeleton: dark ? "#2A2A2A" : "#E0E0E0"       // shimmer base
+    readonly property color toastBg: "#323232"                           // dark chip (both themes)
+    readonly property color videoStage: "#000000"                        // video stage (both themes)
 
     // --- Spacing (grid units) -------------------------------------------------
     readonly property real spacingXs: units.gu(0.5)
@@ -39,13 +53,19 @@ QtObject {
     readonly property real spacingL: units.gu(3)
     readonly property real cellPadding: units.gu(2)
 
-    // --- Type scale (device px) ----------------------------------------------
-    readonly property int fontXSmall: units.dp(11)
-    readonly property int fontSmall: units.dp(12)
-    readonly property int fontRegular: units.dp(14)
-    readonly property int fontMedium: units.dp(15)
-    readonly property int fontLarge: units.dp(16)
-    readonly property int fontTitle: units.dp(22)
+    // --- Type scale -----------------------------------------------------------
+    // Sizes are expressed in grid units (units.gu) per the Ubuntu typography guide,
+    // which defines type via named steps so text scales phone→tablet→desktop.
+    // Suru named steps: small 1.5gu · medium 1.75gu · large 2.5gu · x-large 3.5gu.
+    // On Ubuntu Touch gu(n) == dp(8n), so these render pixel-identical to the prior
+    // dp() values on every device — a units-correctness change, not a resize.
+    // fontMedium/Large/Title keep the app's finer intermediate steps.
+    readonly property int fontXSmall: units.gu(1.375) // ~x-small
+    readonly property int fontSmall:  units.gu(1.5)   // small
+    readonly property int fontRegular: units.gu(1.75) // medium
+    readonly property int fontMedium: units.gu(1.875)
+    readonly property int fontLarge:  units.gu(2)
+    readonly property int fontTitle:  units.gu(2.75)
 
     // Radii: Lomiri/Suru is low-radius and flat — subtle rounding, not iOS-style pills.
     readonly property real radius: units.gu(0.6)

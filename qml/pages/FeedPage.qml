@@ -22,6 +22,21 @@ Page {
     readonly property bool wide: width >= Config.convergenceBreakpoint
     readonly property real listPaneW: units.gu(40)
 
+    // My Feed runs its OWN split, so it services the master-detail keyboard-focus
+    // signals itself; the enclosing AdaptiveStack defers to it (sees _ownsKeyboardNav).
+    property bool _ownsKeyboardNav: page.wide && innerDetail.depth > 0
+    property Item keyboardFocusItem: list
+    function _focusFeedList() { list.forceActiveFocus(); }
+    function _focusFeedDetail() {
+        var p = innerDetail.currentPage;
+        if (p) (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
+    }
+    Connections {
+        target: Nav
+        function onFocusMaster() { if (page.visible && page._ownsKeyboardNav) page._focusFeedList(); }
+        function onFocusDetail() { if (page.visible && page._ownsKeyboardNav) page._focusFeedDetail(); }
+    }
+
     // Route a card tap: into the right detail panel when split, else a full-screen
     // push onto the outer page stack. Replaces the current detail (no stacking) so
     // picking another item swaps the article, exactly like News master-detail.
@@ -337,6 +352,8 @@ Page {
         width: page.wide ? page.listPaneW : Math.min(parent.width, page.maxContentWidth)
         x: page.wide ? 0 : Math.max(0, (parent.width - width) / 2)
         clip: true
+        // Right arrow steps into the open article's reading pane (split windows).
+        Keys.onRightPressed: Nav.focusDetail()
         model: feedModel
         cacheBuffer: units.gu(12)
 
@@ -406,7 +423,7 @@ Page {
                         anchors.centerIn: parent
                         width: units.gu(2.5); height: width
                         name: action.iconName
-                        color: "black"
+                        color: Style.textPrimary
                     }
                 }
                 actions: [

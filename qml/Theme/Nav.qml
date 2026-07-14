@@ -11,5 +11,11 @@ QtObject {
     // successful purchase; Main switches to Settings and pushes the wizard.
     signal createPlatform()
 
+    // Master-detail keyboard focus (split windows): a detail page (e.g. an article)
+    // emits focusMaster() to hand arrow-key focus back to the list; a list emits
+    // focusDetail() to move into the open detail. The active, split AdaptiveStack acts.
+    signal focusMaster()
+    signal focusDetail()
+
     function home() { goToTab(0); }
 }

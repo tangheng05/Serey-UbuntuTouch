@@ -362,6 +362,10 @@ Page {
         }
     }
 
+    // The scroll view owns arrow-key focus so a keyboard user can scroll the article;
+    // AdaptiveStack.focusDetail() targets this when entering from the list.
+    property Item keyboardFocusItem: scroll
+
     KeyboardAwareFlickable {
         id: scroll
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -376,6 +380,31 @@ Page {
         onMovementStarted: if (composer.activeFocus) Qt.inputMethod.hide()
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
+
+        // Keyboard reading: a plain Flickable ignores keys, so arrow/Page/Space/Home/End
+        // scroll the article here. Focus lands on the flick when the article opens
+        // (guarded so it never steals focus from the comment box); tapping the body
+        // TextArea still hands focus over for native text selection.
+        activeFocusOnTab: true
+        function _kbScroll(dy) {
+            var maxY = Math.max(0, scroll.contentHeight - scroll.height + scroll.bottomMargin);
+            scroll.contentY = Math.max(0, Math.min(maxY, scroll.contentY + dy));
+        }
+        Keys.onPressed: {
+            var pageStep = scroll.height * 0.9;
+            var lineStep = units.gu(6);
+            if (event.key === Qt.Key_Down)          { scroll._kbScroll(lineStep);  event.accepted = true; }
+            else if (event.key === Qt.Key_Up)       { scroll._kbScroll(-lineStep); event.accepted = true; }
+            else if (event.key === Qt.Key_PageDown) { scroll._kbScroll(pageStep);  event.accepted = true; }
+            else if (event.key === Qt.Key_PageUp)   { scroll._kbScroll(-pageStep); event.accepted = true; }
+            else if (event.key === Qt.Key_Home)     { scroll.contentY = 0; event.accepted = true; }
+            else if (event.key === Qt.Key_End)      { scroll._kbScroll(scroll.contentHeight); event.accepted = true; }
+            else if (event.key === Qt.Key_Space)    { scroll._kbScroll((event.modifiers & Qt.ShiftModifier) ? -pageStep : pageStep); event.accepted = true; }
+            // Hand focus back to the master list (the sidebar) so the reader can pick the next post.
+            else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
+        }
+        onVisibleChanged: if (visible && !composer.activeFocus) Qt.callLater(scroll.forceActiveFocus)
+        Component.onCompleted: if (visible && !composer.activeFocus) scroll.forceActiveFocus()
 
         Column {
             id: contentCol

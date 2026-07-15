@@ -5,6 +5,7 @@ import "../Session"
 import "../components"
 import Lomiri.Components.Popups 1.3 as Popups
 import "../services/PlatformService.js" as PlatformService
+import "../services/AccountService.js" as AccountService
 
 // "Platform Setting" card from the CMS hub: subscription, banned users, delete platform
 Page {
@@ -351,6 +352,55 @@ Page {
 
             Component.onCompleted: page.loadBanned()
 
+            property bool banSearching: false
+            property bool banSearchOpen: false
+            property int banSearchGeneration: 0
+            // Bridges a search-result tap (banSearchListView's delegate) into banField/banSearchDebounce,
+            // which live in banList's `header:` — a separate id scope that delegate can't reach directly.
+            property string pendingFillUsername: ""
+            ListModel { id: banSearchModel }
+
+            function doBanSearch(query) {
+                var q = query.trim()
+                if (q.length < 2) { banSearchModel.clear(); banPage.banSearchOpen = false; return }
+                banPage.banSearching = true
+                banPage.banSearchOpen = true
+                var gen = ++banPage.banSearchGeneration
+                AccountService.searchUser(Config.baseUrl, Session.token, q,
+                    function (users) {
+                        if (gen !== banPage.banSearchGeneration) return
+                        banPage.banSearching = false
+                        banSearchModel.clear()
+                        for (var i = 0; i < users.length; i++) banSearchModel.append({ username: users[i].username, profileUrl: "" })
+                        for (var j = 0; j < users.length; j++) {
+                            (function (capturedGen, uname) {
+                                AccountService.profile(Config.baseUrl, uname, Session.token,
+                                    function (u) {
+                                        if (capturedGen !== banPage.banSearchGeneration) return
+                                        for (var k = 0; k < banSearchModel.count; k++) {
+                                            if (banSearchModel.get(k).username === uname) {
+                                                banSearchModel.setProperty(k, "profileUrl", u.profileUrl || "")
+                                                break
+                                            }
+                                        }
+                                    },
+                                    function () { /* avatar optional */ })
+                            })(gen, users[j].username)
+                        }
+                    },
+                    function (err) {
+                        if (gen !== banPage.banSearchGeneration) return
+                        banPage.banSearching = false
+                        banSearchModel.clear()
+                        Toast.error((err && err.message) || Lang.tr("User search failed."))
+                    })
+            }
+            function closeBanSearch() {
+                banSearchModel.clear()
+                banPage.banSearchOpen = false
+                banPage.banSearchGeneration++
+            }
+
             ListView {
                 id: banList
                 anchors { top: banPage.header.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
@@ -362,21 +412,61 @@ Page {
                     width: banList.width
                     height: units.gu(7)
 
-                    TextField {
-                        id: banField
+                    Item {
                         anchors { left: parent.left; leftMargin: Style.spacingM; right: banBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-                        placeholderText: Lang.tr("Username to ban")
-                        inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
-                        enabled: !page.banning
-                        onAccepted: page.banUser(text, function () { banField.text = "" })
+                        height: units.gu(4)
+
+                        // A plain TextInput, not Lomiri's TextField — matches SettingsPage's
+                        // user search, which fires onTextChanged live per keystroke.
+                        TextInput {
+                            id: banField
+                            anchors.fill: parent
+                            verticalAlignment: TextInput.AlignVCenter
+                            font.pixelSize: Style.fontRegular
+                            font.family: Style.fontFor(text)
+                            color: Style.textPrimary
+                            clip: true
+                            enabled: !page.banning
+                            inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                            onTextChanged: {
+                                if (text.trim().length < 2) { banSearchModel.clear(); banPage.banSearchOpen = false }
+                                banSearchDebounce.restart()
+                            }
+                            Keys.onReturnPressed: { banPage.closeBanSearch(); page.banUser(text, function () { banField.text = "" }) }
+                        }
+                        Label {
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            text: Lang.tr("Username to ban")
+                            font.pixelSize: Style.fontRegular
+                            font.family: Style.fontFor(text)
+                            color: Style.textSecondary
+                            visible: banField.text.length === 0
+                        }
                     }
                     AbstractButton {
                         id: banBtn
                         anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                         width: units.gu(4); height: units.gu(4)
                         enabled: !page.banning && banField.text.trim().length > 0
-                        onClicked: page.banUser(banField.text, function () { banField.text = "" })
+                        onClicked: { banPage.closeBanSearch(); page.banUser(banField.text, function () { banField.text = "" }) }
                         Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "add"; color: enabled ? Style.danger : Style.textSecondary }
+                    }
+
+                    // Lives inside the same header component as banField — a Timer declared
+                    // outside ListView.header (a separate implicit Component) can't see it.
+                    Timer { id: banSearchDebounce; interval: 250; onTriggered: banPage.doBanSearch(banField.text) }
+
+                    // Picks up a search-result tap relayed via banPage.pendingFillUsername (see banSearchListView's
+                    // delegate) — that delegate is a sibling Component and can't reach banField/banSearchDebounce directly.
+                    Connections {
+                        target: banPage
+                        function onPendingFillUsernameChanged() {
+                            if (banPage.pendingFillUsername === "") return
+                            banSearchDebounce.stop()
+                            banField.text = banPage.pendingFillUsername
+                            banPage.pendingFillUsername = ""
+                        }
                     }
                 }
 
@@ -456,6 +546,87 @@ Page {
                 font.pixelSize: Style.fontSmall
                 font.family: Style.fontFor(text)
                 color: Style.textSecondary
+            }
+
+            Rectangle {
+                id: banSearchOverlay
+                visible: banPage.banSearchOpen && (banSearchModel.count > 0 || banPage.banSearching)
+                anchors { top: banPage.header.bottom; topMargin: units.gu(7); left: banList.left; right: banList.right }
+                height: banSearchModel.count > 0 ? Math.min(banSearchModel.count * units.gu(6), units.gu(30)) : units.gu(8)
+                radius: units.gu(1)
+                color: Style.surface
+                clip: true
+                z: 50
+
+                Rectangle {
+                    anchors { fill: parent; margins: -units.dp(1) }
+                    radius: parent.radius + units.dp(1)
+                    color: "transparent"
+                    border.width: units.dp(1)
+                    border.color: Style.divider
+                    z: -1
+                }
+
+                ActivityIndicator {
+                    anchors.centerIn: parent
+                    running: banPage.banSearching && banSearchModel.count === 0
+                    visible: running
+                }
+
+                ListView {
+                    id: banSearchListView
+                    anchors.fill: parent
+                    model: banSearchModel
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    delegate: AbstractButton {
+                        width: banSearchListView.width
+                        height: units.gu(6)
+                        // banField/banSearchDebounce live in banList's `header:` — a separate id scope
+                        // this delegate can't reach — so relay the pick via banPage.pendingFillUsername instead.
+                        onClicked: { banPage.pendingFillUsername = model.username; banPage.closeBanSearch() }
+
+                        Row {
+                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(4); height: width; radius: width / 2
+                                color: Style.iconBackground
+
+                                CircleImage {
+                                    id: banResultAvatar
+                                    anchors { fill: parent; margins: units.dp(2) }
+                                    source: model.profileUrl || ""
+                                }
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: (model.username || "?").charAt(0).toUpperCase()
+                                    font.pixelSize: Style.fontSmall
+                                    font.bold: true
+                                    color: Style.brand
+                                    visible: !banResultAvatar.loaded
+                                }
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "@" + (model.username || "")
+                                font.pixelSize: Style.fontRegular
+                                font.family: Style.fontFor(text)
+                                color: Style.textPrimary
+                            }
+                        }
+                    }
+                }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                enabled: banSearchOverlay.visible
+                z: 49
+                propagateComposedEvents: true
+                onClicked: { banField.focus = false; banPage.closeBanSearch(); mouse.accepted = false }
             }
         }
     }

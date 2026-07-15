@@ -544,7 +544,7 @@ Page {
                 width: parent.width - Style.spacingM * 2 - Style.wrapSafeMargin
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: page.post ? page.post.title : ""
-                textSize: Label.Large
+                font.pixelSize: Style.fontTitle
                 font.weight: Font.DemiBold
                 font.family: Style.fontFor(text)
                 color: Style.textPrimary

@@ -64,18 +64,21 @@ Page {
             function () { /* non-fatal: picker just stays empty */ })
     }
 
+    // Prefers Config's cache (kept fresh by Config.updateCommunityFields) over ctx
+    // here — get-communities is cached server-side and can return stale values for
+    // a bit right after a save.
     function loadContext() {
         PlatformService.getCommunityContext(Config.baseUrl, Config.managedCommunityId,
             function (ctx) {
-                if (ctx.name && ctx.name.length > 0) page.platformNameValue = ctx.name
-                page.parentCountryName = ctx.parentCountry
-                page.parentCountryId = ctx.countryId
-                page.categoryId = ctx.categoryId
-                seoField.text = ctx.metaDescription
+                var cached = Config.communityInfoFor(Config.managedCommunityId)
+                page.parentCountryName = (cached && cached.parentCountryName !== undefined) ? cached.parentCountryName : ctx.parentCountry
+                page.parentCountryId = (cached && cached.countryId !== undefined) ? cached.countryId : ctx.countryId
+                page.categoryId = (cached && cached.categoryId !== undefined) ? cached.categoryId : ctx.categoryId
+                seoField.text = (cached && cached.metaDescription !== undefined) ? cached.metaDescription : ctx.metaDescription
                 page._initialName = page.platformNameValue
-                page._initialCountryId = ctx.countryId
-                page._initialCategoryId = ctx.categoryId
-                page._initialSeo = ctx.metaDescription
+                page._initialCountryId = page.parentCountryId
+                page._initialCategoryId = page.categoryId
+                page._initialSeo = seoField.text
                 page._syncCategoryName()
                 page._syncCountryId()
             },
@@ -109,6 +112,18 @@ Page {
             if (pending > 0) return
             page.saving = false
             if (failed.length === 0) {
+                var fields = {}
+                if (name.length > 0 && name !== page._initialName) fields.title = name
+                if (page.parentCountryId.length > 0 && page.parentCountryId !== page._initialCountryId) {
+                    fields.countryId = page.parentCountryId
+                    fields.parentCountryName = page.parentCountryName
+                }
+                if (page.categoryId > 0 && page.categoryId !== page._initialCategoryId) {
+                    fields.categoryId = page.categoryId
+                    fields.categoryName = page.categoryName
+                }
+                if (seo !== page._initialSeo) fields.metaDescription = seo
+                if (Object.keys(fields).length > 0) Config.updateCommunityFields(id, fields)
                 Toast.success(Lang.tr("Platform info updated."))
                 page.pageStack.pop()
             } else {

@@ -225,11 +225,13 @@ Page {
             // Enter when focused (and on a tap of any non-interactive area), so
             // opening the post here is what makes Enter work in keyboard nav.
             onClicked: {
+                // Push first: swapping the detail pane transiently drops the stack to depth 0,
+                // which would otherwise race with — and clear — this via the currentPageChanged reset below.
                 var p = feedModel.get(index)
                 if (!p) return
-                page.openPermlink = p.permlink
                 page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
                     { author: p.author, permlink: p.permlink, title: p.title })
+                page.openPermlink = p.permlink
             }
 
             // Touch equivalent of the removed ••• button — opens the same Hide/Report/Block sheet.
@@ -309,6 +311,7 @@ Page {
                     var p = feedModel.get(index)
                     page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
                         { author: p.author, permlink: p.permlink, title: p.title })
+                    page.openPermlink = p.permlink
                 }
                 onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                     { username: feedModel.get(index).author })

@@ -454,9 +454,11 @@ Page {
                     width: parent.width
                     video: feedModel.get(index)
                     onClicked: {
+                        // Push first: swapping the detail pane transiently drops the stack to depth 0,
+                        // which would otherwise race with — and clear — this via the currentPageChanged reset below.
                         var v = feedModel.get(index);
-                        page.openPermlink = v ? v.permlink : "";
                         page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v });
+                        page.openPermlink = v ? v.permlink : "";
                     }
                     onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                         { username: feedModel.get(index).author })

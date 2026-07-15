@@ -44,13 +44,15 @@ Page {
     // push onto the outer page stack. Replaces the current detail (no stacking) so
     // picking another item swaps the article, exactly like News master-detail.
     function openDetail(url, props) {
-        page.openPermlink = (props && props.permlink) || (props && props.video && props.video.permlink) || "";
+        // Push first: while (depth > 0) pop() transiently drops innerDetail to depth 0,
+        // which would otherwise race with — and clear — this via the onDepthChanged reset above.
         if (page.wide) {
             while (innerDetail.depth > 0) innerDetail.pop();
             innerDetail.push(url, props);
         } else {
             page.pageStack.push(url, props);
         }
+        page.openPermlink = (props && props.permlink) || (props && props.video && props.video.permlink) || "";
     }
 
     // 0 = All (mixed), 1 = Blog only, 2 = Video only.

@@ -43,24 +43,36 @@ Page {
 
     // Delete platform (soft delete server-side)
     property bool deleting: false
+
+    function _finishDeleted() {
+        var gone = Config.managedCommunityId
+        var set = {}
+        for (var k in Config.ownedCommunityIdSet)
+            if (Number(k) !== gone) set[k] = true
+        Config.ownedCommunityIdSet = set
+        Config.overrideManagedCommunityId = 0
+        Toast.success(Lang.tr("Platform deleted."))
+        Nav.goToTab(3)
+    }
+
+    // Not-found means the delete landed: treat it as deleted, not a failure.
+    function _isGone(err) {
+        if (!err) return false
+        if (err.status === 404) return true
+        return String(err.message || "").toLowerCase().indexOf("not found") >= 0
+    }
+
     function deletePlatform() {
         if (page.deleting) return
         page.deleting = true
         PlatformService.deleteCommunity(Config.baseUrl, Session.token, Config.managedCommunityId,
             function () {
                 page.deleting = false
-                // Drop the deleted platform from the owned set so Settings flips back to "Create your platform".
-                var set = {}
-                for (var k in Config.ownedCommunityIdSet)
-                    if (Number(k) !== Config.managedCommunityId) set[k] = true
-                Config.ownedCommunityIdSet = set
-                Config.overrideManagedCommunityId = 0
-                Toast.success(Lang.tr("Platform deleted."))
-                page.pageStack.pop()   // this page
-                page.pageStack.pop()   // the CMS hub — its platform no longer exists
+                page._finishDeleted()
             },
             function (err) {
                 page.deleting = false
+                if (page._isGone(err)) { page._finishDeleted(); return }
                 Toast.error((err && err.message) || Lang.tr("Failed to delete platform."))
             })
     }

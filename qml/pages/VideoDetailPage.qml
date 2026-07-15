@@ -774,12 +774,6 @@ Page {
                         font.weight: Font.DemiBold
                         color: Style.textPrimary
                     }
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "·  " + Style.formatTimeAgo(page.video.date || "")
-                        font.pixelSize: Style.fontSmall
-                        color: Style.textSecondary
-                    }
                 }
 
                 // Hugs the row's actual rendered content, not the full width up to moreBtn, else the dead space in between wrongly opens the profile on tap.
@@ -787,6 +781,16 @@ Page {
                     anchors { left: authorRow.left; top: parent.top; bottom: parent.bottom }
                     width: authorRow.width
                     onClicked: page.openProfile()
+                }
+
+                // Metadata sits with "...more" on the trailing edge, leaving the leading
+                // side for identity: avatar + name + Follow.
+                Label {
+                    id: dateLabel
+                    anchors { right: moreBtn.left; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    text: Style.formatTimeAgo(page.video.date || "")
+                    font.pixelSize: Style.fontSmall
+                    color: Style.textSecondary
                 }
 
                 AbstractButton {
@@ -804,11 +808,50 @@ Page {
                         color: Style.textSecondary
                     }
                 }
+
+                // Follow acts on the AUTHOR, so it sits directly beside the author it
+                // follows, not in the page header (whose actions are all about this video)
+                // and not on the vote row (video actions). Anchored to the name rather than
+                // right-aligned: on a desktop-width window the trailing edge is ~1200px from
+                // the author and reads as unrelated again.
+                // Outside authorRow on purpose: the profile MouseArea spans that Row's width
+                // and would otherwise swallow the tap.
+                AbstractButton {
+                    id: followBtn
+                    visible: (page.video.author || "") !== "" && page.video.author !== Session.username
+                    anchors { left: authorRow.right; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    width: followInner.implicitWidth
+                    // Keeps Lomiri's gu(4) minimum touch target while the visible mark stays
+                    // light: a filled pill overpowered a row of fontSmall text and a gu(3.5)
+                    // avatar. Matches the "...more" link's weight, in brand colour.
+                    height: units.gu(4)
+                    onClicked: page.toggleFollow()
+
+                    Row {
+                        id: followInner
+                        anchors.centerIn: parent
+                        spacing: Style.spacingXs
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(1.8); height: width
+                            name: "contact"
+                            color: page.isFollowing ? Style.textSecondary : Style.brand
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: page.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            color: page.isFollowing ? Style.textSecondary : Style.brand
+                        }
+                    }
+                }
             }
 
             Item { width: 1; height: Style.spacingS }
 
-            // Single action row: Upvote | Downvote | Follow | ··· | Share | Download
+            // Vote row: actions on the VIDEO itself. Share/Download live in the page
+            // header's action slots; Follow sits on the author row above.
             RowLayout {
                 x: Style.spacingM
                 width: parent.width - Style.spacingM * 2
@@ -863,40 +906,6 @@ Page {
                 }
 
                 Item { Layout.fillWidth: true }
-
-                // Follow — pill with icon + Follow/Following text
-                AbstractButton {
-                    visible: (page.video.author || "") !== "" && page.video.author !== Session.username
-                    Layout.preferredHeight: units.gu(4.5)
-                    Layout.preferredWidth: followInner.implicitWidth + Style.spacingM * 2
-                    onClicked: page.toggleFollow()
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Style.pillRadius
-                        color: page.isFollowing ? Style.surface : Style.brand
-                        border.width: page.isFollowing ? units.dp(1.5) : 0
-                        border.color: Style.brand
-                    }
-                    Row {
-                        id: followInner
-                        anchors.centerIn: parent
-                        spacing: Style.spacingXs
-                        Icon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: units.gu(2); height: width
-                            name: "contact"
-                            color: page.isFollowing ? Style.brand : Style.textOnBrand
-                        }
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: page.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
-                            font.pixelSize: Style.fontSmall
-                            font.weight: Font.DemiBold
-                            color: page.isFollowing ? Style.brand : Style.textOnBrand
-                        }
-                    }
-                }
-
             }
 
             Item { width: 1; height: Style.spacingM }

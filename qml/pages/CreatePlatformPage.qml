@@ -822,14 +822,26 @@ Page {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: Lang.tr("Manage your site, menus and landing page from your platform's dashboard on the web.")
+                    text: Lang.tr("Manage your site, menus and landing page from your platform's dashboard.")
                     font.pixelSize: Style.fontSmall
                     font.family: Style.fontFor(text)
                     color: Style.textSecondary
                 }
                 Item { width: 1; height: Style.spacingS }
+                // Primary action stays in the app: the CMS hub manages this platform
+                // natively. createCommunity refreshed ownedCommunityIdSet, so
+                // Config.managedCommunityId already resolves to the new platform.
                 PrimaryButton {
-                    text: Lang.tr("Open my platform")
+                    text: Lang.tr("Manage my platform")
+                    onClicked: {
+                        page.pageStack.pop();
+                        page.pageStack.push(Qt.resolvedUrl("PlatformAdminPage.qml"));
+                    }
+                }
+                // The live site is its own subdomain, which the Homepage tab can't show
+                // (homeLandingPageUrl is a fixed site), so viewing it needs a browser.
+                LinkButton {
+                    label: Lang.tr("View live site")
                     onClicked: Qt.openUrlExternally("https://" + page.createdDns)
                 }
                 LinkButton {

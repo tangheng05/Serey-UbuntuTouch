@@ -734,6 +734,11 @@ Page {
                                     function _fitHeight() { if (height < paintedHeight) height = paintedHeight; }
                                     // Long-press selection requires the field to already be focused
                                     activeFocusOnPress: true
+                                    // Once clicked/selected, the read-only text cursor would swallow the
+                                    // reading keys. TextEdit forwards keys to its TextArea root first, so
+                                    // chain them to the flick: it accepts arrows/Page/Space/Left/Escape,
+                                    // while copy & select-all fall through untouched.
+                                    Keys.forwardTo: [scroll]
                                     font.pixelSize: Config.wideMode ? Style.fontMedium * 1.2 : Style.fontMedium
                                     font.family: Style.fontFor(text)
                                     color: Style.textPrimary

@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
@@ -33,7 +34,81 @@ Item {
     // Lift the sheet above the OSK (the edit-caption step has text inputs).
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
-    onStepChanged: if (step !== 4) Qt.inputMethod.hide()
+    // ---- Keyboard navigation (UBports HIG input parity: everything a touch user
+    // reaches by tapping must be drivable by keyboard). Up/Down (or Tab/Backtab)
+    // move a highlight over the current step's actions, Enter/Space activates it,
+    // Escape backs out of a sub-step / closes the sheet. The highlight only
+    // appears after a key press, so touch and pointer behaviour are unchanged.
+    property var navRows: []
+    property int navIndex: -1
+    readonly property Item navCurrent: (navIndex >= 0 && navIndex < navRows.length) ? navRows[navIndex] : null
+    // Whatever held keyboard focus before the sheet opened (e.g. the focused card) — restored on close.
+    property var _prevFocus: null
+
+    function _rebuildNav() {
+        if (!visible) { navRows = []; navIndex = -1; return; }
+        var rows = [];
+        if (step === 0) {
+            var candidates = [saveOfflineBtn, editPostBtn, editCaptionBtn, deletePostBtn,
+                              hidePostBtn, reportPostBtn, blockUserBtn];
+            for (var i = 0; i < candidates.length; i++)
+                if (candidates[i].visible) rows.push(candidates[i]);
+        } else if (step === 1) {
+            for (var j = 0; j < reportRepeater.count; j++) {
+                var it = reportRepeater.itemAt(j);
+                if (it) rows.push(it);
+            }
+        } else if (step === 2) {
+            rows = [deleteConfirmBtn, deleteCancelBtn];
+        } else if (step === 3) {
+            rows = [blockConfirmBtn, blockCancelBtn];
+        }
+        navRows = rows;
+        navIndex = -1;
+    }
+
+    function _navMove(delta) {
+        if (navRows.length === 0) return;
+        navIndex = (navIndex < 0)
+            ? (delta > 0 ? 0 : navRows.length - 1)
+            : (navIndex + delta + navRows.length) % navRows.length;
+    }
+
+    Keys.onPressed: {
+        var busy = (step === 1 && reporting) || (step === 2 && deleting)
+                || (step === 3 && blocking) || (step === 4 && savingCaption);
+        if (event.key === Qt.Key_Escape) {
+            if (!busy) { if (step === 0) closeSheet(); else step = 0; }
+            event.accepted = true;
+        } else if (step === 4) {
+            // Text-entry step: trap Tab between the two fields so focus can't
+            // tunnel to the covered page; every other key belongs to the fields.
+            if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+                if (captionTitleField.activeFocus) captionDescField.forceActiveFocus();
+                else captionTitleField.forceActiveFocus();
+                event.accepted = true;
+            }
+        } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
+            _navMove(1); event.accepted = true;
+        } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Backtab) {
+            _navMove(-1); event.accepted = true;
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+            if (navCurrent && navCurrent.visible && navCurrent.enabled) navCurrent.clicked();
+            event.accepted = true;
+        }
+    }
+
+    onStepChanged: {
+        if (step !== 4) {
+            Qt.inputMethod.hide();
+            // Reclaim key events from the caption fields when leaving the edit step.
+            if (visible) sheet.forceActiveFocus();
+        }
+        Qt.callLater(_rebuildNav);
+    }
+
+    // Report reasons arrive async; refresh the arrow-key row list when they land.
+    onReportTypesChanged: if (step === 1) Qt.callLater(_rebuildNav)
 
     onVisibleChanged: {
         if (!visible) {
@@ -42,12 +117,21 @@ Item {
             // Clear in-flight busy flags so a sheet dismissed mid-request doesn't reopen stuck on "Blocking…"/disabled rows.
             reporting = false;
             blocking = false;
+            navRows = []; navIndex = -1;
+            // Hand keyboard focus back so the card's focus ring / arrow keys keep working.
+            if (_prevFocus) {
+                try { if (_prevFocus.visible) _prevFocus.forceActiveFocus(); } catch (e) { /* item destroyed since */ }
+                _prevFocus = null;
+            }
         } else {
             step = PostActions.startStep;
             backdropFade.start();
             sheetSlide.start();
             // Guard on !reportTypesLoading too, so reopening before the first fetch resolves doesn't fire a duplicate concurrent request.
             if (!reportTypesLoaded && !reportTypesLoading) _loadReportTypes();
+            _prevFocus = Window.activeFocusItem;
+            sheet.forceActiveFocus();
+            Qt.callLater(_rebuildNav);
         }
     }
 
@@ -303,8 +387,20 @@ Item {
                 }
             }
 
+            // Separates Save (neutral) from the rows below, which are either owner
+            // actions or moderation (Hide/Report/Block) — all negative in tone.
+            Rectangle {
+                width: parent.width - Style.spacingM * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: units.dp(2)
+                color: Style.lightGray
+                visible: saveOfflineBtn.visible
+            }
+            Item { width: 1; height: Style.spacingS; visible: saveOfflineBtn.visible }
+
             // ----- Owner actions (your own post): Edit (blog/gallery only — no video editor) / Delete -----
             AbstractButton {
+                id: editPostBtn
                 width: parent.width; height: units.gu(8)
                 visible: sheet.canEdit
                 onClicked: {
@@ -331,6 +427,7 @@ Item {
 
             // Edit caption (own video — title/description only; the media itself can't be re-uploaded).
             AbstractButton {
+                id: editCaptionBtn
                 width: parent.width; height: units.gu(8)
                 visible: sheet.isOwn && PostActions.kind === "video"
                 onClicked: {
@@ -358,6 +455,7 @@ Item {
 
             // Delete → confirm step
             AbstractButton {
+                id: deletePostBtn
                 width: parent.width; height: units.gu(8)
                 visible: sheet.isOwn
                 onClicked: sheet.step = 2
@@ -380,6 +478,7 @@ Item {
 
             // Hide
             AbstractButton {
+                id: hidePostBtn
                 width: parent.width; height: units.gu(8)
                 visible: !sheet.isOwn
                 onClicked: {
@@ -409,6 +508,7 @@ Item {
 
             // Report → go to step 1
             AbstractButton {
+                id: reportPostBtn
                 width: parent.width; height: units.gu(8)
                 visible: !sheet.isOwn
                 onClicked: sheet.step = 1
@@ -431,6 +531,7 @@ Item {
 
             // Block → confirm step
             AbstractButton {
+                id: blockUserBtn
                 width: parent.width; height: units.gu(8)
                 visible: !sheet.isOwn
                 onClicked: sheet.step = 3
@@ -538,6 +639,7 @@ Item {
             }
 
             Repeater {
+                id: reportRepeater
                 model: sheet.reportTypes
 
                 delegate: AbstractButton {
@@ -610,6 +712,7 @@ Item {
             Item { width: 1; height: Style.spacingL }
 
             AbstractButton {
+                id: blockConfirmBtn
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
@@ -630,6 +733,7 @@ Item {
             Item { width: 1; height: Style.spacingS }
 
             AbstractButton {
+                id: blockCancelBtn
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
@@ -681,6 +785,7 @@ Item {
 
             // Confirm delete (danger)
             AbstractButton {
+                id: deleteConfirmBtn
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
@@ -705,6 +810,7 @@ Item {
 
             // Cancel → back to main menu
             AbstractButton {
+                id: deleteCancelBtn
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
@@ -821,6 +927,21 @@ Item {
             }
 
             Item { width: 1; height: Style.spacingM }
+        }
+
+        // Keyboard-highlight ring: one Rectangle reparented into whichever row is
+        // arrow-key selected (same brand ring as the card focus ring, so keyboard
+        // users see one consistent affordance). Touch/pointer users never see it.
+        Rectangle {
+            parent: sheet.navCurrent ? sheet.navCurrent : sheetRect
+            anchors.fill: parent
+            anchors.margins: units.dp(3)
+            radius: units.dp(10)
+            color: "transparent"
+            border.width: units.dp(2)
+            border.color: Style.brand
+            visible: sheet.navCurrent !== null
+            z: 10
         }
     }
 }

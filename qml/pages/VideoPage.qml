@@ -201,6 +201,16 @@ Page {
     Component.onCompleted: {
         loadReels();
         loadMore();
+        if (visible) list.forceActiveFocus();
+    }
+    // Keyboard parity on arrival: the list takes arrow-key focus whenever this
+    // page is (re)shown, so keyboard nav works before the first click/tap.
+    onVisibleChanged: if (visible) {
+        list.kbEngaged = false;
+        // Clear any card that kept scope focus from a previous keyboard session,
+        // else its ring reappears uninvited when the tab regains focus.
+        if (list.currentItem) list.currentItem.focus = false;
+        list.forceActiveFocus();
     }
 
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
@@ -213,8 +223,23 @@ Page {
         clip: true
         model: feedModel
         cacheBuffer: units.gu(16)
+        // The keyboard cursor visual here is the VideoCard's own ring (the
+        // delegate forwards focus to the card — see rowWrap). kbEngaged gates
+        // that forwarding so the page's programmatic auto-focus on show never
+        // paints a ring for touch users; the first real key press reveals it
+        // on the current card without moving the cursor.
+        property bool kbEngaged: false
+        Keys.onPressed: {
+            if (!list.kbEngaged) {
+                list.kbEngaged = true;
+                if (list.currentItem) list.currentItem.forceActiveFocus();
+                if (event.key === Qt.Key_Down) { event.accepted = true; return; }
+            }
+        }
         // Right arrow steps into the open detail's pane (split windows).
         Keys.onRightPressed: Nav.focusDetail()
+        // Left steps out of the content to the tab nav (rail / bottom bar).
+        Keys.onLeftPressed: Nav.focusNav()
 
         PullToRefresh {
             refreshing: page.refreshing
@@ -256,8 +281,9 @@ Page {
             // ListItem — so ListItem's keyNavigationFocus frame never shows (on
             // NewsPage the ListItem IS the delegate root and draws it). Hand the
             // focus to the VideoCard, which draws its own ring and handles
-            // Enter (open) / MENU (context menu).
-            onActiveFocusChanged: if (activeFocus) card.forceActiveFocus()
+            // Enter (open) / MENU (context menu). Gated on kbEngaged so the
+            // page's auto-focus on show doesn't paint the ring uninvited.
+            onActiveFocusChanged: if (activeFocus && list.kbEngaged) card.forceActiveFocus()
 
             Item {
                 id: reelsShelf

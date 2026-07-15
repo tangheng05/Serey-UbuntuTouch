@@ -142,11 +142,12 @@ Item {
         PageStack { id: rootStack; anchors.fill: parent }
     }
 
-    // Draggable hairline between panels (split only).
+    // Draggable separator between panels (split only). Thicker than a 1dp hairline
+    // so it reads as a grabbable splitter rather than a plain divider.
     Rectangle {
         id: paneDivider
         anchors { top: parent.top; bottom: parent.bottom; left: listPane.right }
-        width: units.dp(1)
+        width: units.dp(2)
         color: dragHandle.containsMouse || dragHandle.pressed ? Style.brand : Style.divider
         visible: root.split
     }

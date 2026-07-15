@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 import QtGraphicalEffects 1.0
 import "../Theme"
@@ -26,9 +27,128 @@ Item {
         cpBackdropFade.start()
         cpSlide.start()
         if (Session.isLoggedIn && !subscriptionsLoaded) _loadSubscriptions()
+        // Keyboard users can open this via the header pill (Enter): own the keys
+        // while open so Escape dismisses and Tab can't tunnel to the page below.
+        picker._prevFocus = Window.activeFocusItem
+        picker.forceActiveFocus()
+        // Cursor starts on the active source; the ring only shows once a key is pressed.
+        picker.navSrc = Config.sourceIndex; picker.navCat = -1; picker.navCom = -1
+        picker.navActive = false
     }
     function close()         { picker.visible = false }
     function closeAnimated() { cpBackdropFadeOut.start(); cpSlideOut.start() }
+
+    // ── Keyboard cursor ──────────────────────────────────────────────────────
+    // Rows live in nested Repeaters (source → category → community), so the cursor
+    // is data coordinates, not collected Items: each row binds its own ring and so
+    // survives delegate recreation. cat/com = -1 means the source row itself.
+    property int navSrc: -1
+    property int navCat: -1
+    property int navCom: -1
+    property bool navActive: false
+
+    // Selectable rows in visual order; category headers are labels, so not included.
+    function _navEntries() {
+        var out = [], srcs = Config.sources || []
+        for (var i = 0; i < srcs.length; i++) {
+            out.push({ src: i, cat: -1, com: -1 })
+            if (picker.expandedIndex !== i) continue
+            var cats = picker.cache[i] || []
+            for (var j = 0; j < cats.length; j++) {
+                var coms = cats[j].communities || []
+                for (var k = 0; k < coms.length; k++) out.push({ src: i, cat: j, com: k })
+            }
+        }
+        return out
+    }
+    function _navMove(delta) {
+        var e = _navEntries()
+        if (e.length === 0) return
+        var cur = -1
+        for (var i = 0; i < e.length; i++)
+            if (e[i].src === picker.navSrc && e[i].cat === picker.navCat && e[i].com === picker.navCom) { cur = i; break }
+        var n = (cur < 0) ? (delta > 0 ? 0 : e.length - 1)
+                          : Math.max(0, Math.min(e.length - 1, cur + delta))
+        picker.navSrc = e[n].src; picker.navCat = e[n].cat; picker.navCom = e[n].com
+        picker.navActive = true
+    }
+    function _navActivate() {
+        if (picker.navSrc < 0) return
+        if (picker.navCat < 0) { picker._selectSource(picker.navSrc); return }
+        var cats = picker.cache[picker.navSrc] || []
+        var coms = cats[picker.navCat] ? (cats[picker.navCat].communities || []) : []
+        if (coms[picker.navCom]) picker._selectCommunity(coms[picker.navCom])
+    }
+    // Rows call this when they become the cursor, so it never leaves the viewport.
+    function _ensureVisible(it) {
+        var y = it.mapToItem(sheetContent, 0, 0).y
+        if (y < flickable.contentY) flickable.contentY = Math.max(0, y)
+        else if (y + it.height > flickable.contentY + flickable.height)
+            flickable.contentY = y + it.height - flickable.height
+    }
+
+    // Shared by pointer and keyboard so the two paths can't drift.
+    function _selectSource(i) {
+        Config.sourceIndex = i
+        Config.selectedSubCommunity = null
+        picker.expandedIndex = -1
+        picker._chose = true
+        picker.closeAnimated()
+    }
+    function _toggleExpand(i) {
+        if (picker.expandedIndex === i) picker.expandedIndex = -1
+        else { picker.expandedIndex = i; picker._fetch(i) }
+    }
+    function _selectCommunity(m) {
+        Config.selectedSubCommunity = {
+            id: String(m.id || m._id || ""),
+            name: m.title || m.name || "",
+            icon: m.icon_url || m.logo_url || m.profile_image || "",
+            // Posting permissions for this sub-community gate the compose buttons; modelData is a raw list-by-parent-id object using the API's snake_case names.
+            allowPost: !!m.is_allow_post,
+            videoAllowPost: !!m.video_is_allow_post
+        }
+        picker._chose = true
+        picker.closeAnimated()
+    }
+
+    // Whatever held keyboard focus before the picker opened — restored on close.
+    property var _prevFocus: null
+    // True when a platform was actually chosen (vs. cancel/Escape). Focus then belongs
+    // in the reloaded feed, not back on the pill, whose KeyTapArea has no arrow nav.
+    property bool _chose: false
+    onVisibleChanged: {
+        if (visible) return
+        var prev = _prevFocus, chose = _chose
+        _prevFocus = null; _chose = false
+        // Deferred: a synchronous grab while this sheet is still tearing down lands
+        // nowhere, leaving the keyboard dead until a click.
+        Qt.callLater(function () {
+            if (chose) { Nav.focusContent(); return }
+            try { if (prev && prev.visible) prev.forceActiveFocus() } catch (e) { /* item destroyed since */ }
+        })
+    }
+    Keys.onPressed: {
+        if (event.key === Qt.Key_Escape) { picker.closeAnimated(); event.accepted = true }
+        else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) event.accepted = true
+        else if (event.key === Qt.Key_Down)  { picker._navMove(1);  event.accepted = true }
+        else if (event.key === Qt.Key_Up)    { picker._navMove(-1); event.accepted = true }
+        // Right opens a country's sub-communities (Global, index 0, has none).
+        else if (event.key === Qt.Key_Right) {
+            if (picker.navCat < 0 && picker.navSrc > 0) { picker._toggleExpand(picker.navSrc); picker.navActive = true }
+            event.accepted = true
+        }
+        // Left steps back up to the parent row, then collapses it.
+        else if (event.key === Qt.Key_Left) {
+            if (picker.navCat >= 0) { picker.navCat = -1; picker.navCom = -1 }
+            else if (picker.expandedIndex === picker.navSrc) picker.expandedIndex = -1
+            picker.navActive = true
+            event.accepted = true
+        }
+        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+            picker._navActivate(); event.accepted = true
+        }
+    }
 
     function _loadSubscriptions() {
         picker.subscriptionsLoaded = true  // mark before call so retries don't stack
@@ -322,6 +442,10 @@ Item {
                             // Chevron touch target width — used to split the two hit areas.
                             readonly property int chevronW: sourceCol.srcIndex !== 0 ? units.gu(7) : 0
 
+                            readonly property bool isCursor: picker.navActive
+                                && picker.navSrc === sourceCol.srcIndex && picker.navCat < 0
+                            onIsCursorChanged: if (isCursor) picker._ensureVisible(sourceRow)
+
                             Rectangle {
                                 anchors.fill: parent
                                 color: sourceCol.isExpanded ? Style.iconBackground : "transparent"
@@ -381,12 +505,7 @@ Item {
                                     left: parent.left; top: parent.top; bottom: parent.bottom
                                     right: parent.right; rightMargin: sourceRow.chevronW
                                 }
-                                onClicked: {
-                                    Config.sourceIndex = sourceCol.srcIndex
-                                    Config.selectedSubCommunity = null
-                                    picker.expandedIndex = -1
-                                    picker.closeAnimated()
-                                }
+                                onClicked: picker._selectSource(sourceCol.srcIndex)
                             }
 
                             // Right zone (chevron) → toggle dropdown (NL/US only)
@@ -396,14 +515,18 @@ Item {
                                 }
                                 width: sourceRow.chevronW
                                 visible: sourceCol.srcIndex !== 0
-                                onClicked: {
-                                    if (picker.expandedIndex === sourceCol.srcIndex) {
-                                        picker.expandedIndex = -1
-                                    } else {
-                                        picker.expandedIndex = sourceCol.srcIndex
-                                        picker._fetch(sourceCol.srcIndex)
-                                    }
-                                }
+                                onClicked: picker._toggleExpand(sourceCol.srcIndex)
+                            }
+
+                            // Keyboard cursor ring (pointer users never see it).
+                            Rectangle {
+                                anchors { fill: parent; margins: units.dp(2) }
+                                radius: units.dp(6)
+                                color: "transparent"
+                                border.width: units.dp(2)
+                                border.color: Style.brand
+                                visible: sourceRow.isCursor
+                                z: 5
                             }
 
                             // Bottom divider
@@ -445,8 +568,11 @@ Item {
                                 model: sourceCol.cats
 
                                 delegate: Column {
+                                    id: catCol
                                     width: sheetContent.width
                                     property var catData: modelData
+                                    // Captured for the keyboard cursor: the inner community Repeater shadows `index`.
+                                    property int catIndex: index
 
                                     // Category header pill (hidden when no category name)
                                     Item {
@@ -547,6 +673,11 @@ Item {
                                             property bool isSelected: Config.selectedSubCommunity
                                                                       && Config.selectedSubCommunity.id === commBtn.commId
                                             property bool subscribed: picker.subscribedRev >= 0 && !!picker.subscribedMap[commBtn.commId]
+                                            readonly property bool isCursor: picker.navActive
+                                                && picker.navSrc === sourceCol.srcIndex
+                                                && picker.navCat === catCol.catIndex
+                                                && picker.navCom === index
+                                            onIsCursorChanged: if (isCursor) picker._ensureVisible(commBtn)
                                             // A superhub is a platform that itself contains child platforms.
                                             property bool isSuperhub: !!(modelData.is_superhub)
                                             property var hubChildren: commBtn.isSuperhub
@@ -570,17 +701,18 @@ Item {
                                                 // Navigate on card tap (behind the row so Subscribe button wins)
                                                 MouseArea {
                                                     anchors.fill: parent
-                                                    onClicked: {
-                                                        Config.selectedSubCommunity = {
-                                                            id: commBtn.commId,
-                                                            name: commBtn.commName,
-                                                            icon: commBtn.commIcon,
-                                                            // Posting permissions for this sub-community gate the compose buttons; modelData is a raw list-by-parent-id object using the API's snake_case names.
-                                                            allowPost: !!modelData.is_allow_post,
-                                                            videoAllowPost: !!modelData.video_is_allow_post
-                                                        }
-                                                        picker.closeAnimated()
-                                                    }
+                                                    onClicked: picker._selectCommunity(modelData)
+                                                }
+
+                                                // Keyboard cursor ring (pointer users never see it).
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    radius: Style.cardRadius
+                                                    color: "transparent"
+                                                    border.width: units.dp(2)
+                                                    border.color: Style.brand
+                                                    visible: commBtn.isCursor
+                                                    z: 5
                                                 }
 
                                                 Row {

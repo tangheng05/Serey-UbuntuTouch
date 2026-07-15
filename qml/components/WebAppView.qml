@@ -3,7 +3,9 @@ import Lomiri.Components 1.3
 import QtWebEngine 1.10
 import "../Theme"
 
-Item {
+// FocusScope so forceActiveFocus() on this component lands on the Chromium
+// view — the web page then receives arrow/PageDown/space keys for scrolling.
+FocusScope {
     id: webAppView
 
     property string url: ""
@@ -77,6 +79,8 @@ Item {
     WebEngineView {
         id: webView
         anchors.fill: parent
+        // Scope-focus target: focusing the WebAppView focuses the web content.
+        focus: true
         // `visible` inherits normally; onAppActiveChanged toggles it imperatively on background/foreground so the Active->Frozen transition becomes legal.
         profile: mobileProfile
         // Desktop mode renders the site at its real width — no upscaling needed.

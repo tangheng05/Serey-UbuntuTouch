@@ -13,6 +13,7 @@ AbstractButton {
     property bool switchChecked: false
     property bool danger: false
     property int unreadBadge: 0
+    property bool showDivider: true
     signal switchToggled(bool checked)
 
     width: parent ? parent.width : units.gu(40)
@@ -93,6 +94,7 @@ AbstractButton {
 
     // Full-width hairline (Lomiri list dividers span edge-to-edge, not inset).
     Rectangle {
+        visible: root.showDivider
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: units.dp(1)
         color: Style.divider

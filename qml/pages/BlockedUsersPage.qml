@@ -63,12 +63,36 @@ Page {
 
     Component.onCompleted: page.load()
 
+    // Keyboard nav: settings' Nav.focusDetail targets this list; Left/Escape
+    // return to the settings list, arrows move the cursor, Enter opens a profile.
+    property Item keyboardFocusItem: list
+    onVisibleChanged: if (visible) list.forceActiveFocus()
+
     ListView {
         id: list
         anchors { top: parent.header.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
         width: Math.min(parent.width, page.maxContentWidth)
         model: blockedModel
         clip: true
+        Keys.onLeftPressed: Nav.focusMaster()
+        Keys.onEscapePressed: Nav.focusMaster()
+        Keys.onReturnPressed: {
+            var it = blockedModel.get(list.currentIndex);
+            if (it) page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: it.username });
+        }
+        // Keyboard cursor ring (the delegate is a plain Item, not a ListItem, so
+        // there's no native focus frame — draw one on the current row).
+        highlight: Rectangle {
+            z: 5
+            width: list.width
+            height: list.currentItem ? list.currentItem.height : 0
+            visible: list.activeFocus
+            color: "transparent"
+            border.width: units.dp(2)
+            border.color: Style.brand
+            radius: units.gu(0.5)
+        }
+        highlightMoveDuration: 0
 
         delegate: Item {
             width: list.width

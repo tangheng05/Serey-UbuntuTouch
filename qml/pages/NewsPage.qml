@@ -167,7 +167,13 @@ Page {
             });
     }
 
-    Component.onCompleted: loadMore()
+    Component.onCompleted: {
+        loadMore();
+        if (visible) list.forceActiveFocus();
+    }
+    // Keyboard parity on arrival: the list takes arrow-key focus whenever this
+    // page is (re)shown, so keyboard nav works before the first click/tap.
+    onVisibleChanged: if (visible) list.forceActiveFocus()
 
     // After publishing a new post: jump to the Latest tab (newest-first) and
     // reload, so the just-published post appears at the top.
@@ -184,7 +190,14 @@ Page {
         onSelected: {
             page.feedIndex = index;
             page.reload();
+            // Lomiri buttons take focus on press, which silently killed the
+            // list's arrow keys after a tab click — always hand focus back.
+            list.forceActiveFocus();
         }
+        // Reset the keyboard cursor when dropping back in from the strip — a
+        // stale currentIndex made the first Down appear dead and the second
+        // jump far down. -1 so the next Down lands on (and frames) the FIRST card.
+        onFocusList: { list.currentIndex = -1; list.forceActiveFocus(); }
     }
 
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
@@ -197,8 +210,20 @@ Page {
         clip: true
         model: feedModel
         cacheBuffer: units.gu(12)
+        // The keyboard cursor visual is the Lomiri ListItem's own key-navigation
+        // frame (drawn only on true key navigation, so nothing shows on the
+        // page's programmatic auto-focus). A custom ListView highlight on top
+        // of it painted a second ring — don't re-add one.
         // Right arrow steps into the open article's reading pane (split windows).
         Keys.onRightPressed: Nav.focusDetail()
+        // Left steps out of the content to the tab nav (rail / bottom bar).
+        Keys.onLeftPressed: Nav.focusNav()
+        // Up on the very first card climbs into the Trending/Latest strip;
+        // anywhere else Up stays unaccepted so the ListView moves the cursor.
+        Keys.onUpPressed: {
+            if (list.atYBeginning && list.currentIndex <= 0) { tabs.focusCurrent(); event.accepted = true; }
+            else event.accepted = false;
+        }
 
         PullToRefresh {
             refreshing: page.refreshing
@@ -215,6 +240,7 @@ Page {
         }
 
         delegate: ListItem {
+            id: newsItem
             width: list.width
             height: card.implicitHeight
             // Dark-greys the row of the article currently open in the detail pane (wide/tablet layout only).

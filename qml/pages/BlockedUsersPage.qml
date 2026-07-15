@@ -66,7 +66,7 @@ Page {
     // Keyboard nav: settings' Nav.focusDetail targets this list; Left/Escape
     // return to the settings list, arrows move the cursor, Enter opens a profile.
     property Item keyboardFocusItem: list
-    onVisibleChanged: if (visible) list.forceActiveFocus()
+    onVisibleChanged: if (visible) { list.kbEngaged = false; list.forceActiveFocus(); }
 
     ListView {
         id: list
@@ -74,6 +74,11 @@ Page {
         width: Math.min(parent.width, page.maxContentWidth)
         model: blockedModel
         clip: true
+        // Gates the cursor ring below so the page's auto-focus on show (needed
+        // so arrow keys work without an explicit Tab first) never paints a ring
+        // for touch/mouse users — only a real key press reveals it.
+        property bool kbEngaged: false
+        Keys.onPressed: list.kbEngaged = true
         Keys.onLeftPressed: Nav.focusMaster()
         Keys.onEscapePressed: Nav.focusMaster()
         Keys.onReturnPressed: {
@@ -86,7 +91,7 @@ Page {
             z: 5
             width: list.width
             height: list.currentItem ? list.currentItem.height : 0
-            visible: list.activeFocus
+            visible: list.activeFocus && list.kbEngaged
             color: "transparent"
             border.width: units.dp(2)
             border.color: Style.brand

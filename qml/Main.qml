@@ -30,9 +30,8 @@ MainView {
     // change). Luminance of the theme background works regardless of the theme name.
     Binding { target: Style; property: "dark"; value: root.theme.palette.normal.background.hslLightness < 0.5 }
 
-    property int currentTab: 3
+    property int currentTab: 0
     onCurrentTabChanged: { Config.currentTab = currentTab; _ensureTab(currentTab); body.opacity = 0; tabFadeIn.start(); }
-    Component.onCompleted: { _ensureTab(currentTab); settingsStack.push(Qt.resolvedUrl("pages/PlatformAdminPage.qml")); }  // TEMP verify
 
     // Tabs are created lazily on first visit — launching all four at once made the Homepage web view janky on low-end devices.
     function _ensureTab(tab) {
@@ -334,7 +333,7 @@ MainView {
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
             }
-            KeyTapArea { logName: "header:feed"; onActivated: feedBtn.clicked() }
+            KeyTapArea { onActivated: feedBtn.clicked() }
         }
 
         Row {
@@ -373,7 +372,7 @@ MainView {
                     name: "edit"
                     color: Style.brand
                 }
-                KeyTapArea { logName: "header:compose"; onActivated: composeBtn.clicked() }
+                KeyTapArea { onActivated: composeBtn.clicked() }
             }
 
             // Upload video (Video tab only), gated on the community's video posting permission.
@@ -402,7 +401,7 @@ MainView {
                     name: "add"
                     color: Style.brand
                 }
-                KeyTapArea { logName: "header:upload"; onActivated: uploadBtn.clicked() }
+                KeyTapArea { onActivated: uploadBtn.clicked() }
             }
         }
     }
@@ -453,15 +452,15 @@ MainView {
     // Keyboard access to the tab nav (desktop convention, morph-browser style):
     // Ctrl+1..4 switch tabs directly, whatever currently has focus. Disabled
     // whenever the nav itself is hidden (e.g. inside a full-screen sub-page).
-    Shortcut { sequence: "Ctrl+1"; enabled: root.showNavBar; onActivated: { console.log("[kbd] shortcut tab 0"); root.currentTab = 0 } }
-    Shortcut { sequence: "Ctrl+2"; enabled: root.showNavBar; onActivated: { console.log("[kbd] shortcut tab 1"); root.currentTab = 1 } }
-    Shortcut { sequence: "Ctrl+3"; enabled: root.showNavBar; onActivated: { console.log("[kbd] shortcut tab 2"); root.currentTab = 2 } }
-    Shortcut { sequence: "Ctrl+4"; enabled: root.showNavBar; onActivated: { console.log("[kbd] shortcut tab 3"); root.currentTab = 3 } }
+    Shortcut { sequence: "Ctrl+1"; enabled: root.showNavBar; onActivated: root.currentTab = 0 }
+    Shortcut { sequence: "Ctrl+2"; enabled: root.showNavBar; onActivated: root.currentTab = 1 }
+    Shortcut { sequence: "Ctrl+3"; enabled: root.showNavBar; onActivated: root.currentTab = 2 }
+    Shortcut { sequence: "Ctrl+4"; enabled: root.showNavBar; onActivated: root.currentTab = 3 }
 
     // F6 = "cycle focus region" (browser convention): jump to the tab nav from
     // anywhere — the only reliable escape from the Homepage's Chromium view,
     // which swallows Tab and the arrows for the web page itself.
-    Shortcut { sequence: "F6"; enabled: root.showNavBar; onActivated: { console.log("[kbd] F6 -> nav"); root.focusNavRail() } }
+    Shortcut { sequence: "F6"; enabled: root.showNavBar; onActivated: root.focusNavRail() }
 
     // Focus the active tab's button in whichever nav layout is showing.
     function focusNavRail() {
@@ -477,12 +476,12 @@ MainView {
                   : root.currentTab === 2 ? videoStack
                   : settingsStack;
         var p = stack.rootPage;
-        console.log("[kbd] focusActiveContent tab", root.currentTab, "page", p, "target", p ? (p.keyboardFocusItem || p) : null);
         if (p) (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
     }
     Connections {
         target: Nav
         function onFocusNav() { root.focusNavRail(); }
+        function onFocusContent() { root.focusActiveContent(); }
     }
 
     // Shared by both nav layouts below, so the tab list only exists once.
@@ -529,7 +528,6 @@ MainView {
                     onClicked: root.currentTab = index
                     KeyTapArea {
                         id: navTap
-                        logName: "navbar:" + modelData.label
                         // Enter always drops into the tab's content — including
                         // when the tab is already active (a tab change alone only
                         // moves focus via the page's onVisibleChanged).
@@ -580,7 +578,6 @@ MainView {
                     onClicked: root.currentTab = index
                     KeyTapArea {
                         id: railTap
-                        logName: "rail:" + modelData.label
                         // Enter always drops into the tab's content — including
                         // when the tab is already active (a tab change alone only
                         // moves focus via the page's onVisibleChanged).

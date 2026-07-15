@@ -173,7 +173,7 @@ Page {
     }
     // Keyboard parity on arrival: the list takes arrow-key focus whenever this
     // page is (re)shown, so keyboard nav works before the first click/tap.
-    onVisibleChanged: if (visible) { console.log("[kbd] NewsPage shown -> focus list"); list.forceActiveFocus(); }
+    onVisibleChanged: if (visible) list.forceActiveFocus()
 
     // After publishing a new post: jump to the Latest tab (newest-first) and
     // reload, so the just-published post appears at the top.
@@ -210,7 +210,6 @@ Page {
         clip: true
         model: feedModel
         cacheBuffer: units.gu(12)
-        onActiveFocusChanged: console.log("[kbd] news list", activeFocus ? "focused" : "unfocused")
         // The keyboard cursor visual is the Lomiri ListItem's own key-navigation
         // frame (drawn only on true key navigation, so nothing shows on the
         // page's programmatic auto-focus). A custom ListView highlight on top

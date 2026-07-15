@@ -21,5 +21,10 @@ QtObject {
     // list's Left key (step out of content) and by the F6 shortcut; Main acts.
     signal focusNav()
 
+    // Focus the active tab's content (the feed). Emitted after the community picker
+    // changes source: the reloaded feed is where the user wants to be, and unlike
+    // focusMaster this works on every tab, split or not. Main acts.
+    signal focusContent()
+
     function home() { goToTab(0); }
 }

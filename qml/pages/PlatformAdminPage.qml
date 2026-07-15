@@ -144,7 +144,8 @@ Page {
     Component.onCompleted: page.loadPlatformIdentity()
     // Refresh the name whenever the hub reappears (e.g. back from a rename in the
     // Platform Information page), and on first show. onCompleted covers logo/subs.
-    onVisibleChanged: if (visible) page.loadPlatformName()
+    // Also grabs keyboard focus for the reading flick (split-view detail nav).
+    onVisibleChanged: if (visible) { page.loadPlatformName(); scroll.forceActiveFocus(); }
 
     PhotoUploader {
         id: logoUploader
@@ -199,9 +200,9 @@ Page {
     }
 
     // Keyboard nav: settings' Nav.focusDetail targets this flick; arrows scroll,
-    // Left/Escape return to the settings list.
+    // Left/Escape return to the settings list. (Focus grab is merged into the
+    // onVisibleChanged above — a Page allows only one handler per signal.)
     property Item keyboardFocusItem: scroll
-    onVisibleChanged: if (visible) scroll.forceActiveFocus()
 
     Flickable {
         id: scroll

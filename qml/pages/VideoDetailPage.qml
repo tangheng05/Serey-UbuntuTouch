@@ -177,15 +177,12 @@ Page {
     // toggles pause on whichever player is live. Cross-origin embeds (YouTube
     // iframe) can't be driven from outside — their own controls apply.
     function togglePlayPause() {
-        if (!page.playing) { console.log("[kbd] video: start play"); page.startPlay(); return; }
+        if (!page.playing) { page.startPlay(); return; }
         var it = webLoader.item;
         if (!it) return;
-        if (page.nativeMode || page.webVideoMode) {
-            console.log("[kbd] video: toggle pause");
+        if (page.nativeMode || page.webVideoMode)
             it.togglePause();
-        } else {
-            console.log("[kbd] video: embed player, not controllable");
-        }
+        // else: cross-origin embed (YouTube) can't be controlled from outside.
     }
 
     // Native (.mov) player failed — retry via Chromium's <video> before falling back to the system handler.

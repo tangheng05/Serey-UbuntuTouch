@@ -102,7 +102,7 @@ Rectangle {
             }
         }
 
-        KeyTapArea { logName: "header:community-pill"; onActivated: titleBtn.clicked() }
+        KeyTapArea { onActivated: titleBtn.clicked() }
     }
 
     // Center action slot uses a fixed width (not childrenRect) since a child anchored via centerIn would otherwise create a width binding loop.

@@ -75,7 +75,6 @@ Item {
 
                 KeyTapArea {
                     id: keyTap
-                    logName: "section:" + modelData
                     showRing: false
                     onActivated: { root.selected(index); root.focusList(); }
                     onLeftPressed: root._focusTab(index - 1)

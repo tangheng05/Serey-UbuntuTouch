@@ -52,7 +52,6 @@ Item {
 
     // Keyboard: focus the row (Tab), then the platform "open context menu" keys.
     activeFocusOnTab: true
-    onActiveFocusChanged: console.log("[kbd] row", area.parent, activeFocus ? "focused" : "unfocused")
     Keys.onPressed: {
         if (event.key === Qt.Key_Menu ||
             (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {

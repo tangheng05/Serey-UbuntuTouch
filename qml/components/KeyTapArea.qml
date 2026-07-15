@@ -22,13 +22,9 @@ Item {
     signal rightPressed()
     signal upPressed()
     signal downPressed()
-    // Readable name for the "[kbd]" diagnostic log lines (grep the app output for kbd).
-    property string logName: ""
     // Hosts with their own focus visual (e.g. SectionTabs' tinted pill) turn the
     // generic ring off — it clashed with the active-tab underline.
     property bool showRing: true
-
-    onActiveFocusChanged: console.log("[kbd]", logName || "KeyTapArea", activeFocus ? "focused" : "unfocused")
 
     // Activation fires on key RELEASE, not press: activating on press moved
     // focus (tab switch -> list) while Enter was still held, and the release
@@ -39,7 +35,6 @@ Item {
     function _isActivateKey(k) { return k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Space; }
 
     Keys.onPressed: {
-        console.log("[kbd]", logName || "KeyTapArea", "key", event.key);
         if (_isActivateKey(event.key)) {
             area._armed = true;
             event.accepted = true;
@@ -51,7 +46,6 @@ Item {
     Keys.onReleased: {
         if (_isActivateKey(event.key) && area._armed) {
             area._armed = false;
-            console.log("[kbd]", logName || "KeyTapArea", "activated");
             area.activated();
             event.accepted = true;
         }

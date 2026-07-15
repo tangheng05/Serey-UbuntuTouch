@@ -114,7 +114,6 @@ Page {
     // single onVisibleChanged below — a Page allows only one handler per signal.)
     function _onShownForKeyboard() {
         if (!searchField.activeFocus) {
-            console.log("[kbd] SettingsPage shown -> focus rows");
             page.navCurrent = null;
             scroll.forceActiveFocus();
         }
@@ -309,8 +308,10 @@ Page {
     Connections {
         target: page.pageStack
         function onDepthChanged() {
-            if (page.pageStack && page.pageStack.depth === 1)
+            if (page.pageStack && page.pageStack.depth === 1) {
                 page.refreshProfile();
+                Qt.callLater(function () { if (!searchField.activeFocus) scroll.forceActiveFocus(); });
+            }
         }
     }
 
@@ -365,7 +366,6 @@ Page {
                 && scroll._armed) {
                 scroll._armed = false;
                 if (page.navCurrent) {
-                    console.log("[kbd] settings row activated");
                     page.navCurrent.clicked();
                     // If the row pushed a detail page (split mode), move focus into
                     // it. No-op for dialog/external rows (nothing was pushed) and
@@ -612,7 +612,7 @@ Page {
                     // even on the brand-blue active-language button.
                     property int selIndex: Session.language === "nl" ? 1 : 0
                     // Restore keyboard focus to the settings list when the dialog closes.
-                    function _closeAndRestore() { PopupUtils.close(langDlg); scroll.forceActiveFocus(); }
+                    function _closeAndRestore() { PopupUtils.close(langDlg); Qt.callLater(function () { scroll.forceActiveFocus(); }); }
 
                     // Zero-size focus holder: Keys on the Dialog root (or its
                     // Buttons) didn't reliably own focus — the settings list behind

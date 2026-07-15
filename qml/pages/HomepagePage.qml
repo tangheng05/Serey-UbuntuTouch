@@ -16,7 +16,7 @@ Page {
     // whenever this tab is shown, so the site scrolls with arrows immediately.
     // Nav.focusMaster (Right from the nav rail) targets the same item.
     property Item keyboardFocusItem: webApp
-    onVisibleChanged: if (visible) { console.log("[kbd] HomepagePage shown -> focus web"); webApp.forceActiveFocus(); }
+    onVisibleChanged: if (visible) webApp.forceActiveFocus()
     Component.onCompleted: if (visible) webApp.forceActiveFocus()
 
     // Map a community id requested by the web side to one of our sources.

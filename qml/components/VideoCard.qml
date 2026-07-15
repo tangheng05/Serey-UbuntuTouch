@@ -2,6 +2,7 @@ import QtQuick 2.7
 import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import "../Theme"
+import "../Session"
 
 AbstractButton {
     id: root
@@ -12,6 +13,13 @@ AbstractButton {
 
     signal authorClicked()
     signal moreClicked()
+
+    // Primes the shared follow-state store so a swiped-open Follow action (VideoPage's
+    // trailing ListItemActions) can render its already-following color immediately.
+    onVChanged: {
+        if (Session.isLoggedIn && v.author && v.author !== Session.username)
+            FollowStore.load(Config.baseUrl, Session.username, v.author);
+    }
 
     // Keyboard: VideoCard IS the focus owner (an AbstractButton / FocusScope), so
     // make it the single tab-stop — its own ring then shows. Its ContextActionArea
@@ -122,7 +130,7 @@ AbstractButton {
             }
 
             Column {
-                width: parent.width - units.gu(4.5) - Style.spacingS
+                width: parent.width - units.gu(4.5) - Style.spacingS - moreBtn.width - Style.spacingS
                 spacing: units.dp(2)
 
                 Label {
@@ -145,6 +153,27 @@ AbstractButton {
                 }
                 OffChainBadge {
                     onChain: v.postToBlockchain !== false
+                }
+            }
+
+            AbstractButton {
+                id: moreBtn
+                anchors.top: parent.top
+                width: units.gu(3.5); height: units.gu(3.5)
+                onClicked: root.moreClicked()
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: units.dp(3)
+                    Repeater {
+                        model: 3
+                        delegate: Rectangle {
+                            width: units.dp(4); height: units.dp(4)
+                            radius: width / 2
+                            color: Style.textSecondary
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+                    }
                 }
             }
         }

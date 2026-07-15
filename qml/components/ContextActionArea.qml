@@ -40,6 +40,8 @@ Item {
         if (area.menuActions) PopupUtils.open(menuComp, area);
         else area.triggered();
     }
+    // Public: lets a visible ••• button open the same menu right-click/MENU does.
+    function open() { area._invoke(); }
 
     // Pointer: right-click anywhere on the row.
     MouseArea {

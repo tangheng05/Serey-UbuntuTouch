@@ -24,6 +24,8 @@ Page {
     property var reels: []
     readonly property bool hasReels: reels && reels.length > 0
     readonly property int reelsInsertIndex: feedModel.count > 1 ? 1 : 0
+    // Tracks which row's detail is open in the split-pane (wide) layout so the master list can highlight it.
+    property string openPermlink: ""
 
     // Zero-height header keeps the Page off Lomiri's deprecated Page.head path; the global AppHeader is the real top bar.
     header: Item { height: 0 }
@@ -34,6 +36,15 @@ Page {
     Connections {
         target: Config
         function onCommunityIdChanged() { page.reload(); }
+    }
+
+    // Clears the highlighted row once the detail pane's back button returns here (split/wide layout).
+    Connections {
+        target: page.pageStack
+        ignoreUnknownSignals: true
+        function onCurrentPageChanged() {
+            if (page.pageStack.currentPage === page) page.openPermlink = "";
+        }
     }
 
     Connections {
@@ -366,6 +377,9 @@ Page {
                 height: card.height
                 // VideoCard draws its own bottom divider — suppress ListItem's to avoid a double hairline.
                 divider.visible: false
+                // Dark-greys the row whose video is currently open in the detail pane (wide layout only).
+                color: (Config.wideMode && page.openPermlink !== "" && model.permlink === page.openPermlink)
+                    ? Style.iconBackground : Style.surface
 
                 // Touch equivalent of the removed ••• button — opens the same Hide/Report/Block sheet.
                 onPressAndHold: {
@@ -401,11 +415,15 @@ Page {
                     delegate: Item {
                         width: units.gu(7)
                         height: parent ? parent.height : units.gu(6)
+                        // Reflects already-following on the "contact"/Follow action; every other action keeps the neutral color.
+                        readonly property bool isFollowAction: action.iconName === "contact"
+                        readonly property var _rowVideo: isFollowAction ? feedModel.get(index) : null
                         Icon {
                             anchors.centerIn: parent
                             width: units.gu(2.5); height: width
                             name: action.iconName
-                            color: Style.textPrimary
+                            color: (parent.isFollowAction && parent._rowVideo && FollowStore.isFollowing(parent._rowVideo.author))
+                                ? Style.brand : Style.textPrimary
                         }
                     }
                     actions: [
@@ -435,8 +453,11 @@ Page {
                     id: card
                     width: parent.width
                     video: feedModel.get(index)
-                    onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
-                        { video: feedModel.get(index) })
+                    onClicked: {
+                        var v = feedModel.get(index);
+                        page.openPermlink = v ? v.permlink : "";
+                        page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v });
+                    }
                     onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                         { username: feedModel.get(index).author })
                     onMoreClicked: PostActions.open(feedModel.get(index), "video")

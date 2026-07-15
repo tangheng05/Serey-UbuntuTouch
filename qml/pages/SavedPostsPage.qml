@@ -121,6 +121,7 @@ Page {
             // Pointer/keyboard parity: right-click or the MENU key opens the same
             // Remove/Share actions the swipe exposes (see ContextActionArea).
             ContextActionArea {
+                id: contextArea
                 onActivated: page.open(modelData)   // Enter opens the saved post
                 menuActions: ActionList {
                     Action {
@@ -162,7 +163,7 @@ Page {
                 }
 
                 Column {
-                    width: parent.width - units.gu(10) - Style.spacingM
+                    width: parent.width - units.gu(10) - Style.spacingM - moreBtn.width - Style.spacingS
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: units.dp(3)
                     Label {
@@ -184,6 +185,32 @@ Page {
                         elide: Text.ElideRight
                     }
                 }
+
+                AbstractButton {
+                    id: moreBtn
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: units.gu(3.5); height: units.gu(3.5)
+                    onClicked: actionSheet.show([
+                        { iconName: "delete", text: Lang.tr("Remove"), danger: true,
+                          onTriggered: function () { SavedPosts.remove(modelData.permlink); } },
+                        { iconName: "share", text: Lang.tr("Share"),
+                          onTriggered: function () { Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink); } }
+                    ])
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: units.dp(3)
+                        Repeater {
+                            model: 3
+                            delegate: Rectangle {
+                                width: units.dp(4); height: units.dp(4)
+                                radius: width / 2
+                                color: Style.textSecondary
+                                anchors.horizontalCenter: parent.horizontalCenter
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -194,4 +221,6 @@ Page {
         iconName: "save"
         message: Lang.tr("No saved articles yet")
     }
+
+    ActionBottomSheet { id: actionSheet }
 }

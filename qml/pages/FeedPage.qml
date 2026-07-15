@@ -37,10 +37,14 @@ Page {
         function onFocusDetail() { if (page.visible && page._ownsKeyboardNav) page._focusFeedDetail(); }
     }
 
+    // Tracks which row's detail is open in the split-pane (wide) layout so the master list can highlight it.
+    property string openPermlink: ""
+
     // Route a card tap: into the right detail panel when split, else a full-screen
     // push onto the outer page stack. Replaces the current detail (no stacking) so
     // picking another item swaps the article, exactly like News master-detail.
     function openDetail(url, props) {
+        page.openPermlink = (props && props.permlink) || (props && props.video && props.video.permlink) || "";
         if (page.wide) {
             while (innerDetail.depth > 0) innerDetail.pop();
             innerDetail.push(url, props);
@@ -376,6 +380,9 @@ Page {
             height: contentLoader.height
             property var postData: feedModel.get(index)
             readonly property bool isVideo: postData && postData._kind === "video"
+            // Dark-greys the row whose article is currently open in the detail pane (wide layout only).
+            color: (page.wide && page.openPermlink !== "" && postData && postData.permlink === page.openPermlink)
+                ? Style.iconBackground : Style.surface
 
             // Keyboard/whole-row activation: Lomiri ListItem emits clicked() on
             // Enter when key-nav focused (and on a tap of any non-interactive
@@ -425,11 +432,15 @@ Page {
                 delegate: Item {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
+                    // Reflects already-following on the "contact"/Follow action; every other action keeps the neutral color.
+                    readonly property bool isFollowAction: action.iconName === "contact"
+                    readonly property var _rowPost: isFollowAction ? feedModel.get(index) : null
                     Icon {
                         anchors.centerIn: parent
                         width: units.gu(2.5); height: width
                         name: action.iconName
-                        color: Style.textPrimary
+                        color: (parent.isFollowAction && parent._rowPost && FollowStore.isFollowing(parent._rowPost.author))
+                            ? Style.brand : Style.textPrimary
                     }
                 }
                 actions: [
@@ -538,7 +549,12 @@ Page {
                 message: Lang.tr("Select a post to read")
             }
         }
-        PageStack { id: innerDetail; anchors.fill: parent }
+        // Clears the highlighted row once the detail pane's back button empties this stack.
+        PageStack {
+            id: innerDetail
+            anchors.fill: parent
+            onDepthChanged: if (depth === 0) page.openPermlink = ""
+        }
     }
 
     LoadingState {

@@ -283,6 +283,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 author: c.author || ""
                 permlink: c.permlink || ""
+                voters: c.voters || []
                 voteType: "comment"
                 showComments: false
                 showShare: false

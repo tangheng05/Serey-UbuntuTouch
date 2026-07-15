@@ -17,6 +17,8 @@ RowLayout {
     property int flaggers: 0
     property int comments: 0
     property string payout: ""
+    // Usernames who upvoted (Mappers.js's `voters` array) — backs the hover/press-and-hold "who upvoted" popover.
+    property var voters: []
 
     property bool upvoted: false
     property bool flagged: false
@@ -35,6 +37,26 @@ RowLayout {
     signal commentRequested()
 
     spacing: Style.spacingM
+
+    // "alice, bob, carol and 4 more" style summary for the voters popover.
+    // `voters` may be a plain array or a dynamicRoles-wrapped ListModel (has
+    // `.count`/`.get(i)` instead of `.length`/`[i]`) — handle both shapes.
+    function _votersText() {
+        var v = bar.voters;
+        if (!v) return "";
+        var n = (typeof v.length === "number") ? v.length : (typeof v.count === "number" ? v.count : 0);
+        if (n === 0) return "";
+        var shown = [];
+        var limit = Math.min(n, 6);
+        for (var i = 0; i < limit; i++) {
+            var item = (typeof v.get === "function") ? v.get(i) : v[i];
+            var name = (item && item.modelData !== undefined) ? item.modelData : item;
+            if (name) shown.push("@" + name);
+        }
+        var text = shown.join(", ");
+        var extra = n - limit;
+        return extra > 0 ? text + " " + Lang.tr("and %1 more").arg(extra) : text;
+    }
 
     function _guard() {
         if (!Session.isLoggedIn) {
@@ -198,6 +220,7 @@ RowLayout {
 
     // Upvote / like — hollow outline heart when not voted, filled blue when voted.
     AbstractButton {
+        id: upvoteBtn
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: upRow.implicitWidth
         enabled: !bar.busy
@@ -219,6 +242,41 @@ RowLayout {
                 text: bar.votes
                 font.pixelSize: Style.fontRegular
                 color: bar.upvoted ? Style.brand : Style.textPrimary
+            }
+        }
+
+        // Mouse hover (desktop) or press-and-hold (touch) reveals who upvoted.
+        // Topmost MouseArea gets the press first; a short tap is unaccepted so
+        // it falls through to upvoteBtn's own click, only the hold is caught here.
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            propagateComposedEvents: true
+            onEntered: if (bar._votersText().length > 0) votersHoverTimer.restart()
+            onExited: { votersHoverTimer.stop(); votersPopup.visible = false }
+            onPressAndHold: (mouse) => { if (bar._votersText().length > 0) votersPopup.visible = true; }
+            onReleased: votersPopup.visible = false
+            onClicked: (mouse) => { mouse.accepted = false; }
+        }
+
+        Timer { id: votersHoverTimer; interval: 500; onTriggered: votersPopup.visible = true }
+
+        Rectangle {
+            id: votersPopup
+            visible: false
+            anchors { bottom: parent.top; bottomMargin: Style.spacingXs; horizontalCenter: parent.horizontalCenter }
+            width: votersLabel.implicitWidth + Style.spacingM * 2
+            height: votersLabel.implicitHeight + Style.spacingS * 2
+            radius: Style.cardRadius
+            color: Style.toastBg
+            z: 1000
+            Label {
+                id: votersLabel
+                anchors.centerIn: parent
+                text: bar._votersText()
+                color: "white"
+                font.pixelSize: Style.fontSmall
+                font.family: Style.fontFor(text)
             }
         }
     }

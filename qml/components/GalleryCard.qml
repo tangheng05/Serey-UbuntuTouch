@@ -244,6 +244,7 @@ Item {
             voteType: "post"
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
+            voters: p.voters || []
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0
             payout: p.payout || ""

@@ -33,6 +33,14 @@ Page {
     property string payout:   ""
     // Off-chain videos skip the vote-weight popover/award (see doUpvote)
     readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
+
+    // Download state, shared by the header action and the in-content download button.
+    readonly property string dlPermlink: (page.video && page.video.permlink) || ""
+    readonly property var dlActive: (Downloads.rev, Downloads.activeFor(page.dlPermlink))
+    readonly property bool dlSaved: (Downloads.rev, Downloads.isSaved(page.dlPermlink))
+    readonly property bool dlBusy: !!page.dlActive || page.ytExtracting
+    readonly property int dlPct: page.dlActive ? Math.round(page.dlActive.progress || 0) : 0
+    readonly property bool canDownload: page.remoteDirectUrl().length > 0 || page.isYouTube()
     property bool commentSheetOpen: false
     // YouTube stream extraction is in flight, resolving a direct URL before the download daemon can fetch it; drives the download button's spinner.
     property bool ytExtracting: false
@@ -99,6 +107,14 @@ Page {
                 console.log("YouTube extract failed: " + (errMsg || "unknown"));
             }
         });
+    }
+
+    // Shared by the header action and the in-content download button.
+    function doDownloadToggle() {
+        if (page.dlBusy) return;
+        if (page.dlSaved) PopupUtils.open(removeDialog);
+        else if (page.remoteDirectUrl().length > 0) Downloads.start(page.video, page.remoteDirectUrl());
+        else if (page.isYouTube()) page.downloadYouTube();
     }
 
     // Saved offline copy if one exists, else the remote file; startPlay()'s extension routing still applies since the local path keeps its extension.
@@ -291,20 +307,41 @@ Page {
         }
     }
 
-    header: Rectangle {
-        height: units.gu(6)
-        color: Style.surface
-
-        BackButton {
-            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            onClicked: page.pageStack.pop()
+    header: PageHeader {
+        id: videoHeader
+        title: Lang.tr("Video")
+        leadingActionBar.actions: [
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
+        ]
+        // Pinned at 3 slots, same as PostDetailPage: share + download + overflow, never collapsed further.
+        trailingActionBar.numberOfSlots: 3
+        Binding {
+            target: videoHeader.trailingActionBar.__styleInstance
+            property: "overflowIconName"
+            value: "navigation-menu"
+            when: videoHeader.trailingActionBar.__styleInstance !== null
         }
-
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: units.dp(1)
-            color: Style.divider
-        }
+        // Array order is the reverse of on-screen left-to-right order (trailingActionBar fills outside-in), so this renders as Download, Share, Menu.
+        trailingActionBar.actions: [
+            Action {
+                iconName: "navigation-menu"
+                text: Lang.tr("More")
+                onTriggered: PostActions.open(page.video, "video")
+            },
+            Action {
+                iconName: "share"
+                text: Lang.tr("Share")
+                enabled: (page.video.author || "").length > 0 && (page.video.permlink || "").length > 0
+                onTriggered: Share.open("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink)
+            },
+            Action {
+                iconName: page.dlSaved ? "tick" : "save"
+                text: page.dlSaved ? Lang.tr("Remove download") : Lang.tr("Download")
+                visible: page.canDownload
+                enabled: !page.dlBusy
+                onTriggered: page.doDownloadToggle()
+            }
+        ]
     }
 
     function loadComments() {
@@ -814,78 +851,6 @@ Page {
                     }
                 }
 
-                // Share — icon only with border
-                AbstractButton {
-                    visible: (page.video.author || "").length > 0 && (page.video.permlink || "").length > 0
-                    Layout.preferredHeight: units.gu(4.5)
-                    Layout.preferredWidth: units.gu(4.5)
-                    onClicked: Share.open("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink)
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Style.pillRadius
-                        color: "transparent"
-                        border.width: units.dp(1.5)
-                        border.color: Style.divider
-                    }
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: "share"
-                        color: Style.textPrimary
-                    }
-                }
-
-                // Download — icon with border
-                AbstractButton {
-                    id: dlBtn
-                    visible: page.remoteDirectUrl().length > 0 || page.isYouTube()
-                    readonly property string _pl: (page.video && page.video.permlink) || ""
-                    readonly property var _active: (Downloads.rev, Downloads.activeFor(_pl))
-                    readonly property bool _saved: (Downloads.rev, Downloads.isSaved(_pl))
-                    readonly property bool _busy: !!_active || page.ytExtracting
-                    readonly property int _pct: _active ? Math.round(_active.progress || 0) : 0
-                    Layout.preferredHeight: units.gu(4.5)
-                    Layout.preferredWidth: _busy ? dlBusyRow.implicitWidth + Style.spacingM : units.gu(4.5)
-                    onClicked: {
-                        if (_busy) return;
-                        if (_saved) PopupUtils.open(removeDialog);
-                        else if (page.remoteDirectUrl().length > 0) Downloads.start(page.video, page.remoteDirectUrl());
-                        else if (page.isYouTube()) page.downloadYouTube();
-                    }
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Style.pillRadius
-                        color: dlBtn._saved ? Style.brand : "transparent"
-                        border.width: dlBtn._saved ? 0 : units.dp(1.5)
-                        border.color: Style.divider
-                    }
-                    Row {
-                        id: dlBusyRow
-                        anchors.centerIn: parent
-                        spacing: Style.spacingXs
-                        visible: dlBtn._busy
-                        ActivityIndicator {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: units.gu(2.5); height: width
-                            running: dlBtn._busy
-                        }
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: !!dlBtn._active
-                            text: dlBtn._pct + "%"
-                            font.pixelSize: Style.fontSmall
-                            font.weight: Font.DemiBold
-                            color: Style.textPrimary
-                        }
-                    }
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: dlBtn._saved ? "tick" : "save"
-                        color: dlBtn._saved ? Style.textOnBrand : Style.textPrimary
-                        visible: !dlBtn._busy
-                    }
-                }
             }
 
             Item { width: 1; height: Style.spacingM }

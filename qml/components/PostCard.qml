@@ -59,7 +59,7 @@ Item {
 
         Item { width: 1; height: Style.spacingS }
 
-        // Header: avatar + author/time + Follow + more
+        // Header: avatar + author/time + more
         RowLayout {
             height: units.gu(6)
             anchors.left: parent.left
@@ -131,6 +131,27 @@ Item {
                 }
             }
 
+            AbstractButton {
+                id: moreBtn
+                Layout.preferredWidth: units.gu(3.5)
+                Layout.preferredHeight: units.gu(3.5)
+                Layout.alignment: Qt.AlignVCenter
+                onClicked: root.moreClicked()
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: units.dp(3)
+                    Repeater {
+                        model: 3
+                        delegate: Rectangle {
+                            width: units.dp(4); height: units.dp(4)
+                            radius: width / 2
+                            color: Style.textSecondary
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+                    }
+                }
+            }
         }
 
         // Title uses Text.Wrap, not WordWrap, since Khmer has no spaces between words and WordWrap can't find a break point.
@@ -238,6 +259,7 @@ Item {
             voteType: "post"
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
+            voters: p.voters || []
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0
             payout: p.payout || ""

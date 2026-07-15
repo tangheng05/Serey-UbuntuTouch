@@ -82,7 +82,7 @@ Page {
     // those flows here.
     header: PageHeader {
         id: postHeader
-        title: ""
+        title: page.postReady ? (page.isVideoPost() ? Lang.tr("Video") : Lang.tr("Blog")) : ""
         leadingActionBar.actions: [
             Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
         ]
@@ -164,6 +164,15 @@ Page {
         return "serey";
     }
 
+    // A post is a video if its (primary) category says so — same rule FeedPage uses to route to VideoDetailPage.
+    function isVideoPost() {
+        var p = page.post;
+        if (!p) return false;
+        if (p.primaryCategory === "video") return true;
+        var c = p.categories;
+        return !!(c && c.indexOf && c.indexOf("video") >= 0);
+    }
+
     function load() {
         page.loading = true;
         page.errorMsg = "";
@@ -179,6 +188,7 @@ Page {
 
                 // Sync vote bar: cache wins over API data since the feed may have recorded a vote the detail endpoint hasn't caught up with.
                 if (detailVoteBar) {
+                    detailVoteBar.voters = result.post.voters || [];
                     var cached = VoteService.getCached(page.author, page.permlink);
                     if (cached) {
                         detailVoteBar.votes = cached.votes;

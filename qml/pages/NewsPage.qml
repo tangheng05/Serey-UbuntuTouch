@@ -15,6 +15,8 @@ Page {
     property bool endReached: false
     property string errorMsg: ""
     property int feedIndex: 0
+    // Tracks which row's detail is open in the split-pane (wide) layout so the master list can highlight it.
+    property string openPermlink: ""
     // Request generation bumped on reload() so a late response from a previous community/tab can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
@@ -31,6 +33,15 @@ Page {
     Connections {
         target: Config
         function onCommunityIdChanged() { page.reload(); }
+    }
+
+    // Clears the highlighted row once the detail pane's back button returns here (split/wide layout).
+    Connections {
+        target: page.pageStack
+        ignoreUnknownSignals: true
+        function onCurrentPageChanged() {
+            if (page.pageStack.currentPage === page) page.openPermlink = "";
+        }
     }
 
     Connections {
@@ -206,13 +217,18 @@ Page {
         delegate: ListItem {
             width: list.width
             height: card.implicitHeight
+            // Dark-greys the row of the article currently open in the detail pane (wide/tablet layout only).
+            color: (Config.wideMode && page.openPermlink !== "" && page.openPermlink === model.permlink)
+                ? Style.iconBackground : Style.surface
 
             // Keyboard/whole-row activation: Lomiri ListItem emits clicked() on
             // Enter when focused (and on a tap of any non-interactive area), so
             // opening the post here is what makes Enter work in keyboard nav.
             onClicked: {
                 var p = feedModel.get(index)
-                if (p) page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
+                if (!p) return
+                page.openPermlink = p.permlink
+                page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
                     { author: p.author, permlink: p.permlink, title: p.title })
             }
 
@@ -251,11 +267,15 @@ Page {
                 delegate: Item {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
+                    // Reflects already-following on the "contact"/Follow action; every other action keeps the neutral color.
+                    readonly property bool isFollowAction: action.iconName === "contact"
+                    readonly property var _rowPost: isFollowAction ? feedModel.get(index) : null
                     Icon {
                         anchors.centerIn: parent
                         width: units.gu(2.5); height: width
                         name: action.iconName
-                        color: Style.textPrimary
+                        color: (parent.isFollowAction && parent._rowPost && FollowStore.isFollowing(parent._rowPost.author))
+                            ? Style.brand : Style.textPrimary
                     }
                 }
                 actions: [

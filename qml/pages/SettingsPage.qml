@@ -296,7 +296,17 @@ Page {
         page.profile = null;
     }
 
-    Component.onCompleted: refreshProfile()
+    Component.onCompleted: {
+        refreshProfile();
+        var rows = [profileCardBtn, loginBtn, signupBtn, languageRow,
+                    createPlatformRow, managePlatformRow, editProfileRow,
+                    passwordRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+        for (var i = 0; i < rows.length; i++) {
+            rows[i].pressedChanged.connect((function (row) {
+                return function () { if (row.pressed) page.navCurrent = null; };
+            })(rows[i]));
+        }
+    }
 
     // Following someone happens on another tab, so the in-memory follower count would otherwise stay stale until this tab is revisited.
     onVisibleChanged: if (visible) { refreshProfile(); _onShownForKeyboard(); }

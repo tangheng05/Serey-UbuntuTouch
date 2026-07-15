@@ -216,6 +216,21 @@ Page {
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
     property Item keyboardFocusItem: list
 
+    // Same "no cursor on the first Left" problem as NewsPage, different mechanism:
+    // the cursor here is the VideoCard's own ring (the delegate root is a wrapper,
+    // so Lomiri's key-nav frame never applies), revealed only once kbEngaged flips
+    // on a real key press. Returning from the detail IS a keyboard action, so
+    // engage it up front and focus the card directly — going via the wrapper would
+    // rely on onActiveFocusChanged, which never fires if it already holds focus.
+    function focusListKeyNav() {
+        if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0;
+        list.kbEngaged = true;
+        var w = list.currentItem;
+        if (!w) { list.forceActiveFocus(); return; }
+        if (w.rowCard) w.rowCard.forceActiveFocus();
+        else w.forceActiveFocus();
+    }
+
     ListView {
         id: list
         anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
@@ -275,6 +290,9 @@ Page {
             width: list.width
             readonly property bool showReelShelf: page.hasReels && index === page.reelsInsertIndex
             height: (showReelShelf ? reelsShelf.implicitHeight : 0) + videoRow.height
+            // Lets focusListKeyNav() reach the real focus owner: the ListView only
+            // hands focus to this wrapper, and the ring lives on the card.
+            property alias rowCard: card
 
             // Arrow-key nav: the ListView focuses its current delegate, which here
             // is this plain wrapper (needed for the Reels shelf), not the Lomiri
@@ -483,6 +501,9 @@ Page {
                         // Push first: swapping the detail pane transiently drops the stack to depth 0,
                         // which would otherwise race with — and clear — this via the currentPageChanged reset below.
                         var v = feedModel.get(index);
+                        // Pointer clicks don't move currentIndex, so the key-nav cursor would
+                        // sit at the top when Left brings focus back from the detail.
+                        list.currentIndex = index;
                         page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v });
                         page.openPermlink = v ? v.permlink : "";
                     }

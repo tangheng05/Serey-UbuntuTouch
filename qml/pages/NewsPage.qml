@@ -203,6 +203,23 @@ Page {
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
     property Item keyboardFocusItem: list
 
+    // Lomiri paints a ListItem's focus frame only when keyNavigationFocus is true,
+    // and that comes from the Qt focus REASON — forceActiveFocus() alone leaves it
+    // false, so the cursor stayed invisible until a real arrow key was pressed.
+    // Focusing the current row with a key-nav reason sets it. Only the deliberate
+    // keyboard path (Nav.focusMaster) calls this; the page's own auto-focus stays
+    // plain, so pointer/touch users never see the frame.
+    function focusListKeyNav() {
+        if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0;
+        var it = list.currentItem;
+        if (!it) { list.forceActiveFocus(); return; }
+        // Qt delivers no focusInEvent to an item that already holds focus (the
+        // ListView FocusScope has already passed it down), so the key-nav reason
+        // never lands — drop focus first, then re-take it with the reason.
+        it.focus = false;
+        it.forceActiveFocus(Qt.TabFocusReason);
+    }
+
     ListView {
         id: list
         anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
@@ -255,6 +272,9 @@ Page {
                 // which would otherwise race with — and clear — this via the currentPageChanged reset below.
                 var p = feedModel.get(index)
                 if (!p) return
+                // Pointer clicks don't move currentIndex, so the key-nav cursor would
+                // sit at the top when Left brings focus back from the detail.
+                list.currentIndex = index
                 page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
                     { author: p.author, permlink: p.permlink, title: p.title })
                 page.openPermlink = p.permlink

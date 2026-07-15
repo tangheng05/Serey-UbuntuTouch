@@ -106,6 +106,9 @@ Item {
     function focusMaster() {
         var p = rootStack.currentPage;
         if (!p) return;
+        // List pages need the key-nav focus reason for Lomiri to paint the row
+        // cursor; plain forceActiveFocus leaves keyNavigationFocus false.
+        if (p.focusListKeyNav) { p.focusListKeyNav(); return; }
         (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
     }
     function focusDetail() {

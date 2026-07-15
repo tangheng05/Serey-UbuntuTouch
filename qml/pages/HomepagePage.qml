@@ -17,7 +17,10 @@ Page {
     // Nav.focusMaster (Right from the nav rail) targets the same item.
     property Item keyboardFocusItem: webApp
     onVisibleChanged: if (visible) webApp.forceActiveFocus()
-    Component.onCompleted: if (visible) webApp.forceActiveFocus()
+    // Deferred: the web view's load is itself deferred, so grabbing focus straight
+    // from onCompleted lands on nothing (measured: activeFocus stayed false and the
+    // window had no focus item at all), leaving the site unscrollable until a click.
+    Component.onCompleted: if (visible) Qt.callLater(webApp.forceActiveFocus)
 
     // Map a community id requested by the web side to one of our sources.
     function applyCommunity(communityId) {

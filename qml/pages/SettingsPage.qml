@@ -122,7 +122,9 @@ Page {
     Rectangle {
         id: settingsHeader
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: units.gu(6)
+        // Matches PageHeader's own height (Ambiance style: titleAreaHeight gu(6) + 1dp divider)
+        // so this row lines up with a pushed detail page's PageHeader (e.g. Edit profile) in split/wide layouts.
+        height: units.gu(6) + units.dp(1)
         color: Style.surface
         z: 50
 

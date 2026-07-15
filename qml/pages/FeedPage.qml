@@ -26,7 +26,17 @@ Page {
     // signals itself; the enclosing AdaptiveStack defers to it (sees _ownsKeyboardNav).
     property bool _ownsKeyboardNav: page.wide && innerDetail.depth > 0
     property Item keyboardFocusItem: list
-    function _focusFeedList() { list.forceActiveFocus(); }
+    // See NewsPage: Lomiri paints the row cursor only when keyNavigationFocus is
+    // true, which comes from the focus REASON, not forceActiveFocus() alone.
+    function _focusFeedList() {
+        if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0;
+        var it = list.currentItem;
+        if (!it) { list.forceActiveFocus(); return; }
+        // Qt skips focusInEvent when the item already holds focus, so the key-nav
+        // reason never lands — drop focus first, then re-take it with the reason.
+        it.focus = false;
+        it.forceActiveFocus(Qt.TabFocusReason);
+    }
     function _focusFeedDetail() {
         var p = innerDetail.currentPage;
         if (p) (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
@@ -400,6 +410,9 @@ Page {
             onClicked: {
                 var p = feedModel.get(index)
                 if (!p) return
+                // Pointer clicks don't move currentIndex, so the key-nav cursor would
+                // sit at the top when Left brings focus back from the detail.
+                list.currentIndex = index
                 if (p._kind === "video")
                     page.openDetail(Qt.resolvedUrl("VideoDetailPage.qml"), { video: p })
                 else

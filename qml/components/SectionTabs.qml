@@ -20,7 +20,9 @@ Item {
         if (it) it.keyArea.forceActiveFocus();
     }
 
-    implicitHeight: units.gu(5.5)
+    // Matches PageHeader's own height (Ambiance style: titleAreaHeight gu(6) + 1dp divider)
+    // so the master-pane tab strip and the detail-pane PageHeader line up in split/wide layouts.
+    implicitHeight: units.gu(6) + units.dp(1)
 
     RowLayout {
         id: row

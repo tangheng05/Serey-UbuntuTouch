@@ -452,14 +452,35 @@ MainView {
     // Keyboard access to the tab nav (desktop convention, morph-browser style):
     // Ctrl+1..4 switch tabs directly, whatever currently has focus. Disabled
     // whenever the nav itself is hidden (e.g. inside a full-screen sub-page).
-    Shortcut { sequence: "Ctrl+1"; enabled: root.showNavBar; onActivated: root.currentTab = 0 }
-    Shortcut { sequence: "Ctrl+2"; enabled: root.showNavBar; onActivated: root.currentTab = 1 }
-    Shortcut { sequence: "Ctrl+3"; enabled: root.showNavBar; onActivated: root.currentTab = 2 }
-    Shortcut { sequence: "Ctrl+4"; enabled: root.showNavBar; onActivated: root.currentTab = 3 }
+    // Switching by keyboard must MOVE focus, not just flip the tab: otherwise focus
+    // stays where it was — notably trapped in the Homepage's Chromium view, which
+    // then keeps eating every key while a different tab is on screen.
+    function switchTab(i) { root.currentTab = i; Qt.callLater(root.focusActiveContent); }
 
-    // F6 = "cycle focus region" (browser convention): jump to the tab nav from
-    // anywhere — the only reliable escape from the Homepage's Chromium view,
-    // which swallows Tab and the arrows for the web page itself.
+    Shortcut { sequence: "Ctrl+1"; enabled: root.showNavBar; onActivated: root.switchTab(0) }
+    Shortcut { sequence: "Ctrl+2"; enabled: root.showNavBar; onActivated: root.switchTab(1) }
+    Shortcut { sequence: "Ctrl+3"; enabled: root.showNavBar; onActivated: root.switchTab(2) }
+    Shortcut { sequence: "Ctrl+4"; enabled: root.showNavBar; onActivated: root.switchTab(3) }
+
+    // Sequential tab switching, mirroring morph-browser (Lomiri's own browser):
+    // StandardKey.NextChild/PreviousChild with modulo wrap. StandardKey rather than a
+    // literal "Ctrl+Tab" because it adapts per platform — the same call morph-browser
+    // makes. Shortcuts fire before the focused item, so this is the only way to change
+    // tabs from inside the Homepage, whose Chromium view owns the arrow keys.
+    Shortcut {
+        sequence: StandardKey.NextChild
+        enabled: root.showNavBar
+        onActivated: root.switchTab((root.currentTab + 1) % root._tabs.length)
+    }
+    Shortcut {
+        sequence: StandardKey.PreviousChild
+        enabled: root.showNavBar
+        onActivated: root.switchTab((root.currentTab - 1 + root._tabs.length) % root._tabs.length)
+    }
+
+    // F6 = jump to the tab nav from anywhere — an escape from the Homepage's Chromium
+    // view, which swallows Tab and the arrows for the web page itself. Not a cycle:
+    // morph-browser's F6 likewise jumps to a single target (its address bar).
     Shortcut { sequence: "F6"; enabled: root.showNavBar; onActivated: root.focusNavRail() }
 
     // Focus the active tab's button in whichever nav layout is showing.
@@ -476,7 +497,11 @@ MainView {
                   : root.currentTab === 2 ? videoStack
                   : settingsStack;
         var p = stack.rootPage;
-        if (p) (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
+        if (!p) return;
+        // Reaching content by keyboard should show the list cursor (same contract as
+        // AdaptiveStack.focusMaster); plain forceActiveFocus leaves it invisible.
+        if (p.focusListKeyNav) { p.focusListKeyNav(); return; }
+        (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
     }
     Connections {
         target: Nav
@@ -531,7 +556,7 @@ MainView {
                         // Enter always drops into the tab's content — including
                         // when the tab is already active (a tab change alone only
                         // moves focus via the page's onVisibleChanged).
-                        onActivated: { root.currentTab = index; Qt.callLater(root.focusActiveContent); }
+                        onActivated: root.switchTab(index)
                         // Horizontal bar: Left/Right walk the tabs.
                         onLeftPressed:  { var it = navRep.itemAt(index - 1); if (it) it.keyArea.forceActiveFocus(); }
                         onRightPressed: { var it = navRep.itemAt(index + 1); if (it) it.keyArea.forceActiveFocus(); }
@@ -581,7 +606,7 @@ MainView {
                         // Enter always drops into the tab's content — including
                         // when the tab is already active (a tab change alone only
                         // moves focus via the page's onVisibleChanged).
-                        onActivated: { root.currentTab = index; Qt.callLater(root.focusActiveContent); }
+                        onActivated: root.switchTab(index)
                         // Vertical rail: Up/Down walk the tabs; Right steps into
                         // the active tab's content list (mirrors list -> detail).
                         onUpPressed:   { var it = railRep.itemAt(index - 1); if (it) it.keyArea.forceActiveFocus(); }

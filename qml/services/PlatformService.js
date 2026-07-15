@@ -81,11 +81,11 @@ function banUser(baseUrl, token, communityTitle, username, reason, onOk, onErr) 
 }
 
 function unbanUser(baseUrl, token, communityTitle, username, onOk, onErr) {
-    // DELETE-with-body silently drops the JSON body in this QML XMLHttpRequest
-    // build, and there's no POST alias for this route (unlike deleteCommunity) —
-    // sending the params as a query string on the DELETE survives instead.
-    var query = Http.buildQuery({ username: username, community: communityTitle });
-    Http.del(baseUrl, "/banning-user/remove" + query, token, onOk, onErr);
+    // POST alias (added to serey-api) — Qt's QML XMLHttpRequest drops the body on
+    // DELETE, and the backend reads username/community from req.body (not
+    // req.query), so a query-string DELETE was silently ignored server-side.
+    var body = { username: username, community: communityTitle };
+    Http.post(baseUrl, "/banning-user/remove", body, token, onOk, onErr);
 }
 
 // Soft delete — sets deleted/deleted_at/deleted_reason on the Community row.

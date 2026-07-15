@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 import QtGraphicalEffects 1.0
 import "../Theme"
@@ -26,9 +27,26 @@ Item {
         cpBackdropFade.start()
         cpSlide.start()
         if (Session.isLoggedIn && !subscriptionsLoaded) _loadSubscriptions()
+        // Keyboard users can open this via the header pill (Enter): own the keys
+        // while open so Escape dismisses and Tab can't tunnel to the page below.
+        picker._prevFocus = Window.activeFocusItem
+        picker.forceActiveFocus()
     }
     function close()         { picker.visible = false }
     function closeAnimated() { cpBackdropFadeOut.start(); cpSlideOut.start() }
+
+    // Whatever held keyboard focus before the picker opened — restored on close.
+    property var _prevFocus: null
+    onVisibleChanged: {
+        if (!visible && _prevFocus) {
+            try { if (_prevFocus.visible) _prevFocus.forceActiveFocus() } catch (e) { /* item destroyed since */ }
+            _prevFocus = null
+        }
+    }
+    Keys.onPressed: {
+        if (event.key === Qt.Key_Escape) { picker.closeAnimated(); event.accepted = true }
+        else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) event.accepted = true
+    }
 
     function _loadSubscriptions() {
         picker.subscriptionsLoaded = true  // mark before call so retries don't stack

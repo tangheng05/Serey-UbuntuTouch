@@ -63,18 +63,22 @@ Item {
         fillMode: VideoOutput.PreserveAspectFit
     }
 
-    // Tap to toggle play/pause; tracks an explicit user pause so the overlay can tell it apart from media-hub's buffering "paused".
+    // Toggle play/pause; tracks an explicit user pause so the overlay can tell it
+    // apart from media-hub's buffering "paused". Public so the detail page's
+    // Space-bar handler drives it too (same API name as VideoWebView).
+    function togglePause() {
+        if (player.playbackState === MediaPlayer.PlayingState) {
+            player.pause();
+            root._userPaused = true;
+        } else {
+            player.play();
+            root._userPaused = false;
+        }
+    }
+
     MouseArea {
         anchors.fill: parent
-        onClicked: {
-            if (player.playbackState === MediaPlayer.PlayingState) {
-                player.pause();
-                root._userPaused = true;
-            } else {
-                player.play();
-                root._userPaused = false;
-            }
-        }
+        onClicked: root.togglePause()
     }
 
     // Loading spinner shown for the whole "play requested but no frames yet" window, hidden only once actually playing, ended, or user-paused.

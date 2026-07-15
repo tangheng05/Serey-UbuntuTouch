@@ -75,6 +75,51 @@ Page {
     // Suppress the default header and draw our own, since Page.header didn't render the right-side search action icon reliably.
     header: Item { height: 0 }
 
+    // ---- Keyboard navigation (HIG input parity). The rows live in a Column
+    // inside a Flickable (no ListView cursor), so the page keeps its own row
+    // cursor — same pattern as PostActionSheet: candidates filtered by
+    // visibility on every move (login state / platform ownership change what
+    // exists), one reparenting ring, Enter on key RELEASE (see KeyTapArea).
+    property Item keyboardFocusItem: scroll
+    property Item navCurrent: null
+
+    function _navRows() {
+        var c = [profileCardBtn, loginBtn, signupBtn, languageRow,
+                 createPlatformRow, managePlatformRow, editProfileRow,
+                 passwordRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+        var rows = [];
+        for (var i = 0; i < c.length; i++)
+            if (c[i].visible) rows.push(c[i]);
+        return rows;
+    }
+    function _navMove(d) {
+        var rows = _navRows();
+        if (rows.length === 0) return;
+        var i = rows.indexOf(page.navCurrent);
+        i = (i < 0) ? (d > 0 ? 0 : rows.length - 1)
+                    : Math.max(0, Math.min(rows.length - 1, i + d));
+        page.navCurrent = rows[i];
+        page._ensureRowVisible(page.navCurrent);
+    }
+    // Keep the cursor row inside the Flickable viewport.
+    function _ensureRowVisible(it) {
+        var y = it.mapToItem(col, 0, 0).y;
+        if (y < scroll.contentY) scroll.contentY = Math.max(0, y);
+        else if (y + it.height > scroll.contentY + scroll.height)
+            scroll.contentY = y + it.height - scroll.height;
+    }
+
+    // Focus the row list when the tab is shown so keyboard nav works without a
+    // click; cursor appears on first key press, not on show. (Merged into the
+    // single onVisibleChanged below — a Page allows only one handler per signal.)
+    function _onShownForKeyboard() {
+        if (!searchField.activeFocus) {
+            console.log("[kbd] SettingsPage shown -> focus rows");
+            page.navCurrent = null;
+            scroll.forceActiveFocus();
+        }
+    }
+
     Rectangle {
         id: settingsHeader
         anchors { top: parent.top; left: parent.left; right: parent.right }
@@ -253,7 +298,7 @@ Page {
     Component.onCompleted: refreshProfile()
 
     // Following someone happens on another tab, so the in-memory follower count would otherwise stay stale until this tab is revisited.
-    onVisibleChanged: if (visible) refreshProfile()
+    onVisibleChanged: if (visible) { refreshProfile(); _onShownForKeyboard(); }
 
     Connections {
         target: Session
@@ -297,6 +342,40 @@ Page {
         contentHeight: col.height
         clip: true
 
+        // Arrow cursor over the settings rows; Enter activates on release so
+        // the pushed sub-page / dialog doesn't inherit the tail of the press.
+        activeFocusOnTab: true
+        property bool _armed: false
+        Keys.onPressed: {
+            // A mouse click on a row gives that AbstractButton keyboard focus, so
+            // scroll loses activeFocus (the arrow keys still bubble up here, but
+            // the ring is gated on scroll.activeFocus). Reclaim focus on the first
+            // nav key so the cursor reappears and keyboard nav resumes.
+            if (!scroll.activeFocus) scroll.forceActiveFocus();
+            if (event.key === Qt.Key_Down)      { page._navMove(1);  event.accepted = true; }
+            else if (event.key === Qt.Key_Up)   { page._navMove(-1); event.accepted = true; }
+            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                scroll._armed = true; event.accepted = true;
+            }
+            else if (event.key === Qt.Key_Left) { Nav.focusNav();    event.accepted = true; }
+            else if (event.key === Qt.Key_Right){ Nav.focusDetail(); event.accepted = true; }
+        }
+        Keys.onReleased: {
+            if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)
+                && scroll._armed) {
+                scroll._armed = false;
+                if (page.navCurrent) {
+                    console.log("[kbd] settings row activated");
+                    page.navCurrent.clicked();
+                    // If the row pushed a detail page (split mode), move focus into
+                    // it. No-op for dialog/external rows (nothing was pushed) and
+                    // for narrow mode (the pushed page auto-focuses itself).
+                    Qt.callLater(function () { Nav.focusDetail(); });
+                }
+                event.accepted = true;
+            }
+        }
+
         Column {
             id: col
             anchors.horizontalCenter: parent.horizontalCenter
@@ -309,6 +388,7 @@ Page {
 
                 // Signed-in: tappable profile card → ProfileViewPage
                 AbstractButton {
+                    id: profileCardBtn
                     anchors.fill: parent
                     visible: Session.isLoggedIn
                     onClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
@@ -450,6 +530,7 @@ Page {
                         Row {
                             spacing: Style.spacingS
                             AbstractButton {
+                                id: loginBtn
                                 width: loginLbl.width; height: loginLbl.height
                                 onClicked: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
                                 Label {
@@ -466,6 +547,7 @@ Page {
                                 color: Style.textSecondary
                             }
                             AbstractButton {
+                                id: signupBtn
                                 width: signupLbl.width; height: signupLbl.height
                                 onClicked: page.pageStack.push(Qt.resolvedUrl("CreateAccountPage.qml"))
                                 Label {
@@ -511,6 +593,7 @@ Page {
 
             // ===== Language ===============================================
             SettingsRow {
+                id: languageRow
                 iconName: "language-chooser"
                 label: Lang.tr("Language")
                 valueText: Session.language === "nl" ? "Dutch" : "English"
@@ -523,60 +606,96 @@ Page {
                 Dialog {
                     id: langDlg
                     title: Lang.tr("Language")
+
+                    // Keyboard nav: Up/Down move the selection, Enter activates,
+                    // Escape cancels. The ring adapts colour so it stays visible
+                    // even on the brand-blue active-language button.
+                    property int selIndex: Session.language === "nl" ? 1 : 0
+                    // Restore keyboard focus to the settings list when the dialog closes.
+                    function _closeAndRestore() { PopupUtils.close(langDlg); scroll.forceActiveFocus(); }
+
+                    // Zero-size focus holder: Keys on the Dialog root (or its
+                    // Buttons) didn't reliably own focus — the settings list behind
+                    // the modal kept it, so arrows moved the hidden list cursor.
+                    // This item grabs focus (deferred until the modal is mounted)
+                    // and handles all keys. Zero size keeps the Dialog's Column
+                    // layout intact.
+                    Item {
+                        id: keyGrab
+                        width: 0; height: 0
+                        focus: true
+                        Component.onCompleted: Qt.callLater(keyGrab.forceActiveFocus)
+                        Keys.onPressed: {
+                            if (event.key === Qt.Key_Down)      { langDlg.selIndex = Math.min(2, langDlg.selIndex + 1); event.accepted = true; }
+                            else if (event.key === Qt.Key_Up)   { langDlg.selIndex = Math.max(0, langDlg.selIndex - 1); event.accepted = true; }
+                            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                if (langDlg.selIndex === 0) enBtn.clicked();
+                                else if (langDlg.selIndex === 1) nlBtn.clicked();
+                                else cancelBtn.clicked();
+                                event.accepted = true;
+                            }
+                            else if (event.key === Qt.Key_Escape) { langDlg._closeAndRestore(); event.accepted = true; }
+                        }
+                    }
+
                     Button {
+                        id: enBtn
                         text: "English"
                         color: Session.language === "en" ? Style.brand : Style.iconBackground
                         onClicked: {
-                            PopupUtils.close(langDlg)
+                            langDlg._closeAndRestore()
                             if (Session.language !== "en") {
                                 Session.setLanguage("en")
                                 Toast.show(Lang.tr("Language") + ": English")
                             }
                         }
+                        Rectangle {
+                            anchors.fill: parent; anchors.margins: units.dp(1)
+                            radius: units.gu(1); color: "transparent"
+                            border.width: units.dp(2)
+                            border.color: Session.language === "en" ? Style.textOnBrand : Style.brand
+                            visible: keyGrab.activeFocus && langDlg.selIndex === 0
+                        }
                     }
                     Button {
+                        id: nlBtn
                         text: "Dutch"
                         color: Session.language === "nl" ? Style.brand : Style.iconBackground
                         onClicked: {
-                            PopupUtils.close(langDlg)
+                            langDlg._closeAndRestore()
                             if (Session.language !== "nl") {
                                 Session.setLanguage("nl")
                                 Toast.show(Lang.tr("Language") + ": Dutch")
                             }
                         }
+                        Rectangle {
+                            anchors.fill: parent; anchors.margins: units.dp(1)
+                            radius: units.gu(1); color: "transparent"
+                            border.width: units.dp(2)
+                            border.color: Session.language === "nl" ? Style.textOnBrand : Style.brand
+                            visible: keyGrab.activeFocus && langDlg.selIndex === 1
+                        }
                     }
                     Button {
+                        id: cancelBtn
                         text: Lang.tr("Cancel")
-                        onClicked: PopupUtils.close(langDlg)
+                        onClicked: langDlg._closeAndRestore()
+                        Rectangle {
+                            anchors.fill: parent; anchors.margins: units.dp(1)
+                            radius: units.gu(1); color: "transparent"
+                            border.width: units.dp(2)
+                            border.color: Style.brand
+                            visible: keyGrab.activeFocus && langDlg.selIndex === 2
+                        }
                     }
                 }
             }
 
-            // ===== Account ================================================
-            SettingsSectionHeader { text: Lang.tr("Account"); visible: Session.isLoggedIn }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "edit"
-                label: Lang.tr("Edit profile")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("EditProfilePage.qml"), { initial: page.profile })
-            }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "system-lock-screen"
-                label: Lang.tr("Password & Security")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
-            }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "system-shutdown"
-                label: Lang.tr("Blocked Users")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
-            }
+            // ===== Your Platform ==========================================
             // One platform per user: creators see "Create", owners/managers see the CMS hub instead.
+            SettingsSectionHeader { text: Lang.tr("Your Platform"); visible: Session.isLoggedIn }
             SettingsRow {
+                id: createPlatformRow
                 visible: Session.isLoggedIn && !Config.hasAnyOwnedCommunity
                 iconName: "add"
                 label: Lang.tr("Create your platform")
@@ -584,14 +703,46 @@ Page {
                 onClicked: page.pageStack.push(Qt.resolvedUrl("CreatePlatformPage.qml"))
             }
             SettingsRow {
+                id: managePlatformRow
                 visible: Session.isLoggedIn && Config.hasAnyOwnedCommunity
                 iconName: "settings"
                 label: Lang.tr("Manage your platform")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("PlatformAdminPage.qml"))
             }
+
+            // ===== Account ================================================
+            SettingsSectionHeader { text: Lang.tr("Account"); visible: Session.isLoggedIn }
+            SettingsRow {
+                id: editProfileRow
+                visible: Session.isLoggedIn
+                showDivider: false
+                iconName: "edit"
+                label: Lang.tr("Edit profile")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("EditProfilePage.qml"), { initial: page.profile })
+            }
+            SettingsRow {
+                id: passwordRow
+                visible: Session.isLoggedIn
+                showDivider: false
+                iconName: "system-lock-screen"
+                label: Lang.tr("Password & Security")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
+            }
+            SettingsRow {
+                id: blockedRow
+                visible: Session.isLoggedIn
+                showDivider: false
+                iconName: "system-shutdown"
+                label: Lang.tr("Blocked Users")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
+            }
             // Not gated on isLoggedIn: downloads/saved articles work signed out too.
             SettingsRow {
+                id: downloadsRow
                 iconName: "save"
                 label: Lang.tr("Downloaded Content")
                 showChevron: true
@@ -602,11 +753,13 @@ Page {
             SettingsSectionHeader { text: Lang.tr("About") }
 
             SettingsRow {
+                showDivider: false
                 iconName: "info"
                 label: Lang.tr("Version")
                 valueText: Config.appVersion
             }
             SettingsRow {
+                id: websiteRow
                 iconName: "external-link"
                 label: Lang.tr("Serey website")
                 showChevron: true
@@ -615,6 +768,7 @@ Page {
 
             // ===== Log out (bottom of the page) ============================
             SettingsRow {
+                id: logoutRow
                 visible: Session.isLoggedIn
                 iconName: "system-log-out"
                 label: Lang.tr("Log out")
@@ -624,6 +778,22 @@ Page {
 
             Item { width: 1; height: Style.spacingL }
         }
+    }
+
+    // Keyboard cursor: one ring reparented into whichever row is selected (same
+    // approach as PostActionSheet). Fallback parent is `page` (NOT the Column
+    // `col`, which disables its own layout if given an anchored child). Only
+    // visible once a key has moved the cursor, so touch users never see it.
+    Rectangle {
+        parent: page.navCurrent ? page.navCurrent : page
+        anchors.fill: parent
+        anchors.margins: units.dp(2)
+        radius: units.dp(6)
+        color: "transparent"
+        border.width: units.dp(2)
+        border.color: Style.brand
+        visible: page.navCurrent !== null && scroll.activeFocus
+        z: 10
     }
 
     ActivityIndicator {

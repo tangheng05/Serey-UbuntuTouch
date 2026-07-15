@@ -17,5 +17,9 @@ QtObject {
     signal focusMaster()
     signal focusDetail()
 
+    // Focus the tab navigation itself (side rail / bottom bar) — emitted by a
+    // list's Left key (step out of content) and by the F6 shortcut; Main acts.
+    signal focusNav()
+
     function home() { goToTab(0); }
 }

@@ -303,7 +303,13 @@ Page {
         loadMore();
     }
 
-    Component.onCompleted: page.reload()
+    Component.onCompleted: {
+        page.reload();
+        if (visible) list.forceActiveFocus();
+    }
+    // Keyboard parity on arrival: the list takes arrow-key focus whenever this
+    // page is (re)shown, so keyboard nav works before the first click/tap.
+    onVisibleChanged: if (visible) list.forceActiveFocus()
 
     Connections {
         target: PostActions
@@ -360,6 +366,8 @@ Page {
         Keys.onRightPressed: Nav.focusDetail()
         model: feedModel
         cacheBuffer: units.gu(12)
+        // Keyboard cursor visual: the Lomiri ListItem's own key-navigation frame
+        // (see NewsPage) — no custom highlight, it double-ringed.
 
         PullToRefresh {
             refreshing: page.refreshing

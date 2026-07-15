@@ -173,6 +173,21 @@ Page {
         webLoader.parent = on ? fsHost : stage;
     }
 
+    // Space-bar playback control: starts playback if it hasn't begun, else
+    // toggles pause on whichever player is live. Cross-origin embeds (YouTube
+    // iframe) can't be driven from outside — their own controls apply.
+    function togglePlayPause() {
+        if (!page.playing) { console.log("[kbd] video: start play"); page.startPlay(); return; }
+        var it = webLoader.item;
+        if (!it) return;
+        if (page.nativeMode || page.webVideoMode) {
+            console.log("[kbd] video: toggle pause");
+            it.togglePause();
+        } else {
+            console.log("[kbd] video: embed player, not controllable");
+        }
+    }
+
     // Native (.mov) player failed — retry via Chromium's <video> before falling back to the system handler.
     function onNativeFailed() {
         if (page.webVideoMode) {
@@ -551,6 +566,10 @@ Page {
         }
     }
 
+    // The scroll view owns arrow-key focus so a keyboard user can scroll the page;
+    // AdaptiveStack.focusDetail() targets this when entering from the video list.
+    property Item keyboardFocusItem: scroll
+
     Flickable {
         id: scroll
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -559,6 +578,36 @@ Page {
         clip: true
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
+
+        // Keyboard parity with PostDetailPage's reading keys, plus video-specific
+        // Space/Enter = play-pause (a video page's Space belongs to the player,
+        // not page-scrolling; PageDown/PageUp still scroll).
+        activeFocusOnTab: true
+        function _kbScroll(dy) {
+            var maxY = Math.max(0, scroll.contentHeight - scroll.height);
+            scroll.contentY = Math.max(0, Math.min(maxY, scroll.contentY + dy));
+        }
+        Keys.onPressed: {
+            var pageStep = scroll.height * 0.9;
+            var lineStep = units.gu(6);
+            if (event.key === Qt.Key_Down)          { scroll._kbScroll(lineStep);  event.accepted = true; }
+            else if (event.key === Qt.Key_Up)       { scroll._kbScroll(-lineStep); event.accepted = true; }
+            else if (event.key === Qt.Key_PageDown) { scroll._kbScroll(pageStep);  event.accepted = true; }
+            else if (event.key === Qt.Key_PageUp)   { scroll._kbScroll(-pageStep); event.accepted = true; }
+            else if (event.key === Qt.Key_Home)     { scroll.contentY = 0; event.accepted = true; }
+            else if (event.key === Qt.Key_End)      { scroll._kbScroll(scroll.contentHeight); event.accepted = true; }
+            else if (event.key === Qt.Key_Space
+                  || event.key === Qt.Key_Return
+                  || event.key === Qt.Key_Enter)    { page.togglePlayPause(); event.accepted = true; }
+            // Escape leaves fullscreen first; otherwise Left/Escape hand focus
+            // back to the master list so the viewer can pick the next video.
+            else if (event.key === Qt.Key_Escape && page.isFullscreen) { page.setFullscreen(false); event.accepted = true; }
+            else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
+        }
+        // Focus lands on the flick when the video opens (guarded so it never
+        // steals focus from the comment composer).
+        onVisibleChanged: if (visible && !composer.activeFocus) Qt.callLater(scroll.forceActiveFocus)
+        Component.onCompleted: if (visible && !composer.activeFocus) scroll.forceActiveFocus()
 
         Column {
             id: contentCol

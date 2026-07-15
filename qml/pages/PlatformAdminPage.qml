@@ -198,10 +198,33 @@ Page {
         }
     }
 
+    // Keyboard nav: settings' Nav.focusDetail targets this flick; arrows scroll,
+    // Left/Escape return to the settings list.
+    property Item keyboardFocusItem: scroll
+    onVisibleChanged: if (visible) scroll.forceActiveFocus()
+
     Flickable {
+        id: scroll
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         contentHeight: column.height
         clip: true
+
+        activeFocusOnTab: true
+        function _kbScroll(dy) {
+            var maxY = Math.max(0, scroll.contentHeight - scroll.height);
+            scroll.contentY = Math.max(0, Math.min(maxY, scroll.contentY + dy));
+        }
+        Keys.onPressed: {
+            var pageStep = scroll.height * 0.9;
+            var lineStep = units.gu(6);
+            if (event.key === Qt.Key_Down)          { scroll._kbScroll(lineStep);  event.accepted = true; }
+            else if (event.key === Qt.Key_Up)       { scroll._kbScroll(-lineStep); event.accepted = true; }
+            else if (event.key === Qt.Key_PageDown) { scroll._kbScroll(pageStep);  event.accepted = true; }
+            else if (event.key === Qt.Key_PageUp)   { scroll._kbScroll(-pageStep); event.accepted = true; }
+            else if (event.key === Qt.Key_Home)     { scroll.contentY = 0; event.accepted = true; }
+            else if (event.key === Qt.Key_End)      { scroll._kbScroll(scroll.contentHeight); event.accepted = true; }
+            else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
+        }
 
         Column {
             id: column

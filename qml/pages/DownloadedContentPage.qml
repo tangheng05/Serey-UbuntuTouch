@@ -15,6 +15,13 @@ Page {
     property string _pendingRemoveArticle: ""
     readonly property real maxContentWidth: units.gu(60)
 
+    // Keyboard nav: the active list owns arrow focus; settings' Nav.focusDetail
+    // targets this when the row is activated. Left/Escape return to the settings
+    // list; Up-at-top climbs into the Video/Articles strip.
+    property Item keyboardFocusItem: tabIndex === 0 ? videoList : articleList
+    function _focusActiveList() { (tabIndex === 0 ? videoList : articleList).forceActiveFocus(); }
+    onVisibleChanged: if (visible) _focusActiveList()
+
     Component {
         id: removeVideoDialog
         Dialog {
@@ -84,7 +91,8 @@ Page {
         anchors { top: topBar.bottom; left: parent.left; right: parent.right }
         model: [Lang.tr("Video"), Lang.tr("Articles")]
         currentIndex: page.tabIndex
-        onSelected: page.tabIndex = index
+        onSelected: { page.tabIndex = index; page._focusActiveList(); }
+        onFocusList: page._focusActiveList()
     }
 
     ListView {
@@ -95,6 +103,13 @@ Page {
         visible: page.tabIndex === 0
         model: Downloads.items
         cacheBuffer: units.gu(16)
+        // Left/Escape return to the settings list; Up at top climbs to the strip.
+        Keys.onLeftPressed: Nav.focusMaster()
+        Keys.onEscapePressed: Nav.focusMaster()
+        Keys.onUpPressed: {
+            if (videoList.atYBeginning && videoList.currentIndex <= 0) { tabs.focusCurrent(); event.accepted = true; }
+            else event.accepted = false;
+        }
 
         delegate: ListItem {
             width: videoList.width
@@ -170,6 +185,13 @@ Page {
         visible: page.tabIndex === 1
         model: SavedPosts.items
         cacheBuffer: units.gu(20)
+        // Left/Escape return to the settings list; Up at top climbs to the strip.
+        Keys.onLeftPressed: Nav.focusMaster()
+        Keys.onEscapePressed: Nav.focusMaster()
+        Keys.onUpPressed: {
+            if (articleList.atYBeginning && articleList.currentIndex <= 0) { tabs.focusCurrent(); event.accepted = true; }
+            else event.accepted = false;
+        }
 
         delegate: ListItem {
             width: articleList.width

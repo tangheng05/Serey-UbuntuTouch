@@ -50,6 +50,7 @@ Page {
             function () {
                 page.savingName = false
                 page.platformName = page.nameText
+                Config.updateCommunityTitle(Config.managedCommunityId, page.nameText)
                 Toast.success(Lang.tr("Platform name updated."))
             },
             function (err) {
@@ -65,13 +66,10 @@ Page {
         ]
     }
 
-    // The community's real name — from the community record, not the landing-page
-    // title (which can diverge after a rename, e.g. still "Globalasdfasf"). Re-run
-    // on every appearance so returning from a rename shows the new name.
+    // Reads Config's cache instead of re-fetching get-communities, which is cached server-side and can still return the old name right after a rename.
     function loadPlatformName() {
-        PlatformService.getCommunityContext(Config.baseUrl, Config.managedCommunityId,
-            function (ctx) { if (ctx.name && ctx.name.length > 0) page.platformName = ctx.name },
-            function () { /* keep current */ })
+        var info = Config.communityInfoFor(Config.managedCommunityId)
+        if (info && info.title && info.title.length > 0) page.platformName = info.title
     }
 
     function loadPlatformIdentity() {

@@ -81,8 +81,11 @@ function banUser(baseUrl, token, communityTitle, username, reason, onOk, onErr) 
 }
 
 function unbanUser(baseUrl, token, communityTitle, username, onOk, onErr) {
-    Http.delWithBody(baseUrl, "/banning-user/remove",
-                     { username: username, community: communityTitle }, token, onOk, onErr);
+    // DELETE-with-body silently drops the JSON body in this QML XMLHttpRequest
+    // build, and there's no POST alias for this route (unlike deleteCommunity) —
+    // sending the params as a query string on the DELETE survives instead.
+    var query = Http.buildQuery({ username: username, community: communityTitle });
+    Http.del(baseUrl, "/banning-user/remove" + query, token, onOk, onErr);
 }
 
 // Soft delete — sets deleted/deleted_at/deleted_reason on the Community row.

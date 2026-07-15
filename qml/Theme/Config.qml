@@ -105,6 +105,24 @@ QtObject {
         return c || null;
     }
 
+    // Patches edited fields into the cache in place (reassigning so bindings
+    // notice) instead of re-fetching get-communities, which is cached
+    // server-side and returns stale data for a bit right after a write.
+    function updateCommunityFields(id, fields) {
+        var idStr = String(id);
+        var entry = communityById[idStr];
+        if (entry) {
+            var map = Object.assign({}, communityById);
+            map[idStr] = Object.assign({}, entry, fields);
+            communityById = map;
+        }
+        if (selectedSubCommunity && selectedSubCommunity.id === id && fields.title !== undefined)
+            selectedSubCommunity = Object.assign({}, selectedSubCommunity, { name: fields.title });
+    }
+    function updateCommunityTitle(id, title) {
+        updateCommunityFields(id, { title: title });
+    }
+
     // Map of community dns -> is_allow_post, gating the compose buttons per backend rule (true = anyone may post, false = owner/managers only).
     property var allowPostByDns: ({})
 

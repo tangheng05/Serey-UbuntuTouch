@@ -226,7 +226,7 @@ Page {
             }
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: Lang.tr("Tap photo to change")
+                text: Config.wideMode ? Lang.tr("Click photo to change") : Lang.tr("Tap photo to change")
                 font.pixelSize: Style.fontSmall
                 font.family: Style.fontFor(text)
                 color: Style.textSecondary

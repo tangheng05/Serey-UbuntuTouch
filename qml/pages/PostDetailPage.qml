@@ -721,6 +721,18 @@ Page {
                                 TextArea {
                                     id: bodyTxt
                                     width: parent.width
+                                    // Stray-selection guard. When the focusing press also scrolls, the
+                                    // Flickable steals the grab but TextEdit's press-and-hold word-select timer
+                                    // is NOT cancelled, so it fires 0.4-0.7s AFTER motion stops (anchored to the
+                                    // press, not scroll-end — a fixed time window from scroll-end is unreliable).
+                                    // The reliable invariant: a scroll occurred during this press. A deliberate
+                                    // long-press has no scroll in its gesture. So we flag "scrolled since focus"
+                                    // and clear any selection that appears while it's set. The idle-timer part
+                                    // re-allows selection once scrolling has been quiet, in case focus never
+                                    // dropped between a scroll and a later deliberate hold.
+                                    property real _lastScrollMs: 0
+                                    property bool _scrolledSinceFocus: false
+                                    readonly property int _scrollSelGuardMs: 1500
                                     text: model.content
                                     textFormat: TextEdit.RichText
                                     readOnly: true
@@ -749,10 +761,19 @@ Page {
                                         overlaySpacing: 0
                                     }
                                     onLinkActivated: Qt.openUrlExternally(link)
+                                    // A fresh press (focus gained) starts a new gesture — reset the flag so a
+                                    // deliberate long-press with no scroll is never blocked.
+                                    onActiveFocusChanged: if (activeFocus) bodyTxt._scrolledSinceFocus = false
                                     // Caret visible only while selected, gating the native Copy popover; always-on left an idle blue cursor while reading.
                                     onSelectedTextChanged: {
-                                        // Scroll momentum can grab/extend a stray selection; real selection-adjusts freeze the scroller, so this only ever clears accidental ones.
-                                        if (selectedText.length > 0 && scroll.moving) {
+                                        // Stray if the scroller is in motion, OR a scroll happened during this
+                                        // press and it's still recent (the late press-and-hold timer that the
+                                        // stolen grab never cancelled). A deliberate long-press (no scroll since
+                                        // focus, or well after the last scroll) is never cleared.
+                                        if (selectedText.length > 0
+                                                && (scroll.moving || scroll.flicking
+                                                    || (bodyTxt._scrolledSinceFocus
+                                                        && (Date.now() - bodyTxt._lastScrollMs) < bodyTxt._scrollSelGuardMs))) {
                                             bodyTxt.deselect();
                                             return;
                                         }
@@ -761,10 +782,15 @@ Page {
                                     onCursorVisibleChanged: if (!cursorVisible && selectedText.length > 0) cursorVisible = true
                                 }
 
-                                // Clears a stray selection grabbed just before a scroll drag crosses its threshold (never fires during a real select-drag).
+                                // Track scroll activity so the selection guard above can distinguish a stray
+                                // (scroll happened during this press) from a deliberate long-press.
                                 Connections {
                                     target: scroll
-                                    onMovementStarted: bodyTxt.deselect()
+                                    onMovementStarted: { bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now(); bodyTxt.deselect() }
+                                    onMovementEnded:   bodyTxt._lastScrollMs = Date.now()
+                                    onFlickStarted:    { bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now() }
+                                    onFlickEnded:      bodyTxt._lastScrollMs = Date.now()
+                                    onDraggingChanged: { if (scroll.dragging) bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now() }
                                 }
                             }
                         }

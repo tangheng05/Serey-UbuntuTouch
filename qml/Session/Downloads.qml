@@ -106,9 +106,29 @@ QtObject {
         return _comp;
     }
 
+    // Copy a video view-model into a plain JS object. page.video can be a threaded
+    // ListModel element (QQmlListModelWorkerAgent) whose JSON.stringify hits an
+    // "unregistered datatype QV4::ExecutionEngine*" error and whose thread affinity
+    // made the persisted row invisible to the reload (isSaved stayed false → no tick,
+    // endless re-downloads). A plain object serializes cleanly and is main-thread.
+    function _toPlain(v) {
+        var keys = ["id", "author", "permlink", "title", "body", "excerpt", "thumbnail",
+                    "localThumb", "authorImage", "date", "votes", "comments", "payout",
+                    "embedUrl", "videoLink", "videoId", "platform", "dimensions",
+                    "community", "communityId", "postToBlockchain"];
+        var o = {};
+        if (v) for (var i = 0; i < keys.length; i++) {
+            var val = v[keys[i]];
+            if (val !== undefined && val !== null) o[keys[i]] = val;
+        }
+        return o;
+    }
+
     function start(video, url) {
         if (!video || !url || url.length === 0) return;
-        var permlink = video.permlink || "";
+        // Snapshot to a plain object immediately — everything downstream uses this.
+        var pv = _toPlain(video);
+        var permlink = pv.permlink || "";
         if (permlink.length === 0 || isSaved(permlink) || _active[permlink]) return;
         // Capture the account that started this download so it's filed under the requester even if the account switches mid-download.
         var startOwner = store._owner();
@@ -120,26 +140,34 @@ QtObject {
             return;
         }
 
-        var dl = comp.createObject(store, { url: url, title: video.title || "Serey video" });
+        var dl = comp.createObject(store, { url: url, title: pv.title || "Serey video" });
         if (!dl) { Toast.error("Couldn't start download."); return; }
 
         _active[permlink] = { progress: 0, downloader: dl };
         store.rev++;
 
         // Grab the poster too, so the thumbnail shows offline.
-        store._saveThumb(video, permlink);
+        store._saveThumb(pv, permlink);
 
         dl.progress.connect(function (pct) {
             if (_active[permlink]) { _active[permlink].progress = pct; store.rev++; }
         });
         dl.finished.connect(function (path) {
-            var vm = video;
+            var vm = pv;
             var t = store._pendingThumb[permlink];
-            if (t) { vm = Object.assign({}, video, { localThumb: t }); delete store._pendingThumb[permlink]; }
+            if (t) { vm = Object.assign({}, pv, { localThumb: t }); delete store._pendingThumb[permlink]; }
             store._persist(vm, path, startOwner);
+            // Update the in-memory list directly so the tick + downloaded list reflect
+            // the save right away, independent of the DB reload (which the worker-thread
+            // affinity could return empty). Persist above still records it for next launch.
+            var savedVm = Object.assign({}, vm, { permlink: permlink, localPath: path });
+            var next = [savedVm];
+            for (var i = 0; i < store.items.length; i++)
+                if (store.items[i].permlink !== permlink) next.push(store.items[i]);
+            store.items = next;
             delete _active[permlink];
             dl.destroy();
-            store._load();
+            store.rev++;
             Toast.success("Saved for offline");
         });
         dl.failed.connect(function (message) {

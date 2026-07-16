@@ -8,7 +8,12 @@ import "../components"
 Page {
     id: page
 
-    header: Item { height: 0 }
+    header: PageHeader {
+        title: Lang.tr("Downloaded Content")
+        leadingActionBar.actions: [
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
+        ]
+    }
 
     property int tabIndex: 0
     property string _pendingRemoveVideo: ""
@@ -58,37 +63,9 @@ Page {
         }
     }
 
-    Rectangle {
-        id: topBar
-        anchors { left: parent.left; right: parent.right; top: parent.top }
-        height: units.gu(6)
-        color: Style.navigationBg
-        z: 10
-
-        BackButton {
-            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            onClicked: page.pageStack.pop()
-        }
-
-        Label {
-            anchors.centerIn: parent
-            text: Lang.tr("Downloaded Content")
-            font.pixelSize: Style.fontMedium
-            font.weight: Font.DemiBold
-            font.family: Style.fontFor(text)
-            color: Style.textPrimary
-        }
-
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: units.dp(1)
-            color: Style.divider
-        }
-    }
-
     SectionTabs {
         id: tabs
-        anchors { top: topBar.bottom; left: parent.left; right: parent.right }
+        anchors { top: parent.header.bottom; left: parent.left; right: parent.right }
         model: [Lang.tr("Video"), Lang.tr("Articles")]
         currentIndex: page.tabIndex
         onSelected: { page.tabIndex = index; page._focusActiveList(); }

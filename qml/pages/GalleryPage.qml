@@ -169,7 +169,7 @@ Page {
             leadingActions: ListItemActions {
                 actions: [
                     Action {
-                        iconName: "close"
+                        iconName: "view-off"
                         text: Lang.tr("Hide")
                         onTriggered: {
                             var vm = galleryModel.get(index);

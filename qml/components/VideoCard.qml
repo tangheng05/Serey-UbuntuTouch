@@ -151,9 +151,6 @@ AbstractButton {
                     color: Style.textSecondary
                     elide: Text.ElideRight
                 }
-                OffChainBadge {
-                    onChain: v.postToBlockchain !== false
-                }
             }
 
             AbstractButton {

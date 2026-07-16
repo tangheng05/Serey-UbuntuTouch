@@ -441,7 +441,7 @@ Page {
                 }
                 actions: [
                     Action {
-                        iconName: "close"
+                        iconName: "view-off"
                         text: Lang.tr("Hide")
                         onTriggered: {
                             var p = feedModel.get(index)

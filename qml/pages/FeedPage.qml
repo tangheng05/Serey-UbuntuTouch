@@ -445,7 +445,12 @@ Page {
                         text: Lang.tr("Hide")
                         onTriggered: {
                             var p = feedModel.get(index)
-                            if (p) PostActions.hideRequested(p.author, p.permlink)
+                            if (p) {
+                                // Persist to the local hidden-posts store so it stays hidden across
+                                // restarts, matching the overflow-menu Hide (PostActionSheet).
+                                HiddenPosts.hide(p.permlink || "")
+                                PostActions.hideRequested(p.author, p.permlink)
+                            }
                         }
                     }
                 ]

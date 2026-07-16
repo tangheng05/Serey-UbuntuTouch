@@ -173,7 +173,11 @@ Page {
                         text: Lang.tr("Hide")
                         onTriggered: {
                             var vm = galleryModel.get(index);
-                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                            if (vm) {
+                                // Persist so it stays hidden across restarts (matches the overflow-menu Hide).
+                                HiddenPosts.hide(vm.permlink || "");
+                                PostActions.hideRequested(vm.author, vm.permlink);
+                            }
                         }
                     }
                 ]

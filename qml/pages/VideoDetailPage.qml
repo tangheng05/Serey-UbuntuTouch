@@ -11,6 +11,7 @@ import "../services/CommentService.js" as CommentService
 import "../services/FollowService.js" as FollowService
 import "../services/YouTube.js" as YouTube
 import "../services/VoteService.js" as VoteService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 Page {
     id: page
@@ -1010,7 +1011,11 @@ Page {
                                             iconName: "view-off"
                                             text: Lang.tr("Hide")
                                             onTriggered: {
-                                                if (modelData) PostActions.hideRequested(modelData.author, modelData.permlink);
+                                                if (modelData) {
+                                                    // Persist so it stays hidden across restarts (matches the overflow-menu Hide).
+                                                    HiddenPosts.hide(modelData.permlink || "");
+                                                    PostActions.hideRequested(modelData.author, modelData.permlink);
+                                                }
                                             }
                                         }
                                     ]

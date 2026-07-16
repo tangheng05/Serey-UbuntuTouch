@@ -1,5 +1,6 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
+import Lomiri.Components.Themes 1.3
 // Lomiri.Notifications/Ubuntu.PushNotifications exist only on-device, so they're created dynamically to keep desktop builds alive.
 import "Theme"
 import "Session"
@@ -29,6 +30,11 @@ MainView {
     // the active Suru theme so every color token re-skins centrally (no call-site
     // change). Luminance of the theme background works regardless of the theme name.
     Binding { target: Style; property: "dark"; value: root.theme.palette.normal.background.hslLightness < 0.5 }
+
+    // Cut/Copy/Paste popover text color
+    theme.palette: Palette {
+        normal.overlayText: Style.dark ? "#F7F7F7" : "#262626"
+    }
 
     property int currentTab: 0
     onCurrentTabChanged: { Config.currentTab = currentTab; _ensureTab(currentTab); body.opacity = 0; tabFadeIn.start(); }

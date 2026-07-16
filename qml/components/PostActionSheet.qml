@@ -372,7 +372,8 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: units.gu(4.5); height: width; radius: width / 2
                         color: Style.iconBackground
-                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "save"
+                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width
+                               name: saveOfflineBtn._saved ? "tick" : "save"
                                color: saveOfflineBtn._saved ? Style.brand : Style.textPrimary }
                     }
                     Column {

@@ -104,7 +104,8 @@ Page {
         }
         trailingActionBar.actions: [
             Action {
-                iconName: "save"
+                // Toggle to a tick when saved, matching the video download button.
+                iconName: page.isSaved ? "tick" : "save"
                 text: page.isSaved ? Lang.tr("Remove from saved") : Lang.tr("Save for offline")
                 enabled: page.postReady
                 onTriggered: page.toggleSaved()

@@ -22,7 +22,7 @@ QtObject {
     readonly property string devBaseV1: "http://localhost:5050/api/v1"
 
     readonly property bool showDevOptions: false   // set true locally to expose dev tools
-    property bool useLocalDev: false
+    property bool useLocalDev: true
 
     readonly property string baseUrl: useLocalDev ? devBase : prodBase
     readonly property string baseUrlV1: useLocalDev ? devBaseV1 : prodBaseV1

@@ -720,11 +720,6 @@ Page {
                 wrapMode: Text.Wrap
             }
 
-            OffChainBadge {
-                x: Style.spacingM
-                onChain: page.onChain
-            }
-
             Item { width: 1; height: Style.spacingS }
 
             // Author row: avatar + @name + date + "...more"
@@ -1012,7 +1007,7 @@ Page {
                                     }
                                     actions: [
                                         Action {
-                                            iconName: "close"
+                                            iconName: "view-off"
                                             text: Lang.tr("Hide")
                                             onTriggered: {
                                                 if (modelData) PostActions.hideRequested(modelData.author, modelData.permlink);

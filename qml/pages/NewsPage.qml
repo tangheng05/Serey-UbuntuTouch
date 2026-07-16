@@ -110,6 +110,8 @@ Page {
         var params = { limit: Config.pageSize, offset: 0 };
         if (Config.communityId > 0)
             params.community_id = Config.communityId;
+        else
+            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
         inflight = feedFn()(Config.baseUrl, params, Session.token,
             function (result, rawCount) {
                 if (epoch !== page.reqEpoch) return;
@@ -144,6 +146,8 @@ Page {
         var params = { limit: Config.pageSize, offset: page.offset };
         if (Config.communityId > 0)
             params.community_id = Config.communityId;
+        else
+            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
         inflight = feedFn()(Config.baseUrl, params, Session.token,
             function (result, rawCount) {
                 if (epoch !== page.reqEpoch) return;   // stale response — ignore
@@ -301,7 +305,7 @@ Page {
                 }
                 actions: [
                     Action {
-                        iconName: "close"
+                        iconName: "view-off"
                         text: Lang.tr("Hide")
                         onTriggered: {
                             var p = feedModel.get(index)

@@ -79,11 +79,7 @@ FocusScope {
     WebEngineView {
         id: webView
         anchors.fill: parent
-        // Scope-focus target: focusing the WebAppView focuses the web content.
         focus: true
-        // `visible` inherits normally; onAppActiveChanged toggles it imperatively on background/foreground so the Active->Frozen transition becomes legal.
-        profile: mobileProfile
-        // Desktop mode renders the site at its real width — no upscaling needed.
         zoomFactor: webAppView.desktopMode ? 1.0 : (webAppView.width > 0 ? webAppView.width / 412 : 1.0)
         settings.showScrollBars: false
 

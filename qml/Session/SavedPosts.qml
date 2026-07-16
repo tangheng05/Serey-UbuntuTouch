@@ -17,10 +17,23 @@ QtObject {
         return _dbHandle;
     }
 
-    // Scoped to the signed-in account so switching accounts shows a fresh list; logged-out saves (owner "") are their own bucket.
+    // Scoped to the signed-in account so switching accounts shows a fresh list;
+    // logged-out saves are their own bucket. That bucket must NOT be the empty
+    // string: QML LocalStorage binds an empty JS string as SQL NULL, and `x = NULL`
+    // is never true, so a logged-out `owner = ?` matched nothing — the article
+    // saved but reloaded as absent (no tick, empty list on restart). `__guest__`
+    // is unusable as a Steem username (underscores are illegal), so it can't
+    // collide with a real account.
+    readonly property string guestOwner: "__guest__"
+
     function _owner() {
-        return Session.isLoggedIn ? Session.username : "";
+        return (Session.isLoggedIn && Session.username && Session.username.length > 0)
+                ? Session.username : store.guestOwner;
     }
+
+    // Rows written before the sentinel existed have owner NULL or ''; fold both onto
+    // the guest bucket so old saves stay visible.
+    readonly property string _ownerExpr: "IFNULL(NULLIF(owner,''),'" + guestOwner + "')"
 
     function _load() {
         var out = [];
@@ -29,9 +42,14 @@ QtObject {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT, author TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
                 // Add `owner` to tables created before per-account scoping existed; harmlessly throws (caught) once the column is present.
                 try { tx.executeSql("ALTER TABLE saved_posts ADD COLUMN owner TEXT DEFAULT ''"); } catch (e2) { }
-                var rs = tx.executeSql("SELECT permlink, data FROM saved_posts WHERE owner = ? ORDER BY saved_at DESC", [store._owner()]);
+                var rs = tx.executeSql("SELECT permlink, data FROM saved_posts WHERE " + store._ownerExpr + " = ? ORDER BY saved_at DESC", [store._owner()]);
+                var seen = {};
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);
+                    // A NULL owner also defeats PRIMARY KEY dedupe, so older duplicate
+                    // rows can exist; newest-first ordering means the first wins.
+                    if (seen[row.permlink]) continue;
+                    seen[row.permlink] = true;
                     var vm = {};
                     try { vm = JSON.parse(row.data); } catch (e) { vm = {}; }
                     vm.permlink = row.permlink;
@@ -61,7 +79,11 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT, author TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                tx.executeSql("INSERT OR REPLACE INTO saved_posts(permlink, author, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
+                // Explicit delete before insert: legacy rows with owner NULL (see
+                // _owner) can't be deduped by the PRIMARY KEY, so INSERT OR REPLACE
+                // piled up a new row per save instead of replacing the old one.
+                tx.executeSql("DELETE FROM saved_posts WHERE permlink = ? AND " + store._ownerExpr + " = ?", [post.permlink, store._owner()]);
+                tx.executeSql("INSERT INTO saved_posts(permlink, author, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
                     [post.permlink, post.author || "", Date.now(), JSON.stringify(post), store._owner()]);
             });
         } catch (e) {
@@ -141,7 +163,7 @@ QtObject {
     function remove(permlink) {
         try {
             _db().transaction(function (tx) {
-                tx.executeSql("DELETE FROM saved_posts WHERE permlink = ? AND owner = ?", [permlink, store._owner()]);
+                tx.executeSql("DELETE FROM saved_posts WHERE permlink = ? AND " + store._ownerExpr + " = ?", [permlink, store._owner()]);
             });
         } catch (e) {
             console.log("SavedPosts delete error: " + e);

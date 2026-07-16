@@ -25,10 +25,22 @@ QtObject {
         return _dbHandle;
     }
 
-    // Scoped to the signed-in account so switching accounts shows a fresh list; logged-out downloads (owner "") are their own bucket.
+    // Scoped to the signed-in account so switching accounts shows a fresh list;
+    // logged-out downloads are their own bucket. That bucket must NOT be the empty
+    // string: QML LocalStorage binds an empty JS string as SQL NULL, and `x = NULL`
+    // is never true, so a logged-out `owner = ?` matched nothing and the list came
+    // back empty on every restart. `__guest__` is unusable as a Steem username
+    // (underscores are illegal), so it can't collide with a real account.
+    readonly property string guestOwner: "__guest__"
+
     function _owner() {
-        return Session.isLoggedIn ? Session.username : "";
+        return (Session.isLoggedIn && Session.username && Session.username.length > 0)
+                ? Session.username : store.guestOwner;
     }
+
+    // Rows written before the sentinel existed have owner NULL or ''; fold both onto
+    // the guest bucket so old downloads stay visible.
+    readonly property string _ownerExpr: "IFNULL(NULLIF(owner,''),'" + guestOwner + "')"
 
     function _load() {
         var out = [];
@@ -37,9 +49,15 @@ QtObject {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS downloads(permlink TEXT, local_path TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
                 // Add `owner` to tables created before per-account scoping existed; harmlessly throws (caught) once the column is present.
                 try { tx.executeSql("ALTER TABLE downloads ADD COLUMN owner TEXT DEFAULT ''"); } catch (e2) { }
-                var rs = tx.executeSql("SELECT permlink, local_path, data FROM downloads WHERE owner = ? ORDER BY saved_at DESC", [store._owner()]);
+                var rs = tx.executeSql("SELECT permlink, local_path, data FROM downloads WHERE " + store._ownerExpr + " = ? ORDER BY saved_at DESC", [store._owner()]);
+                var seen = {};
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);
+                    // A NULL owner also defeats PRIMARY KEY(permlink, owner) dedupe
+                    // (SQLite allows repeated NULLs in a PK), so older duplicate rows
+                    // can exist; newest-first ordering means the first wins.
+                    if (seen[row.permlink]) continue;
+                    seen[row.permlink] = true;
                     var vm = {};
                     try { vm = JSON.parse(row.data); } catch (e) { vm = {}; }
                     vm.permlink = row.permlink;
@@ -60,7 +78,11 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS downloads(permlink TEXT, local_path TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                tx.executeSql("INSERT OR REPLACE INTO downloads(permlink, local_path, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
+                // Explicit delete before insert: legacy rows with owner NULL (see
+                // _owner) can't be deduped by the PRIMARY KEY, so INSERT OR REPLACE
+                // piled up a new row per download instead of replacing the old one.
+                tx.executeSql("DELETE FROM downloads WHERE permlink = ? AND " + store._ownerExpr + " = ?", [vm.permlink, o]);
+                tx.executeSql("INSERT INTO downloads(permlink, local_path, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
                     [vm.permlink, localPath, Date.now(), JSON.stringify(vm), o]);
             });
         } catch (e) {
@@ -71,7 +93,7 @@ QtObject {
     function _deleteRow(permlink) {
         try {
             _db().transaction(function (tx) {
-                tx.executeSql("DELETE FROM downloads WHERE permlink = ? AND owner = ?", [permlink, store._owner()]);
+                tx.executeSql("DELETE FROM downloads WHERE permlink = ? AND " + store._ownerExpr + " = ?", [permlink, store._owner()]);
             });
         } catch (e) {
             console.log("Downloads delete error: " + e);

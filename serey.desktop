@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Serey
 Comment=Serey network client. Feed, blog, videos and account
-Exec=env QTWEBENGINE_CHROMIUM_FLAGS=--single-process qmlscene %u qml/Main.qml
+Exec=qmlscene %u qml/Main.qml
 Icon=assets/serey-logo.png
 Terminal=false
 Type=Application

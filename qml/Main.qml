@@ -153,11 +153,18 @@ MainView {
     property var  notifSound: null
 
     function _showNotif(body) {
+        // Create the sound player lazily, on the first real notification — NOT at
+        // startup. Merely constructing a QtMultimedia Audio spins up media-hub's
+        // Hybris video sink, which SIGSEGVs on an icon relaunch after a kill (it
+        // races the app window: "event to a non-existent window"). By the time a
+        // notification actually fires, the window is up, so it's safe.
+        if (!root.notifSound) {
+            try {
+                root.notifSound = Qt.createQmlObject(
+                    'import QtMultimedia 5.6; Audio { autoPlay: false }', root, "notifSound")
+            } catch (e) { /* QtMultimedia unavailable — silent */ }
+        }
         if (root.notifSound) {
-            // Assign the media lazily, on first real notification — NOT at startup.
-            // Setting `source` calls into the out-of-process media-hub, which can
-            // SIGSEGV on cold start (m_surface NULL, event to a non-existent window)
-            // before the app window exists. By now the window is up, so it's safe.
             if (String(root.notifSound.source || "") === "")
                 root.notifSound.source = "file:///usr/share/sounds/lomiri/notifications/Xylo.ogg"
             root.notifSound.play()
@@ -178,14 +185,10 @@ MainView {
     }
 
     function _initNotifications() {
-        // QtMultimedia Audio (not SoundEffect) for ogg support.
-        try {
-            // No source here — assigning it touches media-hub, which crashes on cold
-            // start. The source is set lazily on the first notification (see _showNotif).
-            root.notifSound = Qt.createQmlObject(
-                'import QtMultimedia 5.6; Audio { autoPlay: false }',
-                root, "notifSound")
-        } catch (e) { /* QtMultimedia not available — silent */ }
+        // NOTE: the notification sound (QtMultimedia Audio) is intentionally NOT
+        // created here. Constructing it spins up media-hub's Hybris video sink,
+        // which SIGSEGVs on an icon relaunch after a kill. It's created lazily on
+        // the first notification instead (see _showNotif).
 
         try {
             root.sysNotif = Qt.createQmlObject(

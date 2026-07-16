@@ -51,8 +51,11 @@ RowLayout {
         for (var i = 0; i < limit; i++) {
             var item = (typeof v.get === "function") ? v.get(i) : v[i];
             var name = (item && item.modelData !== undefined) ? item.modelData : item;
-            if (name) shown.push("@" + name);
+            // Only accept real usernames — a ListModel-wrapped entry is a QML
+            // object that would stringify as "@QQmlDM..." garbage.
+            if (typeof name === "string" && name.length > 0) shown.push("@" + name);
         }
+        if (shown.length === 0) return "";
         var text = shown.join(", ");
         var extra = n - limit;
         return extra > 0 ? text + " " + Lang.tr("and %1 more").arg(extra) : text;
@@ -264,15 +267,28 @@ RowLayout {
         Rectangle {
             id: votersPopup
             visible: false
-            anchors { bottom: parent.top; bottomMargin: Style.spacingXs; horizontalCenter: parent.horizontalCenter }
-            width: votersLabel.implicitWidth + Style.spacingM * 2
-            height: votersLabel.implicitHeight + Style.spacingS * 2
+            anchors { bottom: parent.top; bottomMargin: Style.spacingXs }
+            // Centered on the button but clamped inside the bar: the upvote
+            // button sits at the screen's left edge, so a centered long list
+            // would run off-screen. x is in upvoteBtn coordinates, hence the
+            // -upvoteBtn.x offsets to express the bar's own edges.
+            x: {
+                var centered = (upvoteBtn.width - width) / 2;
+                var minX = -upvoteBtn.x;
+                var maxX = bar.width - upvoteBtn.x - width;
+                return Math.max(minX, Math.min(centered, maxX));
+            }
+            width: votersLabel.width + Style.spacingM * 2
+            height: votersLabel.height + Style.spacingS * 2
             radius: Style.cardRadius
             color: Style.toastBg
             z: 1000
             Label {
                 id: votersLabel
                 anchors.centerIn: parent
+                // Wrap once the list is wider than the bar.
+                width: Math.min(implicitWidth, bar.width - Style.spacingM * 2)
+                wrapMode: Text.Wrap
                 text: bar._votersText()
                 color: "white"
                 font.pixelSize: Style.fontSmall

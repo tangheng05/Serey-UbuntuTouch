@@ -259,7 +259,10 @@ Item {
             voteType: "post"
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
-            voters: p.voters || []
+            // Rebuilt from the voterStr scalar: the feed's dynamicRoles ListModel
+            // wraps the `voters` string array into a nested model whose entries
+            // stringify as QML objects (the popover showed "@QQmlDM..." garbage).
+            voters: (p.voterStr || "").split(",").filter(function (n) { return n.length > 0; })
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0
             payout: p.payout || ""

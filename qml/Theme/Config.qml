@@ -5,7 +5,7 @@ QtObject {
     id: config
 
     // App version shown in Settings and reported to the web bridge — keep in sync with manifest.json.in "version" on every release.
-    readonly property string appVersion: "1.1.1"
+    readonly property string appVersion: "1.1.2"
 
     // Single source of truth for the convergence breakpoint, shared by Main.qml and AdaptiveStack.qml so the two never drift out of sync.
     readonly property real convergenceBreakpoint: units.gu(80)

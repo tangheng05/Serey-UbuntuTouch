@@ -153,7 +153,15 @@ MainView {
     property var  notifSound: null
 
     function _showNotif(body) {
-        if (root.notifSound) root.notifSound.play()
+        if (root.notifSound) {
+            // Assign the media lazily, on first real notification — NOT at startup.
+            // Setting `source` calls into the out-of-process media-hub, which can
+            // SIGSEGV on cold start (m_surface NULL, event to a non-existent window)
+            // before the app window exists. By now the window is up, so it's safe.
+            if (String(root.notifSound.source || "") === "")
+                root.notifSound.source = "file:///usr/share/sounds/lomiri/notifications/Xylo.ogg"
+            root.notifSound.play()
+        }
 
         if (root.sysNotif) {
             root.sysNotif.body = body
@@ -172,8 +180,10 @@ MainView {
     function _initNotifications() {
         // QtMultimedia Audio (not SoundEffect) for ogg support.
         try {
+            // No source here — assigning it touches media-hub, which crashes on cold
+            // start. The source is set lazily on the first notification (see _showNotif).
             root.notifSound = Qt.createQmlObject(
-                'import QtMultimedia 5.6; Audio { source: "/usr/share/sounds/lomiri/notifications/Xylo.ogg"; autoPlay: false }',
+                'import QtMultimedia 5.6; Audio { autoPlay: false }',
                 root, "notifSound")
         } catch (e) { /* QtMultimedia not available — silent */ }
 

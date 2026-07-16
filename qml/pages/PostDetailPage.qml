@@ -388,7 +388,7 @@ Page {
                 if (piece.content === featuredSrc) continue;
                 if (seenImages[piece.content]) continue;
                 seenImages[piece.content] = true;
-                bodyModel.append({ type: "image", content: piece.content });
+                bodyModel.append({ type: "image", content: piece.content, links: "[]" });
             } else {
                 var text = piece.content;
                 // The blocks render as RichText, which collapses literal "\n" to a space — block boundaries become <br/> tags, and a paragraph gap is a double break.
@@ -425,8 +425,22 @@ Page {
                 text = text.replace(/(?:<br\/>\s*){3,}/gi, "<br/><br/>");
                 text = text.replace(/^(?:\s|<br\/>)+/i, "");
                 text = text.replace(/(?:\s|<br\/>)+$/i, "");
+                // Lomiri TextArea has no linkAt(), so capture each anchor's href and the
+                // exact visible text it renders. The delegate hit-tests a tap position
+                // (positionAt) against these spans in the displayed plain text to open links.
+                var links = [];
+                var reA = /<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+                var am;
+                while ((am = reA.exec(text)) !== null) {
+                    var vis = am[2].replace(/<[^>]+>/g, "")       // strip inner <b>/<i> etc.
+                                   .replace(/&amp;/g, "&").replace(/&lt;/g, "<")
+                                   .replace(/&gt;/g, ">").replace(/&quot;/g, "\"")
+                                   .replace(/&#(\d+);/g, function (mm, n) { return String.fromCharCode(parseInt(n, 10)); })
+                                   .replace(/&#x([0-9a-fA-F]+);/gi, function (mm, n) { return String.fromCharCode(parseInt(n, 16)); });
+                    if (vis.length > 0) links.push({ href: am[1], text: vis });
+                }
                 if (text.length > 0)
-                    bodyModel.append({ type: "text", content: text });
+                    bodyModel.append({ type: "text", content: text, links: JSON.stringify(links) });
             }
         }
     }
@@ -791,6 +805,43 @@ Page {
                                     onFlickStarted:    { bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now() }
                                     onFlickEnded:      bodyTxt._lastScrollMs = Date.now()
                                     onDraggingChanged: { if (scroll.dragging) bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now() }
+                                }
+
+                                // Tap-to-open links. Lomiri TextArea has no linkAt() and doesn't reliably emit
+                                // onLinkActivated for a tap inside a Flickable, so resolve the link ourselves:
+                                // map the tap to a character position (positionAt) and test it against this
+                                // block's link spans located in the displayed plain text (getText). A non-link
+                                // press falls through (mouse.accepted = false) so selection and scrolling keep working.
+                                MouseArea {
+                                    anchors.fill: bodyTxt
+                                    propagateComposedEvents: true
+                                    property string _pendingHref: ""
+                                    function _hrefAt(x, y) {
+                                        var arr;
+                                        try { arr = JSON.parse(model.links || "[]"); } catch (e) { return ""; }
+                                        if (!arr.length) return "";
+                                        var pos = bodyTxt.positionAt(x, y);
+                                        var plain = bodyTxt.getText(0, bodyTxt.length);
+                                        for (var i = 0; i < arr.length; i++) {
+                                            var t = arr[i].text;
+                                            if (!t) continue;
+                                            var from = 0, idx;
+                                            while ((idx = plain.indexOf(t, from)) !== -1) {
+                                                if (pos >= idx && pos <= idx + t.length) return arr[i].href;
+                                                from = idx + 1;
+                                            }
+                                        }
+                                        return "";
+                                    }
+                                    onPressed: {
+                                        _pendingHref = _hrefAt(mouse.x, mouse.y);
+                                        // Only grab the press when it's on a link; otherwise let the TextArea/
+                                        // Flickable underneath handle selection and scrolling.
+                                        mouse.accepted = (_pendingHref.length > 0);
+                                    }
+                                    onClicked: {
+                                        if (_pendingHref.length > 0) Qt.openUrlExternally(_pendingHref);
+                                    }
                                 }
                             }
                         }

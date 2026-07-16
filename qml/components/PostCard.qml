@@ -124,10 +124,6 @@ Item {
                         font.pixelSize: Style.fontXSmall
                         color: Style.textSecondary
                     }
-                    OffChainBadge {
-                        anchors.verticalCenter: parent.verticalCenter
-                        onChain: p.postToBlockchain !== false
-                    }
                 }
             }
 

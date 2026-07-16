@@ -553,6 +553,17 @@ Page {
                     color: Style.accentRed
                     anchors.verticalCenter: parent.verticalCenter
                 }
+                // Sub-categories (everything after the main tag), e.g. "› Running".
+                Label {
+                    visible: text.length > 0
+                    text: (page.post && page.post.subCategories && page.post.subCategories.length > 0)
+                          ? ("› " + page.post.subCategories.join(" · ").toUpperCase()) : ""
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.Bold
+                    font.family: Style.fontFor(text)
+                    color: Style.textSecondary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
 
             Label {
@@ -564,11 +575,6 @@ Page {
                 font.family: Style.fontFor(text)
                 color: Style.textPrimary
                 wrapMode: Text.Wrap
-            }
-
-            OffChainBadge {
-                anchors.horizontalCenter: parent.horizontalCenter
-                onChain: page.post ? (page.post.postToBlockchain !== false) : true
             }
 
             Row {

@@ -307,6 +307,15 @@ function createCommunity(baseUrl, token, form, onOk, onErr) {
     Http.post(baseUrl, "/community/create-or-update-community", body, token,
               function (data) {
         var c = (data && data.community) || {};
-        onOk({ id: c.id || 0, dns: c.dns || "" });
+        // Return the fields the caller needs to seed the in-session community
+        // cache (name/logo show + categories load) without a full re-fetch —
+        // get-communities is server-cached and returns stale data right after a
+        // create. Fall back to the submitted values when the response omits them.
+        onOk({
+            id: c.id || 0,
+            dns: c.dns || "",
+            title: c.title || form.name || "",
+            iconUrl: c.icon_url || c.logo_url || form.iconUrl || form.logoUrl || ""
+        });
     }, onErr);
 }

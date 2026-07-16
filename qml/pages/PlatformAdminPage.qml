@@ -148,7 +148,7 @@ Page {
     PhotoUploader {
         id: logoUploader
         onUploaded: {
-            CommunityService.updateLogo(Config.baseUrl, Session.token, url,
+            CommunityService.updateLogo(Config.baseUrl, Session.token, Config.managedCommunityId, url,
                 function () {
                     page.uploadingLogo = false
                     page.platformLogoUrl = url

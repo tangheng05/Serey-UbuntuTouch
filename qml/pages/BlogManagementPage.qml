@@ -65,19 +65,58 @@ Page {
     }
 
     // ── Category management ────────────────────────────────────────────────
+    // Sub-categories live in a JSONB column on each category; we keep them as a
+    // JSON string per row (subsJson) so the dynamicRoles ListModel doesn't wrap
+    // them as a nested QQmlListModel (which has no .length/.push — see gotchas).
     ListModel { id: categoryModel; dynamicRoles: true }
     property bool categoriesLoading: false
     property bool categorySaving: false
+    // id -> true while a delete/sub-edit request for that category is in flight,
+    // so a second tap can't fire a duplicate request (the source of the old
+    // "click twice, second says not found" bug).
+    property var _busyIds: ({})
+
+    function _findIndexById(id) {
+        for (var i = 0; i < categoryModel.count; i++)
+            if (categoryModel.get(i).id === id) return i
+        return -1
+    }
 
     function loadCategories() {
-        page.categoriesLoading = true
         var info = Config.communityInfoFor(Config.managedCommunityId)
-        CategoryService.listByCommunity(Config.baseUrl, info ? info.title : "", Session.token,
+        var title = info ? info.title
+                         : (Config.managedCommunityId === Config.communityId ? Config.currentCommunityName : "")
+        // Never fall back to "global": the service defaults an empty title to the
+        // Global list, which would show every Global category for a community that
+        // has none (the bug seen right after creating a platform). Show empty instead.
+        if (!title || title.length === 0) {
+            page.categoriesLoading = false
+            categoryModel.clear()
+            return
+        }
+        page.categoriesLoading = true
+        CategoryService.listByCommunity(Config.baseUrl, title, Session.token,
             function (names, raw) {
                 page.categoriesLoading = false
                 categoryModel.clear()
-                for (var i = 0; i < raw.length; i++)
-                    categoryModel.append({ id: raw[i].id, name: raw[i].name || "" })
+                for (var i = 0; i < raw.length; i++) {
+                    var subs = raw[i].sub_categories || raw[i].sub || []
+                    if (!Array.isArray(subs)) subs = []
+                    // Normalize each sub to {name, position} so re-saving satisfies the schema.
+                    var norm = []
+                    for (var j = 0; j < subs.length; j++) {
+                        var nm = (subs[j] && (typeof subs[j] === "string" ? subs[j] : subs[j].name) || "").trim()
+                        if (nm.length > 0) norm.push({ name: nm, position: norm.length + 1 })
+                    }
+                    categoryModel.append({
+                        id: raw[i].id,
+                        name: raw[i].name || "",
+                        iconUrl: raw[i].icon_url || "",
+                        color: raw[i].color || "",
+                        subsJson: JSON.stringify(norm),
+                        expanded: false
+                    })
+                }
             },
             function (err) {
                 page.categoriesLoading = false
@@ -104,12 +143,72 @@ Page {
 
     function deleteCategory(index) {
         var item = categoryModel.get(index)
-        CategoryService.remove(Config.baseUrl, Session.token, item.id,
+        if (!item) return
+        var id = item.id
+        if (page._busyIds[id]) return          // guard rapid double-taps
+        page._busyIds[id] = true
+        // Optimistic: drop the row now so it feels instant; a real failure reloads.
+        categoryModel.remove(index)
+        CategoryService.remove(Config.baseUrl, Session.token, id,
             function () {
-                categoryModel.remove(index)
+                delete page._busyIds[id]
                 Toast.show(Lang.tr("Category deleted."))
             },
-            function (err) { Toast.error((err && err.message) || Lang.tr("Failed to delete category.")) })
+            function (err) {
+                delete page._busyIds[id]
+                // 404 = the row was already gone server-side: the goal (it's
+                // removed) is met, so treat it as success rather than an error.
+                if (err && err.status === 404) { Toast.show(Lang.tr("Category deleted.")); return }
+                Toast.error((err && err.message) || Lang.tr("Failed to delete category."))
+                page.loadCategories()          // restore the optimistically-removed row
+            })
+    }
+
+    // Persist a category's whole record (name/icon/color preserved) with a new
+    // sub-category list. Used for both adding and removing sub-categories.
+    function _saveSubs(index, subs, okMsg) {
+        var item = categoryModel.get(index)
+        if (!item) return
+        var id = item.id
+        if (page._busyIds[id]) return
+        page._busyIds[id] = true
+        categoryModel.setProperty(index, "subsJson", JSON.stringify(subs))   // optimistic
+        CategoryService.createOrUpdate(Config.baseUrl, Session.token,
+            { id: id, communityId: Config.managedCommunityId, name: item.name,
+              iconUrl: item.iconUrl, color: item.color, subs: subs },
+            function () {
+                delete page._busyIds[id]
+                if (okMsg) Toast.success(okMsg)
+            },
+            function (err) {
+                delete page._busyIds[id]
+                Toast.error((err && err.message) || Lang.tr("Action failed."))
+                page.loadCategories()          // restore true state on failure
+            })
+    }
+
+    function addSubCategory(index, name) {
+        var trimmed = (name || "").trim()
+        if (trimmed.length === 0) return
+        var item = categoryModel.get(index)
+        if (!item) return
+        var subs = JSON.parse(item.subsJson || "[]")
+        for (var i = 0; i < subs.length; i++)
+            if ((subs[i].name || "").toLowerCase() === trimmed.toLowerCase()) {
+                Toast.show(Lang.tr("That sub-category already exists.")); return
+            }
+        subs.push({ name: trimmed, position: subs.length + 1 })
+        page._saveSubs(index, subs, Lang.tr("Sub-category added."))
+    }
+
+    function deleteSubCategory(index, subIndex) {
+        var item = categoryModel.get(index)
+        if (!item) return
+        var subs = JSON.parse(item.subsJson || "[]")
+        if (subIndex < 0 || subIndex >= subs.length) return
+        subs.splice(subIndex, 1)
+        for (var i = 0; i < subs.length; i++) subs[i].position = i + 1
+        page._saveSubs(index, subs, Lang.tr("Sub-category removed."))
     }
 
     Component.onCompleted: {
@@ -202,9 +301,32 @@ Page {
         }
     }
 
+    // On-screen-keyboard height; the list shrinks above it so focused inputs (the
+    // sub-category field sits low in the list) aren't hidden behind the keyboard.
+    readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
+    property var _focusTarget: null
+
+    // Scroll the list so `item` clears the (shrunken) viewport above the keyboard.
+    function ensureVisible(item) {
+        if (!item) return
+        var top = item.mapToItem(list.contentItem, 0, 0).y
+        var bottom = top + item.height + Style.spacingM
+        var maxY = Math.max(0, list.contentHeight - list.height)
+        if (bottom > list.contentY + list.height)
+            list.contentY = Math.min(bottom - list.height, maxY)
+        else if (top < list.contentY)
+            list.contentY = Math.max(0, top)
+    }
+    // Runs after the keyboard animation settles (list.height reflects kbHeight by then).
+    Timer {
+        id: scrollTimer
+        interval: 350
+        onTriggered: if (page._focusTarget && page._focusTarget.activeFocus) page.ensureVisible(page._focusTarget)
+    }
+
     Flickable {
         id: list
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: page.kbHeight }
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
@@ -277,13 +399,25 @@ Page {
                     enabled: !page.categorySaving
                     onAccepted: { page.addCategory(text); text = "" }
                 }
-                AbstractButton {
+                Item {
                     id: addCategoryBtn
                     anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: units.gu(4); height: units.gu(4)
-                    enabled: !page.categorySaving && newCategoryField.text.trim().length > 0
-                    onClicked: { page.addCategory(newCategoryField.text); newCategoryField.text = "" }
-                    Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "add"; color: enabled ? Style.brand : Style.textSecondary }
+                    Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "add"; color: Style.brand }
+                    MouseArea {
+                        anchors.fill: parent
+                        // Must stay ALWAYS enabled: gating on text length disabled the
+                        // button whenever the typed text was still in the input method's
+                        // uncommitted preedit buffer (not yet in .text), which is why only
+                        // the Enter key (which commits preedit) worked. Commit on press,
+                        // then read the now-flushed text.
+                        onPressed: {
+                            Qt.inputMethod.commit()
+                            page.addCategory(newCategoryField.text)
+                            newCategoryField.text = ""
+                            mouse.accepted = true
+                        }
+                    }
                 }
             }
 
@@ -295,29 +429,144 @@ Page {
 
             Repeater {
                 model: categoryModel
-                delegate: Item {
+                delegate: Column {
+                    id: catDelegate
                     width: contentCol.width
-                    height: units.gu(6)
+                    // Captured because the inner sub-chip Repeater shadows `index`.
+                    readonly property int catIndex: index
+                    // Sub-categories parsed from the JSON string kept on the row.
+                    readonly property var subs: {
+                        try { return JSON.parse(model.subsJson || "[]") } catch (e) { return [] }
+                    }
 
-                    Label {
-                        anchors { left: parent.left; leftMargin: Style.spacingM; right: deleteCatBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-                        text: model.name || ""
-                        elide: Text.ElideRight
-                        font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFor(text)
-                        color: Style.textPrimary
+                    // Header row: expand toggle + name (+ sub count) + delete
+                    Item {
+                        width: parent.width
+                        height: units.gu(6)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: catHeaderTap.pressed ? Style.pressed : "transparent"
+                        }
+                        Icon {
+                            id: catChevron
+                            anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                            width: units.gu(2); height: width
+                            name: model.expanded ? "go-down" : "go-next"
+                            color: Style.textSecondary
+                        }
+                        Column {
+                            anchors { left: catChevron.right; leftMargin: Style.spacingS; right: deleteCatBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                            spacing: units.dp(1)
+                            Label {
+                                width: parent.width
+                                text: model.name || ""
+                                elide: Text.ElideRight
+                                font.pixelSize: Style.fontRegular
+                                font.family: Style.fontFor(text)
+                                color: Style.textPrimary
+                            }
+                            Label {
+                                text: catDelegate.subs.length === 0 ? Lang.tr("No sub-categories")
+                                    : (catDelegate.subs.length === 1 ? Lang.tr("1 sub-category")
+                                       : Lang.tr("%1 sub-categories").arg(catDelegate.subs.length))
+                                font.pixelSize: Style.fontXSmall
+                                font.family: Style.fontFor(text)
+                                color: Style.textSecondary
+                            }
+                        }
+                        AbstractButton {
+                            id: deleteCatBtn
+                            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                            width: units.gu(3.5); height: units.gu(3.5)
+                            onClicked: page.deleteCategory(index)
+                            Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "delete"; color: Style.danger }
+                        }
+                        MouseArea {
+                            id: catHeaderTap
+                            anchors { left: parent.left; right: deleteCatBtn.left; top: parent.top; bottom: parent.bottom }
+                            onClicked: categoryModel.setProperty(index, "expanded", !model.expanded)
+                        }
+                        Rectangle {
+                            anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: units.gu(2) }
+                            height: units.dp(1)
+                            color: Style.divider
+                        }
                     }
-                    AbstractButton {
-                        id: deleteCatBtn
-                        anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                        width: units.gu(3.5); height: units.gu(3.5)
-                        onClicked: page.deleteCategory(index)
-                        Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "delete"; color: Style.danger }
-                    }
-                    Rectangle {
-                        anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: units.gu(2) }
-                        height: units.dp(1)
-                        color: Style.divider
+
+                    // Expanded area: sub-category chips + add-sub row
+                    Column {
+                        width: parent.width
+                        visible: model.expanded
+                        spacing: Style.spacingS
+                        topPadding: model.expanded ? Style.spacingS : 0
+                        bottomPadding: model.expanded ? Style.spacingM : 0
+
+                        Flow {
+                            width: parent.width - Style.spacingM * 2 - units.gu(3)
+                            x: Style.spacingM + units.gu(3)
+                            spacing: Style.spacingS
+                            visible: catDelegate.subs.length > 0
+                            Repeater {
+                                model: catDelegate.subs
+                                delegate: Rectangle {
+                                    height: units.gu(3.5)
+                                    width: subRow.width + Style.spacingM
+                                    radius: height / 2
+                                    color: Style.iconBackground
+                                    Row {
+                                        id: subRow
+                                        anchors.centerIn: parent
+                                        spacing: units.dp(4)
+                                        Label {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: modelData.name || ""
+                                            font.pixelSize: Style.fontSmall
+                                            font.family: Style.fontFor(text)
+                                            color: Style.textPrimary
+                                        }
+                                        AbstractButton {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: units.gu(2.2); height: units.gu(2.2)
+                                            onClicked: page.deleteSubCategory(catDelegate.catIndex, index)
+                                            Icon { anchors.centerIn: parent; width: units.gu(1.6); height: width; name: "close"; color: Style.textSecondary }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Add-sub-category input
+                        Item {
+                            width: parent.width - Style.spacingM * 2 - units.gu(3)
+                            x: Style.spacingM + units.gu(3)
+                            height: units.gu(5)
+                            TextField {
+                                id: newSubField
+                                anchors { left: parent.left; right: addSubBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                                placeholderText: Lang.tr("New sub-category")
+                                onAccepted: { page.addSubCategory(index, text); text = "" }
+                                onActiveFocusChanged: if (activeFocus) { page._focusTarget = newSubField; scrollTimer.restart() }
+                            }
+                            Item {
+                                id: addSubBtn
+                                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                width: units.gu(4); height: units.gu(4)
+                                Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "add"; color: Style.brand }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    // Always enabled + commit preedit on press (see the category
+                                    // add button): gating on text length disabled the button while
+                                    // letters were still in the uncommitted input-method buffer.
+                                    onPressed: {
+                                        Qt.inputMethod.commit()
+                                        page.addSubCategory(index, newSubField.text)
+                                        newSubField.text = ""
+                                        mouse.accepted = true
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -331,7 +580,9 @@ Page {
                 color: Style.textSecondary
             }
 
-            Item { width: 1; height: Style.spacingL }
+            // Extra bottom room so the lowest sub-category field can scroll clear
+            // of the keyboard when focused (see ensureVisible).
+            Item { width: 1; height: units.gu(8) }
         }
     }
 }

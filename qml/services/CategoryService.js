@@ -13,10 +13,27 @@ function listByCommunity(baseUrl, community, token, onOk, onErr) {
         }, onErr);
 }
 
-// POST /category/create-or-update (JWT) — omit `id` to create, pass it to rename/update.
+// POST /category/create-or-update (JWT) — omit `id` to create, pass it to
+// rename/update. The backend rebuilds the row from what's sent (name, icon_url,
+// color, sub_categories), so when updating an existing category always pass its
+// current icon_url/color/subs or they get wiped. Each sub-category must carry a
+// name AND a numeric position (the schema requires both).
 function createOrUpdate(baseUrl, token, params, onOk, onErr) {
     var body = { community_id: params.communityId, name: params.name };
     if (params.id) body.id = params.id;
+    if (params.iconUrl !== undefined && params.iconUrl !== null) body.icon_url = params.iconUrl;
+    if (params.color !== undefined && params.color !== null) body.color = params.color;
+    if (params.subs !== undefined && params.subs !== null) {
+        // Normalize: strip to {name, position}, drop blanks, renumber from 1.
+        var subs = [];
+        for (var i = 0; i < params.subs.length; i++) {
+            var s = params.subs[i];
+            var nm = (s && (typeof s === "string" ? s : s.name) || "").trim();
+            if (nm.length === 0) continue;
+            subs.push({ name: nm, position: subs.length + 1 });
+        }
+        body.sub_categories = subs;
+    }
     Http.post(baseUrl, "/category/create-or-update", body, token, onOk, onErr);
 }
 

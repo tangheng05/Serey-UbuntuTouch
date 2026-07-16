@@ -214,14 +214,40 @@ Page {
             page.createdDns = res.dns || (slug + ".serey.io");
             page.step = 3;
             Toast.success(Lang.tr("Your platform has been created!"));
+            // Seed the new community into the in-session cache so the CMS hub
+            // shows its name/logo and loads ITS categories immediately. A
+            // re-fetch of get-communities can't do this (it's server-cached and
+            // still omits the just-created community), which is why the hub
+            // showed a blank name + default globe until an app restart.
+            if (res.id) {
+                Config.addOrUpdateCommunity({
+                    id: res.id,
+                    title: res.title || page.nameText,
+                    dns: page.createdDns,
+                    icon: res.iconUrl || iconUrl || logoUrl || "",
+                    allowPost: false,
+                    videoAllowPost: false
+                });
+            }
             // The owner may now post to their own community even where posting
             // is owner-only — refresh the owned-communities set Main.qml seeded.
             AccountService.ownedCommunityIds(Config.baseUrl, Session.token,
                 function (ids) {
                     var set = {};
                     for (var i = 0; i < ids.length; i++) set[ids[i]] = true;
+                    if (res.id) set[res.id] = true;   // ensure managedCommunityId resolves now
                     Config.ownedCommunityIdSet = set;
-                }, function () { /* refreshed on next app start */ });
+                    // Pin the CMS hub to the community just created (deterministic
+                    // even if the user somehow owns more than one).
+                    if (res.id) Config.overrideManagedCommunityId = res.id;
+                }, function () {
+                    if (res.id) {
+                        var s = Object.assign({}, Config.ownedCommunityIdSet);
+                        s[res.id] = true;
+                        Config.ownedCommunityIdSet = s;
+                        Config.overrideManagedCommunityId = res.id;
+                    }
+                });
         }, function (err) {
             page.creating = false;
             Toast.error((err && err.message) || Lang.tr("Couldn't create the platform."));

@@ -12,6 +12,8 @@ Page {
 
     property bool submitting: false
     property string selectedCategory: ""
+    // Optional sub-category under the selected main category, sent in `subcategories`.
+    property string selectedSubCategory: ""
     property bool catSheetOpen: false
     // On-screen-keyboard height; the formatting toolbar rides above it so B/I/U stay reachable while typing.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
@@ -33,24 +35,47 @@ Page {
 
     // Categories are per-community, loaded from the backend for the currently-selected source rather than hardcoded.
     property var categories: []
+    // Map of main-category name -> array of its sub-category names, so the picker
+    // can offer sub-categories (posts send them in `subcategories`).
+    property var subcatsByCat: ({})
     property bool categoriesLoading: false
     property int catEpoch: 0
+
+    // Sub-categories for whichever main category is currently selected.
+    function subsForSelected() {
+        var s = page.subcatsByCat[page.selectedCategory];
+        return (s && s.length) ? s : [];
+    }
 
     function loadCategories() {
         var epoch = ++page.catEpoch;
         var prev = page.selectedCategory;
         page.categoriesLoading = true;
         CategoryService.listByCommunity(Config.baseUrl, Config.currentCommunityName, Session.token,
-            function (names) {
+            function (names, raw) {
                 if (epoch !== page.catEpoch) return;   // stale community switch
                 page.categoriesLoading = false;
                 page.categories = names;
-                if (names.indexOf(prev) < 0) page.selectedCategory = "";
+                // Build the main -> [sub names] map from the raw records.
+                var map = {};
+                for (var i = 0; i < (raw ? raw.length : 0); i++) {
+                    var subsRaw = raw[i].sub_categories || raw[i].sub || [];
+                    if (!Array.isArray(subsRaw)) subsRaw = [];
+                    var subs = [];
+                    for (var j = 0; j < subsRaw.length; j++) {
+                        var nm = (subsRaw[j] && (typeof subsRaw[j] === "string" ? subsRaw[j] : subsRaw[j].name) || "").trim();
+                        if (nm.length > 0) subs.push(nm);
+                    }
+                    map[raw[i].name || ""] = subs;
+                }
+                page.subcatsByCat = map;
+                if (names.indexOf(prev) < 0) { page.selectedCategory = ""; page.selectedSubCategory = ""; }
             },
             function () {
                 if (epoch !== page.catEpoch) return;
                 page.categoriesLoading = false;
                 page.categories = [];
+                page.subcatsByCat = ({});
             });
     }
 
@@ -70,6 +95,13 @@ Page {
             page.coverImageUrl = page.editPost.thumbnail || "";
             // primaryCategory is a scalar since the categories array is wrapped by the feed ListModel and loses [] indexing.
             page.selectedCategory = page.editPost.primaryCategory || "";
+            // Best-effort sub-category prefill (field name varies across sources).
+            var eSub = page.editPost.subCategory || page.editPost.subcategory || "";
+            if (!eSub) {
+                var eSubs = page.editPost.subCategories || page.editPost.subcategories;
+                if (eSubs && eSubs.length) eSub = (typeof eSubs[0] === "string") ? eSubs[0] : (eSubs[0] && eSubs[0].name) || "";
+            }
+            page.selectedSubCategory = eSub || "";
             // Prefill the toggle from the saved post (default on if absent).
             page.postToBlockchain = (page.editPost.postToBlockchain !== false);
         }
@@ -223,6 +255,7 @@ Page {
             communityName: page.isEdit ? (page.editPost.community || Config.communityName)
                                        : Config.communityName,
             categories: page.selectedCategory || "general",
+            subcategories: page.selectedSubCategory.length > 0 ? [page.selectedSubCategory] : [],
             postToBlockchain: page.postToBlockchain,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
             // Also send in `images` (json_meta.image) since the web derives the card thumbnail from that field, not from the body <img>.
@@ -461,7 +494,9 @@ Page {
                         width: parent.width - catChevron.width
                         anchors.verticalCenter: parent.verticalCenter
                         text: page.selectedCategory.length > 0
-                            ? page.selectedCategory
+                            ? (page.selectedSubCategory.length > 0
+                               ? (page.selectedCategory + "  ›  " + page.selectedSubCategory)
+                               : page.selectedCategory)
                             : Lang.tr("Select category")
                         font.pixelSize: Style.fontRegular
                         font.family: Style.fontFor(text)
@@ -793,6 +828,21 @@ Page {
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
+                // Scrollable list: caps the sheet height so a category with many
+                // sub-categories scrolls instead of overflowing off the top.
+                Flickable {
+                    id: catListFlick
+                    width: parent.width
+                    height: Math.min(catListCol.height, catSheet.height * 0.65)
+                    contentHeight: catListCol.height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: catListCol
+                        width: parent.width
+                        spacing: 0
+
                 // Loading / empty state while categories fetch for this community.
                 Item {
                     width: parent.width
@@ -815,45 +865,143 @@ Page {
                 Repeater {
                     model: page.categories
 
-                    delegate: AbstractButton {
+                    // Main category + (when expanded via the arrow) its sub-categories.
+                    delegate: Column {
+                        id: catRow
                         width: catSheetCol.width
-                        height: units.gu(6)
-                        onClicked: {
-                            page.selectedCategory = modelData;
-                            catSheet.closeAnimated();
+                        readonly property string catName: modelData
+                        readonly property var subs: {
+                            var s = page.subcatsByCat[catName]
+                            return (s && s.length) ? s : []
+                        }
+                        readonly property bool isSelected: page.selectedCategory === catName
+                        // Sub list is revealed only by tapping the arrow; a fresh row starts
+                        // expanded when it's the already-selected category with a sub chosen.
+                        property bool expanded: catRow.isSelected && page.selectedSubCategory.length > 0
+
+                        // Main row: tapping the row body picks the MAIN category and closes.
+                        // Only the arrow (separate tap target on the right) expands the subs.
+                        Item {
+                            width: parent.width
+                            height: units.gu(6)
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    page.selectedCategory = catRow.catName
+                                    page.selectedSubCategory = ""
+                                    catSheet.closeAnimated()
+                                }
+                            }
+                            Row {
+                                anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                spacing: Style.spacingM
+                                Label {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - checkIcon.width - (catRow.subs.length > 0 ? subCount.width + Style.spacingM : 0)
+                                    text: catRow.catName.charAt(0).toUpperCase() + catRow.catName.slice(1)
+                                    elide: Text.ElideRight
+                                    font.pixelSize: Style.fontRegular
+                                    color: catRow.isSelected ? Style.brand : Style.textPrimary
+                                    font.weight: catRow.isSelected ? Font.DemiBold : Font.Normal
+                                }
+                                Label {
+                                    id: subCount
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: catRow.subs.length > 0
+                                    text: catRow.subs.length + ""
+                                    font.pixelSize: Style.fontSmall
+                                    color: Style.textSecondary
+                                }
+                                Icon {
+                                    id: checkIcon
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2.5); height: width
+                                    name: catRow.subs.length > 0 ? (catRow.expanded ? "go-down" : "go-next") : "tick"
+                                    color: catRow.subs.length > 0 ? Style.textSecondary : Style.brand
+                                    visible: (catRow.isSelected && page.selectedSubCategory.length === 0) || catRow.subs.length > 0
+                                }
+                            }
+                            // Arrow hit area (on top of the row's MouseArea, right side):
+                            // expands/collapses the sub list without selecting or closing.
+                            MouseArea {
+                                visible: catRow.subs.length > 0
+                                enabled: visible
+                                anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+                                width: units.gu(7)
+                                onClicked: catRow.expanded = !catRow.expanded
+                            }
+                            Rectangle {
+                                anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                height: units.dp(1); color: Style.divider
+                            }
                         }
 
-                        Row {
-                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
-                            spacing: Style.spacingM
+                        // Sub-category rows (indented), shown only when expanded via the arrow.
+                        Column {
+                            width: parent.width
+                            visible: catRow.expanded && catRow.subs.length > 0
 
-                            Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width - checkIcon.width
-                                text: modelData.charAt(0).toUpperCase() + modelData.slice(1)
-                                font.pixelSize: Style.fontRegular
-                                color: page.selectedCategory === modelData ? Style.brand : Style.textPrimary
-                                font.weight: page.selectedCategory === modelData ? Font.DemiBold : Font.Normal
+                            // "No sub-category" — post under the main category only.
+                            AbstractButton {
+                                width: parent.width
+                                height: units.gu(5.5)
+                                onClicked: {
+                                    page.selectedCategory = catRow.catName
+                                    page.selectedSubCategory = ""
+                                    catSheet.closeAnimated()
+                                }
+                                Label {
+                                    anchors { left: parent.left; leftMargin: Style.spacingM + units.gu(3); verticalCenter: parent.verticalCenter }
+                                    text: Lang.tr("No sub-category")
+                                    font.pixelSize: Style.fontSmall
+                                    font.italic: true
+                                    color: page.selectedSubCategory === "" ? Style.brand : Style.textSecondary
+                                }
+                                Icon {
+                                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                                    width: units.gu(2.2); height: width; name: "tick"; color: Style.brand
+                                    visible: page.selectedSubCategory === ""
+                                }
                             }
 
-                            Icon {
-                                id: checkIcon
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: units.gu(2.5); height: width
-                                name: "tick"
-                                color: Style.brand
-                                visible: page.selectedCategory === modelData
+                            Repeater {
+                                model: catRow.subs
+                                delegate: AbstractButton {
+                                    width: catRow.width
+                                    height: units.gu(5.5)
+                                    readonly property string subName: modelData
+                                    onClicked: {
+                                        page.selectedCategory = catRow.catName
+                                        page.selectedSubCategory = subName
+                                        catSheet.closeAnimated()
+                                    }
+                                    Label {
+                                        anchors { left: parent.left; leftMargin: Style.spacingM + units.gu(3); right: subTick.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                                        text: subName.charAt(0).toUpperCase() + subName.slice(1)
+                                        elide: Text.ElideRight
+                                        font.pixelSize: Style.fontRegular
+                                        color: page.selectedSubCategory === subName ? Style.brand : Style.textPrimary
+                                        font.weight: page.selectedSubCategory === subName ? Font.DemiBold : Font.Normal
+                                    }
+                                    Icon {
+                                        id: subTick
+                                        anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                                        width: units.gu(2.2); height: width; name: "tick"; color: Style.brand
+                                        visible: page.selectedSubCategory === subName
+                                    }
+                                }
                             }
-                        }
-
-                        Rectangle {
-                            anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
-                            height: units.dp(1); color: Style.divider
+                            Rectangle {
+                                width: parent.width; height: units.dp(1); color: Style.divider
+                            }
                         }
                     }
                 }
 
-                Item { width: 1; height: Style.spacingM }
+                        Item { width: 1; height: Style.spacingM }
+                    }   // catListCol
+                }       // catListFlick
             }
         }
     }

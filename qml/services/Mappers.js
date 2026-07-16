@@ -101,6 +101,11 @@ function toPost(raw) {
         categories: parseList(raw.categories),
         // Scalar copy of the first category since a dynamicRoles ListModel wraps the `categories` array (losing [] indexing); edit-prefill reads this.
         primaryCategory: parseList(raw.categories)[0] || "",
+        // The post's tag list is [mainCategory, ...subcategories]; everything after
+        // the first is a sub-category. Scalar copy of the first for the same
+        // ListModel-wrapping reason as primaryCategory.
+        subCategories: parseList(raw.categories).slice(1),
+        primarySubCategory: parseList(raw.categories)[1] || "",
         voters: voterNames(raw.voters),
         voterStr: "," + voterNames(raw.voters).join(",") + ",",
         flaggers: voterNames(raw.flaggers),

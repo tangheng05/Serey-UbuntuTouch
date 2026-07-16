@@ -72,11 +72,11 @@ function videoAllowPostMap(list) {
 }
 
 // POST /community/update-logo (JWT) — platform branding. Backend requires
-// logo_url + footer_logo_url; icon_url is optional. The mobile CMS only
-// captures one uploaded image, so the same hosted URL is sent for all three
-// (there's no separate footer/icon image picker here).
-function updateLogo(baseUrl, token, logoUrl, onOk, onErr) {
+// community_id (strict number) + logo_url + footer_logo_url; icon_url is
+// optional. The mobile CMS only captures one uploaded image, so the same
+// hosted URL is sent for all three (there's no separate footer/icon picker).
+function updateLogo(baseUrl, token, communityId, logoUrl, onOk, onErr) {
     Http.post(baseUrl, "/community/update-logo",
-              { logo_url: logoUrl, footer_logo_url: logoUrl, icon_url: logoUrl }, token,
+              { community_id: communityId, logo_url: logoUrl, footer_logo_url: logoUrl, icon_url: logoUrl }, token,
               function (data) { onOk(data || {}); }, onErr);
 }

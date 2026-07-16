@@ -123,6 +123,18 @@ QtObject {
         updateCommunityFields(id, { title: title });
     }
 
+    // Insert (or merge) a community into the cache. Used right after creating a
+    // platform so the CMS hub resolves its name/logo/categories in the same
+    // session — get-communities is server-cached and omits a just-created
+    // community, so a re-fetch wouldn't help.
+    function addOrUpdateCommunity(entry) {
+        if (!entry || entry.id === undefined || entry.id === null) return;
+        var idStr = String(entry.id);
+        var map = Object.assign({}, communityById);
+        map[idStr] = Object.assign({}, map[idStr] || {}, entry);
+        communityById = map;
+    }
+
     // Map of community dns -> is_allow_post, gating the compose buttons per backend rule (true = anyone may post, false = owner/managers only).
     property var allowPostByDns: ({})
 

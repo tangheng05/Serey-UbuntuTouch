@@ -594,14 +594,8 @@ Item {
                                                 height: units.gu(3.2)
                                                 width: pillContent.width + units.gu(2)
                                                 radius: Style.pillRadius
-                                                color: {
-                                                    var hex = (catData.color && catData.color.length === 7) ? catData.color : "#17A77E"
-                                                    return Qt.rgba(
-                                                        parseInt(hex.slice(1,3), 16) / 255,
-                                                        parseInt(hex.slice(3,5), 16) / 255,
-                                                        parseInt(hex.slice(5,7), 16) / 255,
-                                                        0.15)
-                                                }
+                                                color: Qt.rgba(
+                                                    Style.brand.r, Style.brand.g, Style.brand.b, 0.15)
 
                                                 Row {
                                                     id: pillContent
@@ -625,8 +619,7 @@ Item {
                                                         ColorOverlay {
                                                             anchors.fill: catIconImg
                                                             source: catIconImg
-                                                            color: (catData.color && catData.color.length > 0)
-                                                                   ? catData.color : "#17A77E"
+                                                            color: Style.brand
                                                             visible: catIconImg.status === Image.Ready
                                                         }
 
@@ -634,8 +627,7 @@ Item {
                                                         Icon {
                                                             anchors.fill: parent
                                                             name: "view-grid-symbolic"
-                                                            color: (catData.color && catData.color.length > 0)
-                                                                   ? catData.color : "#17A77E"
+                                                            color: Style.brand
                                                             visible: catIconImg.status !== Image.Ready
                                                         }
                                                     }
@@ -647,7 +639,7 @@ Item {
                                                         font.weight: Font.Bold
                                                         font.family: Style.fontFor(text)
                                                         font.letterSpacing: units.dp(0.6)
-                                                        color: catData.color.length > 0 ? catData.color : Style.brand
+                                                        color: Style.brand
                                                     }
                                                 }
                                             }

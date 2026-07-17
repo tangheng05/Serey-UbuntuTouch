@@ -53,10 +53,11 @@ function listGallery(baseUrl, params, token, onOk, onErr) {
     }, onErr);
 }
 
+// Returns the xhr so callers can abort a stale request (My Feed does).
 function listByAuthor(baseUrl, author, params, token, onOk, onErr) {
     var p = params || {};
     p.author = author;
-    _list(baseUrl, "/serey-web/list-by-author", p, token, onOk, onErr);
+    return _list(baseUrl, "/serey-web/list-by-author", p, token, onOk, onErr);
 }
 
 // An author's gallery posts — mirrors listGallery's filtering + pagination

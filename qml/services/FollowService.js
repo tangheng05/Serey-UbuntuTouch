@@ -30,6 +30,24 @@ function status(baseUrl, viewerUsername, author, onOk, onErr) {
         });
 }
 
+// GET /follow/list-all-followings (JWT) -> { username: true } for everyone the
+// signed-in user follows. Not paginated server-side. My Feed needs this because
+// there is NO following-filtered video endpoint (only `/video-component/`, a
+// whole-community listing), so videos are filtered against this set client-side.
+function listAllFollowings(baseUrl, token, onOk, onErr) {
+    return Http.get(baseUrl, "/follow/list-all-followings", {}, token,
+        function (data) {
+            var list = (data && data.followings) || [];
+            if (!Array.isArray(list)) list = [];
+            var map = {};
+            for (var i = 0; i < list.length; i++) {
+                var u = list[i] && (list[i].username || list[i].following);
+                if (u) map[u] = true;
+            }
+            onOk(map);
+        }, onErr);
+}
+
 function toggle(baseUrl, author, isCurrentlyFollowing, token, onOk, onErr) {
     Http.post(baseUrl, "/follow/follow-or-unfollow",
         { author: author, action_type: isCurrentlyFollowing ? "unfollow" : "follow" },

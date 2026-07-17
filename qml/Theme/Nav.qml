@@ -31,5 +31,10 @@ QtObject {
     // without an app restart. Main acts (it owns the fetch + icon mapping).
     signal refreshCommunities()
 
+    // Emitted right after a login/signup completes at a primary entry point
+    // (not a login-gate interruption): land on My Feed instead of Homepage.
+    // Session-only — app relaunch always shows the normal Homepage.
+    signal goToFeed()
+
     function home() { goToTab(0); }
 }

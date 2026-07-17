@@ -66,9 +66,26 @@ QtObject {
         return (e && e.items && e.items.length > 0) ? e.items : null;
     }
 
+    // Drop a key outright. Needed because put() refuses to store an empty list,
+    // so a feed that legitimately went empty (followed nobody / unfollowed
+    // everyone) could never overwrite its old rows — they'd paint on every
+    // launch until the 3-day expiry.
+    function remove(key) {
+        delete store._mem[key];
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS feed_cache(key TEXT PRIMARY KEY, fetched_at INTEGER, data TEXT)");
+                tx.executeSql("DELETE FROM feed_cache WHERE key = ?", [key]);
+            });
+        } catch (e) {
+            console.log("FeedCache remove error: " + e);
+        }
+    }
+
     function put(key, items) {
         var trimmed = (items || []).slice(0, store.maxRows);
-        if (trimmed.length === 0) return;
+        // Empty means "nothing to paint next time" — clear, don't keep stale rows.
+        if (trimmed.length === 0) { store.remove(key); return; }
         var entry = { items: trimmed, fetchedAt: Date.now() };
         store._mem[key] = entry;
         try {

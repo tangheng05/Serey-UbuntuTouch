@@ -162,12 +162,17 @@ Page {
      * whose rows the network confirms unchanged does zero work, so no fade.
      */
     // True when a row needs rewriting: a different article, or the same one with
-    // counts the response has moved on from.
+    // counts or CONTENT the response has moved on from. Content matters because
+    // an edit keeps the permlink and counters — comparing only those left the
+    // old title/body on the card while the detail page showed the new text.
     function _rowDiffers(cur, next) {
         return cur.permlink !== next.permlink
             || cur.votes !== next.votes
             || cur.comments !== next.comments
-            || cur.payout !== next.payout;
+            || cur.payout !== next.payout
+            || cur.title !== next.title
+            || cur.excerpt !== next.excerpt
+            || cur.thumbnail !== next.thumbnail;
     }
 
     function _syncRows(rows) {

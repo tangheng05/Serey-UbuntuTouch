@@ -30,7 +30,7 @@ Page {
     }
 
     function goBack() {
-        if (page.step === 3) { Nav.home(); return; }  // account already created
+        if (page.step === 3) { Nav.goToFeed(); return; }  // account already created
         if (page.step > 0) { page.errorMsg = ""; page.step -= 1; }
         else page.pageStack.pop();
     }
@@ -308,7 +308,7 @@ Page {
                     if (page.step === 0) page.checkUsername();
                     else if (page.step === 1) page.sendOtp();
                     else if (page.step === 2) page.createAccount();
-                    else Nav.home();
+                    else Nav.goToFeed();
                 }
             }
         }

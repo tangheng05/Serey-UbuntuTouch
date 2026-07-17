@@ -33,23 +33,45 @@ Item {
     onPChanged: {
         if (Session.isLoggedIn && p.author && p.author !== Session.username)
             FollowStore.load(Config.baseUrl, Session.username, p.author);
+        _syncVoteBar();
+    }
 
-        // Vote state checks session cache first (survives navigation), falling back to the model's voters array; set imperatively so VoteBar's own changes aren't overridden.
-        if (cardVoteBar) {
-            var cached = VoteService.getCached(p.author || "", p.permlink || "");
-            if (cached) {
-                cardVoteBar.upvoted = cached.upvoted;
-                cardVoteBar.flagged = cached.flagged;
-                cardVoteBar.votes = cached.votes;
-                if (cached.payout) cardVoteBar.payout = cached.payout;
-            } else {
-                var me = Session.username || "";
-                cardVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
-                cardVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
-                // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
-                cardVoteBar.votes = p.votes || 0;
-                cardVoteBar.payout = p.payout || "";
-            }
+    /*
+     * The list refreshes rows with ListModel.set(), which MUTATES the very object
+     * the delegate already holds as `p` — the reference never changes, so
+     * onPChanged does NOT fire. Declarative bindings (p.title, p.excerpt) still
+     * update, but the vote count and payout are assigned imperatively below and
+     * would keep the PREVIOUS post's values: a brand-new post rendered with a
+     * stale cached row's "4 votes / 2332.290 SEREY". Watching the values
+     * themselves is what re-runs the sync on an in-place row swap.
+     */
+    readonly property int _pVotes: p.votes || 0
+    readonly property string _pPayout: p.payout || ""
+    readonly property string _pPermlink: p.permlink || ""
+    on_PVotesChanged: _syncVoteBar()
+    on_PPayoutChanged: _syncVoteBar()
+    on_PPermlinkChanged: _syncVoteBar()
+
+    // Vote state checks session cache first (survives navigation), falling back to the model's voters array; set imperatively so VoteBar's own changes aren't overridden.
+    // Children exist by now, so a row whose values arrived before the bar was
+    // built still gets its counts.
+    Component.onCompleted: _syncVoteBar()
+
+    function _syncVoteBar() {
+        if (!cardVoteBar) return;
+        var cached = VoteService.getCached(p.author || "", p.permlink || "");
+        if (cached) {
+            cardVoteBar.upvoted = cached.upvoted;
+            cardVoteBar.flagged = cached.flagged;
+            cardVoteBar.votes = cached.votes;
+            if (cached.payout) cardVoteBar.payout = cached.payout;
+        } else {
+            var me = Session.username || "";
+            cardVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
+            cardVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
+            // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
+            cardVoteBar.votes = p.votes || 0;
+            cardVoteBar.payout = p.payout || "";
         }
     }
 

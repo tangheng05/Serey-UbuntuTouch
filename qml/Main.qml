@@ -388,6 +388,16 @@ MainView {
                 settingsStack.pop();
             settingsStack.push(Qt.resolvedUrl("pages/CreatePlatformPage.qml"));
         }
+        // Fresh login/signup: land on Homepage tab with My Feed pushed on top.
+        function onGoToFeed() {
+            root.currentTab = 0;
+            root._ensureTab(0);
+            while (settingsStack.depth > 1)
+                settingsStack.pop();
+            while (homeStack.depth > 1)
+                homeStack.pop();
+            homeStack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
+        }
     }
 
     // --- Global header (community pill + logo) ----------------------------

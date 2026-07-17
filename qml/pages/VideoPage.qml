@@ -97,6 +97,8 @@ Page {
         // Only wipe when there's nothing cached to put in its place, or the list
         // flashes empty between communities.
         if (!_paintCached()) { reels = []; feedModel.clear(); }
+        // In-place sync keeps the scroll offset, so reset it explicitly (see NewsPage).
+        list.positionViewAtBeginning();
         _fetchInitial(false);
     }
 
@@ -186,6 +188,10 @@ Page {
                 page.showingCached = false;
                 page._applyRows(result, rawCount);
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
+                // Deferred atYEnd recheck: the user can reach the end while this
+                // request was in flight (trigger fired into the loading guard);
+                // checked on a timer because atYEnd is stale until relayout (see NewsPage).
+                endRecheck.restart();
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -234,6 +240,7 @@ Page {
                 if (rawCount < Config.pageSize) page.endReached = true;
                 // Keep paging if this page was filtered below a screenful (see refresh()).
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
+                endRecheck.restart();   // user may sit at the end already (see _fetchInitial)
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -241,6 +248,15 @@ Page {
                 loading = false;
                 page.errorMsg = err.message;
             });
+    }
+
+    // Post-layout atYEnd recheck — same rationale and shape as NewsPage's.
+    Timer {
+        id: endRecheck
+        interval: 120
+        repeat: false
+        onTriggered: if (!page.loading && !page.endReached && page.errorMsg === "" && list.atYEnd)
+                         page.loadMore()
     }
 
     Component.onCompleted: {

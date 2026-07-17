@@ -67,8 +67,12 @@ AbstractButton {
                 color: Style.iconBackground
             }
 
+            // Double-buffered like PostCard's cover: the hidden loader fetches the
+            // new source while thumbImg keeps the last-good frame (dimmed), so a
+            // row-content swap (tab/community switch) never blanks to black while
+            // the phone re-downloads an evicted image.
             Image {
-                id: thumbImg
+                id: thumbLoader
                 anchors.fill: parent
                 source: v.localThumb || v.thumbnail || ""
                 fillMode: Image.PreserveAspectCrop
@@ -76,8 +80,26 @@ AbstractButton {
                 // HIG scaling: snap the decode size to a breakpoint instead of `width * N` so the image isn't re-rasterized on every width change.
                 sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
+                onStatusChanged: {
+                    if (status === Image.Ready) thumbImg.source = source;
+                    else if (status === Image.Error || String(source).length === 0) thumbImg.source = "";
+                }
+            }
+            Image {
+                id: thumbImg
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                sourceSize.width: thumbLoader.sourceSize.width
+                visible: false
+                // Fade fully out while the loader replaces a stale frame — a dimmed
+                // ghost of the previous content read as the wrong thumbnail (see
+                // PostCard). The smooth fade is what distinguishes this from the
+                // original instant-cut-to-black bug.
+                readonly property bool transitioning:
+                    thumbLoader.status === Image.Loading && status === Image.Ready
                 Behavior on opacity { NumberAnimation { duration: 200 } }
-                opacity: status === Image.Ready ? 1.0 : 0.0
+                opacity: status === Image.Ready ? (transitioning ? 0.0 : 1.0) : 0.0
             }
 
             Rectangle {

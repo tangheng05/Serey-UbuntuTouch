@@ -245,6 +245,20 @@ Page {
             page.autoFetches++;
             page.loadMore();
         }
+        // The user can reach the end while a batch was in flight — that atYEnd
+        // trigger fired into the loading guard and won't re-fire. Checked on a
+        // timer because atYEnd is stale until relayout (see NewsPage).
+        endRecheck.restart();
+    }
+
+    Timer {
+        id: endRecheck
+        interval: 120
+        repeat: false
+        onTriggered: if (!page.loading && !page._allEnded() && page.errorMsg === "" && list.atYEnd) {
+                         page.autoFetches = 0;   // a user-position continue is a fresh burst
+                         page.loadMore();
+                     }
     }
 
     // Loading: fetches the next page from every wanted, not-yet-ended source in parallel, then merges the combined, date-sorted, filtered batch.
@@ -366,6 +380,10 @@ Page {
         // Only wipe when nothing cached can stand in — clearing first is what
         // flashed the skeleton on every open and filter switch.
         if (!_paintCached()) feedModel.clear();
+        // In-place sync keeps the scroll offset, so reset it explicitly (see
+        // NewsPage) — switching the All/Blog/Video filter mid-scroll otherwise
+        // lands mid-list of the new selection.
+        list.positionViewAtBeginning();
         loadMore();
     }
 

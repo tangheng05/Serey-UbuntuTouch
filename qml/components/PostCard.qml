@@ -181,8 +181,20 @@ Item {
                 radius: Style.thumbRadius
                 color: Style.iconBackground
             }
+            /*
+             * Double-buffered cover. A QML Image discards its old frame the moment
+             * `source` changes, so when a tab switch rewrites the row the card went
+             * black until the new image arrived — on the phone that's a full
+             * re-download (the pixmap cache evicts: ten covers decode to ~20MB
+             * there, versus ~3MB on desktop where a gu is 8px, which is why the
+             * desktop never showed it). Instead, `coverLoader` (never rendered)
+             * fetches the new source while `coverImg` keeps showing the last-good
+             * frame, slightly dimmed to signal the transition; the swap happens
+             * only on READY and is a guaranteed pixmap-cache hit because the
+             * loader still holds a reference. No disk, no extra downloads.
+             */
             Image {
-                id: coverImg
+                id: coverLoader
                 anchors.fill: parent
                 source: p.thumbnail || ""
                 fillMode: Image.PreserveAspectCrop
@@ -193,29 +205,33 @@ Item {
                 // change (window resize, entering/leaving the split pane). Mirrors VideoCard.
                 sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-                opacity: status === Image.Ready ? 1.0 : 0.0
-
-                // [thumb] DIAGNOSTIC (remove once the mobile tab-switch black-flash
-                // is understood): timestamps each source swap and how long the
-                // image takes to come back. On desktop a swapped-in row's image is
-                // served from Qt's in-memory pixmap cache (READY arrives in the
-                // same tick, no visible gap); the phone symptom suggests eviction
-                // there, so the same swap goes back to the network. Capture with:
-                //   clickable logs | grep '\[thumb\]'
-                property double _tSrc: 0
-                onSourceChanged: {
-                    _tSrc = Date.now();
-                    console.log("[thumb] SRC   " + String(source).slice(-32));
-                }
                 onStatusChanged: {
-                    var name = status === Image.Ready ? "READY"
-                             : status === Image.Loading ? "LOADING"
-                             : status === Image.Error ? "ERROR" : "NULL";
-                    console.log("[thumb] " + name + " +"
-                                + (_tSrc > 0 ? (Date.now() - _tSrc) : -1) + "ms  "
-                                + String(source).slice(-32));
+                    if (status === Image.Ready) {
+                        coverImg.source = source;
+                    } else if (status === Image.Error || String(source).length === 0) {
+                        // Unloadable or removed cover: don't keep showing the
+                        // previous article's image under this one's title.
+                        coverImg.source = "";
+                    }
                 }
+            }
+            Image {
+                id: coverImg
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                autoTransform: true
+                sourceSize.width: coverLoader.sourceSize.width
+                visible: false
+                // While the loader replaces a stale frame, fade the old image fully
+                // out (to the placeholder) rather than dimming it: a 40% ghost of
+                // the previous tab's photo under the new title read as the wrong
+                // thumbnail. The Behavior is what separates this from the original
+                // bug — a smooth fade out and in, not an instant cut to black.
+                readonly property bool transitioning:
+                    coverLoader.status === Image.Loading && status === Image.Ready
+                Behavior on opacity { NumberAnimation { duration: 200 } }
+                opacity: status === Image.Ready ? (transitioning ? 0.0 : 1.0) : 0.0
             }
             Rectangle {
                 id: coverMask

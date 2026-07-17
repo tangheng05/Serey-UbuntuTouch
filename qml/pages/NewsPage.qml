@@ -129,6 +129,10 @@ Page {
         // Only wipe the list when there's nothing cached to show in its place —
         // clearing first would flash the skeleton between the two feeds.
         if (!_paintCached()) feedModel.clear();
+        // Back to the top: rows are now synced in place, so unlike the old
+        // clear()-based reload the ListView keeps its scroll offset — switching
+        // tabs mid-scroll landed the user mid-list of the OTHER feed.
+        list.positionViewAtBeginning();
         loadMore();
     }
 
@@ -175,18 +179,14 @@ Page {
         // here: Trending and Latest carry disjoint articles, so nothing matches
         // and every row becomes an insert + trim — a full teardown, which is
         // exactly the fade we're removing.
-        var setCount = 0, kept = 0, appended = 0, removed = 0;
         var n = Math.min(rows.length, feedModel.count);
-        for (var i = 0; i < n; i++) {
-            if (_rowDiffers(feedModel.get(i), rows[i])) { feedModel.set(i, rows[i]); setCount++; }
-            else kept++;
-        }
-        for (var j = feedModel.count; j < rows.length; j++) { feedModel.append(rows[j]); appended++; }
-        while (feedModel.count > rows.length) { feedModel.remove(feedModel.count - 1); removed++; }
-        // [thumb] DIAGNOSTIC (remove with PostCard's): every `set` above swaps that
-        // card's thumbnail source — correlate this line with the SRC/READY trail.
-        console.log("[thumb] syncRows feed=" + page.feedIndex + " set=" + setCount
-                    + " kept=" + kept + " appended=" + appended + " removed=" + removed);
+        for (var i = 0; i < n; i++)
+            if (_rowDiffers(feedModel.get(i), rows[i]))
+                feedModel.set(i, rows[i]);
+        for (var j = feedModel.count; j < rows.length; j++)
+            feedModel.append(rows[j]);
+        while (feedModel.count > rows.length)
+            feedModel.remove(feedModel.count - 1);
     }
 
     // Paint the last-seen rows for this feed+community so switching tabs (or back
@@ -226,6 +226,7 @@ Page {
                 page.endReached = rawCount < Config.pageSize;
                 // Keep paging if filtering left less than a screenful, or the feed stalls looking empty despite more content on later pages.
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
+                endRecheck.restart();   // user may sit at the end already (see loadMore)
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -270,6 +271,13 @@ Page {
             if (rawCount < Config.pageSize) page.endReached = true;
             // Keep paging if this page was filtered below a screenful (see refresh()).
             if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
+            // The user can reach the end while this request was in flight (cached
+            // rows + a fast flick): that atYEnd trigger fired into the `loading`
+            // guard and won't re-fire, since applying identical rows doesn't move
+            // contentHeight. Re-check once the layout has settled — checking
+            // list.atYEnd synchronously here reads a stale value (contentHeight
+            // updates on the next polish) and over-fetched a page on every load.
+            endRecheck.restart();
         };
         var onErr = function (err) {
             if (epoch !== page.reqEpoch) return;
@@ -289,6 +297,18 @@ Page {
         } else {
             inflight = feedFn()(Config.baseUrl, params, Session.token, onOk, onErr);
         }
+    }
+
+    // Fires shortly after a page of rows is applied, once the ListView has
+    // re-laid-out (so atYEnd is trustworthy): if the user is parked at the end
+    // with more available, continue — their end-of-list flick landed while
+    // `loading` was true and won't re-fire on its own.
+    Timer {
+        id: endRecheck
+        interval: 120
+        repeat: false
+        onTriggered: if (!page.loading && !page.endReached && page.errorMsg === "" && list.atYEnd)
+                         page.loadMore()
     }
 
     Component.onCompleted: {

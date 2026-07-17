@@ -2,6 +2,17 @@
 .import "Http.js" as Http
 .import "Mappers.js" as M
 
+// The community the Global feed hides, mirroring serey-api's
+// HIDDEN_FEED_DNS (config/constants.js) which drives ?exclude_home=1.
+// Endpoints apply it server-side; anything picking communities client-side
+// has to honour the same rule or it offers content the feeds themselves
+// exclude. My Feed's suggestions moved to the server-filtered
+// /community-subscriber/suggested-communities route; the one remaining
+// consumer is CreatePostPage's platform picker (Config.hiddenCommunityIds).
+// If that ever gets a server-filtered source too, delete this mirror —
+// it drifts the moment the backend constant changes.
+var HIDDEN_FEED_DNS = "cambodia.serey.io";
+
 function listAll(baseUrl, onOk, onErr) {
     Http.get(baseUrl, "/general/get-communities", {}, "",
         function (data) {
@@ -9,6 +20,15 @@ function listAll(baseUrl, onOk, onErr) {
             var seen = {};
             var out = [];
             var hubs = {};
+            // { id: true } for the hidden community AND every descendant —
+            // the same subtree serey-api's getHiddenFeedIds() resolves.
+            var hiddenIds = {};
+
+            function collectSubtree(node, acc) {
+                if (node.id !== undefined) acc[String(node.id)] = true;
+                var kids = node.child_communities || [];
+                for (var i = 0; i < kids.length; i++) collectSubtree(kids[i], acc);
+            }
             // Every community visited (top-level AND nested at any depth),
             // keyed by numeric id — lets callers resolve a specific community's
             // name/icon (e.g. an owned sub-community) without a dedicated
@@ -30,6 +50,7 @@ function listAll(baseUrl, onOk, onErr) {
                 var arr = (data && data[groups[g]]) || [];
                 for (var i = 0; i < arr.length; i++) {
                     collectHubs(arr[i]);
+                    if (arr[i].dns === HIDDEN_FEED_DNS) collectSubtree(arr[i], hiddenIds);
                     var c = M.toCommunity(arr[i]);
                     if (c.dns && !seen[c.dns]) {
                         seen[c.dns] = true;
@@ -37,7 +58,7 @@ function listAll(baseUrl, onOk, onErr) {
                     }
                 }
             }
-            onOk(out, hubs, byId);
+            onOk(out, hubs, byId, hiddenIds);
         }, onErr);
 }
 

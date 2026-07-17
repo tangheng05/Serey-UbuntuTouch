@@ -51,6 +51,9 @@ Page {
             if (Number(k) !== gone) set[k] = true
         Config.ownedCommunityIdSet = set
         Config.overrideManagedCommunityId = 0
+        // Rebuild the community picker so the deleted platform (and its country
+        // row, if this was its only community) disappears without a restart.
+        Nav.refreshCommunities()
         Toast.success(Lang.tr("Platform deleted."))
         Nav.goToTab(3)
     }
@@ -68,10 +71,12 @@ Page {
         PlatformService.deleteCommunity(Config.baseUrl, Session.token, Config.managedCommunityId,
             function () {
                 page.deleting = false
+                page._closeDeleteDialog()
                 page._finishDeleted()
             },
             function (err) {
                 page.deleting = false
+                page._closeDeleteDialog()
                 if (page._isGone(err)) { page._finishDeleted(); return }
                 Toast.error((err && err.message) || Lang.tr("Failed to delete platform."))
             })
@@ -124,7 +129,7 @@ Page {
                 iconName: "delete"
                 label: Lang.tr("Delete %1").arg(page.managedTitle)
                 danger: true
-                onClicked: Popups.PopupUtils.open(deleteDialog)
+                onClicked: page._deleteDlg = Popups.PopupUtils.open(deleteDialog)
             }
 
             Item { width: 1; height: Style.spacingL }
@@ -279,25 +284,38 @@ Page {
         }
     }
 
-    // Confirm before the (soft) delete.
+    // Handle to the open confirm dialog so deletePlatform's callbacks can close
+    // it when the request finishes.
+    property var _deleteDlg: null
+    function _closeDeleteDialog() {
+        if (page._deleteDlg) {
+            Popups.PopupUtils.close(page._deleteDlg)
+            page._deleteDlg = null
+        }
+    }
+
+    // Confirm before the (soft) delete. The dialog stays open while the request
+    // runs, showing "Deleting…" with both buttons disabled — it used to close on
+    // the Delete tap, so the deletion kept running with no feedback at all (only
+    // tapping Delete again revealed the in-progress state).
     Component {
         id: deleteDialog
         Popups.Dialog {
             id: ddlg
             title: Lang.tr("Delete “%1”?").arg(page.managedTitle)
-            text: Lang.tr("Your platform will be removed from Serey. This cannot be undone from the app.")
+            text: page.deleting
+                ? Lang.tr("Deleting your platform…")
+                : Lang.tr("Your platform will be removed from Serey.")
             Button {
                 text: page.deleting ? Lang.tr("Deleting…") : Lang.tr("Delete platform")
                 color: Style.danger
                 enabled: !page.deleting
-                onClicked: {
-                    Popups.PopupUtils.close(ddlg)
-                    page.deletePlatform()
-                }
+                onClicked: page.deletePlatform()
             }
             Button {
                 text: Lang.tr("Cancel")
-                onClicked: Popups.PopupUtils.close(ddlg)
+                enabled: !page.deleting
+                onClicked: page._closeDeleteDialog()
             }
         }
     }

@@ -26,6 +26,37 @@ Page {
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
+    // Normally the post goes to the community the app's source switcher is on.
+    // Entry points that aren't tied to a source (My Feed's "Write your first
+    // post" — the feed spans every community) set pickPlatform: the platform is
+    // chosen here instead, and categories only load once one is picked.
+    property bool pickPlatform: false
+    property var targetPlatform: null       // {id, title, icon} from Config.communityById
+    property bool platformSheetOpen: false
+    readonly property int postCommunityId: page.targetPlatform ? Number(page.targetPlatform.id) : Config.communityId
+    // The two differ off the platform path: categories are keyed by the selected
+    // sub-community, the post itself by its top-level source. Keep both as they were.
+    readonly property string catCommunityName: page.targetPlatform ? page.targetPlatform.title : Config.currentCommunityName
+    readonly property string postCommunityName: page.targetPlatform ? page.targetPlatform.title : Config.communityName
+
+    // Real platforms the user may post in. Countries and superhubs are containers
+    // (you post in their children, not in them), and the Global feed hides the
+    // exclude_home subtree server-side, so offering it would mean posting where
+    // the feeds never look.
+    readonly property var platformOptions: {
+        var out = [];
+        for (var k in Config.communityById) {
+            var c = Config.communityById[k];
+            if (!c || !c.dns || c.childCount > 0) continue;
+            if (Config.topLevelCommunityIds[String(c.id)]) continue;
+            if (Config.hiddenCommunityIds[String(c.id)]) continue;
+            if (!c.allowPost && !Config.ownedCommunityIdSet[c.id]) continue;
+            out.push(c);
+        }
+        out.sort(function (a, b) { return (a.title || "").localeCompare(b.title || ""); });
+        return out;
+    }
+
     // When set, this page edits an existing post (sends its permlink to update in place) instead of creating a new one.
     property var editPost: null
     readonly property bool isEdit: !!editPost
@@ -50,10 +81,20 @@ Page {
     function loadCategories() {
         var epoch = ++page.catEpoch;
         var prev = page.selectedCategory;
+        // Nothing to fetch until a platform is picked — categories are per-community.
+        if (page.pickPlatform && !page.targetPlatform) {
+            page.categoriesLoading = false;
+            page.categories = [];
+            page.subcatsByCat = ({});
+            return;
+        }
         page.categoriesLoading = true;
-        // currentCommunityName can lag a tick behind communityId here — read the source object directly.
-        var communityTitle = Config.selectedSubCommunity ? Config.selectedSubCommunity.name : Config.communityName;
-        CategoryService.listByCommunity(Config.baseUrl, communityTitle, Config.communityId, Session.token,
+        // currentCommunityName can lag a tick behind communityId here — read the
+        // source object directly. The platform-picker path (My Feed compose)
+        // overrides both with the picked platform (postCommunityId covers it).
+        var communityTitle = page.targetPlatform ? page.targetPlatform.title
+                           : (Config.selectedSubCommunity ? Config.selectedSubCommunity.name : Config.communityName);
+        CategoryService.listByCommunity(Config.baseUrl, communityTitle, page.postCommunityId, Session.token,
             function (names, raw) {
                 if (epoch !== page.catEpoch) return;   // stale community switch
                 page.categoriesLoading = false;
@@ -150,6 +191,7 @@ Page {
             width: postPillLabel.implicitWidth + Style.spacingM * 2
             height: units.gu(4)
             enabled: !page.submitting && titleField.text.trim().length > 0 && bodyArea.getText(0, bodyArea.length).trim().length > 0
+                     && (!page.pickPlatform || !!page.targetPlatform)
             onClicked: page.publish()
 
             Rectangle {
@@ -237,6 +279,10 @@ Page {
             Toast.error(Lang.tr("Please log in first."));
             return;
         }
+        if (page.pickPlatform && !page.targetPlatform) {
+            Toast.error(Lang.tr("Select a platform first"));
+            return;
+        }
         var body = page._richHtmlToSimple(bodyArea.text).trim();
         // Swap "[image N]" placeholders back into real <img> tags; unknown numbers are left as typed.
         var imgs = page.bodyImages || [];
@@ -253,9 +299,9 @@ Page {
             title: titleField.text.trim(),
             body: body,
             // On edit, keep the post in its own community (resolve by its title) rather than the currently-selected source.
-            communityId: page.isEdit ? 0 : Config.communityId,
+            communityId: page.isEdit ? 0 : page.postCommunityId,
             communityName: page.isEdit ? (page.editPost.community || Config.communityName)
-                                       : Config.communityName,
+                                       : page.postCommunityName,
             categories: page.selectedCategory || "general",
             subcategories: page.selectedSubCategory.length > 0 ? [page.selectedSubCategory] : [],
             postToBlockchain: page.postToBlockchain,
@@ -378,6 +424,20 @@ Page {
                 border.width: units.dp(1.5)
                 border.color: titleField.activeFocus ? Style.brand : Style.divider
 
+                // The TextInput is one line tall and pinned to the top, so most
+                // of this box (padding, the counter's row) was dead space and the
+                // keyboard only opened if you hit that line exactly. Declared
+                // FIRST so it sits under the input: taps on the text itself still
+                // reach the input, this only catches the surrounding gap.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        titleField.forceActiveFocus();
+                        titleField.cursorPosition = titleField.length;
+                        Qt.inputMethod.show();
+                    }
+                }
+
                 TextInput {
                     id: titleField
                     anchors {
@@ -428,6 +488,20 @@ Page {
                 border.width: units.dp(1.5)
                 border.color: bodyArea.activeFocus ? Style.brand : Style.divider
 
+                // Same as the title: the editor is only as tall as its text, so
+                // an empty gu(25) box was tappable on its first line alone.
+                // Declared FIRST so it sits under the editor — taps on the text
+                // (and drag-to-select) still go to it; this catches the blank
+                // area below and drops the cursor at the end.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        bodyArea.forceActiveFocus();
+                        bodyArea.cursorPosition = bodyArea.length;
+                        Qt.inputMethod.show();
+                    }
+                }
+
                 TextEdit {
                     id: bodyArea
                     anchors {
@@ -470,6 +544,52 @@ Page {
                     Loader {
                         anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
                         sourceComponent: parent.visible ? formatButtonsComp : undefined
+                    }
+                }
+            }
+
+            // Platform selector — only on the pickPlatform path; picking one loads that platform's categories.
+            AbstractButton {
+                width: parent.width
+                height: units.gu(6)
+                visible: page.pickPlatform
+                onClicked: page.platformSheetOpen = true
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Style.cardRadius
+                    color: "transparent"
+                    border.width: units.dp(1.5)
+                    border.color: Style.divider
+                }
+
+                Row {
+                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingS
+
+                    CircleImage {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(3.5); height: width
+                        visible: !!page.targetPlatform
+                        source: page.targetPlatform ? (page.targetPlatform.icon || "") : ""
+                        decode: units.gu(4)
+                    }
+                    Label {
+                        width: parent.width - platChevron.width - Style.spacingS
+                               - (page.targetPlatform ? units.gu(3.5) + Style.spacingS : 0)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.targetPlatform ? page.targetPlatform.title : Lang.tr("Select platform")
+                        elide: Text.ElideRight
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFor(text)
+                        color: page.targetPlatform ? Style.textPrimary : Style.textSecondary
+                    }
+                    Icon {
+                        id: platChevron
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2); height: width
+                        name: "next"
+                        color: Style.textSecondary
                     }
                 }
             }
@@ -1004,6 +1124,159 @@ Page {
                         Item { width: 1; height: Style.spacingM }
                     }   // catListCol
                 }       // catListFlick
+            }
+        }
+    }
+
+    // --- Platform picker bottom sheet (pickPlatform path only) ----------------
+    Item {
+        id: platSheet
+        anchors.fill: parent
+        visible: page.platformSheetOpen
+        z: 210
+        onVisibleChanged: if (visible) { platBdFade.start(); platSlideAnim.start(); }
+        function closeAnimated() { platBdFadeOut.start(); platSlideOut.start(); }
+
+        Rectangle {
+            id: platBd
+            anchors.fill: parent
+            color: Qt.rgba(0, 0, 0, 0.4)
+            opacity: 0
+            MouseArea { anchors.fill: parent; onClicked: platSheet.closeAnimated() }
+        }
+        NumberAnimation { id: platBdFade; target: platBd; property: "opacity"; from: 0; to: 1; duration: 200 }
+        NumberAnimation { id: platBdFadeOut; target: platBd; property: "opacity"; to: 0; duration: 200 }
+
+        Rectangle {
+            id: platSheetRect
+            readonly property bool wide: Config.wideMode
+            anchors {
+                horizontalCenter: parent.horizontalCenter
+                bottom: parent.bottom
+                bottomMargin: platSheetRect.wide ? units.gu(4) : 0
+            }
+            width: platSheetRect.wide ? Math.min(parent.width - units.gu(4), Config.sheetMaxWidth) : parent.width
+            height: platSheetCol.height + units.gu(4)
+            radius: units.gu(1)
+            color: Style.surface
+            transform: Translate { id: platSlideT; y: 0 }
+            NumberAnimation { id: platSlideAnim; target: platSlideT; property: "y"; from: platSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }
+            NumberAnimation { id: platSlideOut; target: platSlideT; property: "y"; to: platSheetRect.height; duration: 250; easing.type: Easing.InCubic; onStopped: page.platformSheetOpen = false }
+
+            Rectangle {
+                anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
+                width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
+                color: Style.lightGray
+            }
+
+            Column {
+                id: platSheetCol
+                anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
+                spacing: 0
+
+                Item {
+                    width: parent.width; height: units.gu(5)
+                    Label {
+                        anchors.centerIn: parent
+                        text: Lang.tr("Select platform")
+                        font.pixelSize: Style.fontMedium
+                        font.weight: Font.DemiBold
+                        color: Style.textPrimary
+                    }
+                    AbstractButton {
+                        anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                        width: units.gu(3.5); height: units.gu(3.5)
+                        onClicked: platSheet.closeAnimated()
+                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "close"; color: Style.textPrimary }
+                    }
+                }
+
+                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+                Flickable {
+                    width: parent.width
+                    height: Math.min(platListCol.height, platSheet.height * 0.65)
+                    contentHeight: platListCol.height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: platListCol
+                        width: parent.width
+                        spacing: 0
+
+                        // The tree is fetched at startup; empty means nothing postable was found.
+                        Item {
+                            width: parent.width
+                            height: units.gu(8)
+                            visible: page.platformOptions.length === 0
+                            Label {
+                                anchors.centerIn: parent
+                                text: Lang.tr("No platforms you can post in")
+                                font.pixelSize: Style.fontSmall
+                                color: Style.textSecondary
+                            }
+                        }
+
+                        Repeater {
+                            model: page.platformOptions
+
+                            delegate: AbstractButton {
+                                width: platSheetCol.width
+                                height: units.gu(6.5)
+                                readonly property bool isSelected: page.targetPlatform
+                                                                   && String(page.targetPlatform.id) === String(modelData.id)
+                                onClicked: {
+                                    page.targetPlatform = modelData;
+                                    page.selectedCategory = "";
+                                    page.selectedSubCategory = "";
+                                    page.loadCategories();
+                                    platSheet.closeAnimated();
+                                }
+
+                                Row {
+                                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                    spacing: Style.spacingM
+
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: units.gu(4.5); height: width; radius: width / 2
+                                        color: Style.iconBackground
+                                        CircleImage {
+                                            anchors { fill: parent; margins: units.dp(2) }
+                                            source: modelData.icon || ""
+                                            decode: units.gu(5)
+                                        }
+                                    }
+                                    Label {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - units.gu(4.5) - platTick.width - Style.spacingM * 2
+                                        text: modelData.title
+                                        elide: Text.ElideRight
+                                        font.pixelSize: Style.fontRegular
+                                        font.family: Style.fontFor(text)
+                                        color: isSelected ? Style.brand : Style.textPrimary
+                                        font.weight: isSelected ? Font.DemiBold : Font.Normal
+                                    }
+                                    Icon {
+                                        id: platTick
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: units.gu(2.2); height: width
+                                        name: "tick"; color: Style.brand
+                                        visible: isSelected
+                                    }
+                                }
+
+                                Rectangle {
+                                    anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                    height: units.dp(1); color: Style.divider
+                                }
+                            }
+                        }
+
+                        Item { width: 1; height: Style.spacingM }
+                    }
+                }
             }
         }
     }

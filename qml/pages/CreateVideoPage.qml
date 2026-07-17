@@ -277,6 +277,20 @@ Page {
                 width: parent.width
                 height: Math.max(units.gu(5), titleField.contentHeight + Style.spacingM)
 
+                // The editor is only as tall as its text, so the box's padding
+                // was dead space and the keyboard only opened on the text line
+                // itself. Declared FIRST so it sits under the editor: taps on
+                // the text still reach it, this catches the surrounding gap
+                // (same fix as CreatePostPage).
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        titleField.forceActiveFocus();
+                        titleField.cursorPosition = titleField.length;
+                        Qt.inputMethod.show();
+                    }
+                }
+
                 TextEdit {
                     id: titleField
                     anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: Style.spacingS }
@@ -304,6 +318,17 @@ Page {
             Item {
                 width: parent.width
                 height: Math.max(units.gu(10), descField.contentHeight + Style.spacingM)
+
+                // Same dead-space fix as the title field above: catch taps on
+                // the empty area below the one-line editor.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        descField.forceActiveFocus();
+                        descField.cursorPosition = descField.length;
+                        Qt.inputMethod.show();
+                    }
+                }
 
                 TextEdit {
                     id: descField

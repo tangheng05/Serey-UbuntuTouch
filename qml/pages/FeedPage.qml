@@ -3,8 +3,11 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 import "../components"
+import "../services/Http.js" as Http
 import "../services/PostService.js" as PostService
 import "../services/VideoService.js" as VideoService
+import "../services/FollowService.js" as FollowService
+import "../services/CommunitySubscriberService.js" as SubscriberService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
 
@@ -75,8 +78,14 @@ Page {
     property bool blogEnded: false
     property int  vidOffset: 0
     property bool vidEnded: false
+    // Your own posts are a THIRD source: the server's feed keys strictly on the
+    // follows table and you don't follow yourself, so publishing would otherwise
+    // leave My Feed looking empty. Fetched author-scoped and merged in.
+    property int  ownOffset: 0
+    property bool ownEnded: false
     property var  inflightBlog: null
     property var  inflightVideo: null
+    property var  inflightOwn: null
 
     property bool loading: false
     property string errorMsg: ""
@@ -85,8 +94,23 @@ Page {
     property int autoFetches: 0
 
     property bool refreshing: false
-    // On refresh, keep the old rows on screen until the first new batch arrives so there's no skeleton flash, just the pull spinner.
-    property bool _refreshClear: false
+    // True while the rows on screen came from FeedCache rather than the network.
+    property bool showingCached: false
+
+    // Who/what this feed is FOR: everyone the user follows ({ username: true })
+    // and every community they subscribe to ({ communityId: true }).
+    //
+    // The blog source resolves both server-side (/serey-web/list-by-feed-mixed =
+    // follows OR subscriptions), but there is NO equivalent video endpoint —
+    // /video-component/ lists a whole community. Without these sets a brand-new
+    // account saw the entire community's videos in "My Feed", so videos are
+    // matched against them client-side in loadMore().
+    property var followingSet: ({})
+    property var subscribedSet: ({})
+    property bool followingLoaded: false
+    // Set by reload()/refresh(): the next merged batch REPLACES the list (in
+    // place, via _syncRows) instead of appending; later batches paginate.
+    property bool _firstRound: false
 
     header: Item { height: 0 }
 
@@ -165,9 +189,28 @@ Page {
     // --- Source helpers ------------------------------------------------------
     function _wantBlog()  { return page.filterMode !== 2; }   // All or Blog
     function _wantVideo() { return page.filterMode !== 1; }   // All or Video
+    // Own posts ride the Blog filter (the video-category ones are dropped by
+    // _isVideo, exactly like the following-blog source).
+    function _wantOwn()   { return Session.isLoggedIn && page.filterMode !== 2; }
+
+    function _isOwn(author) {
+        return Session.isLoggedIn && !!author && author === Session.username;
+    }
+
+    // True once we know the user follows nobody AND subscribes to nothing: the
+    // video source can then only ever yield their own uploads, so let it page
+    // rather than scanning a whole community forever.
+    function _followsNobody() {
+        if (!page.followingLoaded) return false;
+        for (var k in page.followingSet) return false;
+        for (var c in page.subscribedSet) return false;
+        return true;
+    }
+
     function _allEnded() {
         return (!_wantBlog()  || page.blogEnded)
-            && (!_wantVideo() || page.vidEnded);
+            && (!_wantVideo() || page.vidEnded || page._followsNobody())
+            && (!_wantOwn()   || page.ownEnded);
     }
 
     function _params(offset, limit) {
@@ -189,42 +232,166 @@ Page {
         return isNaN(t) ? 0 : t;
     }
 
+    // Keyed per filter mode, community and account: each combination is a
+    // different merged list. My Feed is pushed fresh on every visit, so without
+    // this every open showed the skeleton until both sources responded.
+    //
+    // v2: entries written before the video follow-filter existed hold videos
+    // from authors the user never followed. put() can't overwrite them (an
+    // empty feed stores nothing), so they'd paint on every launch — bump the
+    // namespace to abandon them; the old rows expire on FeedCache's own timer.
+    function _cacheKey() {
+        return "myfeed:v2:" + page.filterMode + ":" + Config.communityId + ":"
+               + (Session.username || "__guest__");
+    }
+
+    // Merging three sources can surface the same post twice (you follow
+    // yourself, or a post is both blog and video shaped) — keep the first.
+    function _dedupe(rows) {
+        var seen = {};
+        var out = [];
+        for (var i = 0; i < rows.length; i++) {
+            var k = (rows[i].author || "") + "/" + (rows[i].permlink || "");
+            if (seen[k]) continue;
+            seen[k] = true;
+            out.push(rows[i]);
+        }
+        return out;
+    }
+
+    // True when the model already holds this row (guards the append path, where
+    // _dedupe only sees the incoming batch).
+    function _inModel(row) {
+        for (var i = 0; i < feedModel.count; i++) {
+            var m = feedModel.get(i);
+            if (m.permlink === row.permlink && m.author === row.author) return true;
+        }
+        return false;
+    }
+
+    function _filterRows(rows) {
+        var hidden = HiddenPosts.loadAll();
+        var blocked = BlockedUsers.loadAll();
+        var out = [];
+        for (var i = 0; i < rows.length; i++)
+            if (!hidden[rows[i].permlink || ""] && !blocked[rows[i].author || ""])
+                out.push(rows[i]);
+        return out;
+    }
+
+    // Overwrite rows in place by index rather than clear() + append — clearing
+    // destroys every delegate and the card thumbnails fade back in from
+    // opacity 0. Same shape as NewsPage._syncRows.
+    // Content fields matter, not just the counters: an edited post keeps its
+    // permlink/votes/comments, so comparing those alone left the old title and
+    // body on screen while the detail page showed the new text.
+    function _rowDiffers(cur, next) {
+        return cur.permlink !== next.permlink
+            || cur.votes !== next.votes
+            || cur.comments !== next.comments
+            || cur.payout !== next.payout
+            || cur.title !== next.title
+            || cur.excerpt !== next.excerpt
+            || cur.thumbnail !== next.thumbnail;
+    }
+    function _syncRows(rows) {
+        var n = Math.min(rows.length, feedModel.count);
+        for (var i = 0; i < n; i++)
+            if (_rowDiffers(feedModel.get(i), rows[i]))
+                feedModel.set(i, rows[i]);
+        for (var j = feedModel.count; j < rows.length; j++)
+            feedModel.append(rows[j]);
+        while (feedModel.count > rows.length)
+            feedModel.remove(feedModel.count - 1);
+    }
+
+    // Paint the last-seen merged rows for this filter/community so reopening
+    // My Feed shows content at once; the fetch fired right after replaces them.
+    function _paintCached() {
+        var cached = FeedCache.peek(_cacheKey());
+        if (!cached) return false;
+        _syncRows(_filterRows(cached));
+        page.showingCached = feedModel.count > 0;
+        return page.showingCached;
+    }
+
     // Bounded auto-continue: keep paging to fill a screenful, but cap the chain so a heavily-filtered feed can't fire many sequential requests.
     function _maybeAutoContinue() {
         if (!page._allEnded() && feedModel.count < Config.pageSize && page.autoFetches < 6) {
             page.autoFetches++;
             page.loadMore();
         }
+        // The user can reach the end while a batch was in flight — that atYEnd
+        // trigger fired into the loading guard and won't re-fire. Checked on a
+        // timer because atYEnd is stale until relayout (see NewsPage).
+        endRecheck.restart();
+    }
+
+    Timer {
+        id: endRecheck
+        interval: 120
+        repeat: false
+        onTriggered: if (!page.loading && !page._allEnded() && page.errorMsg === "" && list.atYEnd) {
+                         page.autoFetches = 0;   // a user-position continue is a fresh burst
+                         page.loadMore();
+                     }
     }
 
     // Loading: fetches the next page from every wanted, not-yet-ended source in parallel, then merges the combined, date-sorted, filtered batch.
     function loadMore() {
-        if (page.loading || page._allEnded()) return;
+        if (page.loading || page._allEnded()) {
+            page._log("loadMore skipped: loading=" + page.loading + " allEnded=" + page._allEnded());
+            return;
+        }
+        page._log("loadMore: blog=" + (page._wantBlog() && !page.blogEnded)
+                  + " video=" + (page._wantVideo() && !page.vidEnded && !page._followsNobody())
+                  + " own=" + (page._wantOwn() && !page.ownEnded)
+                  + " offsets b/v/o=" + page.blogOffset + "/" + page.vidOffset + "/" + page.ownOffset);
         page.loading = true;
         page.errorMsg = "";
         var epoch = page.reqEpoch;
+        var roundT0 = Date.now();   // debug: wall-clock for the whole parallel round
         var blogRows = [];
         var vidRows = [];
+        var ownRows = [];
         var pending = 0;
         var lastErr = null;
 
         function finish() {
-            if (epoch !== page.reqEpoch) return;
+            if (epoch !== page.reqEpoch) { page._log("finish: stale epoch, batch discarded"); return; }
             page.loading = false;
             page.refreshing = false;
-            if (page._refreshClear) { feedModel.clear(); page._refreshClear = false; }
-            if (lastErr && feedModel.count === 0) {
+            // Error only when this round produced nothing AND nothing is on
+            // screen. One failed source must not discard the other's rows (the
+            // old check did: a blog-side error threw away a successful video
+            // batch), and cached rows on screen beat an error page.
+            if (lastErr && feedModel.count === 0
+                    && blogRows.length === 0 && vidRows.length === 0
+                    && ownRows.length === 0) {
+                page._log("finish: ERROR, nothing on screen — status=" + (lastErr.status)
+                          + " " + (lastErr.message || ""));
                 page.errorMsg = lastErr.message || Lang.tr("Something went wrong");
                 return;
             }
-            var hidden = HiddenPosts.loadAll();
-            var blocked = BlockedUsers.loadAll();
-            var batch = blogRows.concat(vidRows);
+            var batch = blogRows.concat(vidRows).concat(ownRows);
             batch.sort(function (a, b) { return page._ts(b) - page._ts(a); });
-            for (var i = 0; i < batch.length; i++) {
-                var p = batch[i];
-                if (hidden[p.permlink || ""] || blocked[p.author || ""]) continue;
-                feedModel.append(p);
+            var rows = page._dedupe(page._filterRows(batch));
+            page._log("finish in " + (Date.now() - roundT0) + "ms: batch=" + batch.length
+                      + " afterFilter+dedupe=" + rows.length
+                      + " (blog=" + blogRows.length + " video=" + vidRows.length + " own=" + ownRows.length + ")"
+                      + " firstRound=" + page._firstRound + " modelBefore=" + feedModel.count);
+            if (page._firstRound) {
+                // First merged batch replaces the list in place — this both swaps
+                // out cache-painted rows without a flash and is what makes
+                // pull-to-refresh not rebuild every delegate.
+                page._syncRows(rows);
+                page._firstRound = false;
+                page.showingCached = false;
+                FeedCache.put(page._cacheKey(), rows);
+            } else {
+                for (var i = 0; i < rows.length; i++)
+                    if (!page._inModel(rows[i]))
+                        feedModel.append(rows[i]);
             }
             page._maybeAutoContinue();
         }
@@ -233,10 +400,14 @@ Page {
             pending++;
             // Over-fetch since videos are filtered out of this source, so a larger round-trip fills the screen instead of many small ones.
             var blogLimit = Config.pageSize * 2;
-            page.inflightBlog = PostService.listFeedFollowing(Config.baseUrl,
+            // Mixed, not following-only: subscribing to a community must fill
+            // My Feed (it's what the empty state offers).
+            page.inflightBlog = PostService.listFeedMixed(Config.baseUrl,
                 page._params(page.blogOffset, blogLimit), Session.token,
                 function (result, rawCount) {
-                    if (epoch !== page.reqEpoch) return;
+                    // `!page`: the page can be destroyed (tab pop) with this
+                    // request still in flight — the id then resolves to null.
+                    if (!page || epoch !== page.reqEpoch) return;
                     page.inflightBlog = null;
                     for (var i = 0; i < result.length; i++) {
                         var p = result[i];
@@ -246,36 +417,83 @@ Page {
                     }
                     page.blogOffset += rawCount;
                     if (rawCount < blogLimit) page.blogEnded = true;
+                    page._log("blog ok: raw=" + rawCount + " kept=" + blogRows.length
+                              + " (dropped " + (result.length - blogRows.length) + " videos)"
+                              + " ended=" + page.blogEnded);
                     if (--pending === 0) finish();
                 },
                 function (err) {
-                    if (epoch !== page.reqEpoch) return;
+                    if (!page || epoch !== page.reqEpoch) return;
                     page.inflightBlog = null;
+                    page._log("blog FAILED: status=" + (err && err.status) + " " + (err && err.message));
                     lastErr = err;
                     if (--pending === 0) finish();
                 });
         }
 
-        if (page._wantVideo() && !page.vidEnded) {
+        // Nothing followed = no videos belong in My Feed, so skip the request
+        // outright (the endpoint would return the whole community's uploads).
+        if (page._wantVideo() && !page.vidEnded && !page._followsNobody()) {
             pending++;
             var vidLimit = Config.pageSize;
             page.inflightVideo = VideoService.listVideos(Config.baseUrl,
                 page._params(page.vidOffset, vidLimit), Session.token,
                 function (result, rawCount) {
-                    if (epoch !== page.reqEpoch) return;
+                    if (!page || epoch !== page.reqEpoch) return;
                     page.inflightVideo = null;
                     for (var i = 0; i < result.length; i++) {
                         var v = result[i];
+                        // /video-component/ has no feed filter of its own, so
+                        // mirror what list-by-feed-mixed does server-side: keep
+                        // followed authors and subscribed communities. Own
+                        // uploads stay too — My Feed shows your content.
+                        if (!page._isOwn(v.author)
+                                && !page.followingSet[v.author || ""]
+                                && !page.subscribedSet[String(v.communityId || "")]) continue;
                         v._kind = "video";
                         vidRows.push(v);
                     }
                     page.vidOffset += rawCount;
                     if (rawCount < vidLimit) page.vidEnded = true;
+                    page._log("video ok: raw=" + rawCount + " kept=" + vidRows.length
+                              + " (dropped " + (result.length - vidRows.length) + " not followed/subscribed)"
+                              + " ended=" + page.vidEnded);
                     if (--pending === 0) finish();
                 },
                 function (err) {
-                    if (epoch !== page.reqEpoch) return;
+                    if (!page || epoch !== page.reqEpoch) return;
                     page.inflightVideo = null;
+                    page._log("video FAILED: status=" + (err && err.status) + " " + (err && err.message));
+                    lastErr = err;
+                    if (--pending === 0) finish();
+                });
+        }
+
+        // Your own posts: the follow-keyed feed can never return them.
+        if (page._wantOwn() && !page.ownEnded) {
+            pending++;
+            var ownLimit = Config.pageSize;
+            page.inflightOwn = PostService.listByAuthor(Config.baseUrl, Session.username,
+                { limit: ownLimit, offset: page.ownOffset }, Session.token,
+                function (result, rawCount) {
+                    if (!page || epoch !== page.reqEpoch) return;
+                    page.inflightOwn = null;
+                    for (var i = 0; i < result.length; i++) {
+                        var o = result[i];
+                        if (page._isVideo(o)) continue;   // videos come from the video source
+                        o._kind = "blog";
+                        ownRows.push(o);
+                    }
+                    page.ownOffset += rawCount;
+                    if (rawCount < ownLimit) page.ownEnded = true;
+                    page._log("own ok: raw=" + rawCount + " kept=" + ownRows.length
+                              + " ended=" + page.ownEnded);
+                    if (--pending === 0) finish();
+                },
+                function (err) {
+                    if (!page || epoch !== page.reqEpoch) return;
+                    page.inflightOwn = null;
+                    page._log("own FAILED: status=" + (err && err.status) + " " + (err && err.message));
                     lastErr = err;
                     if (--pending === 0) finish();
                 });
@@ -287,38 +505,120 @@ Page {
     function _abortInflight() {
         if (page.inflightBlog)  { page.inflightBlog.abort();  page.inflightBlog = null; }
         if (page.inflightVideo) { page.inflightVideo.abort(); page.inflightVideo = null; }
+        if (page.inflightOwn)   { page.inflightOwn.abort();   page.inflightOwn = null; }
     }
 
     function _resetCursors() {
         page.blogOffset = 0; page.blogEnded = false;
         page.vidOffset = 0;  page.vidEnded = false;
+        page.ownOffset = 0;  page.ownEnded = false;
         page.autoFetches = 0;
         page.loading = false;
         page.errorMsg = "";
+    }
+
+    // The video source can't be filtered without knowing the user's follows and
+    // subscriptions, so resolve both once per session before the first load
+    // rather than racing them. Failure is non-fatal: the sets stay empty, videos
+    // stay out, and blog posts (resolved server-side) still show.
+    function _withFollowing(next) {
+        if (page.followingLoaded || !Session.isLoggedIn) {
+            page._log("follows: cached (" + (page.followingLoaded ? "already loaded" : "logged out") + ")");
+            next();
+            return;
+        }
+        var _fT0 = Date.now();
+        page._log("follows: fetching list-all-followings + subscribed (blocks the first feed request)");
+        var pending = 2;
+        // Same destroyed-page guard as loadMore's callbacks: these can land
+        // after the page is popped, when the `page` id resolves to null.
+        function done() {
+            if (!page) return;
+            if (--pending === 0) {
+                page._log("follows: resolved in " + (Date.now() - _fT0) + "ms");
+                page.followingLoaded = true;
+                next();
+            }
+        }
+        FollowService.listAllFollowings(Config.baseUrl, Session.token,
+            function (map) { if (page) page.followingSet = map; done(); }, done);
+        SubscriberService.fetchSubscribed(Config.baseUrl, Session.token,
+            function (map) { if (page) page.subscribedSet = map; done(); }, done);
     }
 
     function reload() {
         page.reqEpoch++;
         page._abortInflight();
         page._resetCursors();
-        feedModel.clear();
-        loadMore();
+        page.showingCached = false;
+        page._firstRound = true;
+        // Only wipe when nothing cached can stand in — clearing first is what
+        // flashed the skeleton on every open and filter switch.
+        var painted = _paintCached();
+        page._log("reload: epoch=" + page.reqEpoch + " cachePainted=" + painted
+                  + " rows=" + feedModel.count);
+        if (!painted) feedModel.clear();
+        // In-place sync keeps the scroll offset, so reset it explicitly (see
+        // NewsPage) — switching the All/Blog/Video filter mid-scroll otherwise
+        // lands mid-list of the new selection.
+        list.positionViewAtBeginning();
+        var epoch = page.reqEpoch;
+        page.loading = true;   // hold the spinner across the follow-list fetch
+        _withFollowing(function () {
+            if (epoch !== page.reqEpoch) { page._log("reload: superseded by a newer reload"); return; }
+            page.loading = false;
+            page._log("follows resolved: following=" + Object.keys(page.followingSet).length
+                      + " subscribed=" + Object.keys(page.subscribedSet).length
+                      + " followsNobody=" + page._followsNobody()
+                      + " allEnded=" + page._allEnded());
+            // Nothing left to fetch (e.g. the Video filter while following
+            // nobody) makes loadMore() a no-op, which would strand any
+            // cache-painted rows on screen with no request to replace them.
+            if (page._allEnded()) {
+                page._log("nothing to fetch (all sources ended) — showing empty state");
+                feedModel.clear();
+                FeedCache.remove(page._cacheKey());
+                page.showingCached = false;
+                page._firstRound = false;
+                return;
+            }
+            loadMore();
+        });
     }
 
     function refresh() {
         if (page.refreshing) return;
         page.refreshing = true;
-        page._refreshClear = true;   // clear rows only once the new batch lands
         page.reqEpoch++;
         page._abortInflight();
         page._resetCursors();
-        loadMore();
+        // Keep current rows on screen; the first new batch replaces them in
+        // place via _syncRows (no skeleton flash, just the pull spinner).
+        page._firstRound = true;
+        // Re-fetch the follow list too: following someone is exactly what the
+        // user pulls to refresh after, and a stale set would keep their videos out.
+        page.followingLoaded = false;
+        var epoch = page.reqEpoch;
+        _withFollowing(function () {
+            if (epoch !== page.reqEpoch) return;
+            loadMore();
+        });
     }
 
+    // TEMPORARY (debug): trace what My Feed does and which endpoints it calls.
+    // Remove these, the [myfeed] logs below, and Http.setTrace() when done.
+    function _log(msg) { console.log("[myfeed]", msg); }
+
     Component.onCompleted: {
+        Http.setTrace(true);
+        page._log("open: loggedIn=" + Session.isLoggedIn + " user=" + (Session.username || "-")
+                  + " filter=" + page.filterNames[page.filterMode]
+                  + " communityId=" + Config.communityId
+                  + " cacheKey=" + page._cacheKey());
         page.reload();
         if (visible) list.forceActiveFocus();
     }
+    Component.onDestruction: Http.setTrace(false)
     // Keyboard parity on arrival: the list takes arrow-key focus whenever this
     // page is (re)shown, so keyboard nav works before the first click/tap.
     onVisibleChanged: if (visible) list.forceActiveFocus()
@@ -549,6 +849,16 @@ Page {
                 page.loadMore();
             }
         }
+
+        // Prefetch ~2 screens early (see NewsPage) — atYEnd stays as fallback.
+        onContentYChanged: {
+            if (!page.loading && !page._allEnded() && page.errorMsg === ""
+                    && contentHeight > height
+                    && contentY + height >= contentHeight - height * 2) {
+                page.autoFetches = 0;   // user-scroll driven, same as atYEnd
+                page.loadMore();
+            }
+        }
     }
 
     // Detail panel (split mode only): the tapped article/video renders here beside
@@ -595,9 +905,35 @@ Page {
         message: page.errorMsg
         onRetry: page.reload()
     }
+    // Logged in with an empty feed = a new account that follows nobody, so
+    // offer the fix (communities to follow / write a post) instead of a dead
+    // end. Logged out, the plain placeholder is right — the login gate is
+    // elsewhere.
+    FeedEmptyState {
+        anchors.fill: list
+        visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
+                 && Session.isLoggedIn
+        // Coalesce a burst of follows into one refetch: refresh() drops calls
+        // made while another is in flight, so following three people quickly
+        // would otherwise fetch only the first one's posts.
+        onFollowed: emptyStateRefetch.restart()
+        onWritePostRequested: {
+            // My Feed spans every community, so there's no active source to post
+            // into — the composer asks for the platform itself.
+            var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { pickPlatform: true });
+            if (ed && ed.saved) ed.saved.connect(function () { page.refresh(); });
+        }
+    }
+    Timer {
+        id: emptyStateRefetch
+        interval: 700
+        repeat: false
+        onTriggered: page.refresh()
+    }
     EmptyState {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
+                 && !Session.isLoggedIn
         iconName: "stock_note"
         message: Lang.tr("Follow people to see their posts here")
     }

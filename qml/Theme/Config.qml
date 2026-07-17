@@ -1,5 +1,6 @@
 pragma Singleton
 import QtQuick 2.7
+import "../services/Flags.js" as Flags
 
 QtObject {
     id: config
@@ -54,8 +55,13 @@ QtObject {
     // The live source list, seeded with baseSources; Main.qml appends every other top-level country from the backend at startup. Indexed by sourceIndex everywhere.
     property var sources: baseSources
 
-    // Append backend countries below the fixed three, skipping any dns already present.
+    // Rebuild the source list: the fixed three, then the given backend countries
+    // (skipping any dns already present). Called at startup and again after a
+    // platform create/delete, so the list can shrink — keep the current selection
+    // pinned to its dns, and fall back to Global if that dns disappeared, or
+    // sourceIndex would point at the wrong row (or past the end).
     function appendCountries(extra) {
+        var currentDns = sources[sourceIndex] ? sources[sourceIndex].dns : "";
         var seen = {};
         for (var i = 0; i < baseSources.length; i++) seen[baseSources[i].dns] = true;
         var out = baseSources.slice();
@@ -63,7 +69,11 @@ QtObject {
             var e = extra[j];
             if (e.dns && !seen[e.dns]) { seen[e.dns] = true; out.push(e); }
         }
+        var newIndex = 0;
+        for (var k = 0; k < out.length; k++)
+            if (out[k].dns === currentDns) { newIndex = k; break; }
         sources = out;
+        if (sourceIndex !== newIndex) sourceIndex = newIndex;
     }
 
     // Mirrored from Main.currentTab — HomepagePage reads it to suspend its WebView while another tab shows (two live Chromium views crashed the app).
@@ -91,6 +101,25 @@ QtObject {
     readonly property string communityDns: sources[sourceIndex].dns
     readonly property string communityName: sources[sourceIndex].name
 
+    // ISO-3166 alpha-2 of the user's country per Cloudflare's edge, resolved once
+    // at startup (see services/GeoService.js). "" = not detected (offline, VPN,
+    // or Cloudflare reported XX) — every consumer must treat that as "no hint"
+    // and keep its normal layout, never block on it.
+    property string detectedCountryCode: ""
+
+    // sources row for an ISO-3166 alpha-2 code, or -1 when we have no community
+    // for it. Skips row 0: Global is the combined feed, not a country, so it can
+    // never be the "detected" row. Shared by Main (auto-select on launch) and
+    // CommunityPicker (hoist to top) so both agree on the match.
+    function indexForCountryCode(code) {
+        if (!code) return -1;
+        var want = String(code).toLowerCase();
+        for (var i = 1; i < sources.length; i++) {
+            if (Flags.flagCodeFromTitle(sources[i].name || "") === want) return i;
+        }
+        return -1;
+    }
+
     // Map of community dns -> icon URL, fetched from the backend at startup so the source switcher shows each country's real icon.
     property var iconByDns: ({})
 
@@ -99,6 +128,19 @@ QtObject {
 
     // Map of every community (string id -> {id,title,dns,icon,...}) at any nesting depth, unlike superhubChildrenById
     property var communityById: ({})
+
+    // { id: true } for the top level of that tree — the country hubs. They hold
+    // platforms, you don't post in them, and their icon lives in iconByDns (a
+    // flag) rather than on the record, so anything listing postable platforms
+    // has to skip them. childCount alone doesn't: a country with no platforms
+    // yet looks exactly like a leaf.
+    property var topLevelCommunityIds: ({})
+
+    // { id: true } for the community the Global feed hides (?exclude_home=1) and
+    // all its descendants — the client-side mirror of serey-api's
+    // getHiddenFeedIds(). Anything choosing communities itself (My Feed's
+    // suggestions) must skip these, or it offers what the feeds filter out.
+    property var hiddenCommunityIds: ({})
 
     // Looks up a community's {title, icon, dns, ...} by id from the cached tree, or null if unknown
     function communityInfoFor(id) {

@@ -25,22 +25,37 @@ Item {
     onPChanged: {
         if (Session.isLoggedIn && p.author && p.author !== Session.username)
             FollowStore.load(Config.baseUrl, Session.username, p.author);
+        _syncVoteBar();
+    }
 
-        if (galVoteBar) {
-            var cached = VoteService.getCached(p.author || "", p.permlink || "");
-            if (cached) {
-                galVoteBar.upvoted = cached.upvoted;
-                galVoteBar.flagged = cached.flagged;
-                galVoteBar.votes = cached.votes;
-                if (cached.payout) galVoteBar.payout = cached.payout;
-            } else {
-                var me = Session.username || "";
-                galVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
-                galVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
-                // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
-                galVoteBar.votes = p.votes || 0;
-                galVoteBar.payout = p.payout || "";
-            }
+    // ListModel.set() mutates the object the delegate already holds as `p` —
+    // the reference never changes, so onPChanged does NOT fire on an in-place
+    // row swap and the imperatively-assigned vote count/payout would keep the
+    // previous post's values (see PostCard, same fix).
+    readonly property int _pVotes: p.votes || 0
+    readonly property string _pPayout: p.payout || ""
+    readonly property string _pPermlink: p.permlink || ""
+    on_PVotesChanged: _syncVoteBar()
+    on_PPayoutChanged: _syncVoteBar()
+    on_PPermlinkChanged: _syncVoteBar()
+
+    Component.onCompleted: _syncVoteBar()
+
+    function _syncVoteBar() {
+        if (!galVoteBar) return;
+        var cached = VoteService.getCached(p.author || "", p.permlink || "");
+        if (cached) {
+            galVoteBar.upvoted = cached.upvoted;
+            galVoteBar.flagged = cached.flagged;
+            galVoteBar.votes = cached.votes;
+            if (cached.payout) galVoteBar.payout = cached.payout;
+        } else {
+            var me = Session.username || "";
+            galVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
+            galVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
+            // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
+            galVoteBar.votes = p.votes || 0;
+            galVoteBar.payout = p.payout || "";
         }
     }
 

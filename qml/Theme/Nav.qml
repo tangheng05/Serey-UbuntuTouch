@@ -31,5 +31,15 @@ QtObject {
     signal filterCategory(string category, var community)
     property string pendingCategory: ""
 
+    // Re-fetch get-communities and rebuild Config.sources — emitted after
+    // creating or deleting a platform so the community picker reflects it
+    // without an app restart. Main acts (it owns the fetch + icon mapping).
+    signal refreshCommunities()
+
+    // Emitted right after a login/signup completes at a primary entry point
+    // (not a login-gate interruption): land on My Feed instead of Homepage.
+    // Session-only — app relaunch always shows the normal Homepage.
+    signal goToFeed()
+
     function home() { goToTab(0); }
 }

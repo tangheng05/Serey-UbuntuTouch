@@ -314,7 +314,7 @@ Page {
                         Toast.success(Lang.tr("Account created. Log in with your key."));
                         stack.pop();   // this self-custody page
                         stack.pop();   // the Create Account chooser
-                        stack.push(Qt.resolvedUrl("LoginPage.qml"));
+                        stack.push(Qt.resolvedUrl("LoginPage.qml"), { afterSuccess: "feed" });
                     }
                 }
             }

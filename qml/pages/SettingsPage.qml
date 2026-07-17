@@ -544,7 +544,7 @@ Page {
                             AbstractButton {
                                 id: loginBtn
                                 width: loginLbl.width; height: loginLbl.height
-                                onClicked: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
+                                onClicked: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"), { afterSuccess: "feed" })
                                 Label {
                                     id: loginLbl
                                     text: Lang.tr("Log in")

@@ -1,6 +1,7 @@
 import QtQuick 2.7
 import QtQuick.Window 2.2
 import QtWebEngine 1.10
+import Lomiri.Components 1.3
 
 Item {
     id: root
@@ -10,6 +11,14 @@ Item {
     // Detail playback shows native controls; reels hide them + loop
     property bool controls: true
     property bool loop: false
+
+    // Inside this WebView a CSS pixel is a physical pixel (no devicePixelRatio),
+    // so fixed-px controls that look right on a desktop monitor render ~2.6x
+    // smaller on a phone panel — too small to tap. Scale the control bar by the
+    // same grid-unit ratio the rest of the app adapts with (gu = 8px on desktop,
+    // ~21px on the Pixel 3a); quantized to 0.25 so reloads on trivial width
+    // changes can't thrash _load().
+    property real cssScale: Math.max(1, Math.round((units.gu(1) / 8) * 4) / 4)
     // True once the <video> has a decoded frame — hosts fade in on this so the WebView's blank first frame never flashes.
     property bool ready: false
     property bool paused: false
@@ -74,6 +83,7 @@ Item {
     onDirectVideoChanged: _load()
     onControlsChanged: _load()
     onLoopChanged: _load()
+    onCssScaleChanged: _load()   // sizes are baked into the wrapper HTML
     Component.onCompleted: _load()
 
     // Off-the-record: unlike the Homepage profile, video doesn't need persistent login
@@ -178,11 +188,23 @@ Item {
                'function seek(x){var b=trk.getBoundingClientRect();' +
                'var p=Math.min(1,Math.max(0,(x-b.left)/b.width));' +
                'if(v.duration&&isFinite(v.duration))v.currentTime=p*v.duration;upd();poke();}' +
+               // The drag latch must be release-proof: UT's QtWebEngine can drop the
+               // pointerup after a track tap, and a stuck drag turned every later
+               // touch into a seek clamped to 0 (left) or the end (right). Belt and
+               // braces: release on buttons-up during a move, on window-level
+               // up/cancel (capture can die without the track ever seeing them),
+               // and on lostpointercapture.
                'trk.addEventListener("pointerdown",function(e){drag=true;' +
-               'trk.setPointerCapture(e.pointerId);seek(e.clientX);e.preventDefault();});' +
-               'trk.addEventListener("pointermove",function(e){if(drag)seek(e.clientX);});' +
-               'trk.addEventListener("pointerup",function(){drag=false;poke();});' +
-               'trk.addEventListener("pointercancel",function(){drag=false;});' +
+               'try{trk.setPointerCapture(e.pointerId);}catch(_){}' +
+               'seek(e.clientX);e.preventDefault();});' +
+               'trk.addEventListener("pointermove",function(e){' +
+               'if(!drag)return;' +
+               'if(e.buttons===0){drag=false;poke();return;}' +
+               'seek(e.clientX);});' +
+               'trk.addEventListener("lostpointercapture",function(){drag=false;});' +
+               'window.addEventListener("pointerup",function(){if(drag){drag=false;poke();}},true);' +
+               'window.addEventListener("pointercancel",function(){drag=false;},true);' +
+               'window.addEventListener("blur",function(){drag=false;});' +
                'pb.addEventListener("click",function(){if(v.paused){v.play();}else{v.pause();}});' +
                'fs.addEventListener("click",function(){if(document.fullscreenElement)' +
                '{document.exitFullscreen();}else{document.documentElement.requestFullscreen();}});' +
@@ -197,26 +219,34 @@ Item {
     function _videoHtml() {
         var attrs = 'autoplay playsinline webkit-playsinline preload="auto"';
         if (loop) attrs += ' loop';
+        // Every control dimension multiplies by cssScale so the bar has the same
+        // physical size (and tappable area) on a dense phone panel as on a desktop
+        // monitor. px() rounds to whole CSS pixels.
+        var s = root.cssScale;
+        function px(v) { return Math.round(v * s) + 'px'; }
         return '<!DOCTYPE html><html><head>' +
                '<meta name="viewport" content="width=device-width, initial-scale=1">' +
                '<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}' +
                'video{width:100%;height:100%;object-fit:contain;background:#000}' +
-               '#bar{position:fixed;left:0;right:0;bottom:0;padding:6px 10px 8px;' +
+               '#bar{position:fixed;left:0;right:0;bottom:0;' +
+               'padding:' + px(6) + ' ' + px(10) + ' ' + px(8) + ';' +
                'background:linear-gradient(transparent,rgba(0,0,0,0.75));' +
-               'font:12px/1 sans-serif;color:#fff;transition:opacity .2s;' +
+               'font:' + px(12) + '/1 sans-serif;color:#fff;transition:opacity .2s;' +
                '-webkit-user-select:none;user-select:none}' +
                '#bar.hide{opacity:0;pointer-events:none}' +
                '#row{display:flex;align-items:center}' +
-               '.btn{width:26px;height:26px;flex:none;fill:#fff;cursor:pointer}' +
+               '.btn{width:' + px(30) + ';height:' + px(30) + ';flex:none;fill:#fff;cursor:pointer}' +
                '.btn svg{width:100%;height:100%}' +
-               '#track{position:relative;flex:1;height:26px;margin:0 8px;' +
+               // min-width keeps the track usable if the fixed elements (buttons +
+               // time label) ever crowd a narrow stage at high scale.
+               '#track{position:relative;flex:1;min-width:' + px(60) + ';height:' + px(30) + ';margin:0 ' + px(8) + ';' +
                'display:flex;align-items:center;touch-action:none;cursor:pointer}' +
-               '#trk,#fill{position:absolute;height:4px;border-radius:2px}' +
+               '#trk,#fill{position:absolute;height:' + px(4) + ';border-radius:' + px(2) + '}' +
                '#trk{left:0;right:0;background:rgba(255,255,255,0.35)}' +
                '#fill{left:0;width:0;background:#0083FA}' +
-               '#knob{position:absolute;width:12px;height:12px;border-radius:6px;' +
-               'background:#fff;left:0;margin-left:-6px}' +
-               '#t{flex:none;padding-right:8px;font-variant-numeric:tabular-nums}' +
+               '#knob{position:absolute;width:' + px(14) + ';height:' + px(14) + ';border-radius:' + px(7) + ';' +
+               'background:#fff;left:0;margin-left:-' + px(7) + '}' +
+               '#t{flex:none;padding-right:' + px(8) + ';font-variant-numeric:tabular-nums}' +
                '</style></head>' +
                '<body><video src="' + embedUrl + '" ' + attrs + '></video>' +
                (controls ? _controlsHtml() : '') +

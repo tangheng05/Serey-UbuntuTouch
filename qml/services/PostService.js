@@ -10,9 +10,17 @@ function _list(baseUrl, path, params, token, onOk, onErr) {
     }, onErr);
 }
 
-// Only posts from authors the user follows, excluding community-subscription posts (unlike the old list-by-feed-mixed); same params/response shape.
+// Only posts from authors the user follows, excluding community-subscription posts; same params/response shape.
 function listFeedFollowing(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-feed-following", params, token, onOk, onErr);
+}
+
+// Posts from authors the user follows OR communities they subscribe to (server
+// side: `EXISTS(follows) OR EXISTS(view_community_subscribers)`). A superset of
+// listFeedFollowing — this is what My Feed uses, so subscribing to a community
+// actually fills it.
+function listFeedMixed(baseUrl, params, token, onOk, onErr) {
+    return _list(baseUrl, "/serey-web/list-by-feed-mixed", params, token, onOk, onErr);
 }
 
 function listDrumFeed(baseUrl, params, token, onOk, onErr) {
@@ -53,10 +61,11 @@ function listGallery(baseUrl, params, token, onOk, onErr) {
     }, onErr);
 }
 
+// Returns the xhr so callers can abort a stale request (My Feed does).
 function listByAuthor(baseUrl, author, params, token, onOk, onErr) {
     var p = params || {};
     p.author = author;
-    _list(baseUrl, "/serey-web/list-by-author", p, token, onOk, onErr);
+    return _list(baseUrl, "/serey-web/list-by-author", p, token, onOk, onErr);
 }
 
 // An author's gallery posts — mirrors listGallery's filtering + pagination

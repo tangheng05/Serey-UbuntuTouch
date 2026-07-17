@@ -33,23 +33,45 @@ Item {
     onPChanged: {
         if (Session.isLoggedIn && p.author && p.author !== Session.username)
             FollowStore.load(Config.baseUrl, Session.username, p.author);
+        _syncVoteBar();
+    }
 
-        // Vote state checks session cache first (survives navigation), falling back to the model's voters array; set imperatively so VoteBar's own changes aren't overridden.
-        if (cardVoteBar) {
-            var cached = VoteService.getCached(p.author || "", p.permlink || "");
-            if (cached) {
-                cardVoteBar.upvoted = cached.upvoted;
-                cardVoteBar.flagged = cached.flagged;
-                cardVoteBar.votes = cached.votes;
-                if (cached.payout) cardVoteBar.payout = cached.payout;
-            } else {
-                var me = Session.username || "";
-                cardVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
-                cardVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
-                // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
-                cardVoteBar.votes = p.votes || 0;
-                cardVoteBar.payout = p.payout || "";
-            }
+    /*
+     * The list refreshes rows with ListModel.set(), which MUTATES the very object
+     * the delegate already holds as `p` — the reference never changes, so
+     * onPChanged does NOT fire. Declarative bindings (p.title, p.excerpt) still
+     * update, but the vote count and payout are assigned imperatively below and
+     * would keep the PREVIOUS post's values: a brand-new post rendered with a
+     * stale cached row's "4 votes / 2332.290 SEREY". Watching the values
+     * themselves is what re-runs the sync on an in-place row swap.
+     */
+    readonly property int _pVotes: p.votes || 0
+    readonly property string _pPayout: p.payout || ""
+    readonly property string _pPermlink: p.permlink || ""
+    on_PVotesChanged: _syncVoteBar()
+    on_PPayoutChanged: _syncVoteBar()
+    on_PPermlinkChanged: _syncVoteBar()
+
+    // Vote state checks session cache first (survives navigation), falling back to the model's voters array; set imperatively so VoteBar's own changes aren't overridden.
+    // Children exist by now, so a row whose values arrived before the bar was
+    // built still gets its counts.
+    Component.onCompleted: _syncVoteBar()
+
+    function _syncVoteBar() {
+        if (!cardVoteBar) return;
+        var cached = VoteService.getCached(p.author || "", p.permlink || "");
+        if (cached) {
+            cardVoteBar.upvoted = cached.upvoted;
+            cardVoteBar.flagged = cached.flagged;
+            cardVoteBar.votes = cached.votes;
+            if (cached.payout) cardVoteBar.payout = cached.payout;
+        } else {
+            var me = Session.username || "";
+            cardVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
+            cardVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
+            // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
+            cardVoteBar.votes = p.votes || 0;
+            cardVoteBar.payout = p.payout || "";
         }
     }
 
@@ -202,17 +224,57 @@ Item {
                 radius: Style.thumbRadius
                 color: Style.iconBackground
             }
+            /*
+             * Double-buffered cover. A QML Image discards its old frame the moment
+             * `source` changes, so when a tab switch rewrites the row the card went
+             * black until the new image arrived — on the phone that's a full
+             * re-download (the pixmap cache evicts: ten covers decode to ~20MB
+             * there, versus ~3MB on desktop where a gu is 8px, which is why the
+             * desktop never showed it). Instead, `coverLoader` (never rendered)
+             * fetches the new source while `coverImg` keeps showing the last-good
+             * frame, slightly dimmed to signal the transition; the swap happens
+             * only on READY and is a guaranteed pixmap-cache hit because the
+             * loader still holds a reference. No disk, no extra downloads.
+             */
             Image {
-                id: coverImg
+                id: coverLoader
                 anchors.fill: parent
                 source: p.thumbnail || ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 autoTransform: true     // honour EXIF orientation
-                sourceSize.width: cover.width
+                // HIG scaling: snap the decode size to a breakpoint instead of tracking
+                // `cover.width`, which re-rasterized every visible cover on any width
+                // change (window resize, entering/leaving the split pane). Mirrors VideoCard.
+                sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
+                onStatusChanged: {
+                    if (status === Image.Ready) {
+                        coverImg.source = source;
+                    } else if (status === Image.Error || String(source).length === 0) {
+                        // Unloadable or removed cover: don't keep showing the
+                        // previous article's image under this one's title.
+                        coverImg.source = "";
+                    }
+                }
+            }
+            Image {
+                id: coverImg
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                autoTransform: true
+                sourceSize.width: coverLoader.sourceSize.width
+                visible: false
+                // While the loader replaces a stale frame, fade the old image fully
+                // out (to the placeholder) rather than dimming it: a 40% ghost of
+                // the previous tab's photo under the new title read as the wrong
+                // thumbnail. The Behavior is what separates this from the original
+                // bug — a smooth fade out and in, not an instant cut to black.
+                readonly property bool transitioning:
+                    coverLoader.status === Image.Loading && status === Image.Ready
                 Behavior on opacity { NumberAnimation { duration: 200 } }
-                opacity: status === Image.Ready ? 1.0 : 0.0
+                opacity: status === Image.Ready ? (transitioning ? 0.0 : 1.0) : 0.0
             }
             Rectangle {
                 id: coverMask

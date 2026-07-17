@@ -17,6 +17,62 @@ Item {
     // Per-source cache: undefined = not fetched, [] = empty, [...] = data
     property var cache: ({})
     property int loadingIndex: -1
+
+    // Both `cache` and `expandedIndex` are keyed by ROW INDEX, so they only stay
+    // valid while Config.sources holds still. After a platform create/delete the
+    // source list is rebuilt and can shrink — every row below the removed country
+    // shifts up one, and the stale cache then showed the deleted country's
+    // children under whichever country inherited its index. The children data is
+    // also genuinely stale at that point, so drop everything and re-fetch on the
+    // next expand.
+    property Connections _sourcesWatcher: Connections {
+        target: Config
+        function onSourcesChanged() {
+            picker.cache = ({})
+            picker.expandedIndex = -1
+            picker.loadingIndex = -1
+        }
+    }
+    /*
+     * Geo hint (Config.detectedCountryCode, via Cloudflare — see GeoService.js):
+     * put the user's own country at the top, expanded, and fold everything else
+     * behind "See more".
+     *
+     * This reorders the VIEW ONLY. Config.sources must keep its order:
+     * Config.sourceIndex is an index into it, and this picker's `cache`,
+     * `expandedIndex` and keyboard cursor are all keyed by that same index (see
+     * the _sourcesWatcher above, which exists precisely because index-keyed
+     * state goes stale). So each display row carries its real index in
+     * `_realIndex`, and every id/cache/selection path keeps using that.
+     *
+     * No detection, or a country we have no community for -> detectedIndex is
+     * -1 and the sheet renders exactly as it always has.
+     */
+    readonly property int detectedIndex: Config.indexForCountryCode(Config.detectedCountryCode)
+    property bool showAll: false
+    readonly property var displaySources: picker._buildDisplaySources()
+
+    function _buildDisplaySources() {
+        var out = []
+        for (var i = 0; i < Config.sources.length; i++) {
+            var row = {}
+            var s = Config.sources[i]
+            for (var k in s) row[k] = s[k]
+            row._realIndex = i          // index into Config.sources, NOT the display position
+            out.push(row)
+        }
+        var di = picker.detectedIndex
+        if (di < 0) return out          // undetected: today's list, untouched
+
+        // Global stays pinned at the top — it's the default combined feed and
+        // the app's home row, so the geo hint slots in BELOW it rather than
+        // pushing it down. (di is never 0: _indexForCountry skips Global.)
+        var mine = out.splice(di, 1)[0]
+        out.splice(1, 0, mine)
+        // Collapsed: Global + the user's country. The rest are one tap away.
+        return picker.showAll ? out : [out[0], mine]
+    }
+
     // Map of communityId (string) → true for communities the user is subscribed to.
     property var subscribedMap: ({})
     property int subscribedRev: 0
@@ -27,6 +83,11 @@ Item {
         cpBackdropFade.start()
         cpSlide.start()
         if (Session.isLoggedIn && !subscriptionsLoaded) _loadSubscriptions()
+        // Geo-detected country opens expanded: it's the one row we're confident
+        // the user wants, and collapsed it would show nothing but its own name.
+        // Only when the user hasn't already expanded something themselves.
+        if (picker.detectedIndex > 0 && picker.expandedIndex === -1)
+            picker._toggleExpand(picker.detectedIndex)
         // Keyboard users can open this via the header pill (Enter): own the keys
         // while open so Escape dismisses and Tab can't tunnel to the page below.
         picker._prevFocus = Window.activeFocusItem
@@ -48,9 +109,13 @@ Item {
     property bool navActive: false
 
     // Selectable rows in visual order; category headers are labels, so not included.
+    // Walks displaySources, not Config.sources: the geo hint can hoist a row to
+    // the top and fold the rest behind "See more", and the cursor must visit
+    // what's actually on screen, in that order. `src` stays the REAL index.
     function _navEntries() {
-        var out = [], srcs = Config.sources || []
-        for (var i = 0; i < srcs.length; i++) {
+        var out = [], srcs = picker.displaySources || []
+        for (var d = 0; d < srcs.length; d++) {
+            var i = srcs[d]._realIndex
             out.push({ src: i, cat: -1, com: -1 })
             if (picker.expandedIndex !== i) continue
             var cats = picker.cache[i] || []
@@ -423,16 +488,18 @@ Item {
 
                 // ── Source rows ──────────────────────────────────────────
                 Repeater {
-                    model: Config.sources
+                    // Display order, which may differ from Config.sources when a
+                    // country is geo-detected — srcIndex carries the real index.
+                    model: picker.displaySources
 
                     delegate: Column {
                         id: sourceCol
                         width: sheetContent.width
                         // Global (index 0) applies no community filter and is shown as a plain selectable row with no chevron (no sub-communities).
                         visible: true
-                        property int srcIndex: index
-                        property bool isExpanded: picker.expandedIndex === index
-                        property var cats: picker.cache[index] || []
+                        property int srcIndex: modelData._realIndex
+                        property bool isExpanded: picker.expandedIndex === sourceCol.srcIndex
+                        property var cats: picker.cache[sourceCol.srcIndex] || []
 
                         // Parent row
                         Item {
@@ -460,7 +527,7 @@ Item {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: units.gu(5); height: width; radius: width / 2
                                     color: Style.iconBackground
-                                    border.width: Config.sourceIndex === index && !Config.selectedSubCommunity ? units.dp(2) : 0
+                                    border.width: Config.sourceIndex === sourceCol.srcIndex && !Config.selectedSubCommunity ? units.dp(2) : 0
                                     border.color: Style.brand
 
                                     CircleImage {
@@ -472,7 +539,7 @@ Item {
                                         anchors.centerIn: parent
                                         width: units.gu(2.5); height: width
                                         name: "language-chooser"
-                                        color: Config.sourceIndex === index ? Style.brand : Style.textSecondary
+                                        color: Config.sourceIndex === sourceCol.srcIndex ? Style.brand : Style.textSecondary
                                         visible: !srcIcon.loaded
                                     }
                                 }
@@ -913,6 +980,47 @@ Item {
                             }
                         }
                     }
+                }
+
+                // ── See more ─────────────────────────────────────────────
+                // Only exists while a geo-detected country is holding the list
+                // down to itself; expanding is one-way for the session, so the
+                // full list behaves exactly as it always has once shown.
+                AbstractButton {
+                    id: seeMoreBtn
+                    visible: picker.detectedIndex >= 0 && !picker.showAll
+                    width: sheetContent.width
+                    height: visible ? units.gu(6) : 0
+                    onClicked: picker.showAll = true
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: seeMoreBtn.pressed ? Style.pressed : "transparent"
+                    }
+                    Rectangle {
+                        anchors { top: parent.top; left: parent.left; right: parent.right }
+                        height: units.dp(1)
+                        color: Style.divider
+                    }
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: Style.spacingS
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Lang.tr("See more")
+                            font.pixelSize: Style.fontRegular
+                            font.weight: Font.DemiBold
+                            font.family: Style.fontFor(text)
+                            color: Style.brand
+                        }
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(2); height: width
+                            name: "go-down"
+                            color: Style.brand
+                        }
+                    }
+                    KeyTapArea { onActivated: seeMoreBtn.clicked() }
                 }
 
                 Item { width: 1; height: Style.spacingL }

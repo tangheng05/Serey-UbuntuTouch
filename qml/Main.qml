@@ -7,11 +7,14 @@ import "Session"
 import "components"
 import "services/CommunityService.js" as CommunityService
 import "services/Flags.js" as Flags
+import "services/GeoService.js" as GeoService
 import "services/AccountService.js" as AccountService
 import "services/Http.js" as Http
 import "services/NotificationService.js" as NotificationService
 import "services/BlockedUsers.js" as BlockedUsers
 import "services/PaymentService.js" as PaymentService
+import "services/PostService.js" as PostService
+import "services/VideoService.js" as VideoService
 
 MainView {
     id: root
@@ -74,13 +77,63 @@ MainView {
         });
 
         // Needed immediately: the header pill icons and can-post gates read it.
+        _loadCommunities();
+
+        // Country hint for the community picker. Fire-and-forget: it only
+        // reorders that sheet, so a failure (offline, VPN, unknown IP) must
+        // leave the app exactly as it is today.
+        GeoService.detectCountry(
+            function (code) { Config.detectedCountryCode = code; root._applyGeoSource(); },
+            function () { /* no hint — Global stays selected, picker keeps its order */ });
+
+        _prefetchFeeds();
+    }
+
+    /*
+     * Open on the user's own country instead of Global, once we know it.
+     *
+     * Needs BOTH the geo hint and the source list, which race — so this is
+     * called from whichever lands second and no-ops until both are in.
+     *
+     * Only ever moves OFF Global: sourceIndex isn't persisted, so every launch
+     * starts there and there's no saved choice to trample — but detection is
+     * async, and a user who picked a community while it was in flight must keep
+     * it. That's also why it can't run again later (Nav.refreshCommunities
+     * rebuilds sources after a platform create/delete); by then any selection is
+     * the user's own.
+     */
+    property bool _geoSourceApplied: false
+    // Explicit flag, NOT sources.length: `sources` is seeded with baseSources
+    // (Global/Netherlands/US) before the fetch, so a length check reads as
+    // "loaded" while the country rows are still missing — the geo hint would
+    // then find no match, latch, and never retry.
+    property bool _communitiesLoaded: false
+    function _applyGeoSource() {
+        if (root._geoSourceApplied) return;
+        if (Config.detectedCountryCode === "" || !root._communitiesLoaded) return;
+        var i = Config.indexForCountryCode(Config.detectedCountryCode);
+        root._geoSourceApplied = true;   // both inputs are in: this is the decision
+        if (i > 0 && Config.sourceIndex === 0 && !Config.selectedSubCommunity)
+            Config.sourceIndex = i;
+    }
+
+    // Fetch get-communities and rebuild the picker's source list + every derived
+    // map. Ran once at startup, and again via Nav.refreshCommunities() after a
+    // platform is created or deleted — Config.sources was otherwise never
+    // refreshed, so the picker only showed the change after an app restart.
+    function _loadCommunities() {
         CommunityService.listAll(Config.baseUrl,
-            function (list, superhubChildren, byId) {
+            function (list, superhubChildren, byId, hiddenIds) {
+                Config.hiddenCommunityIds = hiddenIds || ({});
                 var icons = CommunityService.iconMap(list);
                 Config.allowPostByDns = CommunityService.allowPostMap(list);
                 Config.videoAllowPostByDns = CommunityService.videoAllowPostMap(list);
                 Config.superhubChildrenById = superhubChildren || ({});
                 Config.communityById = byId || ({});
+                // listAll's `list` is the top level of the tree, i.e. the countries.
+                var topIds = {};
+                for (var t = 0; t < list.length; t++) topIds[String(list[t].id)] = true;
+                Config.topLevelCommunityIds = topIds;
 
                 // dns of the three fixed rows — leave their icons untouched.
                 var baseDns = {};
@@ -101,8 +154,68 @@ MainView {
 
                 Config.iconByDns = icons;
                 Config.appendCountries(extra);
+                // The country rows just landed — if the geo hint beat them here,
+                // this is where it gets applied.
+                root._communitiesLoaded = true;
+                root._applyGeoSource();
             },
             function (err) { /* keep globe fallback */ });
+    }
+
+    // After a platform create/delete: refresh now, then once more past the
+    // server's 60s in-process cache TTL. The write busts Redis and its own
+    // instance's local copy, but another instance (or a not-yet-redeployed API)
+    // can still serve its stale local entry to the immediate re-fetch — the
+    // second pass lands after every local TTL has expired.
+    property Timer _communitiesRetry: Timer {
+        interval: 65000
+        repeat: false
+        onTriggered: root._loadCommunities()
+    }
+    Connections {
+        target: Nav
+        function onRefreshCommunities() {
+            root._loadCommunities();
+            root._communitiesRetry.restart();
+        }
+    }
+
+    /*
+     * Warm the News and Video feeds while the user is still on the Homepage, so
+     * tapping either tab shows rows instead of a skeleton. Worth the most on
+     * Video: that request costs seconds server-side, and starting it here means
+     * it has usually landed before the user gets there.
+     *
+     * Data only — never the pages. _ensureTab stays lazy on purpose (see its
+     * comment): instantiating the tabs at launch is what made the Homepage web
+     * view janky, whereas this is ~50KB of JSON.
+     *
+     * Not deferred behind startupSettleTimer: a prefetch that arrives 3.5s late
+     * has missed the tab tap it exists to cover. FeedCache coalesces, so a user
+     * who taps News immediately attaches to this request rather than racing it.
+     */
+    function _prefetchFeeds() {
+        FeedCache.request(FeedCache.newsKey(0, Config.communityId),
+            function (ok, err) {
+                var p = { limit: Config.pageSize, offset: 0 };
+                if (Config.communityId > 0) p.community_id = Config.communityId;
+                else p.exclude_home = 1;
+                return PostService.listTrending(Config.baseUrl, p, Session.token, ok, err);
+            },
+            function (result) { /* stored by FeedCache; the page reads it */ },
+            function (err) { /* offline: the page will show its own error */ });
+
+        FeedCache.request(FeedCache.videoKey(Config.communityId),
+            function (ok, err) {
+                // Must match VideoPage's first-page request (initialLimit) or the
+                // page's own fetch won't coalesce with this one.
+                var p = { limit: 30, offset: 0 };
+                if (Config.communityId > 0) p.community_id = Config.communityId;
+                else p.exclude_home = 1;
+                return VideoService.listVideos(Config.baseUrl, p, Session.token, ok, err);
+            },
+            function (result) { /* stored by FeedCache; the page reads it */ },
+            function (err) { /* offline: the page will show its own error */ });
     }
 
     // Non-critical launch work is deferred so the Homepage web view's first load gets the CPU/network to itself on slow devices.
@@ -329,6 +442,16 @@ MainView {
             while (newsStack.depth > 1)
                 newsStack.pop();
         }
+        // Fresh login/signup: land on Homepage tab with My Feed pushed on top.
+        function onGoToFeed() {
+            root.currentTab = 0;
+            root._ensureTab(0);
+            while (settingsStack.depth > 1)
+                settingsStack.pop();
+            while (homeStack.depth > 1)
+                homeStack.pop();
+            homeStack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
+        }
     }
 
     // --- Global header (community pill + logo) ----------------------------
@@ -411,7 +534,11 @@ MainView {
                 width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
                 height: width
                 onClicked: {
-                    var vp = videoStack.currentPage;
+                    // Target the Video master page, not whatever's open in the
+                    // detail column: in split mode currentPage is VideoDetailPage,
+                    // which has no reload(), so the guard below silently skipped
+                    // the connect and the feed never showed the new upload.
+                    var vp = videoStack.rootPage;
                     var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
                     if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);
                 }

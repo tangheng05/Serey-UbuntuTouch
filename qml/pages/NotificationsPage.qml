@@ -358,6 +358,14 @@ Page {
                 page.loadPage()
         }
 
+        // Prefetch ~2 screens early (see NewsPage) — atYEnd stays as fallback.
+        onContentYChanged: {
+            if (!page.loading && !page.endReached
+                    && contentHeight > height
+                    && contentY + height >= contentHeight - height * 2)
+                page.loadPage();
+        }
+
         // Empty state
         Label {
             anchors.centerIn: parent

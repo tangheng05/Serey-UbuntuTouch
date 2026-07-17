@@ -376,6 +376,20 @@ Page {
                 border.width: units.dp(1.5)
                 border.color: titleField.activeFocus ? Style.brand : Style.divider
 
+                // The TextInput is one line tall and pinned to the top, so most
+                // of this box (padding, the counter's row) was dead space and the
+                // keyboard only opened if you hit that line exactly. Declared
+                // FIRST so it sits under the input: taps on the text itself still
+                // reach the input, this only catches the surrounding gap.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        titleField.forceActiveFocus();
+                        titleField.cursorPosition = titleField.length;
+                        Qt.inputMethod.show();
+                    }
+                }
+
                 TextInput {
                     id: titleField
                     anchors {
@@ -425,6 +439,20 @@ Page {
                 clip: true
                 border.width: units.dp(1.5)
                 border.color: bodyArea.activeFocus ? Style.brand : Style.divider
+
+                // Same as the title: the editor is only as tall as its text, so
+                // an empty gu(25) box was tappable on its first line alone.
+                // Declared FIRST so it sits under the editor — taps on the text
+                // (and drag-to-select) still go to it; this catches the blank
+                // area below and drops the cursor at the end.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        bodyArea.forceActiveFocus();
+                        bodyArea.cursorPosition = bodyArea.length;
+                        Qt.inputMethod.show();
+                    }
+                }
 
                 TextEdit {
                     id: bodyArea

@@ -123,7 +123,8 @@ MainView {
     // refreshed, so the picker only showed the change after an app restart.
     function _loadCommunities() {
         CommunityService.listAll(Config.baseUrl,
-            function (list, superhubChildren, byId) {
+            function (list, superhubChildren, byId, hiddenIds) {
+                Config.hiddenCommunityIds = hiddenIds || ({});
                 var icons = CommunityService.iconMap(list);
                 Config.allowPostByDns = CommunityService.allowPostMap(list);
                 Config.videoAllowPostByDns = CommunityService.videoAllowPostMap(list);

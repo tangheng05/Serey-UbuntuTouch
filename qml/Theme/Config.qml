@@ -128,6 +128,12 @@ QtObject {
     // Map of every community (string id -> {id,title,dns,icon,...}) at any nesting depth, unlike superhubChildrenById
     property var communityById: ({})
 
+    // { id: true } for the community the Global feed hides (?exclude_home=1) and
+    // all its descendants — the client-side mirror of serey-api's
+    // getHiddenFeedIds(). Anything choosing communities itself (My Feed's
+    // suggestions) must skip these, or it offers what the feeds filter out.
+    property var hiddenCommunityIds: ({})
+
     // Looks up a community's {title, icon, dns, ...} by id from the cached tree, or null if unknown
     function communityInfoFor(id) {
         var c = communityById[String(id)];

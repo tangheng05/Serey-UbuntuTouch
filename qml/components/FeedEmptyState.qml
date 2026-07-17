@@ -2,60 +2,109 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
-import "../services/PostService.js" as PostService
-import "../services/BlockedUsers.js" as BlockedUsers
+import "../services/CommunitySubscriberService.js" as SubscriberService
 
-// My Feed's empty state. A new account follows nobody, so the feed is empty by
-// definition — this offers the one action that fills it.
+// My Feed's empty state. A new account subscribes to nothing and follows nobody,
+// so the feed is empty by definition — this offers the action that fills it.
 //
-// It suggests PEOPLE, not communities: /serey-web/list-by-feed-following keys
-// strictly on the `follows` table and explicitly excludes community-subscription
-// posts, so subscribing to a community would leave the feed just as empty.
-// There's no "who to follow" endpoint, so active authors are derived from
-// trending posts.
+// Suggesting communities only works because My Feed reads
+// /serey-web/list-by-feed-mixed (follows OR community subscriptions). If that
+// ever reverts to list-by-feed-following, subscribing here would leave the feed
+// just as empty and this screen becomes a lie — keep the two in step.
+//
+// Suggestions are ranked by subscriber count ("active") and come from the
+// community tree Main.qml already fetched at startup, so there's no extra
+// get-communities round-trip.
 Item {
     id: root
 
-    // Emitted after a follow, so the feed can refetch.
+    // Emitted after a subscribe, so the feed can refetch.
     signal followed()
     signal writePostRequested()
 
-    property var suggested: []      // [{ author, authorImage }]
-    property bool loading: true
+    property var candidates: []
+    property var counts: ({})       // id (string) -> subscriber count
+    property int pendingCounts: 0
+    property var suggested: []
     readonly property int maxSuggestions: 5
 
-    Component.onCompleted: _load()
+    property var subscribedMap: ({})
+    property int subscribedRev: 0
 
-    function _load() {
-        var p = { limit: 40, offset: 0 };
-        if (Config.communityId > 0) p.community_id = Config.communityId;
-        PostService.listTrending(Config.baseUrl, p, Session.token,
-            function (posts) { root._pickAuthors(posts); },
-            function () { root.loading = false; });
+    Component.onCompleted: {
+        _buildCandidates();
+        if (Session.isLoggedIn)
+            SubscriberService.fetchSubscribed(Config.baseUrl, Session.token,
+                function (map) { root.subscribedMap = map; root.subscribedRev++ },
+                function () { /* rows just start unsubscribed */ });
     }
 
-    // Distinct authors from the trending set, minus yourself and anyone blocked.
-    function _pickAuthors(posts) {
-        var blocked = BlockedUsers.loadAll();
-        var seen = {};
+    function _buildCandidates() {
         var out = [];
-        for (var i = 0; i < posts.length && out.length < root.maxSuggestions; i++) {
-            var a = posts[i].author || "";
-            if (!a || seen[a] || blocked[a] || a === Session.username) continue;
-            seen[a] = true;
-            out.push({ author: a, authorImage: posts[i].authorImage || "" });
-            // Seed each button's state from the server (FollowStore is the
-            // app-wide source of truth, so these stay in sync with feed cards).
-            FollowStore.load(Config.baseUrl, Session.username, a);
+        var seen = {};
+        for (var k in Config.communityById) {
+            var c = Config.communityById[k];
+            // Skip country hubs: they hold children, you don't post in them.
+            if (!c || !c.dns || c.childCount > 0 || seen[c.dns]) continue;
+            // Honour the Global feed's exclude_home rule: the hidden community
+            // and its descendants are filtered out of every feed server-side, so
+            // suggesting them would subscribe the user to content they'd never
+            // see. Also why Cambodia's 35 children dominated this list.
+            if (Config.hiddenCommunityIds[String(c.id)]) continue;
+            seen[c.dns] = true;
+            out.push(c);
         }
-        root.suggested = out;
-        root.loading = false;
+        // Cap the pool before fetching counts so a large tree can't fire a
+        // request per community.
+        var pool = out.slice(0, 20);
+        root.candidates = pool;
+        if (pool.length === 0) return;
+        root.pendingCounts = pool.length;
+        for (var i = 0; i < pool.length; i++) _fetchCount(pool[i]);
     }
 
-    function _toggleFollow(author) {
+    function _fetchCount(c) {
+        SubscriberService.subscriberCount(Config.baseUrl, c.id,
+            function (n) { root._onCount(c.id, n); },
+            function () { root._onCount(c.id, 0); });
+    }
+
+    function _onCount(id, n) {
+        var m = {};
+        for (var k in root.counts) m[k] = root.counts[k];
+        m[String(id)] = n;
+        root.counts = m;
+        root.pendingCounts -= 1;
+        if (root.pendingCounts <= 0) _rank();
+    }
+
+    // Most subscribers first ("active"), capped.
+    function _rank() {
+        var list = root.candidates.slice();
+        list.sort(function (a, b) {
+            return (root.counts[String(b.id)] || 0) - (root.counts[String(a.id)] || 0);
+        });
+        root.suggested = list.slice(0, root.maxSuggestions);
+    }
+
+    function _toggleSubscribe(commId, currentlySubscribed) {
         if (!Session.isLoggedIn) return;
-        var nowFollowing = FollowStore.toggle(Config.baseUrl, author, Session.token);
-        if (nowFollowing) root.followed();
+        var id = String(commId);
+        function newMap(add) {
+            var m = {};
+            for (var k in root.subscribedMap) m[k] = true;
+            if (add) m[id] = true; else delete m[id];
+            return m;
+        }
+        if (currentlySubscribed) {
+            SubscriberService.unsubscribe(Config.baseUrl, Session.token, id,
+                function () { root.subscribedMap = newMap(false); root.subscribedRev++; },
+                function (err) { Toast.show(err.message || Lang.tr("Couldn't unsubscribe. Try again.")); });
+        } else {
+            SubscriberService.subscribe(Config.baseUrl, Session.token, id,
+                function () { root.subscribedMap = newMap(true); root.subscribedRev++; root.followed(); },
+                function (err) { Toast.show(err.message || Lang.tr("Couldn't subscribe. Try again.")); });
+        }
     }
 
     Flickable {
@@ -98,7 +147,7 @@ Item {
                 Label {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: Lang.tr("Follow someone to see their posts here.")
+                    text: Lang.tr("Subscribe to a community to see its posts here.")
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFor(text)
                     color: Style.textSecondary
@@ -108,11 +157,11 @@ Item {
 
             ActivityIndicator {
                 anchors.horizontalCenter: parent.horizontalCenter
-                running: root.loading
+                running: root.suggested.length === 0 && root.candidates.length > 0
                 visible: running
             }
 
-            // --- Suggested people --------------------------------------------
+            // --- Suggested communities ---------------------------------------
             Column {
                 width: parent.width
                 spacing: 0
@@ -120,7 +169,7 @@ Item {
 
                 Label {
                     width: parent.width
-                    text: Lang.tr("Active on Serey right now")
+                    text: Lang.tr("Active communities")
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
                     font.family: Style.fontFor(text)
@@ -141,8 +190,8 @@ Item {
                             width: parent.width
                             height: units.gu(7)
 
-                            property string author: modelData.author
-                            property bool following: FollowStore.isFollowing(row.author)
+                            property string commId: String(modelData.id)
+                            property bool subscribed: root.subscribedRev >= 0 && !!root.subscribedMap[row.commId]
 
                             Row {
                                 anchors.fill: parent
@@ -151,56 +200,59 @@ Item {
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: units.gu(4.5); height: width; radius: width / 2
-                                    color: Style.avatarTint(row.author)
-
-                                    Label {
-                                        anchors.centerIn: parent
-                                        visible: (modelData.authorImage || "") === ""
-                                        text: (row.author || "?").charAt(0).toUpperCase()
-                                        font.pixelSize: Style.fontMedium
-                                        font.bold: true
-                                        color: Style.brand
-                                    }
+                                    color: Style.iconBackground
                                     CircleImage {
-                                        anchors.fill: parent
-                                        source: modelData.authorImage || ""
+                                        anchors { fill: parent; margins: units.dp(2) }
+                                        source: modelData.icon || ""
                                         decode: units.gu(5)
                                     }
                                 }
 
-                                Label {
+                                Column {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - units.gu(4.5) - followBtn.width - Style.spacingM * 2
-                                    text: row.author
-                                    font.pixelSize: Style.fontRegular
-                                    font.weight: Font.DemiBold
-                                    font.family: Style.fontFor(text)
-                                    color: Style.textPrimary
-                                    elide: Text.ElideRight
+                                    width: parent.width - units.gu(4.5) - subBtn.width - Style.spacingM * 2
+                                    spacing: units.dp(2)
+                                    Label {
+                                        width: parent.width
+                                        text: modelData.title
+                                        font.pixelSize: Style.fontRegular
+                                        font.weight: Font.DemiBold
+                                        font.family: Style.fontFor(text)
+                                        color: Style.textPrimary
+                                        elide: Text.ElideRight
+                                    }
+                                    Label {
+                                        width: parent.width
+                                        text: Lang.tr("%1 subscribers").arg(root.counts[row.commId] || 0)
+                                        font.pixelSize: Style.fontSmall
+                                        font.family: Style.fontFor(text)
+                                        color: Style.textSecondary
+                                        elide: Text.ElideRight
+                                    }
                                 }
 
                                 AbstractButton {
-                                    id: followBtn
+                                    id: subBtn
                                     anchors.verticalCenter: parent.verticalCenter
-                                    width: units.gu(11); height: units.gu(4)
-                                    onClicked: root._toggleFollow(row.author)
+                                    width: units.gu(12); height: units.gu(4)
+                                    onClicked: root._toggleSubscribe(row.commId, row.subscribed)
 
                                     Rectangle {
                                         anchors.fill: parent
                                         radius: Style.pillRadius
-                                        color: row.following ? "transparent"
-                                             : followBtn.pressed ? Style.brandDark : Style.brand
-                                        border.width: row.following ? units.dp(1.5) : 0
+                                        color: row.subscribed ? "transparent"
+                                             : subBtn.pressed ? Style.brandDark : Style.brand
+                                        border.width: row.subscribed ? units.dp(1.5) : 0
                                         border.color: Style.divider
                                         Behavior on color { ColorAnimation { duration: 120 } }
 
                                         Label {
                                             anchors.centerIn: parent
-                                            text: row.following ? Lang.tr("Following") : Lang.tr("Follow")
+                                            text: row.subscribed ? Lang.tr("Subscribed") : Lang.tr("Subscribe")
                                             font.pixelSize: Style.fontSmall
                                             font.weight: Font.DemiBold
                                             font.family: Style.fontFor(text)
-                                            color: row.following ? Style.textSecondary : Style.textOnBrand
+                                            color: row.subscribed ? Style.textSecondary : Style.textOnBrand
                                         }
                                     }
                                 }

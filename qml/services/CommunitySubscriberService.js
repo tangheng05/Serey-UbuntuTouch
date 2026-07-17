@@ -31,8 +31,12 @@ function subscriberCount(baseUrl, communityId, onOk, onErr) {
     Http.get(baseUrl, "/community-subscriber/subscriber-count",
              { community_id: communityId }, null, function (data) {
         var d = data && data.data
+        // The server field is `total_subscribers` — `count`/`subscriber_count`
+        // never existed, so this silently returned 0 for every community
+        // (PlatformAdmin showed 0 subscribers; My Feed's "active" ranking sorted
+        // all-zeros). Real names first, guesses kept as fallbacks.
         var count = (typeof d === "number") ? d
-                  : (d && (d.count || d.subscriber_count || 0)) || 0
+                  : (d && (d.total_subscribers || d.count || d.subscriber_count || 0)) || 0
         onOk(parseInt(count, 10) || 0)
     }, onErr);
 }

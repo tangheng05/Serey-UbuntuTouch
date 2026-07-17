@@ -6,6 +6,7 @@ import "../components"
 import "../services/PostService.js" as PostService
 import "../services/VideoService.js" as VideoService
 import "../services/FollowService.js" as FollowService
+import "../services/CommunitySubscriberService.js" as SubscriberService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
 
@@ -95,13 +96,16 @@ Page {
     // True while the rows on screen came from FeedCache rather than the network.
     property bool showingCached: false
 
-    // Everyone the signed-in user follows ({ username: true }), and whether it
-    // has been fetched yet. The blog source is following-filtered server-side
-    // (/serey-web/list-by-feed-following), but there is NO equivalent video
-    // endpoint — /video-component/ lists a whole community. Without this set,
-    // a brand-new account with zero follows saw the entire community's videos
-    // in "My Feed". Videos are matched against it client-side in loadMore().
+    // Who/what this feed is FOR: everyone the user follows ({ username: true })
+    // and every community they subscribe to ({ communityId: true }).
+    //
+    // The blog source resolves both server-side (/serey-web/list-by-feed-mixed =
+    // follows OR subscriptions), but there is NO equivalent video endpoint —
+    // /video-component/ lists a whole community. Without these sets a brand-new
+    // account saw the entire community's videos in "My Feed", so videos are
+    // matched against them client-side in loadMore().
     property var followingSet: ({})
+    property var subscribedSet: ({})
     property bool followingLoaded: false
     // Set by reload()/refresh(): the next merged batch REPLACES the list (in
     // place, via _syncRows) instead of appending; later batches paginate.
@@ -192,12 +196,13 @@ Page {
         return Session.isLoggedIn && !!author && author === Session.username;
     }
 
-    // True once the follow list is known to be empty — the video source can
-    // then never contribute a row, so treat it as exhausted rather than
-    // paging it forever.
+    // True once we know the user follows nobody AND subscribes to nothing: the
+    // video source can then only ever yield their own uploads, so let it page
+    // rather than scanning a whole community forever.
     function _followsNobody() {
         if (!page.followingLoaded) return false;
         for (var k in page.followingSet) return false;
+        for (var c in page.subscribedSet) return false;
         return true;
     }
 
@@ -380,7 +385,9 @@ Page {
             pending++;
             // Over-fetch since videos are filtered out of this source, so a larger round-trip fills the screen instead of many small ones.
             var blogLimit = Config.pageSize * 2;
-            page.inflightBlog = PostService.listFeedFollowing(Config.baseUrl,
+            // Mixed, not following-only: subscribing to a community must fill
+            // My Feed (it's what the empty state offers).
+            page.inflightBlog = PostService.listFeedMixed(Config.baseUrl,
                 page._params(page.blogOffset, blogLimit), Session.token,
                 function (result, rawCount) {
                     if (epoch !== page.reqEpoch) return;
@@ -415,10 +422,13 @@ Page {
                     page.inflightVideo = null;
                     for (var i = 0; i < result.length; i++) {
                         var v = result[i];
-                        // /video-component/ is not following-filtered — drop
-                        // anyone the user doesn't follow (see followingSet).
-                        // Own uploads stay: My Feed shows your content too.
-                        if (!page._isOwn(v.author) && !page.followingSet[v.author || ""]) continue;
+                        // /video-component/ has no feed filter of its own, so
+                        // mirror what list-by-feed-mixed does server-side: keep
+                        // followed authors and subscribed communities. Own
+                        // uploads stay too — My Feed shows your content.
+                        if (!page._isOwn(v.author)
+                                && !page.followingSet[v.author || ""]
+                                && !page.subscribedSet[String(v.communityId || "")]) continue;
                         v._kind = "video";
                         vidRows.push(v);
                     }
@@ -479,15 +489,18 @@ Page {
         page.errorMsg = "";
     }
 
-    // The video source can't be filtered without the follow list, so fetch it
-    // once per session before the first load rather than racing it. Failure is
-    // non-fatal: followingSet stays empty, videos stay out, blog posts (already
-    // following-filtered server-side) still show.
+    // The video source can't be filtered without knowing the user's follows and
+    // subscriptions, so resolve both once per session before the first load
+    // rather than racing them. Failure is non-fatal: the sets stay empty, videos
+    // stay out, and blog posts (resolved server-side) still show.
     function _withFollowing(next) {
         if (page.followingLoaded || !Session.isLoggedIn) { next(); return; }
+        var pending = 2;
+        function done() { if (--pending === 0) { page.followingLoaded = true; next(); } }
         FollowService.listAllFollowings(Config.baseUrl, Session.token,
-            function (map) { page.followingSet = map; page.followingLoaded = true; next(); },
-            function () { page.followingLoaded = true; next(); });
+            function (map) { page.followingSet = map; done(); }, done);
+        SubscriberService.fetchSubscribed(Config.baseUrl, Session.token,
+            function (map) { page.subscribedSet = map; done(); }, done);
     }
 
     function reload() {

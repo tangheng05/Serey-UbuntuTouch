@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 import QtWebEngine 1.10
 import "../Theme"
@@ -34,15 +35,22 @@ FocusScope {
             freezeTimer.restart();
         } else {
             freezeTimer.stop();
-            if (webAppView.appActive) webView.visible = true;
+            if (!webAppView.appAway) webView.visible = true;
             webView.lifecycleState = webAppView._lcActive;
         }
     }
 
-    // Also freeze on app suspend — avoids a SIGBUS-on-resume
-    property bool appActive: Qt.application.state === Qt.ApplicationActive
-    onAppActiveChanged: {
-        if (!appActive) {
+    // Also freeze on app suspend — avoids a SIGBUS-on-resume. Unfocused is not
+    // the same as put away: side by side, our window stays on screen while
+    // another app holds focus, so freezing on ApplicationInactive blanked a
+    // view the user could still see. Wait for a real suspend, or for the window
+    // to stop being shown.
+    readonly property bool _windowShown: Window.visibility !== Window.Hidden
+                                         && Window.visibility !== Window.Minimized
+    property bool appAway: Qt.application.state === Qt.ApplicationSuspended
+                           || (Qt.application.state !== Qt.ApplicationActive && !_windowShown)
+    onAppAwayChanged: {
+        if (appAway) {
             webView.visible = false;
             appFreezeTimer.restart();
         } else {
@@ -157,7 +165,7 @@ FocusScope {
         id: appFreezeTimer
         interval: 300
         repeat: false
-        onTriggered: if (!webAppView.appActive) webView.lifecycleState = webAppView._lcFrozen
+        onTriggered: if (webAppView.appAway) webView.lifecycleState = webAppView._lcFrozen
     }
 
     Rectangle {

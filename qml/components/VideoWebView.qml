@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import QtWebEngine 1.10
 
 Item {
@@ -17,12 +18,20 @@ Item {
     // Freeze the Chromium renderer on app background/suspend — same SIGBUS-on-resume issue and lifecycleState int trap as WebAppView.
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
-    property bool appActive: Qt.application.state === Qt.ApplicationActive
-    onAppActiveChanged: {
-        if (appActive) {
+    // Unfocused is not the same as put away: side by side, our window stays on
+    // screen while another app holds focus, and freezing there blanked a video
+    // the user was still watching. Freeze only once the shell has actually
+    // suspended us, or the window has stopped being shown.
+    readonly property bool _windowShown: Window.visibility !== Window.Hidden
+                                         && Window.visibility !== Window.Minimized
+    property bool appAway: Qt.application.state === Qt.ApplicationSuspended
+                           || (Qt.application.state !== Qt.ApplicationActive && !_windowShown)
+    onAppAwayChanged: {
+        if (!appAway) {
             vwFreezeTimer.stop();
             wv.visible = true;
             wv.lifecycleState = root._lcActive;
+            vwRepaintTimer.restart();
         } else {
             wv.visible = false;
             vwFreezeTimer.restart();
@@ -31,7 +40,20 @@ Item {
     Timer {
         id: vwFreezeTimer
         interval: 300
-        onTriggered: if (!root.appActive) wv.lifecycleState = root._lcFrozen
+        onTriggered: if (root.appAway) wv.lifecycleState = root._lcFrozen
+    }
+    // Thawing restores the renderer but not its dropped compositor frame, and a
+    // paused <video> never paints a new one — the surface stays black. Re-seeking
+    // to the current position forces a decode; the opacity nudge covers the
+    // iframe case, where the <video> lives cross-origin and is out of reach.
+    Timer {
+        id: vwRepaintTimer
+        interval: 150
+        onTriggered: wv.runJavaScript(
+            "(function(){var v=document.querySelector('video');" +
+            "if(v){v.currentTime=v.currentTime;}" +
+            "var b=document.body;if(b){b.style.opacity='0.999';" +
+            "requestAnimationFrame(function(){b.style.opacity='';});}})();")
     }
 
     // Toggle play/pause of the direct <video> (used by the reels viewer's tap).
@@ -122,18 +144,88 @@ Item {
                '</iframe></body></html>';
     }
 
+    // Chromium's own <video controls> timeline is a slider whose touch path only
+    // seeks on touchmove, so a tap on the track does nothing and only dragging
+    // the playhead works. It's in a closed shadow root and can't be patched, so
+    // we render our own bar and seek from pointerdown — one code path for mouse
+    // and touch alike.
+    readonly property string _svgPlay: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'
+    readonly property string _svgPause: '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
+    readonly property string _svgFull: '<svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>'
+
+    function _controlsHtml() {
+        return '<div id="bar"><div id="row">' +
+               '<div class="btn" id="pb">' + _svgPlay + '</div>' +
+               '<div id="track"><div id="trk"></div><div id="fill"></div><div id="knob"></div></div>' +
+               '<div id="t">0:00 / 0:00</div>' +
+               '<div class="btn" id="fs">' + _svgFull + '</div>' +
+               '</div></div>';
+    }
+
+    function _controlsJs() {
+        return 'var bar=document.getElementById("bar"),trk=document.getElementById("track"),' +
+               'fill=document.getElementById("fill"),knob=document.getElementById("knob"),' +
+               'tl=document.getElementById("t"),pb=document.getElementById("pb"),' +
+               'fs=document.getElementById("fs"),drag=false,hideT=null;' +
+               'function f(s){s=Math.max(0,Math.floor(s||0));var m=Math.floor(s/60),x=s%60;' +
+               'return m+":"+(x<10?"0":"")+x;}' +
+               'function upd(){var d=v.duration||0,p=(d&&isFinite(d))?v.currentTime/d:0;' +
+               'fill.style.width=(p*100)+"%";knob.style.left=(p*100)+"%";' +
+               'tl.textContent=f(v.currentTime)+" / "+f(isFinite(d)?d:0);}' +
+               'function icon(){pb.innerHTML=v.paused?PLAY:PAUSE;}' +
+               'function poke(){bar.classList.remove("hide");clearTimeout(hideT);' +
+               'hideT=setTimeout(function(){if(!v.paused&&!drag)bar.classList.add("hide");},3000);}' +
+               'function seek(x){var b=trk.getBoundingClientRect();' +
+               'var p=Math.min(1,Math.max(0,(x-b.left)/b.width));' +
+               'if(v.duration&&isFinite(v.duration))v.currentTime=p*v.duration;upd();poke();}' +
+               'trk.addEventListener("pointerdown",function(e){drag=true;' +
+               'trk.setPointerCapture(e.pointerId);seek(e.clientX);e.preventDefault();});' +
+               'trk.addEventListener("pointermove",function(e){if(drag)seek(e.clientX);});' +
+               'trk.addEventListener("pointerup",function(){drag=false;poke();});' +
+               'trk.addEventListener("pointercancel",function(){drag=false;});' +
+               'pb.addEventListener("click",function(){if(v.paused){v.play();}else{v.pause();}});' +
+               'fs.addEventListener("click",function(){if(document.fullscreenElement)' +
+               '{document.exitFullscreen();}else{document.documentElement.requestFullscreen();}});' +
+               'v.addEventListener("timeupdate",upd);v.addEventListener("durationchange",upd);' +
+               'v.addEventListener("play",function(){icon();poke();});' +
+               'v.addEventListener("pause",function(){icon();poke();});' +
+               'document.addEventListener("pointermove",poke);' +
+               'document.addEventListener("pointerdown",poke);' +
+               'icon();upd();poke();';
+    }
+
     function _videoHtml() {
         var attrs = 'autoplay playsinline webkit-playsinline preload="auto"';
-        if (controls) attrs += ' controls';
         if (loop) attrs += ' loop';
         return '<!DOCTYPE html><html><head>' +
                '<meta name="viewport" content="width=device-width, initial-scale=1">' +
                '<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}' +
-               'video{width:100%;height:100%;object-fit:contain;background:#000}</style></head>' +
+               'video{width:100%;height:100%;object-fit:contain;background:#000}' +
+               '#bar{position:fixed;left:0;right:0;bottom:0;padding:6px 10px 8px;' +
+               'background:linear-gradient(transparent,rgba(0,0,0,0.75));' +
+               'font:12px/1 sans-serif;color:#fff;transition:opacity .2s;' +
+               '-webkit-user-select:none;user-select:none}' +
+               '#bar.hide{opacity:0;pointer-events:none}' +
+               '#row{display:flex;align-items:center}' +
+               '.btn{width:26px;height:26px;flex:none;fill:#fff;cursor:pointer}' +
+               '.btn svg{width:100%;height:100%}' +
+               '#track{position:relative;flex:1;height:26px;margin:0 8px;' +
+               'display:flex;align-items:center;touch-action:none;cursor:pointer}' +
+               '#trk,#fill{position:absolute;height:4px;border-radius:2px}' +
+               '#trk{left:0;right:0;background:rgba(255,255,255,0.35)}' +
+               '#fill{left:0;width:0;background:#0083FA}' +
+               '#knob{position:absolute;width:12px;height:12px;border-radius:6px;' +
+               'background:#fff;left:0;margin-left:-6px}' +
+               '#t{flex:none;padding-right:8px;font-variant-numeric:tabular-nums}' +
+               '</style></head>' +
                '<body><video src="' + embedUrl + '" ' + attrs + '></video>' +
+               (controls ? _controlsHtml() : '') +
                '<script>(function(){var v=document.querySelector("video");' +
+               'var PLAY=' + JSON.stringify(_svgPlay) + ',PAUSE=' + JSON.stringify(_svgPause) + ';' +
                'function r(){console.log("__SEREY_READY__");}' +
-               'v.addEventListener("loadeddata",r);v.addEventListener("playing",r);})();</script>' +
+               'v.addEventListener("loadeddata",r);v.addEventListener("playing",r);' +
+               (controls ? _controlsJs() : '') +
+               '})();</script>' +
                '</body></html>';
     }
 

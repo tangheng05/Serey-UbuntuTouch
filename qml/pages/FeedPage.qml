@@ -149,43 +149,10 @@ Page {
             }
         }
 
-        // Write a post — same brand-outlined "edit" affordance as the News tab's
-        // compose action. My Feed spans every community, so (like the empty
-        // state's button) the composer asks which platform to post in.
-        AbstractButton {
-            id: writeButton
-            visible: Session.isLoggedIn
-            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            width: units.gu(3.6); height: width
-            onClicked: {
-                var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { pickPlatform: true });
-                if (ed && ed.saved) ed.saved.connect(function () { page.refresh(); });
-            }
-
-            Rectangle {
-                anchors.fill: parent
-                radius: units.gu(0.8)
-                color: "transparent"
-                border.width: units.dp(1.5)
-                border.color: Style.brand
-            }
-            Icon {
-                anchors.centerIn: parent
-                width: units.gu(2.2); height: width
-                name: "edit"
-                color: Style.brand
-            }
-            KeyTapArea { onActivated: writeButton.clicked() }
-        }
-
         // Filter button: opens the All / Blog / Video menu.
         AbstractButton {
             id: filterButton
-            anchors {
-                right: writeButton.visible ? writeButton.left : parent.right
-                rightMargin: writeButton.visible ? Style.spacingXs : Style.spacingM
-                verticalCenter: parent.verticalCenter
-            }
+            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
             height: units.gu(4)
             width: filterRow.width + Style.spacingS * 2
             onClicked: page.filterMenuOpen = !page.filterMenuOpen
@@ -882,6 +849,16 @@ Page {
                 page.loadMore();
             }
         }
+
+        // Prefetch ~2 screens early (see NewsPage) — atYEnd stays as fallback.
+        onContentYChanged: {
+            if (!page.loading && !page._allEnded() && page.errorMsg === ""
+                    && contentHeight > height
+                    && contentY + height >= contentHeight - height * 2) {
+                page.autoFetches = 0;   // user-scroll driven, same as atYEnd
+                page.loadMore();
+            }
+        }
     }
 
     // Detail panel (split mode only): the tapped article/video renders here beside
@@ -971,15 +948,7 @@ Page {
 
         Rectangle {
             // topBar is a sibling of this Item's parent, not of this Rectangle, so anchor to parent.top and offset by topBar.height instead.
-            // Same reason the right margin is computed rather than anchored to
-            // filterButton: it lives in topBar, so it isn't anchorable from here.
-            // Keep the menu under the filter button as the write button shifts it left.
-            anchors {
-                top: parent.top; right: parent.right
-                topMargin: topBar.height + Style.spacingXs
-                rightMargin: Style.spacingM
-                              + (writeButton.visible ? writeButton.width + Style.spacingXs : 0)
-            }
+            anchors { top: parent.top; right: parent.right; topMargin: topBar.height + Style.spacingXs; rightMargin: Style.spacingM }
             width: units.gu(20)
             height: menuCol.height
             radius: Style.cardRadius

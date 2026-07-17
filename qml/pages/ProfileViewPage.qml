@@ -516,6 +516,14 @@ Page {
             if (atYEnd && !page.curLoading && !page.curEnd && page.curModel.count > 0)
                 page.loadTab(page.tab);
         }
+
+        // Prefetch ~2 screens early (see NewsPage) — atYEnd stays as fallback.
+        onContentYChanged: {
+            if (!page.curLoading && !page.curEnd && page.curModel.count > 0
+                    && contentHeight > height
+                    && contentY + height >= contentHeight - height * 2)
+                page.loadTab(page.tab);
+        }
     }
 
     // --- Card components, picked per tab by the delegate Loader --------------

@@ -537,6 +537,16 @@ Page {
             if (atYEnd && !page.loading && !page.endReached)
                 page.loadMore();
         }
+
+        // Prefetch: start the next page while ~2 screens of content remain, so
+        // a steady scroll almost never lands on the footer spinner. atYEnd above
+        // stays as the fallback for flicks that outrun this trigger.
+        onContentYChanged: {
+            if (!page.loading && !page.endReached && page.errorMsg === ""
+                    && contentHeight > height
+                    && contentY + height >= contentHeight - height * 2)
+                page.loadMore();
+        }
     }
 
     LoadingState {

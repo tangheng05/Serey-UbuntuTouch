@@ -226,6 +226,14 @@ Page {
             if (atYEnd && !page.loading && !page.endReached)
                 page.loadMore();
         }
+
+        // Prefetch ~2 screens early (see NewsPage) — atYEnd stays as fallback.
+        onContentYChanged: {
+            if (!page.loading && !page.endReached
+                    && contentHeight > height
+                    && contentY + height >= contentHeight - height * 2)
+                page.loadMore();
+        }
     }
 
     LoadingState {

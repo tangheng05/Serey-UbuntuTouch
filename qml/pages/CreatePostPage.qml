@@ -51,7 +51,9 @@ Page {
         var epoch = ++page.catEpoch;
         var prev = page.selectedCategory;
         page.categoriesLoading = true;
-        CategoryService.listByCommunity(Config.baseUrl, Config.currentCommunityName, Session.token,
+        // currentCommunityName can lag a tick behind communityId here — read the source object directly.
+        var communityTitle = Config.selectedSubCommunity ? Config.selectedSubCommunity.name : Config.communityName;
+        CategoryService.listByCommunity(Config.baseUrl, communityTitle, Config.communityId, Session.token,
             function (names, raw) {
                 if (epoch !== page.catEpoch) return;   // stale community switch
                 page.categoriesLoading = false;

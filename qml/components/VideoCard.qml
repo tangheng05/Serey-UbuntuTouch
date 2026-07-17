@@ -93,6 +93,24 @@ AbstractButton {
                 maskSource: thumbMask
                 opacity: thumbImg.opacity
             }
+
+            Rectangle {
+                // categories is ListModel-wrapped here — use the mapper's scalar copy instead.
+                visible: (v.primaryCategory || "") !== ""
+                anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
+                width: vidCatLabel.width + Style.spacingM
+                height: units.gu(3)
+                radius: Style.pillRadius
+                color: Style.accentRed
+                Label {
+                    id: vidCatLabel
+                    anchors.centerIn: parent
+                    text: v.primaryCategory || ""
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.DemiBold
+                    color: Style.textOnBrand
+                }
+            }
         }
 
         // Info: avatar + title/author
@@ -131,6 +149,7 @@ AbstractButton {
 
             Column {
                 width: parent.width - units.gu(4.5) - Style.spacingS - moreBtn.width - Style.spacingS
+                    - (downloadedIcon.visible ? downloadedIcon.width + Style.spacingS : 0)
                 spacing: units.dp(2)
 
                 Label {
@@ -150,6 +169,28 @@ AbstractButton {
                     font.pixelSize: Style.fontSmall
                     color: Style.textSecondary
                     elide: Text.ElideRight
+                }
+            }
+
+            // Downloaded-for-offline indicator.
+            Rectangle {
+                id: downloadedIcon
+                anchors.top: parent.top
+                width: dlLabel.width + Style.spacingM
+                height: units.gu(2.6)
+                visible: (SavedPosts.rev, Downloads.rev, SavedPosts.isSaved(v.permlink) || Downloads.isSaved(v.permlink))
+                radius: Style.pillRadius
+                color: Style.iconBackground
+                border.width: units.dp(1)
+                border.color: Style.textSecondary
+
+                Label {
+                    id: dlLabel
+                    anchors.centerIn: parent
+                    text: Lang.tr("Downloaded")
+                    font.pixelSize: Style.fontXSmall
+                    font.weight: Font.DemiBold
+                    color: Style.textSecondary
                 }
             }
 

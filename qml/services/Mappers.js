@@ -111,6 +111,7 @@ function toPost(raw) {
         flaggers: voterNames(raw.flaggers),
         flaggerStr: "," + voterNames(raw.flaggers).join(",") + ",",
         community: raw.community_title || "",
+        communityId: toInt(raw.community_id),
         checkmark: raw.checkmark_icon || "",
         postToBlockchain: onChainFlag(raw)
     };
@@ -136,6 +137,8 @@ function toGalleryPost(raw) {
         payout: raw.serey_value || "",
         voters: voterNames(raw.voters),
         voterStr: "," + voterNames(raw.voters).join(",") + ",",
+        categories: parseList(raw.categories),
+        primaryCategory: parseList(raw.categories)[0] || "",
         // Post's own community title, so editing keeps it in place.
         community: raw.community_title || "",
         checkmark: raw.checkmark_icon || "",
@@ -190,6 +193,8 @@ function toVideo(raw) {
         videoId: raw.video_id || "",
         platform: raw.platform_type || "",
         dimensions: raw.dimensions || "16:9",
+        categories: parseList(raw.categories),
+        primaryCategory: parseList(raw.categories)[0] || "",
         community: raw.community_title || "",
         communityId: toInt(raw.community_id),
         postToBlockchain: onChainFlag(raw)

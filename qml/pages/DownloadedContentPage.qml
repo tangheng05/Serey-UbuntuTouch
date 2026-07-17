@@ -18,7 +18,7 @@ Page {
     property int tabIndex: 0
     property string _pendingRemoveVideo: ""
     property string _pendingRemoveArticle: ""
-    readonly property real maxContentWidth: units.gu(60)
+    readonly property real maxContentWidth: units.gu(100)
 
     // Keyboard nav: the active list owns arrow focus; settings' Nav.focusDetail
     // targets this when the row is activated. Left/Escape return to the settings

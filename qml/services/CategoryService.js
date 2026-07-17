@@ -1,11 +1,16 @@
 .pragma library
 .import "Http.js" as Http
 
-function listByCommunity(baseUrl, community, token, onOk, onErr) {
-    Http.get(baseUrl, "/category/list-by-community",
+// communityId filters client-side — backend matches `community` by title text, which collides
+// across communities sharing a name (seen live, e.g. two "Web3" platforms).
+function listByCommunity(baseUrl, community, communityId, token, onOk, onErr) {
+    return Http.get(baseUrl, "/category/list-by-community",
              { community: community || "global" }, token || "",
         function (data) {
             var raw = (data && data.categories) || [];
+            if (communityId) {
+                raw = raw.filter(function (c) { return String(c && c.community_id) === String(communityId); });
+            }
             var names = raw
                 .map(function (c) { return c && c.name; })
                 .filter(function (n) { return !!n; });

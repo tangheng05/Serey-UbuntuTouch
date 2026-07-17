@@ -95,7 +95,7 @@ Page {
             return
         }
         page.categoriesLoading = true
-        CategoryService.listByCommunity(Config.baseUrl, title, Session.token,
+        CategoryService.listByCommunity(Config.baseUrl, title, Config.managedCommunityId, Session.token,
             function (names, raw) {
                 page.categoriesLoading = false
                 categoryModel.clear()

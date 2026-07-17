@@ -171,6 +171,27 @@ Item {
                     }
                 }
 
+                // Downloaded-for-offline indicator.
+                Rectangle {
+                    Layout.preferredWidth: dlLabel.width + Style.spacingM
+                    Layout.preferredHeight: units.gu(2.6)
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: (SavedPosts.rev, Downloads.rev, SavedPosts.isSaved(p.permlink) || Downloads.isSaved(p.permlink))
+                    radius: Style.pillRadius
+                    color: Style.iconBackground
+                    border.width: units.dp(1)
+                    border.color: Style.textSecondary
+
+                    Label {
+                        id: dlLabel
+                        anchors.centerIn: parent
+                        text: Lang.tr("Downloaded")
+                        font.pixelSize: Style.fontXSmall
+                        font.weight: Font.DemiBold
+                        color: Style.textSecondary
+                    }
+                }
+
                 // More button — owner sees Edit/Delete, others moderation.
                 AbstractButton {
                     Layout.preferredWidth: units.gu(3.5)
@@ -212,6 +233,25 @@ Item {
             }
 
             MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
+
+            // Category tag — top-left, since top-right is the "+N" photo-count badge.
+            // categories is ListModel-wrapped here — use the mapper's scalar copy instead.
+            Rectangle {
+                visible: (p.primaryCategory || "") !== ""
+                anchors { top: parent.top; left: parent.left; topMargin: Style.spacingS; leftMargin: Style.spacingS }
+                width: galCatLabel.width + Style.spacingM
+                height: units.gu(3)
+                radius: Style.pillRadius
+                color: Style.accentRed
+                Label {
+                    id: galCatLabel
+                    anchors.centerIn: parent
+                    text: p.primaryCategory || ""
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.DemiBold
+                    color: Style.textOnBrand
+                }
+            }
 
             // "+N" badge when the post has multiple photos.
             Rectangle {

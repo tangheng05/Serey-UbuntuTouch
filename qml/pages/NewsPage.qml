@@ -6,6 +6,7 @@ import "../components"
 import "../services/PostService.js" as PostService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
+import "../services/CategoryService.js" as CategoryService
 
 Page {
     id: page
@@ -24,6 +25,76 @@ Page {
     // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
     readonly property real maxContentWidth: units.gu(60)
 
+    // Category filter chips — per-community, loaded from the backend. "" = All.
+    property var categories: []
+    property string selectedCategory: ""
+    property bool categoriesLoading: false
+    property int catEpoch: 0
+    property var inflightCat: null
+
+    function loadCategories() {
+        var epoch = ++page.catEpoch;
+        var prevSel = page.selectedCategory;
+        if (page.inflightCat) { page.inflightCat.abort(); page.inflightCat = null; }
+        // Clear right away so the previous community's categories don't linger.
+        page.categories = [];
+        page.categoriesLoading = false;
+
+        // No selector on Global — no coherent taxonomy across every community.
+        if (Config.communityId <= 0) {
+            if (prevSel !== "") { page.selectedCategory = ""; page.reload(); }
+            return;
+        }
+
+        // currentCommunityName can lag a tick behind communityId here — read the source object directly.
+        var communityTitle = Config.selectedSubCommunity ? Config.selectedSubCommunity.name : Config.communityName;
+
+        page.categoriesLoading = true;
+        page.inflightCat = CategoryService.listByCommunity(Config.baseUrl, communityTitle, Config.communityId, Session.token,
+            function (names) {
+                if (epoch !== page.catEpoch) return;   // stale community switch
+                page.inflightCat = null;
+                page.categoriesLoading = false;
+                page.categories = names;
+                // Case-insensitive: post tags and category names don't always match casing.
+                if (prevSel !== "") {
+                    var stillValid = false;
+                    for (var i = 0; i < names.length; i++)
+                        if (page._norm(names[i]) === page._norm(prevSel)) { stillValid = true; break; }
+                    if (!stillValid) { page.selectedCategory = ""; page.reload(); }
+                }
+            },
+            function (err) {
+                if (epoch !== page.catEpoch) return;
+                page.inflightCat = null;
+                page.categoriesLoading = false;
+                page.categories = [];
+            });
+    }
+
+    function selectCategory(cat) {
+        if (page.selectedCategory === cat) return;
+        page.selectedCategory = cat;
+        page.reload();
+    }
+
+    // Case-insensitive compare: post tags vs. category list casing can differ.
+    function _norm(s) { return (s || "").trim().toLowerCase(); }
+
+    // Raw fetch results are plain JS objects (not yet ListModel-wrapped), so categories[] indexes normally here.
+    function _matchesCategory(p) {
+        if (page.selectedCategory === "") return true;
+        if (!p.categories) return false;
+        var target = page._norm(page.selectedCategory);
+        for (var i = 0; i < p.categories.length; i++)
+            if (page._norm(p.categories[i]) === target) return true;
+        return false;
+    }
+
+    // No server-side category filter — applied client-side, so fetch bigger batches while filtering.
+    function _fetchLimit() { return page.selectedCategory !== "" ? Config.pageSize * 4 : Config.pageSize; }
+    property int autoFetches: 0
+
     // Zero-height header: the global AppHeader provides the top bar, but keeping an explicit header avoids Lomiri's deprecated Page.head path.
     header: Item { height: 0 }
 
@@ -32,7 +103,7 @@ Page {
     // Source switching lives in the global AppHeader community pill; the feed just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
-        function onCommunityIdChanged() { page.reload(); }
+        function onCommunityIdChanged() { page.loadCategories(); page.reload(); }
     }
 
     // Clears the highlighted row once the detail pane's back button returns here (split/wide layout).
@@ -95,6 +166,7 @@ Page {
         // Clear too, or an interrupted pull-to-refresh leaves this stuck true
         refreshing = false;
         errorMsg = "";
+        autoFetches = 0;
         feedModel.clear();
         loadMore();
     }
@@ -107,7 +179,8 @@ Page {
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
         var epoch = page.reqEpoch;
-        var params = { limit: Config.pageSize, offset: 0 };
+        var limit = page._fetchLimit();
+        var params = { limit: limit, offset: 0 };
         if (Config.communityId > 0)
             params.community_id = Config.communityId;
         else
@@ -122,12 +195,15 @@ Page {
                 var hidden = HiddenPosts.loadAll();
                 var blocked = BlockedUsers.loadAll();
                 for (var i = 0; i < result.length; i++)
-                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
+                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""] && page._matchesCategory(result[i]))
                         feedModel.append(result[i]);
                 page.offset = rawCount;
-                page.endReached = rawCount < Config.pageSize;
-                // Keep paging if filtering left less than a screenful, or the feed stalls looking empty despite more content on later pages.
-                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
+                page.endReached = rawCount < limit;
+                // Keep paging if filtering left less than a screenful, but cap the chain (see _fetchLimit).
+                if (!page.endReached && feedModel.count < Config.pageSize && page.autoFetches < 6) {
+                    page.autoFetches++;
+                    page.loadMore();
+                }
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -143,7 +219,8 @@ Page {
         loading = true;
         errorMsg = "";
         var epoch = page.reqEpoch;
-        var params = { limit: Config.pageSize, offset: page.offset };
+        var limit = page._fetchLimit();
+        var params = { limit: limit, offset: page.offset };
         if (Config.communityId > 0)
             params.community_id = Config.communityId;
         else
@@ -156,12 +233,15 @@ Page {
                 var hidden = HiddenPosts.loadAll();
                 var blocked = BlockedUsers.loadAll();
                 for (var i = 0; i < result.length; i++)
-                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
+                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""] && page._matchesCategory(result[i]))
                         feedModel.append(result[i]);
                 page.offset += rawCount;
-                if (rawCount < Config.pageSize) page.endReached = true;
-                // Keep paging if this page was filtered below a screenful (see refresh()).
-                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
+                if (rawCount < limit) page.endReached = true;
+                // Keep paging if this page was filtered below a screenful, but cap the chain (see _fetchLimit).
+                if (!page.endReached && feedModel.count < Config.pageSize && page.autoFetches < 6) {
+                    page.autoFetches++;
+                    page.loadMore();
+                }
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -171,7 +251,23 @@ Page {
             });
     }
 
+    // Category-badge deep link — handles an already-alive page (Component.onCompleted covers a fresh one).
+    Connections {
+        target: Nav
+        function onPendingCategoryChanged() {
+            if (Nav.pendingCategory === "") return;
+            page.selectedCategory = Nav.pendingCategory;
+            Nav.pendingCategory = "";
+            page.reload();
+        }
+    }
+
     Component.onCompleted: {
+        if (Nav.pendingCategory !== "") {
+            page.selectedCategory = Nav.pendingCategory;
+            Nav.pendingCategory = "";
+        }
+        loadCategories();
         loadMore();
         if (visible) list.forceActiveFocus();
     }
@@ -204,6 +300,67 @@ Page {
         onFocusList: { list.currentIndex = -1; list.forceActiveFocus(); }
     }
 
+    // Category filter chips — stays visible as a spinner while loading.
+    Flickable {
+        id: catBar
+        anchors { top: tabs.bottom; left: parent.left; right: parent.right }
+        readonly property bool showBar: page.categories.length > 0 || page.categoriesLoading
+        height: showBar ? units.gu(5.5) : 0
+        visible: showBar
+        contentWidth: catRow.width + Style.spacingM
+        contentHeight: height
+        flickableDirection: Flickable.HorizontalFlick
+        clip: true
+
+        ActivityIndicator {
+            anchors.centerIn: parent
+            running: page.categoriesLoading && page.categories.length === 0
+            visible: running
+        }
+
+        Row {
+            visible: !(page.categoriesLoading && page.categories.length === 0)
+            id: catRow
+            anchors.verticalCenter: parent.verticalCenter
+            x: Style.spacingM
+            spacing: Style.spacingS
+
+            Repeater {
+                model: [""].concat(page.categories)
+
+                delegate: AbstractButton {
+                    readonly property string catName: modelData
+                    readonly property bool isSelected: catName === ""
+                        ? page.selectedCategory === ""
+                        : page._norm(page.selectedCategory) === page._norm(catName)
+                    height: units.gu(3.75)
+                    width: catLbl.width + units.gu(2.4)
+                    onClicked: page.selectCategory(catName)
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Style.pillRadius
+                        color: parent.isSelected ? Style.brand : Style.iconBackground
+                    }
+                    Label {
+                        id: catLbl
+                        anchors.centerIn: parent
+                        text: catName === "" ? Lang.tr("All") : catName
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.DemiBold
+                        color: parent.isSelected ? Style.textOnBrand : Style.textPrimary
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: units.dp(1)
+            color: Style.divider
+        }
+    }
+
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
     property Item keyboardFocusItem: list
 
@@ -226,7 +383,7 @@ Page {
 
     ListView {
         id: list
-        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        anchors { top: catBar.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
         width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         model: feedModel
@@ -406,7 +563,9 @@ Page {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
         iconName: "stock_note"
-        message: Lang.tr("No posts in %1").arg(Config.currentCommunityName)
+        message: page.selectedCategory !== ""
+            ? Lang.tr("No posts tagged \"%1\" in %2").arg(page.selectedCategory).arg(Config.currentCommunityName)
+            : Lang.tr("No posts in %1").arg(Config.currentCommunityName)
     }
 
     // Compose lives in the global header action now (gated on the News tab) — Lomiri uses a header action, not a Material floating button.

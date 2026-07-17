@@ -127,6 +127,27 @@ Item {
                 }
             }
 
+            // Downloaded-for-offline indicator.
+            Rectangle {
+                Layout.preferredWidth: dlLabel.width + Style.spacingM
+                Layout.preferredHeight: units.gu(2.6)
+                Layout.alignment: Qt.AlignVCenter
+                visible: (SavedPosts.rev, Downloads.rev, SavedPosts.isSaved(p.permlink) || Downloads.isSaved(p.permlink))
+                radius: Style.pillRadius
+                color: Style.iconBackground
+                border.width: units.dp(1)
+                border.color: Style.textSecondary
+
+                Label {
+                    id: dlLabel
+                    anchors.centerIn: parent
+                    text: Lang.tr("Downloaded")
+                    font.pixelSize: Style.fontXSmall
+                    font.weight: Font.DemiBold
+                    color: Style.textSecondary
+                }
+            }
+
             AbstractButton {
                 id: moreBtn
                 Layout.preferredWidth: units.gu(3.5)
@@ -207,17 +228,18 @@ Item {
             }
 
             Rectangle {
-                visible: !!(p.categories && p.categories.length > 0)
+                // categories is ListModel-wrapped here — use the mapper's scalar copy instead.
+                visible: (p.primaryCategory || "") !== ""
                 anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
-                width: catLabel.width + Style.spacingS
-                height: units.gu(2.5)
-                radius: units.dp(4)
+                width: catLabel.width + Style.spacingM
+                height: units.gu(3)
+                radius: Style.pillRadius
                 color: Style.accentRed
                 Label {
                     id: catLabel
                     anchors.centerIn: parent
-                    text: (p.categories && p.categories.length > 0) ? p.categories[0] : ""
-                    font.pixelSize: Style.fontXSmall
+                    text: p.primaryCategory || ""
+                    font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
                     color: Style.textOnBrand
                 }

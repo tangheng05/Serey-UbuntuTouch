@@ -72,91 +72,72 @@ Page {
         function onUserBlocked(username) {
             if (username === page.author) page.pageStack.pop();
         }
+        function onEditRequested(post) {
+            if (post && post.permlink === page.permlink) page.openEditor();
+        }
     }
 
-    // The post's own actions, mirroring the long-press sheet. Order matters: the
-    // ActionBar keeps the first actions in its slots and puts the rest behind the
-    // overflow drawer, so Save and Share stay on the header and the moderation
-    // actions live in the drawer. Report/Block/Delete need a reason picker or a
-    // confirm, so they hand off to the sheet at that step rather than duplicating
-    // those flows here.
-    header: PageHeader {
-        id: postHeader
-        title: page.postReady ? (page.isVideoPost() ? Lang.tr("Video") : Lang.tr("Blog")) : ""
-        leadingActionBar.actions: [
-            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
-        ]
-        // Pinned, overriding PageHeader's own clamp(0.3*width/gu(4), 3, 6): that grows to
-        // 5-6 slots on a desktop-width header and would pull every action back out of the
-        // drawer. 3 = two actions + the overflow button, at every window size.
-        trailingActionBar.numberOfSlots: 3
+    header: Item { height: 0 }
 
-        // Suru draws the stock overflow glyph (contextual-menu) as three 24-long bars on
-        // the same 96 canvas where save's artwork spans 64, so it reads as visibly smaller
-        // than the icons beside it. navigation-menu is the identical three-bar shape at
-        // 72 long. Set on the style instance because StyleHints is not available here:
-        // PageHeader owns this ActionBar and already declares one on it.
-        Binding {
-            target: postHeader.trailingActionBar.__styleInstance
-            property: "overflowIconName"
-            value: "navigation-menu"
-            when: postHeader.trailingActionBar.__styleInstance !== null
+    Rectangle {
+        id: postDetailHeader
+        anchors { top: parent.top; left: parent.left; right: parent.right }
+        height: units.gu(6) + units.dp(1)
+        color: Style.surface
+        z: 10
+
+        AbstractButton {
+            id: backBtn
+            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: width
+            onClicked: page.pageStack.pop()
+            Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "back"; color: Style.textPrimary }
         }
-        trailingActionBar.actions: [
-            Action {
-                // Toggle to a tick when saved, matching the video download button.
-                iconName: page.isSaved ? "tick" : "save"
-                text: page.isSaved ? Lang.tr("Remove from saved") : Lang.tr("Save for offline")
-                enabled: page.postReady
-                onTriggered: page.toggleSaved()
-            },
-            Action {
-                iconName: "share"
-                text: Lang.tr("Share")
-                enabled: page.shareUrl.length > 0
-                onTriggered: Share.open(page.shareUrl)
-            },
-            Action {
-                iconName: "edit"
-                text: Lang.tr("Edit post")
-                visible: page.isOwnPost
-                enabled: page.postReady
-                // Pushed here rather than via PostActions.editRequested: the feed pages
-                // that handle that signal bail on `!page.visible`, and they're covered
-                // by this page.
-                onTriggered: page.openEditor()
-            },
-            Action {
-                iconName: "delete"
-                text: Lang.tr("Delete post")
-                visible: page.isOwnPost
-                enabled: page.postReady
-                onTriggered: PostActions.open(page.post, "blog", 2)
-            },
-            Action {
-                // Not the sheet's "close": in a header that reads as dismissing the page.
-                iconName: "view-off"
-                text: Lang.tr("Hide this post")
-                visible: !page.isOwnPost
-                enabled: page.postReady
-                onTriggered: page.hidePost()
-            },
-            Action {
-                iconName: "dialog-warning-symbolic"
-                text: Lang.tr("Report Post")
-                visible: !page.isOwnPost
-                enabled: page.postReady
-                onTriggered: PostActions.open(page.post, "blog", 1)
-            },
-            Action {
-                // The sheet draws its own circle-and-bar; an ActionBar needs a theme icon.
-                iconName: "stop"
-                text: Lang.tr("Block %1").arg(page.author)
-                visible: !page.isOwnPost
-                enabled: page.postReady
-                onTriggered: PostActions.open(page.post, "blog", 3)
+
+        Label {
+            anchors { left: backBtn.right; leftMargin: Style.spacingS; right: shareHeaderBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            text: page.postReady ? (page.isVideoPost() ? Lang.tr("Video") : Lang.tr("Blog")) : ""
+            font.pixelSize: Style.fontLarge
+            font.weight: Font.Light
+            color: Style.textPrimary
+            elide: Text.ElideRight
+        }
+
+        AbstractButton {
+            id: shareHeaderBtn
+            anchors { right: moreHeaderBtn.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: units.gu(4)
+            enabled: page.shareUrl.length > 0
+            onClicked: Share.open(page.shareUrl, shareHeaderBtn)
+            Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
+        }
+
+        AbstractButton {
+            id: moreHeaderBtn
+            anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: units.gu(4)
+            enabled: page.postReady
+            onClicked: PostActions.open(page.post, "blog")
+            Column {
+                anchors.centerIn: parent
+                spacing: units.dp(3)
+                Repeater {
+                    model: 3
+                    delegate: Rectangle {
+                        width: units.dp(4); height: units.dp(4)
+                        radius: width / 2
+                        color: Style.textSecondary
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                }
             }
-        ]
+        }
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: units.dp(1)
+            color: Style.divider
+        }
     }
 
     function maincategory() {
@@ -488,7 +469,7 @@ Page {
 
     KeyboardAwareFlickable {
         id: scroll
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: postDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         anchors.bottomMargin: footer.visible ? footer.height + page.kbHeight : 0
         // Animate in step with the footer's own bottomMargin so the list and the docked composer move together when the keyboard shows/hides.
         Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
@@ -552,6 +533,23 @@ Page {
                     font.weight: Font.Bold
                     color: Style.accentRed
                     anchors.verticalCenter: parent.verticalCenter
+
+                    // Opens the blog tab filtered to this category, in the post's own community.
+                    MouseArea {
+                        anchors { fill: parent; margins: -Style.spacingXs }
+                        onClicked: {
+                            var cid = page.post ? page.post.communityId : 0;
+                            var info = cid > 0 ? Config.communityInfoFor(cid) : null;
+                            var community = info ? {
+                                id: cid,
+                                name: info.title || info.name || "",
+                                icon: info.icon || "",
+                                allowPost: !!info.allowPost,
+                                videoAllowPost: !!info.videoAllowPost
+                            } : null;
+                            Nav.filterCategory(page.maincategory(), community);
+                        }
+                    }
                 }
                 // Sub-categories (everything after the main tag), e.g. "› Running".
                 Label {
@@ -896,12 +894,12 @@ Page {
     }
 
     LoadingState {
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: postDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: page.loading && page.post === null
         count: 1
     }
     ErrorState {
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: postDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: page.errorMsg !== "" && page.post === null
         message: page.errorMsg
         onRetry: page.load()

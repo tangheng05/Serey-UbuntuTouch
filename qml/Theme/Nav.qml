@@ -26,5 +26,10 @@ QtObject {
     // focusMaster this works on every tab, split or not. Main acts.
     signal focusContent()
 
+    // Tapped a post's category badge: jump to the blog tab, filtered, in the post's own community.
+    // Main applies the switch + tab jump; NewsPage consumes pendingCategory.
+    signal filterCategory(string category, var community)
+    property string pendingCategory: ""
+
     function home() { goToTab(0); }
 }

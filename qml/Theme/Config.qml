@@ -76,8 +76,9 @@ QtObject {
     // Set when user picks a sub-community from the picker; null = use top-level source.
     property var selectedSubCommunity: null
 
+    // selectedSubCommunity.id arrives as a string — coerce explicitly.
     readonly property int communityId: selectedSubCommunity
-                                       ? selectedSubCommunity.id
+                                       ? Number(selectedSubCommunity.id)
                                        : sources[sourceIndex].id
 
     // These two drive the AppHeader pill, reflecting the sub-community when selected, else the top-level source.

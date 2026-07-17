@@ -320,6 +320,15 @@ MainView {
                 settingsStack.pop();
             settingsStack.push(Qt.resolvedUrl("pages/CreatePlatformPage.qml"));
         }
+        // Category badge tapped: switch community, then jump to the blog tab.
+        function onFilterCategory(category, community) {
+            Nav.pendingCategory = category;
+            if (community) Config.selectedSubCommunity = community;
+            root.currentTab = 1;
+            root._ensureTab(1);
+            while (newsStack.depth > 1)
+                newsStack.pop();
+        }
     }
 
     // --- Global header (community pill + logo) ----------------------------

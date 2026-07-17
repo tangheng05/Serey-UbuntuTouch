@@ -320,41 +320,66 @@ Page {
         }
     }
 
-    header: PageHeader {
-        id: videoHeader
-        title: Lang.tr("Video")
-        leadingActionBar.actions: [
-            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
-        ]
-        // Pinned at 3 slots, same as PostDetailPage: share + download + overflow, never collapsed further.
-        trailingActionBar.numberOfSlots: 3
-        Binding {
-            target: videoHeader.trailingActionBar.__styleInstance
-            property: "overflowIconName"
-            value: "navigation-menu"
-            when: videoHeader.trailingActionBar.__styleInstance !== null
+    header: Item { height: 0 }
+
+    Rectangle {
+        id: videoDetailHeader
+        anchors { top: parent.top; left: parent.left; right: parent.right }
+        height: units.gu(6) + units.dp(1)
+        color: Style.surface
+        z: 10
+
+        AbstractButton {
+            id: videoBackBtn
+            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: width
+            onClicked: page.pageStack.pop()
+            Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "back"; color: Style.textPrimary }
         }
-        // Array order is the reverse of on-screen left-to-right order (trailingActionBar fills outside-in), so this renders as Download, Share, Menu.
-        trailingActionBar.actions: [
-            Action {
-                iconName: "navigation-menu"
-                text: Lang.tr("More")
-                onTriggered: PostActions.open(page.video, "video")
-            },
-            Action {
-                iconName: "share"
-                text: Lang.tr("Share")
-                enabled: (page.video.author || "").length > 0 && (page.video.permlink || "").length > 0
-                onTriggered: Share.open("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink)
-            },
-            Action {
-                iconName: page.dlSaved ? "tick" : "save"
-                text: page.dlSaved ? Lang.tr("Remove download") : Lang.tr("Download")
-                visible: page.canDownload
-                enabled: !page.dlBusy
-                onTriggered: page.doDownloadToggle()
+
+        Label {
+            anchors { left: videoBackBtn.right; leftMargin: Style.spacingS; right: videoShareHeaderBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            text: Lang.tr("Video")
+            font.pixelSize: Style.fontLarge
+            font.weight: Font.Light
+            color: Style.textPrimary
+            elide: Text.ElideRight
+        }
+
+        AbstractButton {
+            id: videoShareHeaderBtn
+            anchors { right: videoMoreHeaderBtn.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: units.gu(4)
+            enabled: !!(page.video && page.video.author && page.video.permlink)
+            onClicked: Share.open("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink, videoShareHeaderBtn)
+            Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
+        }
+
+        AbstractButton {
+            id: videoMoreHeaderBtn
+            anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: units.gu(4)
+            onClicked: PostActions.open(page.video, "video")
+            Column {
+                anchors.centerIn: parent
+                spacing: units.dp(3)
+                Repeater {
+                    model: 3
+                    delegate: Rectangle {
+                        width: units.dp(4); height: units.dp(4)
+                        radius: width / 2
+                        color: Style.textSecondary
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                }
             }
-        ]
+        }
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: units.dp(1)
+            color: Style.divider
+        }
     }
 
     function loadComments() {
@@ -570,7 +595,7 @@ Page {
 
     Flickable {
         id: scroll
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: videoDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         contentWidth: width
         contentHeight: contentCol.height
         clip: true

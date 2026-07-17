@@ -296,7 +296,7 @@ Item {
             bottom: parent.bottom
             bottomMargin: sheet.kbHeight + (sheetRect.wide ? units.gu(4) : 0)
         }
-        width: sheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(45)) : parent.width
+        width: sheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(60)) : parent.width
         height: (sheet.step === 0 ? mainCol.height
                  : sheet.step === 1 ? reportCol.height
                  : sheet.step === 2 ? deleteCol.height
@@ -388,8 +388,7 @@ Item {
                 }
             }
 
-            // Separates Save (neutral) from the rows below, which are either owner
-            // actions or moderation (Hide/Report/Block) — all negative in tone.
+            // Separates utility actions (Save) from owner/moderation actions below.
             Rectangle {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter

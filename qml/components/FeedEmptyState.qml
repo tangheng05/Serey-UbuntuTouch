@@ -12,9 +12,9 @@ import "../services/CommunitySubscriberService.js" as SubscriberService
 // ever reverts to list-by-feed-following, subscribing here would leave the feed
 // just as empty and this screen becomes a lie — keep the two in step.
 //
-// Suggestions are ranked by subscriber count ("active") and come from the
-// community tree Main.qml already fetched at startup, so there's no extra
-// get-communities round-trip.
+// Suggestions come ranked from a single backend route (leaf communities by
+// subscriber count, exclude_home subtree already filtered server-side) —
+// no more get-communities pool + one subscriberCount request per candidate.
 Item {
     id: root
 
@@ -22,69 +22,21 @@ Item {
     signal followed()
     signal writePostRequested()
 
-    property var candidates: []
-    property var counts: ({})       // id (string) -> subscriber count
-    property int pendingCounts: 0
-    property var suggested: []
+    property var suggested: []      // [{id, title, dns, icon, subscribers}]
+    property bool suggestionsLoading: true
     readonly property int maxSuggestions: 5
 
     property var subscribedMap: ({})
     property int subscribedRev: 0
 
     Component.onCompleted: {
-        _buildCandidates();
+        SubscriberService.suggestedCommunities(Config.baseUrl, root.maxSuggestions,
+            function (list) { root.suggested = list; root.suggestionsLoading = false; },
+            function () { root.suggestionsLoading = false; });
         if (Session.isLoggedIn)
             SubscriberService.fetchSubscribed(Config.baseUrl, Session.token,
                 function (map) { root.subscribedMap = map; root.subscribedRev++ },
                 function () { /* rows just start unsubscribed */ });
-    }
-
-    function _buildCandidates() {
-        var out = [];
-        var seen = {};
-        for (var k in Config.communityById) {
-            var c = Config.communityById[k];
-            // Skip country hubs: they hold children, you don't post in them.
-            if (!c || !c.dns || c.childCount > 0 || seen[c.dns]) continue;
-            // Honour the Global feed's exclude_home rule: the hidden community
-            // and its descendants are filtered out of every feed server-side, so
-            // suggesting them would subscribe the user to content they'd never
-            // see. Also why Cambodia's 35 children dominated this list.
-            if (Config.hiddenCommunityIds[String(c.id)]) continue;
-            seen[c.dns] = true;
-            out.push(c);
-        }
-        // Cap the pool before fetching counts so a large tree can't fire a
-        // request per community.
-        var pool = out.slice(0, 20);
-        root.candidates = pool;
-        if (pool.length === 0) return;
-        root.pendingCounts = pool.length;
-        for (var i = 0; i < pool.length; i++) _fetchCount(pool[i]);
-    }
-
-    function _fetchCount(c) {
-        SubscriberService.subscriberCount(Config.baseUrl, c.id,
-            function (n) { root._onCount(c.id, n); },
-            function () { root._onCount(c.id, 0); });
-    }
-
-    function _onCount(id, n) {
-        var m = {};
-        for (var k in root.counts) m[k] = root.counts[k];
-        m[String(id)] = n;
-        root.counts = m;
-        root.pendingCounts -= 1;
-        if (root.pendingCounts <= 0) _rank();
-    }
-
-    // Most subscribers first ("active"), capped.
-    function _rank() {
-        var list = root.candidates.slice();
-        list.sort(function (a, b) {
-            return (root.counts[String(b.id)] || 0) - (root.counts[String(a.id)] || 0);
-        });
-        root.suggested = list.slice(0, root.maxSuggestions);
     }
 
     function _toggleSubscribe(commId, currentlySubscribed) {
@@ -147,7 +99,7 @@ Item {
                 Label {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: Lang.tr("Subscribe to a community to see its posts here.")
+                    text: Lang.tr("Subscribe to a platform to see its posts here.")
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFor(text)
                     color: Style.textSecondary
@@ -157,7 +109,7 @@ Item {
 
             ActivityIndicator {
                 anchors.horizontalCenter: parent.horizontalCenter
-                running: root.suggested.length === 0 && root.candidates.length > 0
+                running: root.suggestionsLoading
                 visible: running
             }
 
@@ -169,7 +121,7 @@ Item {
 
                 Label {
                     width: parent.width
-                    text: Lang.tr("Active communities")
+                    text: Lang.tr("Active platforms")
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
                     font.family: Style.fontFor(text)
@@ -223,7 +175,7 @@ Item {
                                     }
                                     Label {
                                         width: parent.width
-                                        text: Lang.tr("%1 subscribers").arg(root.counts[row.commId] || 0)
+                                        text: Lang.tr("%1 subscribers").arg(modelData.subscribers || 0)
                                         font.pixelSize: Style.fontSmall
                                         font.family: Style.fontFor(text)
                                         color: Style.textSecondary

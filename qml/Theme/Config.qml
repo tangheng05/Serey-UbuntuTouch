@@ -128,6 +128,13 @@ QtObject {
     // Map of every community (string id -> {id,title,dns,icon,...}) at any nesting depth, unlike superhubChildrenById
     property var communityById: ({})
 
+    // { id: true } for the top level of that tree — the country hubs. They hold
+    // platforms, you don't post in them, and their icon lives in iconByDns (a
+    // flag) rather than on the record, so anything listing postable platforms
+    // has to skip them. childCount alone doesn't: a country with no platforms
+    // yet looks exactly like a leaf.
+    property var topLevelCommunityIds: ({})
+
     // { id: true } for the community the Global feed hides (?exclude_home=1) and
     // all its descendants — the client-side mirror of serey-api's
     // getHiddenFeedIds(). Anything choosing communities itself (My Feed's

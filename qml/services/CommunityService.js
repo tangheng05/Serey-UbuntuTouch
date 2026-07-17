@@ -5,8 +5,12 @@
 // The community the Global feed hides, mirroring serey-api's
 // HIDDEN_FEED_DNS (config/constants.js) which drives ?exclude_home=1.
 // Endpoints apply it server-side; anything picking communities client-side
-// (My Feed's suggestions) has to honour the same rule or it offers content the
-// feeds themselves exclude.
+// has to honour the same rule or it offers content the feeds themselves
+// exclude. My Feed's suggestions moved to the server-filtered
+// /community-subscriber/suggested-communities route; the one remaining
+// consumer is CreatePostPage's platform picker (Config.hiddenCommunityIds).
+// If that ever gets a server-filtered source too, delete this mirror —
+// it drifts the moment the backend constant changes.
 var HIDDEN_FEED_DNS = "cambodia.serey.io";
 
 function listAll(baseUrl, onOk, onErr) {

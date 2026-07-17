@@ -130,6 +130,10 @@ MainView {
                 Config.videoAllowPostByDns = CommunityService.videoAllowPostMap(list);
                 Config.superhubChildrenById = superhubChildren || ({});
                 Config.communityById = byId || ({});
+                // listAll's `list` is the top level of the tree, i.e. the countries.
+                var topIds = {};
+                for (var t = 0; t < list.length; t++) topIds[String(list[t].id)] = true;
+                Config.topLevelCommunityIds = topIds;
 
                 // dns of the three fixed rows — leave their icons untouched.
                 var baseDns = {};

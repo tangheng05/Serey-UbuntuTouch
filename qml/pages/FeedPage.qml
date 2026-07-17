@@ -3,6 +3,7 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 import "../components"
+import "../services/Http.js" as Http
 import "../services/PostService.js" as PostService
 import "../services/VideoService.js" as VideoService
 import "../services/FollowService.js" as FollowService
@@ -148,10 +149,43 @@ Page {
             }
         }
 
+        // Write a post — same brand-outlined "edit" affordance as the News tab's
+        // compose action. My Feed spans every community, so (like the empty
+        // state's button) the composer asks which platform to post in.
+        AbstractButton {
+            id: writeButton
+            visible: Session.isLoggedIn
+            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+            width: units.gu(3.6); height: width
+            onClicked: {
+                var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { pickPlatform: true });
+                if (ed && ed.saved) ed.saved.connect(function () { page.refresh(); });
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: units.gu(0.8)
+                color: "transparent"
+                border.width: units.dp(1.5)
+                border.color: Style.brand
+            }
+            Icon {
+                anchors.centerIn: parent
+                width: units.gu(2.2); height: width
+                name: "edit"
+                color: Style.brand
+            }
+            KeyTapArea { onActivated: writeButton.clicked() }
+        }
+
         // Filter button: opens the All / Blog / Video menu.
         AbstractButton {
             id: filterButton
-            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+            anchors {
+                right: writeButton.visible ? writeButton.left : parent.right
+                rightMargin: writeButton.visible ? Style.spacingXs : Style.spacingM
+                verticalCenter: parent.verticalCenter
+            }
             height: units.gu(4)
             width: filterRow.width + Style.spacingS * 2
             onClicked: page.filterMenuOpen = !page.filterMenuOpen
@@ -338,10 +372,18 @@ Page {
 
     // Loading: fetches the next page from every wanted, not-yet-ended source in parallel, then merges the combined, date-sorted, filtered batch.
     function loadMore() {
-        if (page.loading || page._allEnded()) return;
+        if (page.loading || page._allEnded()) {
+            page._log("loadMore skipped: loading=" + page.loading + " allEnded=" + page._allEnded());
+            return;
+        }
+        page._log("loadMore: blog=" + (page._wantBlog() && !page.blogEnded)
+                  + " video=" + (page._wantVideo() && !page.vidEnded && !page._followsNobody())
+                  + " own=" + (page._wantOwn() && !page.ownEnded)
+                  + " offsets b/v/o=" + page.blogOffset + "/" + page.vidOffset + "/" + page.ownOffset);
         page.loading = true;
         page.errorMsg = "";
         var epoch = page.reqEpoch;
+        var roundT0 = Date.now();   // debug: wall-clock for the whole parallel round
         var blogRows = [];
         var vidRows = [];
         var ownRows = [];
@@ -349,7 +391,7 @@ Page {
         var lastErr = null;
 
         function finish() {
-            if (epoch !== page.reqEpoch) return;
+            if (epoch !== page.reqEpoch) { page._log("finish: stale epoch, batch discarded"); return; }
             page.loading = false;
             page.refreshing = false;
             // Error only when this round produced nothing AND nothing is on
@@ -359,12 +401,18 @@ Page {
             if (lastErr && feedModel.count === 0
                     && blogRows.length === 0 && vidRows.length === 0
                     && ownRows.length === 0) {
+                page._log("finish: ERROR, nothing on screen — status=" + (lastErr.status)
+                          + " " + (lastErr.message || ""));
                 page.errorMsg = lastErr.message || Lang.tr("Something went wrong");
                 return;
             }
             var batch = blogRows.concat(vidRows).concat(ownRows);
             batch.sort(function (a, b) { return page._ts(b) - page._ts(a); });
             var rows = page._dedupe(page._filterRows(batch));
+            page._log("finish in " + (Date.now() - roundT0) + "ms: batch=" + batch.length
+                      + " afterFilter+dedupe=" + rows.length
+                      + " (blog=" + blogRows.length + " video=" + vidRows.length + " own=" + ownRows.length + ")"
+                      + " firstRound=" + page._firstRound + " modelBefore=" + feedModel.count);
             if (page._firstRound) {
                 // First merged batch replaces the list in place — this both swaps
                 // out cache-painted rows without a flash and is what makes
@@ -390,7 +438,9 @@ Page {
             page.inflightBlog = PostService.listFeedMixed(Config.baseUrl,
                 page._params(page.blogOffset, blogLimit), Session.token,
                 function (result, rawCount) {
-                    if (epoch !== page.reqEpoch) return;
+                    // `!page`: the page can be destroyed (tab pop) with this
+                    // request still in flight — the id then resolves to null.
+                    if (!page || epoch !== page.reqEpoch) return;
                     page.inflightBlog = null;
                     for (var i = 0; i < result.length; i++) {
                         var p = result[i];
@@ -400,11 +450,15 @@ Page {
                     }
                     page.blogOffset += rawCount;
                     if (rawCount < blogLimit) page.blogEnded = true;
+                    page._log("blog ok: raw=" + rawCount + " kept=" + blogRows.length
+                              + " (dropped " + (result.length - blogRows.length) + " videos)"
+                              + " ended=" + page.blogEnded);
                     if (--pending === 0) finish();
                 },
                 function (err) {
-                    if (epoch !== page.reqEpoch) return;
+                    if (!page || epoch !== page.reqEpoch) return;
                     page.inflightBlog = null;
+                    page._log("blog FAILED: status=" + (err && err.status) + " " + (err && err.message));
                     lastErr = err;
                     if (--pending === 0) finish();
                 });
@@ -418,7 +472,7 @@ Page {
             page.inflightVideo = VideoService.listVideos(Config.baseUrl,
                 page._params(page.vidOffset, vidLimit), Session.token,
                 function (result, rawCount) {
-                    if (epoch !== page.reqEpoch) return;
+                    if (!page || epoch !== page.reqEpoch) return;
                     page.inflightVideo = null;
                     for (var i = 0; i < result.length; i++) {
                         var v = result[i];
@@ -434,11 +488,15 @@ Page {
                     }
                     page.vidOffset += rawCount;
                     if (rawCount < vidLimit) page.vidEnded = true;
+                    page._log("video ok: raw=" + rawCount + " kept=" + vidRows.length
+                              + " (dropped " + (result.length - vidRows.length) + " not followed/subscribed)"
+                              + " ended=" + page.vidEnded);
                     if (--pending === 0) finish();
                 },
                 function (err) {
-                    if (epoch !== page.reqEpoch) return;
+                    if (!page || epoch !== page.reqEpoch) return;
                     page.inflightVideo = null;
+                    page._log("video FAILED: status=" + (err && err.status) + " " + (err && err.message));
                     lastErr = err;
                     if (--pending === 0) finish();
                 });
@@ -451,7 +509,7 @@ Page {
             page.inflightOwn = PostService.listByAuthor(Config.baseUrl, Session.username,
                 { limit: ownLimit, offset: page.ownOffset }, Session.token,
                 function (result, rawCount) {
-                    if (epoch !== page.reqEpoch) return;
+                    if (!page || epoch !== page.reqEpoch) return;
                     page.inflightOwn = null;
                     for (var i = 0; i < result.length; i++) {
                         var o = result[i];
@@ -461,11 +519,14 @@ Page {
                     }
                     page.ownOffset += rawCount;
                     if (rawCount < ownLimit) page.ownEnded = true;
+                    page._log("own ok: raw=" + rawCount + " kept=" + ownRows.length
+                              + " ended=" + page.ownEnded);
                     if (--pending === 0) finish();
                 },
                 function (err) {
-                    if (epoch !== page.reqEpoch) return;
+                    if (!page || epoch !== page.reqEpoch) return;
                     page.inflightOwn = null;
+                    page._log("own FAILED: status=" + (err && err.status) + " " + (err && err.message));
                     lastErr = err;
                     if (--pending === 0) finish();
                 });
@@ -494,13 +555,28 @@ Page {
     // rather than racing them. Failure is non-fatal: the sets stay empty, videos
     // stay out, and blog posts (resolved server-side) still show.
     function _withFollowing(next) {
-        if (page.followingLoaded || !Session.isLoggedIn) { next(); return; }
+        if (page.followingLoaded || !Session.isLoggedIn) {
+            page._log("follows: cached (" + (page.followingLoaded ? "already loaded" : "logged out") + ")");
+            next();
+            return;
+        }
+        var _fT0 = Date.now();
+        page._log("follows: fetching list-all-followings + subscribed (blocks the first feed request)");
         var pending = 2;
-        function done() { if (--pending === 0) { page.followingLoaded = true; next(); } }
+        // Same destroyed-page guard as loadMore's callbacks: these can land
+        // after the page is popped, when the `page` id resolves to null.
+        function done() {
+            if (!page) return;
+            if (--pending === 0) {
+                page._log("follows: resolved in " + (Date.now() - _fT0) + "ms");
+                page.followingLoaded = true;
+                next();
+            }
+        }
         FollowService.listAllFollowings(Config.baseUrl, Session.token,
-            function (map) { page.followingSet = map; done(); }, done);
+            function (map) { if (page) page.followingSet = map; done(); }, done);
         SubscriberService.fetchSubscribed(Config.baseUrl, Session.token,
-            function (map) { page.subscribedSet = map; done(); }, done);
+            function (map) { if (page) page.subscribedSet = map; done(); }, done);
     }
 
     function reload() {
@@ -511,7 +587,10 @@ Page {
         page._firstRound = true;
         // Only wipe when nothing cached can stand in — clearing first is what
         // flashed the skeleton on every open and filter switch.
-        if (!_paintCached()) feedModel.clear();
+        var painted = _paintCached();
+        page._log("reload: epoch=" + page.reqEpoch + " cachePainted=" + painted
+                  + " rows=" + feedModel.count);
+        if (!painted) feedModel.clear();
         // In-place sync keeps the scroll offset, so reset it explicitly (see
         // NewsPage) — switching the All/Blog/Video filter mid-scroll otherwise
         // lands mid-list of the new selection.
@@ -519,12 +598,17 @@ Page {
         var epoch = page.reqEpoch;
         page.loading = true;   // hold the spinner across the follow-list fetch
         _withFollowing(function () {
-            if (epoch !== page.reqEpoch) return;   // a newer reload took over
+            if (epoch !== page.reqEpoch) { page._log("reload: superseded by a newer reload"); return; }
             page.loading = false;
+            page._log("follows resolved: following=" + Object.keys(page.followingSet).length
+                      + " subscribed=" + Object.keys(page.subscribedSet).length
+                      + " followsNobody=" + page._followsNobody()
+                      + " allEnded=" + page._allEnded());
             // Nothing left to fetch (e.g. the Video filter while following
             // nobody) makes loadMore() a no-op, which would strand any
             // cache-painted rows on screen with no request to replace them.
             if (page._allEnded()) {
+                page._log("nothing to fetch (all sources ended) — showing empty state");
                 feedModel.clear();
                 FeedCache.remove(page._cacheKey());
                 page.showingCached = false;
@@ -554,10 +638,20 @@ Page {
         });
     }
 
+    // TEMPORARY (debug): trace what My Feed does and which endpoints it calls.
+    // Remove these, the [myfeed] logs below, and Http.setTrace() when done.
+    function _log(msg) { console.log("[myfeed]", msg); }
+
     Component.onCompleted: {
+        Http.setTrace(true);
+        page._log("open: loggedIn=" + Session.isLoggedIn + " user=" + (Session.username || "-")
+                  + " filter=" + page.filterNames[page.filterMode]
+                  + " communityId=" + Config.communityId
+                  + " cacheKey=" + page._cacheKey());
         page.reload();
         if (visible) list.forceActiveFocus();
     }
+    Component.onDestruction: Http.setTrace(false)
     // Keyboard parity on arrival: the list takes arrow-key focus whenever this
     // page is (re)shown, so keyboard nav works before the first click/tap.
     onVisibleChanged: if (visible) list.forceActiveFocus()
@@ -847,7 +941,9 @@ Page {
         // would otherwise fetch only the first one's posts.
         onFollowed: emptyStateRefetch.restart()
         onWritePostRequested: {
-            var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"));
+            // My Feed spans every community, so there's no active source to post
+            // into — the composer asks for the platform itself.
+            var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { pickPlatform: true });
             if (ed && ed.saved) ed.saved.connect(function () { page.refresh(); });
         }
     }
@@ -875,7 +971,15 @@ Page {
 
         Rectangle {
             // topBar is a sibling of this Item's parent, not of this Rectangle, so anchor to parent.top and offset by topBar.height instead.
-            anchors { top: parent.top; right: parent.right; topMargin: topBar.height + Style.spacingXs; rightMargin: Style.spacingM }
+            // Same reason the right margin is computed rather than anchored to
+            // filterButton: it lives in topBar, so it isn't anchorable from here.
+            // Keep the menu under the filter button as the write button shifts it left.
+            anchors {
+                top: parent.top; right: parent.right
+                topMargin: topBar.height + Style.spacingXs
+                rightMargin: Style.spacingM
+                              + (writeButton.visible ? writeButton.width + Style.spacingXs : 0)
+            }
             width: units.gu(20)
             height: menuCol.height
             radius: Style.cardRadius

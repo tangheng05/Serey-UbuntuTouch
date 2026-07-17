@@ -41,6 +41,30 @@ function subscriberCount(baseUrl, communityId, onOk, onErr) {
     }, onErr);
 }
 
+// GET /community-subscriber/suggested-communities — leaf communities ranked by
+// subscriber count, hidden (exclude_home) subtree already filtered server-side.
+// One request; replaces the old get-communities + N x subscriberCount fan-out.
+function suggestedCommunities(baseUrl, limit, onOk, onErr) {
+    Http.get(baseUrl, "/community-subscriber/suggested-communities",
+             { limit: limit }, null, function (data) {
+        var d = data && data.data
+        var rows = (d && d.communities) || []
+        if (!Array.isArray(rows)) rows = []
+        var out = [];
+        for (var i = 0; i < rows.length; i++) {
+            var r = rows[i] || {};
+            out.push({
+                id: r.id,
+                title: r.title || "",
+                dns: r.dns || "",
+                icon: r.icon_url || r.logo_url || "",
+                subscribers: parseInt(r.total_subscribers, 10) || 0
+            });
+        }
+        onOk(out);
+    }, onErr);
+}
+
 function listSubscribers(baseUrl, communityId, limit, offset, onOk, onErr) {
     Http.get(baseUrl, "/community-subscriber/pagination/" + encodeURIComponent(communityId),
              { limit: limit, offset: offset }, null, function (data) {

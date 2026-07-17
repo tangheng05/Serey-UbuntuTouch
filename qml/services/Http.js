@@ -4,12 +4,6 @@
 var _onUnauthorized = null;
 function setUnauthorizedHandler(fn) { _onUnauthorized = fn; }
 
-// TEMPORARY (debug): FeedPage turns this on while My Feed is open so the log
-// shows every endpoint the feed actually hits, with status and timing. Remove
-// together with the [myfeed] logs in FeedPage.qml.
-var _trace = false;
-function setTrace(on) { _trace = !!on; }
-
 function buildQuery(params) {
     if (!params)
         return "";
@@ -24,8 +18,6 @@ function buildQuery(params) {
 }
 
 function send(method, url, token, bodyObj, onOk, onErr) {
-    var _t0 = Date.now();
-    if (_trace) console.log("[http] →", method, url, token ? "(auth)" : "(anon)");
     var xhr = new XMLHttpRequest();
     xhr.open(method, url);
     xhr.setRequestHeader("Accept", "application/json");
@@ -37,17 +29,12 @@ function send(method, url, token, bodyObj, onOk, onErr) {
     // Without a timeout a stalled mobile request never resolves, leaving the caller's `loading` flag stuck true and permanently blocking pagination.
     xhr.timeout = 15000;
     xhr.ontimeout = function () {
-        if (_trace) console.log("[http] ✗ TIMEOUT", method, url, (Date.now() - _t0) + "ms");
         onErr({ status: 0, message: "Request timed out. Check your connection." });
     };
 
     xhr.onreadystatechange = function () {
         if (xhr.readyState !== XMLHttpRequest.DONE)
             return;
-
-        if (_trace)
-            console.log("[http] ←", xhr.status, method, url, (Date.now() - _t0) + "ms",
-                        (xhr.responseText || "").length + "B");
 
         if (xhr.status === 0) {
             onErr({ status: 0, message: "Network error. Check your connection." });

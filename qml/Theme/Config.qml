@@ -1,5 +1,6 @@
 pragma Singleton
 import QtQuick 2.7
+import "../services/Flags.js" as Flags
 
 QtObject {
     id: config
@@ -98,6 +99,25 @@ QtObject {
                                                       : communityIcon(communityDns)
     readonly property string communityDns: sources[sourceIndex].dns
     readonly property string communityName: sources[sourceIndex].name
+
+    // ISO-3166 alpha-2 of the user's country per Cloudflare's edge, resolved once
+    // at startup (see services/GeoService.js). "" = not detected (offline, VPN,
+    // or Cloudflare reported XX) — every consumer must treat that as "no hint"
+    // and keep its normal layout, never block on it.
+    property string detectedCountryCode: ""
+
+    // sources row for an ISO-3166 alpha-2 code, or -1 when we have no community
+    // for it. Skips row 0: Global is the combined feed, not a country, so it can
+    // never be the "detected" row. Shared by Main (auto-select on launch) and
+    // CommunityPicker (hoist to top) so both agree on the match.
+    function indexForCountryCode(code) {
+        if (!code) return -1;
+        var want = String(code).toLowerCase();
+        for (var i = 1; i < sources.length; i++) {
+            if (Flags.flagCodeFromTitle(sources[i].name || "") === want) return i;
+        }
+        return -1;
+    }
 
     // Map of community dns -> icon URL, fetched from the backend at startup so the source switcher shows each country's real icon.
     property var iconByDns: ({})

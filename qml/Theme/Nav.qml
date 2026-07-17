@@ -26,5 +26,10 @@ QtObject {
     // focusMaster this works on every tab, split or not. Main acts.
     signal focusContent()
 
+    // Re-fetch get-communities and rebuild Config.sources — emitted after
+    // creating or deleting a platform so the community picker reflects it
+    // without an app restart. Main acts (it owns the fetch + icon mapping).
+    signal refreshCommunities()
+
     function home() { goToTab(0); }
 }

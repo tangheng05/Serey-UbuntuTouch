@@ -3,6 +3,14 @@
 
 var _db = null
 
+// loadAll() runs a full table scan, and the feeds call it on every response —
+// including each pass of their "keep paging until a screenful survives" loop, so
+// several times per cold start. The set only changes through the writers below,
+// so memoise the map and let them invalidate it.
+var _cache = null
+
+function _invalidate() { _cache = null }
+
 function _open() {
     if (!_db) {
         _db = LS.LocalStorage.openDatabaseSync("SereyBlockedUsers", "1.0", "Blocked users", 1000000)
@@ -19,6 +27,7 @@ function add(username) {
     _open().transaction(function (tx) {
         tx.executeSql("INSERT OR IGNORE INTO blocked VALUES (?)", [username])
     })
+    _invalidate()
 }
 
 function remove(username) {
@@ -26,6 +35,7 @@ function remove(username) {
     _open().transaction(function (tx) {
         tx.executeSql("DELETE FROM blocked WHERE username=?", [username])
     })
+    _invalidate()
 }
 
 // Replace the whole set with the authoritative server list (startup sync).
@@ -36,15 +46,18 @@ function replaceAll(usernames) {
             if (usernames[i])
                 tx.executeSql("INSERT OR IGNORE INTO blocked VALUES (?)", [usernames[i]])
     })
+    _invalidate()
 }
 
 // Returns a JS object { username: true } for fast per-load lookup.
 function loadAll() {
+    if (_cache) return _cache
     var map = {}
     _open().readTransaction(function (tx) {
         var rs = tx.executeSql("SELECT username FROM blocked")
         for (var i = 0; i < rs.rows.length; i++)
             map[rs.rows.item(i).username] = true
     })
+    _cache = map
     return map
 }

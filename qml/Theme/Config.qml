@@ -54,8 +54,13 @@ QtObject {
     // The live source list, seeded with baseSources; Main.qml appends every other top-level country from the backend at startup. Indexed by sourceIndex everywhere.
     property var sources: baseSources
 
-    // Append backend countries below the fixed three, skipping any dns already present.
+    // Rebuild the source list: the fixed three, then the given backend countries
+    // (skipping any dns already present). Called at startup and again after a
+    // platform create/delete, so the list can shrink — keep the current selection
+    // pinned to its dns, and fall back to Global if that dns disappeared, or
+    // sourceIndex would point at the wrong row (or past the end).
     function appendCountries(extra) {
+        var currentDns = sources[sourceIndex] ? sources[sourceIndex].dns : "";
         var seen = {};
         for (var i = 0; i < baseSources.length; i++) seen[baseSources[i].dns] = true;
         var out = baseSources.slice();
@@ -63,7 +68,11 @@ QtObject {
             var e = extra[j];
             if (e.dns && !seen[e.dns]) { seen[e.dns] = true; out.push(e); }
         }
+        var newIndex = 0;
+        for (var k = 0; k < out.length; k++)
+            if (out[k].dns === currentDns) { newIndex = k; break; }
         sources = out;
+        if (sourceIndex !== newIndex) sourceIndex = newIndex;
     }
 
     // Mirrored from Main.currentTab — HomepagePage reads it to suspend its WebView while another tab shows (two live Chromium views crashed the app).

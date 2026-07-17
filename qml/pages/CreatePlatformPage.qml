@@ -214,11 +214,16 @@ Page {
             page.createdDns = res.dns || (slug + ".serey.io");
             page.step = 3;
             Toast.success(Lang.tr("Your platform has been created!"));
+            // Rebuild the community picker so the new platform (and its parent
+            // country, if this was the country's first) shows without a restart.
+            Nav.refreshCommunities();
             // Seed the new community into the in-session cache so the CMS hub
-            // shows its name/logo and loads ITS categories immediately. A
-            // re-fetch of get-communities can't do this (it's server-cached and
-            // still omits the just-created community), which is why the hub
-            // showed a blank name + default globe until an app restart.
+            // shows its name/logo and loads ITS categories immediately, without
+            // waiting on the refreshCommunities round-trip above. Keep this even
+            // though the server now busts its communities caches on create: an
+            // API instance other than the one that handled the create can still
+            // serve its own in-process copy for up to 60s, so the re-fetch is
+            // not guaranteed fresh — this local seed is.
             if (res.id) {
                 Config.addOrUpdateCommunity({
                     id: res.id,

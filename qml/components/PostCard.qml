@@ -188,10 +188,34 @@ Item {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 autoTransform: true     // honour EXIF orientation
-                sourceSize.width: cover.width
+                // HIG scaling: snap the decode size to a breakpoint instead of tracking
+                // `cover.width`, which re-rasterized every visible cover on any width
+                // change (window resize, entering/leaving the split pane). Mirrors VideoCard.
+                sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
                 Behavior on opacity { NumberAnimation { duration: 200 } }
                 opacity: status === Image.Ready ? 1.0 : 0.0
+
+                // [thumb] DIAGNOSTIC (remove once the mobile tab-switch black-flash
+                // is understood): timestamps each source swap and how long the
+                // image takes to come back. On desktop a swapped-in row's image is
+                // served from Qt's in-memory pixmap cache (READY arrives in the
+                // same tick, no visible gap); the phone symptom suggests eviction
+                // there, so the same swap goes back to the network. Capture with:
+                //   clickable logs | grep '\[thumb\]'
+                property double _tSrc: 0
+                onSourceChanged: {
+                    _tSrc = Date.now();
+                    console.log("[thumb] SRC   " + String(source).slice(-32));
+                }
+                onStatusChanged: {
+                    var name = status === Image.Ready ? "READY"
+                             : status === Image.Loading ? "LOADING"
+                             : status === Image.Error ? "ERROR" : "NULL";
+                    console.log("[thumb] " + name + " +"
+                                + (_tSrc > 0 ? (Date.now() - _tSrc) : -1) + "ms  "
+                                + String(source).slice(-32));
+                }
             }
             Rectangle {
                 id: coverMask

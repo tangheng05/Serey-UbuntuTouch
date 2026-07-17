@@ -17,6 +17,22 @@ Item {
     // Per-source cache: undefined = not fetched, [] = empty, [...] = data
     property var cache: ({})
     property int loadingIndex: -1
+
+    // Both `cache` and `expandedIndex` are keyed by ROW INDEX, so they only stay
+    // valid while Config.sources holds still. After a platform create/delete the
+    // source list is rebuilt and can shrink — every row below the removed country
+    // shifts up one, and the stale cache then showed the deleted country's
+    // children under whichever country inherited its index. The children data is
+    // also genuinely stale at that point, so drop everything and re-fetch on the
+    // next expand.
+    property Connections _sourcesWatcher: Connections {
+        target: Config
+        function onSourcesChanged() {
+            picker.cache = ({})
+            picker.expandedIndex = -1
+            picker.loadingIndex = -1
+        }
+    }
     // Map of communityId (string) → true for communities the user is subscribed to.
     property var subscribedMap: ({})
     property int subscribedRev: 0

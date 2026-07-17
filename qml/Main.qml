@@ -12,6 +12,8 @@ import "services/Http.js" as Http
 import "services/NotificationService.js" as NotificationService
 import "services/BlockedUsers.js" as BlockedUsers
 import "services/PaymentService.js" as PaymentService
+import "services/PostService.js" as PostService
+import "services/VideoService.js" as VideoService
 
 MainView {
     id: root
@@ -74,6 +76,16 @@ MainView {
         });
 
         // Needed immediately: the header pill icons and can-post gates read it.
+        _loadCommunities();
+
+        _prefetchFeeds();
+    }
+
+    // Fetch get-communities and rebuild the picker's source list + every derived
+    // map. Ran once at startup, and again via Nav.refreshCommunities() after a
+    // platform is created or deleted — Config.sources was otherwise never
+    // refreshed, so the picker only showed the change after an app restart.
+    function _loadCommunities() {
         CommunityService.listAll(Config.baseUrl,
             function (list, superhubChildren, byId) {
                 var icons = CommunityService.iconMap(list);
@@ -103,6 +115,62 @@ MainView {
                 Config.appendCountries(extra);
             },
             function (err) { /* keep globe fallback */ });
+    }
+
+    // After a platform create/delete: refresh now, then once more past the
+    // server's 60s in-process cache TTL. The write busts Redis and its own
+    // instance's local copy, but another instance (or a not-yet-redeployed API)
+    // can still serve its stale local entry to the immediate re-fetch — the
+    // second pass lands after every local TTL has expired.
+    property Timer _communitiesRetry: Timer {
+        interval: 65000
+        repeat: false
+        onTriggered: root._loadCommunities()
+    }
+    Connections {
+        target: Nav
+        function onRefreshCommunities() {
+            root._loadCommunities();
+            root._communitiesRetry.restart();
+        }
+    }
+
+    /*
+     * Warm the News and Video feeds while the user is still on the Homepage, so
+     * tapping either tab shows rows instead of a skeleton. Worth the most on
+     * Video: that request costs seconds server-side, and starting it here means
+     * it has usually landed before the user gets there.
+     *
+     * Data only — never the pages. _ensureTab stays lazy on purpose (see its
+     * comment): instantiating the tabs at launch is what made the Homepage web
+     * view janky, whereas this is ~50KB of JSON.
+     *
+     * Not deferred behind startupSettleTimer: a prefetch that arrives 3.5s late
+     * has missed the tab tap it exists to cover. FeedCache coalesces, so a user
+     * who taps News immediately attaches to this request rather than racing it.
+     */
+    function _prefetchFeeds() {
+        FeedCache.request(FeedCache.newsKey(0, Config.communityId),
+            function (ok, err) {
+                var p = { limit: Config.pageSize, offset: 0 };
+                if (Config.communityId > 0) p.community_id = Config.communityId;
+                else p.exclude_home = 1;
+                return PostService.listTrending(Config.baseUrl, p, Session.token, ok, err);
+            },
+            function (result) { /* stored by FeedCache; the page reads it */ },
+            function (err) { /* offline: the page will show its own error */ });
+
+        FeedCache.request(FeedCache.videoKey(Config.communityId),
+            function (ok, err) {
+                // Must match VideoPage's first-page request (initialLimit) or the
+                // page's own fetch won't coalesce with this one.
+                var p = { limit: 30, offset: 0 };
+                if (Config.communityId > 0) p.community_id = Config.communityId;
+                else p.exclude_home = 1;
+                return VideoService.listVideos(Config.baseUrl, p, Session.token, ok, err);
+            },
+            function (result) { /* stored by FeedCache; the page reads it */ },
+            function (err) { /* offline: the page will show its own error */ });
     }
 
     // Non-critical launch work is deferred so the Homepage web view's first load gets the CPU/network to itself on slow devices.
@@ -402,7 +470,11 @@ MainView {
                 width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
                 height: width
                 onClicked: {
-                    var vp = videoStack.currentPage;
+                    // Target the Video master page, not whatever's open in the
+                    // detail column: in split mode currentPage is VideoDetailPage,
+                    // which has no reload(), so the guard below silently skipped
+                    // the connect and the feed never showed the new upload.
+                    var vp = videoStack.rootPage;
                     var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
                     if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);
                 }

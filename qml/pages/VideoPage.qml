@@ -20,8 +20,12 @@ Page {
     // Request generation bumped on reload() so a late response from a previous community can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
-    property var reelsInflight: null
     property var reels: []
+    // True while the rows on screen came from FeedCache rather than the network.
+    property bool showingCached: false
+    // The first page is fetched at this depth so the reel shelf (<=12 rows) and
+    // the list can share one response. Deeper pages go back to Config.pageSize.
+    readonly property int initialLimit: 30
     readonly property bool hasReels: reels && reels.length > 0
     readonly property int reelsInsertIndex: feedModel.count > 1 ? 1 : 0
     // Tracks which row's detail is open in the split-pane (wide) layout so the master list can highlight it.
@@ -83,17 +87,115 @@ Page {
     function reload() {
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
-        if (reelsInflight) { reelsInflight.abort(); reelsInflight = null; }
         offset = 0;
         endReached = false;
         loading = false;
         // Also clear refreshing so a reload that interrupts an in-flight pull-to-refresh can't leave it stuck true (disabling refresh).
         refreshing = false;
         errorMsg = "";
-        reels = [];
-        feedModel.clear();
-        loadReels();
-        loadMore();
+        page.showingCached = false;
+        // Only wipe when there's nothing cached to put in its place, or the list
+        // flashes empty between communities.
+        if (!_paintCached()) { reels = []; feedModel.clear(); }
+        _fetchInitial(false);
+    }
+
+    // Paint the last-seen rows for this community so a relaunch (or switching
+    // back to a community already visited) shows videos at once instead of the
+    // skeleton, which is bound to `count === 0`.
+    function _paintCached() {
+        var cached = FeedCache.peek(FeedCache.videoKey(Config.communityId));
+        if (!cached) return false;
+        _applyRows(cached, -1);
+        page.showingCached = feedModel.count > 0;
+        return page.showingCached;
+    }
+
+    // Overwrite rows in place by index rather than clear() + append: clearing
+    // destroys every delegate and VideoCard's thumbnail fades back in from
+    // opacity 0, so an unchanged list visibly flashes. Reusing the row keeps its
+    // delegate; only rows whose content changed are rewritten. Same reasoning
+    // (and shape) as NewsPage._syncRows.
+    function _rowDiffers(cur, next) {
+        return cur.permlink !== next.permlink
+            || cur.votes !== next.votes
+            || cur.comments !== next.comments;
+    }
+
+    function _syncRows(rows) {
+        var n = Math.min(rows.length, feedModel.count);
+        for (var i = 0; i < n; i++)
+            if (_rowDiffers(feedModel.get(i), rows[i]))
+                feedModel.set(i, rows[i]);
+        for (var j = feedModel.count; j < rows.length; j++)
+            feedModel.append(rows[j]);
+        while (feedModel.count > rows.length)
+            feedModel.remove(feedModel.count - 1);
+    }
+
+    // One response drives both the list and the reel shelf. They used to be two
+    // concurrent requests to the same URL — on Global that is ~2.7s server-side
+    // each, so the cold start paid it twice to show the same videos.
+    // rawCount < 0 means "painted from cache": leave the paging counters alone so
+    // the real response still fetches page 0.
+    function _applyRows(result, rawCount) {
+        var hidden = HiddenPosts.loadAll();
+        var blocked = BlockedUsers.loadAll();
+        var rows = [];
+        var out = [];
+        var seen = {};
+        for (var i = 0; i < result.length; i++) {
+            var v = result[i];
+            if (hidden[v.permlink || ""] || blocked[v.author || ""]) continue;
+            rows.push(v);
+            // Reel shelf: Serey-hosted and playable only, deduped, capped at 12.
+            if (out.length < 12 && v.platform === "SEREY" && (v.videoLink || "").length > 0
+                    && !seen[v.permlink || ""]) {
+                seen[v.permlink || ""] = true;
+                out.push(v);
+            }
+        }
+        _syncRows(rows);
+        page.reels = out;
+        if (rawCount >= 0) {
+            page.offset = rawCount;
+            // Compare against what we actually asked for, not pageSize — asking
+            // for 30 and getting 12 means the feed is exhausted, not that a
+            // second page is waiting.
+            page.endReached = rawCount < page.initialLimit;
+        }
+    }
+
+    function _fetchInitial(isRefresh) {
+        var epoch = page.reqEpoch;
+        if (!isRefresh) { page.loading = true; page.errorMsg = ""; }
+        var params = { limit: page.initialLimit, offset: 0 };
+        if (Config.communityId > 0)
+            params.community_id = Config.communityId;
+        else
+            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
+        // Through FeedCache: stores the rows, and attaches to Main.qml's startup
+        // prefetch rather than firing the same 2.7s request again.
+        inflight = FeedCache.request(FeedCache.videoKey(Config.communityId),
+            function (ok, err) { return VideoService.listVideos(Config.baseUrl, params, Session.token, ok, err); },
+            function (result, rawCount) {
+                if (epoch !== page.reqEpoch) return;   // stale response — ignore
+                inflight = null;
+                page.loading = false;
+                page.refreshing = false;
+                page.showingCached = false;
+                page._applyRows(result, rawCount);
+                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
+            },
+            function (err) {
+                if (epoch !== page.reqEpoch) return;
+                inflight = null;
+                page.loading = false;
+                page.refreshing = false;
+                // Keep cached rows on failure; only an empty list becomes an error
+                // (it used to fall through to EmptyState's "No videos" instead).
+                if (feedModel.count === 0) page.errorMsg = err.message;
+            });
     }
 
     // Pull-to-refresh re-fetches page one but keeps current rows until new ones arrive (no skeleton flash, just the pull spinner).
@@ -103,76 +205,13 @@ Page {
         page.refreshing = true;
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
-        if (reelsInflight) { reelsInflight.abort(); reelsInflight = null; }
-        loadReels();
-        var epoch = page.reqEpoch;
-        var params = { limit: Config.pageSize, offset: 0 };
-        if (Config.communityId > 0)
-            params.community_id = Config.communityId;
-        else
-            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
-        inflight = VideoService.listVideos(Config.baseUrl, params, Session.token,
-            function (result, rawCount) {
-                if (epoch !== page.reqEpoch) return;
-                inflight = null;
-                page.refreshing = false;
-                page.loading = false;
-                feedModel.clear();
-                var hidden = HiddenPosts.loadAll();
-                var blocked = BlockedUsers.loadAll();
-                for (var i = 0; i < result.length; i++)
-                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
-                        feedModel.append(result[i]);
-                page.offset = rawCount;
-                page.endReached = rawCount < Config.pageSize;
-                // Keep paging if filtering left less than a screenful
-                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
-            },
-            function (err) {
-                if (epoch !== page.reqEpoch) return;
-                inflight = null;
-                page.refreshing = false;
-                // Must also clear loading — an aborted in-flight loadMore's own callback early-returns and would leave the skeleton stuck otherwise.
-                page.loading = false;
-            });
-    }
-
-    function loadReels() {
-        var epoch = page.reqEpoch;
-        var params = { limit: 30, offset: 0 };
-        if (Config.communityId > 0)
-            params.community_id = Config.communityId;
-        else
-            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
-        reelsInflight = VideoService.listVideos(Config.baseUrl, params, Session.token,
-            function (result) {
-                if (epoch !== page.reqEpoch) return;
-                reelsInflight = null;
-                var hidden = HiddenPosts.loadAll();
-                var blocked = BlockedUsers.loadAll();
-                var out = [];
-                var seen = {};
-                for (var i = 0; i < result.length; i++) {
-                    var v = result[i];
-                    if (v.platform !== "SEREY") continue;
-                    if (!(v.videoLink || "").length) continue;
-                    if (hidden[v.permlink || ""] || blocked[v.author || ""]) continue;
-                    if (seen[v.permlink || ""]) continue;
-                    seen[v.permlink || ""] = true;
-                    out.push(v);
-                    if (out.length >= 12) break;
-                }
-                page.reels = out;
-            },
-            function (err) {
-                if (epoch !== page.reqEpoch) return;
-                reelsInflight = null;
-                page.reels = [];
-            });
+        _fetchInitial(true);
     }
 
     function loadMore() {
         if (loading || endReached) return;
+        // Page 0 is the shared list+reels fetch; only deeper pages come through here.
+        if (page.offset === 0) { _fetchInitial(false); return; }
         loading = true;
         errorMsg = "";
         var epoch = page.reqEpoch;
@@ -205,8 +244,8 @@ Page {
     }
 
     Component.onCompleted: {
-        loadReels();
-        loadMore();
+        _paintCached();
+        _fetchInitial(false);
         if (visible) list.forceActiveFocus();
     }
     // Keyboard parity on arrival: the list takes arrow-key focus whenever this

@@ -20,6 +20,10 @@ Page {
     // Request generation bumped on reload() so a late response from a previous community/tab can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
+    // True while the rows on screen came from FeedCache rather than the network.
+    // The page-0 response replaces them wholesale instead of appending onto them,
+    // and a failed load keeps them rather than blanking to an error.
+    property bool showingCached: false
 
     // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
     readonly property real maxContentWidth: units.gu(60)
@@ -32,7 +36,9 @@ Page {
     // Source switching lives in the global AppHeader community pill; the feed just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
-        function onCommunityIdChanged() { page.reload(); }
+        // Warm the other tab for the new community too, or the first toggle after
+        // a community switch flashes the skeleton again.
+        function onCommunityIdChanged() { page.reload(); page._warmOtherFeed(); }
     }
 
     // Clears the highlighted row once the detail pane's back button returns here (split/wide layout).
@@ -81,9 +87,33 @@ Page {
         }
     }
 
-    function feedFn() {
-        if (feedIndex === 1) return PostService.listNew;
-        return PostService.listTrending;
+    function _feedFnFor(idx) {
+        return idx === 1 ? PostService.listNew : PostService.listTrending;
+    }
+
+    function feedFn() { return _feedFnFor(page.feedIndex); }
+
+    function _pageParams(offset) {
+        var params = { limit: Config.pageSize, offset: offset };
+        if (Config.communityId > 0)
+            params.community_id = Config.communityId;
+        else
+            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
+        return params;
+    }
+
+    // Fetch the tab the user isn't on, so the first Trending<->Latest toggle
+    // paints from cache instead of clearing to the skeleton. Only worth doing on
+    // arrival (mount / community change) — the toggle itself already revalidates
+    // through FeedCache, and doing it per-toggle would fetch on every tap.
+    function _warmOtherFeed() {
+        var other = page.feedIndex === 1 ? 0 : 1;
+        var params = _pageParams(0);
+        var fn = _feedFnFor(other);
+        FeedCache.request(FeedCache.newsKey(other, Config.communityId),
+            function (ok, err) { return fn(Config.baseUrl, params, Session.token, ok, err); },
+            function () { /* stored by FeedCache; the toggle reads it */ },
+            function () { /* offline: the toggle falls back to its own request */ });
     }
 
     function reload() {
@@ -95,8 +125,80 @@ Page {
         // Clear too, or an interrupted pull-to-refresh leaves this stuck true
         refreshing = false;
         errorMsg = "";
-        feedModel.clear();
+        page.showingCached = false;
+        // Only wipe the list when there's nothing cached to show in its place —
+        // clearing first would flash the skeleton between the two feeds.
+        if (!_paintCached()) feedModel.clear();
         loadMore();
+    }
+
+    // Hides and blocks change independently of any rows we hold, so re-filter on
+    // the way in rather than trusting whatever was stored.
+    function _filterRows(rows) {
+        var hidden = HiddenPosts.loadAll();
+        var blocked = BlockedUsers.loadAll();
+        var out = [];
+        for (var i = 0; i < rows.length; i++)
+            if (!hidden[rows[i].permlink || ""] && !blocked[rows[i].author || ""])
+                out.push(rows[i]);
+        return out;
+    }
+
+    /*
+     * Replace the model's contents in place instead of clear() + append.
+     *
+     * clear() destroys every delegate, and PostCard's cover is bound
+     * `opacity: status === Image.Ready ? 1 : 0` behind a 200ms Behavior — so a
+     * rebuilt row fades its thumbnail back in from nothing. Toggling
+     * Trending/Latest did that twice per switch (once painting the cache, once
+     * on the response), which is the flash you see even though the cards are
+     * already loaded.
+     *
+     * Reusing rows means an unchanged feed touches nothing: returning to a tab
+     * whose rows the network confirms unchanged does zero work, so no fade.
+     */
+    // True when a row needs rewriting: a different article, or the same one with
+    // counts the response has moved on from.
+    function _rowDiffers(cur, next) {
+        return cur.permlink !== next.permlink
+            || cur.votes !== next.votes
+            || cur.comments !== next.comments
+            || cur.payout !== next.payout;
+    }
+
+    function _syncRows(rows) {
+        // Overwrite rows in place by index. Reusing the row keeps its delegate, so
+        // an unchanged feed does nothing at all and a changed one swaps content
+        // without the list being rebuilt.
+        //
+        // Reconciling by permlink and moving survivors was tried and is worse
+        // here: Trending and Latest carry disjoint articles, so nothing matches
+        // and every row becomes an insert + trim — a full teardown, which is
+        // exactly the fade we're removing.
+        var setCount = 0, kept = 0, appended = 0, removed = 0;
+        var n = Math.min(rows.length, feedModel.count);
+        for (var i = 0; i < n; i++) {
+            if (_rowDiffers(feedModel.get(i), rows[i])) { feedModel.set(i, rows[i]); setCount++; }
+            else kept++;
+        }
+        for (var j = feedModel.count; j < rows.length; j++) { feedModel.append(rows[j]); appended++; }
+        while (feedModel.count > rows.length) { feedModel.remove(feedModel.count - 1); removed++; }
+        // [thumb] DIAGNOSTIC (remove with PostCard's): every `set` above swaps that
+        // card's thumbnail source — correlate this line with the SRC/READY trail.
+        console.log("[thumb] syncRows feed=" + page.feedIndex + " set=" + setCount
+                    + " kept=" + kept + " appended=" + appended + " removed=" + removed);
+    }
+
+    // Paint the last-seen rows for this feed+community so switching tabs (or back
+    // to a community already visited) shows content at once. The request fired
+    // right after replaces them; the skeleton is bound to `count === 0`, so
+    // painting here is what suppresses it. Returns false on a cold cache.
+    function _paintCached() {
+        var cached = FeedCache.peek(FeedCache.newsKey(page.feedIndex, Config.communityId));
+        if (!cached) return false;
+        _syncRows(_filterRows(cached));
+        page.showingCached = feedModel.count > 0;
+        return page.showingCached;
     }
 
     // Pull-to-refresh re-fetches the first page but keeps current rows on screen until new ones arrive, Facebook-style.
@@ -107,23 +209,19 @@ Page {
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
         var epoch = page.reqEpoch;
-        var params = { limit: Config.pageSize, offset: 0 };
-        if (Config.communityId > 0)
-            params.community_id = Config.communityId;
-        else
-            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
-        inflight = feedFn()(Config.baseUrl, params, Session.token,
+        var params = _pageParams(0);
+        // Through FeedCache so a manual refresh also updates the stored rows.
+        inflight = FeedCache.request(FeedCache.newsKey(page.feedIndex, Config.communityId),
+            function (ok, err) { return feedFn()(Config.baseUrl, params, Session.token, ok, err); },
             function (result, rawCount) {
                 if (epoch !== page.reqEpoch) return;
                 inflight = null;
                 page.refreshing = false;
                 page.loading = false;
-                feedModel.clear();
-                var hidden = HiddenPosts.loadAll();
-                var blocked = BlockedUsers.loadAll();
-                for (var i = 0; i < result.length; i++)
-                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
-                        feedModel.append(result[i]);
+                // In place, same as loadMore's page 0: a refresh that returns the
+                // same rows shouldn't visibly rebuild the list.
+                page._syncRows(page._filterRows(result));
+                page.showingCached = false;
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
                 // Keep paging if filtering left less than a screenful, or the feed stalls looking empty despite more content on later pages.
@@ -135,6 +233,11 @@ Page {
                 page.refreshing = false;
                 // Must also clear loading — an aborted in-flight loadMore's own callback early-returns and would leave the skeleton stuck otherwise.
                 page.loading = false;
+                // A failed refresh on an empty feed used to fall through to
+                // EmptyState ("No posts in Global"), which reads as "there is
+                // nothing here" rather than "this didn't load". Surface the error
+                // so ErrorState's Retry shows instead.
+                if (feedModel.count === 0) page.errorMsg = err.message;
             });
     }
 
@@ -143,36 +246,55 @@ Page {
         loading = true;
         errorMsg = "";
         var epoch = page.reqEpoch;
-        var params = { limit: Config.pageSize, offset: page.offset };
-        if (Config.communityId > 0)
-            params.community_id = Config.communityId;
-        else
-            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
-        inflight = feedFn()(Config.baseUrl, params, Session.token,
-            function (result, rawCount) {
-                if (epoch !== page.reqEpoch) return;   // stale response — ignore
-                inflight = null;
-                loading = false;
-                var hidden = HiddenPosts.loadAll();
-                var blocked = BlockedUsers.loadAll();
-                for (var i = 0; i < result.length; i++)
-                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
-                        feedModel.append(result[i]);
-                page.offset += rawCount;
-                if (rawCount < Config.pageSize) page.endReached = true;
-                // Keep paging if this page was filtered below a screenful (see refresh()).
-                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
-            },
-            function (err) {
-                if (epoch !== page.reqEpoch) return;
-                inflight = null;
-                loading = false;
-                page.errorMsg = err.message;
-            });
+        var isFirstPage = page.offset === 0;
+        var params = _pageParams(page.offset);
+
+        var onOk = function (result, rawCount) {
+            if (epoch !== page.reqEpoch) return;   // stale response — ignore
+            inflight = null;
+            loading = false;
+            var rows = page._filterRows(result);
+            if (isFirstPage) {
+                // Page 0 owns the whole list: sync in place so rows the response
+                // confirms unchanged keep their delegates (and their loaded
+                // thumbnails) instead of being rebuilt. This also subsumes the
+                // old "clear the cached rows before appending" step — without it
+                // they'd sit above their own duplicates.
+                page._syncRows(rows);
+                page.showingCached = false;
+            } else {
+                for (var i = 0; i < rows.length; i++)
+                    feedModel.append(rows[i]);
+            }
+            page.offset += rawCount;
+            if (rawCount < Config.pageSize) page.endReached = true;
+            // Keep paging if this page was filtered below a screenful (see refresh()).
+            if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
+        };
+        var onErr = function (err) {
+            if (epoch !== page.reqEpoch) return;
+            inflight = null;
+            loading = false;
+            // Cached rows are better than an error screen — keep them on failure.
+            if (!page.showingCached) page.errorMsg = err.message;
+        };
+
+        // Page 0 goes through FeedCache so it both stores the result and attaches
+        // to Main.qml's startup prefetch instead of duplicating it. Deeper pages
+        // are one-shot and go direct.
+        if (isFirstPage) {
+            inflight = FeedCache.request(FeedCache.newsKey(page.feedIndex, Config.communityId),
+                function (ok, err) { return feedFn()(Config.baseUrl, params, Session.token, ok, err); },
+                onOk, onErr);
+        } else {
+            inflight = feedFn()(Config.baseUrl, params, Session.token, onOk, onErr);
+        }
     }
 
     Component.onCompleted: {
+        _paintCached();
         loadMore();
+        _warmOtherFeed();
         if (visible) list.forceActiveFocus();
     }
     // Keyboard parity on arrival: the list takes arrow-key focus whenever this

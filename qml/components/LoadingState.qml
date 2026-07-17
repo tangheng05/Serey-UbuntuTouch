@@ -14,8 +14,10 @@ Item {
 
     readonly property real inset: Style.spacingM
     readonly property real contentWidth: root.width - inset * 2
-    // Covers sit a shade lighter than the text bars so the skeleton keeps the real card's title-vs-photo hierarchy.
-    readonly property color coverTone: "#ECECEC"
+    // Covers sit a shade lighter than the text bars (Style.skeleton) so the skeleton
+    // keeps the real card's title-vs-photo hierarchy. Needs a dark variant of its
+    // own: the light value was a glowing slab against a dark surface.
+    readonly property color coverTone: Style.dark ? "#333333" : "#ECECEC"
     readonly property string photoGlyph: "image-x-generic-symbolic"
 
     // Opaque card surface so the skeleton always reads cleanly on its own.

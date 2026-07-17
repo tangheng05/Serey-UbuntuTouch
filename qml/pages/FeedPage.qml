@@ -85,8 +85,11 @@ Page {
     property int autoFetches: 0
 
     property bool refreshing: false
-    // On refresh, keep the old rows on screen until the first new batch arrives so there's no skeleton flash, just the pull spinner.
-    property bool _refreshClear: false
+    // True while the rows on screen came from FeedCache rather than the network.
+    property bool showingCached: false
+    // Set by reload()/refresh(): the next merged batch REPLACES the list (in
+    // place, via _syncRows) instead of appending; later batches paginate.
+    property bool _firstRound: false
 
     header: Item { height: 0 }
 
@@ -189,6 +192,53 @@ Page {
         return isNaN(t) ? 0 : t;
     }
 
+    // Keyed per filter mode, community and account: each combination is a
+    // different merged list. My Feed is pushed fresh on every visit, so without
+    // this every open showed the skeleton until both sources responded.
+    function _cacheKey() {
+        return "myfeed:" + page.filterMode + ":" + Config.communityId + ":"
+               + (Session.username || "__guest__");
+    }
+
+    function _filterRows(rows) {
+        var hidden = HiddenPosts.loadAll();
+        var blocked = BlockedUsers.loadAll();
+        var out = [];
+        for (var i = 0; i < rows.length; i++)
+            if (!hidden[rows[i].permlink || ""] && !blocked[rows[i].author || ""])
+                out.push(rows[i]);
+        return out;
+    }
+
+    // Overwrite rows in place by index rather than clear() + append — clearing
+    // destroys every delegate and the card thumbnails fade back in from
+    // opacity 0. Same shape as NewsPage._syncRows.
+    function _rowDiffers(cur, next) {
+        return cur.permlink !== next.permlink
+            || cur.votes !== next.votes
+            || cur.comments !== next.comments;
+    }
+    function _syncRows(rows) {
+        var n = Math.min(rows.length, feedModel.count);
+        for (var i = 0; i < n; i++)
+            if (_rowDiffers(feedModel.get(i), rows[i]))
+                feedModel.set(i, rows[i]);
+        for (var j = feedModel.count; j < rows.length; j++)
+            feedModel.append(rows[j]);
+        while (feedModel.count > rows.length)
+            feedModel.remove(feedModel.count - 1);
+    }
+
+    // Paint the last-seen merged rows for this filter/community so reopening
+    // My Feed shows content at once; the fetch fired right after replaces them.
+    function _paintCached() {
+        var cached = FeedCache.peek(_cacheKey());
+        if (!cached) return false;
+        _syncRows(_filterRows(cached));
+        page.showingCached = feedModel.count > 0;
+        return page.showingCached;
+    }
+
     // Bounded auto-continue: keep paging to fill a screenful, but cap the chain so a heavily-filtered feed can't fire many sequential requests.
     function _maybeAutoContinue() {
         if (!page._allEnded() && feedModel.count < Config.pageSize && page.autoFetches < 6) {
@@ -212,19 +262,29 @@ Page {
             if (epoch !== page.reqEpoch) return;
             page.loading = false;
             page.refreshing = false;
-            if (page._refreshClear) { feedModel.clear(); page._refreshClear = false; }
-            if (lastErr && feedModel.count === 0) {
+            // Error only when this round produced nothing AND nothing is on
+            // screen. One failed source must not discard the other's rows (the
+            // old check did: a blog-side error threw away a successful video
+            // batch), and cached rows on screen beat an error page.
+            if (lastErr && feedModel.count === 0
+                    && blogRows.length === 0 && vidRows.length === 0) {
                 page.errorMsg = lastErr.message || Lang.tr("Something went wrong");
                 return;
             }
-            var hidden = HiddenPosts.loadAll();
-            var blocked = BlockedUsers.loadAll();
             var batch = blogRows.concat(vidRows);
             batch.sort(function (a, b) { return page._ts(b) - page._ts(a); });
-            for (var i = 0; i < batch.length; i++) {
-                var p = batch[i];
-                if (hidden[p.permlink || ""] || blocked[p.author || ""]) continue;
-                feedModel.append(p);
+            var rows = page._filterRows(batch);
+            if (page._firstRound) {
+                // First merged batch replaces the list in place — this both swaps
+                // out cache-painted rows without a flash and is what makes
+                // pull-to-refresh not rebuild every delegate.
+                page._syncRows(rows);
+                page._firstRound = false;
+                page.showingCached = false;
+                FeedCache.put(page._cacheKey(), rows);
+            } else {
+                for (var i = 0; i < rows.length; i++)
+                    feedModel.append(rows[i]);
             }
             page._maybeAutoContinue();
         }
@@ -301,17 +361,23 @@ Page {
         page.reqEpoch++;
         page._abortInflight();
         page._resetCursors();
-        feedModel.clear();
+        page.showingCached = false;
+        page._firstRound = true;
+        // Only wipe when nothing cached can stand in — clearing first is what
+        // flashed the skeleton on every open and filter switch.
+        if (!_paintCached()) feedModel.clear();
         loadMore();
     }
 
     function refresh() {
         if (page.refreshing) return;
         page.refreshing = true;
-        page._refreshClear = true;   // clear rows only once the new batch lands
         page.reqEpoch++;
         page._abortInflight();
         page._resetCursors();
+        // Keep current rows on screen; the first new batch replaces them in
+        // place via _syncRows (no skeleton flash, just the pull spinner).
+        page._firstRound = true;
         loadMore();
     }
 

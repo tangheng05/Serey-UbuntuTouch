@@ -33,15 +33,17 @@ function parseList(val) {
     return out;
 }
 
+var _entities = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">" };
+
+// Called once per row per page, on the UI thread, against the full article body.
+// The four entity rules were four separate full-string passes; one alternation
+// does the same work in a single scan. Three passes now: tags, entities, spaces.
 function stripHtml(html, max) {
     if (!html)
         return "";
     var text = String(html)
         .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
+        .replace(/&nbsp;|&amp;|&lt;|&gt;/g, function (e) { return _entities[e]; })
         .replace(/\s+/g, " ")
         .trim();
     if (max && text.length > max)
@@ -85,6 +87,11 @@ function voterNames(arr) {
 
 function toPost(raw) {
     raw = raw || {};
+    // Each of these was recomputed per field below (categories parsed 4x, each
+    // voter list walked twice) for every row of every page. Same values, built once.
+    var cats = parseList(raw.categories);
+    var voters = voterNames(raw.voters);
+    var flaggers = voterNames(raw.flaggers);
     return {
         id: raw.id,
         author: raw.author || "",
@@ -98,18 +105,18 @@ function toPost(raw) {
         votes: toInt(raw.voter_count),
         comments: toInt(raw.answer_count),
         payout: raw.serey_value || "",
-        categories: parseList(raw.categories),
+        categories: cats,
         // Scalar copy of the first category since a dynamicRoles ListModel wraps the `categories` array (losing [] indexing); edit-prefill reads this.
-        primaryCategory: parseList(raw.categories)[0] || "",
+        primaryCategory: cats[0] || "",
         // The post's tag list is [mainCategory, ...subcategories]; everything after
         // the first is a sub-category. Scalar copy of the first for the same
         // ListModel-wrapping reason as primaryCategory.
-        subCategories: parseList(raw.categories).slice(1),
-        primarySubCategory: parseList(raw.categories)[1] || "",
-        voters: voterNames(raw.voters),
-        voterStr: "," + voterNames(raw.voters).join(",") + ",",
-        flaggers: voterNames(raw.flaggers),
-        flaggerStr: "," + voterNames(raw.flaggers).join(",") + ",",
+        subCategories: cats.slice(1),
+        primarySubCategory: cats[1] || "",
+        voters: voters,
+        voterStr: "," + voters.join(",") + ",",
+        flaggers: flaggers,
+        flaggerStr: "," + flaggers.join(",") + ",",
         community: raw.community_title || "",
         checkmark: raw.checkmark_icon || "",
         postToBlockchain: onChainFlag(raw)

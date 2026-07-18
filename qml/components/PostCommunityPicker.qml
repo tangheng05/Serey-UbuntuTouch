@@ -33,6 +33,31 @@ Item {
     // Drops soft-deleted rows the backend still returns in these list endpoints.
     function _isDeleted(m) { return !!(m.deleted || m.deleted_at || m.is_deleted); }
 
+    // The Global feed (source id 0) is a filter sentinel, but the backend also
+    // has a real, postable "Global" community record (dns serey.io) at the top
+    // of the tree. Resolve it from the cached get-communities map so Global can
+    // be offered as a direct post target; null while the tree hasn't loaded or
+    // if that record isn't open for posting. Marked non-expandable: its
+    // children in the raw tree are the countries, which already fill the list.
+    function _globalEntry() {
+        var dns = Config.sources[0].dns;
+        for (var k in Config.communityById) {
+            var c = Config.communityById[k];
+            if (!c || c.dns !== dns) continue;
+            if (!c.allowPost) return null;
+            return {
+                id: String(c.id),
+                name: c.title || Config.sources[0].name,
+                icon: Config.communityIcon(dns),
+                allowPost: true,
+                videoAllowPost: !!c.videoAllowPost,
+                isParent: true,
+                expandable: false
+            };
+        }
+        return null;
+    }
+
     // Entry point: fetches the current source's sub-communities and, only if
     // there are any, shows the picker. Otherwise calls back immediately with
     // no override (the composer falls back to the current Config context).
@@ -75,6 +100,12 @@ Item {
         // already fetched once at startup via CommunityService.listAll.
         if (picker.topLevelIsCountries) {
             var out0 = [];
+            // Global itself first, when its backend record allows posting.
+            var globalEntry = picker._globalEntry();
+            if (globalEntry) {
+                out0.push(globalEntry);
+                picker._byId[globalEntry.id] = globalEntry;
+            }
             for (var s = 1; s < Config.sources.length; s++) {
                 var src = Config.sources[s];
                 var entry = {
@@ -93,6 +124,10 @@ Item {
                 if (cbG) cbG(null);
                 return;
             }
+            // Browsing Global with no sub-community picked: pre-select the
+            // Global row so the current context is the default target.
+            if (picker.selectedId.length === 0 && globalEntry)
+                picker.selectedId = globalEntry.id;
             picker.items = out0;
             picker._autoExpandForSelection(out0);
             picker._open();
@@ -134,6 +169,10 @@ Item {
                 };
                 out.push(parentEntry);
                 picker._byId[parentEntry.id] = parentEntry;
+                // No sub-community active: pre-select the community being
+                // browsed so the current context is the default target.
+                if (picker.selectedId.length === 0)
+                    picker.selectedId = parentEntry.id;
             }
             picker.items = out.concat(mapped);
             picker._open();
@@ -318,7 +357,7 @@ Item {
                     delegate: Column {
                         id: rowCol
                         width: sheetContent.width
-                        readonly property bool expandable: picker.topLevelIsCountries
+                        readonly property bool expandable: picker.topLevelIsCountries && modelData.expandable !== false
                         readonly property bool isExpanded: picker.expandedId === modelData.id
                         readonly property var children: picker.childCache[modelData.id] || []
 

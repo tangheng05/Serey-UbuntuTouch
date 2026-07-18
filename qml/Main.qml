@@ -503,13 +503,16 @@ MainView {
                 onClicked: {
                     // Target the News master page (not whatever's open in the detail column).
                     var np = newsStack.rootPage;
-                    var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"));
-                    if (ed && ed.saved && np)
-                        ed.saved.connect(function (isNew) {
-                            // New post -> jump to Latest so it shows at the top; edit -> just reload.
-                            if (isNew && np.showLatest) np.showLatest();
-                            else if (np.reload) np.reload();
-                        });
+                    postCommunityPicker.openFor(function (target) {
+                        var props = target ? { targetCommunity: target } : {};
+                        var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"), props);
+                        if (ed && ed.saved && np)
+                            ed.saved.connect(function (isNew) {
+                                // New post -> jump to Latest so it shows at the top; edit -> just reload.
+                                if (isNew && np.showLatest) np.showLatest();
+                                else if (np.reload) np.reload();
+                            });
+                    });
                 }
                 Rectangle {
                     anchors.fill: parent
@@ -777,6 +780,7 @@ MainView {
 
     // --- Overlays (bottom sheets + toasts) ---------------------------------
     CommunityPicker { id: communityPicker }
+    PostCommunityPicker { id: postCommunityPicker }
     PostActionSheet { }
     ShareSheet { }
     PaymentSheet { }

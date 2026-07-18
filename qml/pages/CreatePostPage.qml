@@ -33,11 +33,18 @@ Page {
     property bool pickPlatform: false
     property var targetPlatform: null       // {id, title, icon} from Config.communityById
     property bool platformSheetOpen: false
-    readonly property int postCommunityId: page.targetPlatform ? Number(page.targetPlatform.id) : Config.communityId
+    // Set by the compose flow's community-picker step ({id, name, ...}) to post into a
+    // specific (sub-)community regardless of whichever one is currently browsed in Config.
+    // Checked after targetPlatform so the two picker paths never fight over an entry point.
+    property var targetCommunity: null
+    readonly property int postCommunityId: page.targetPlatform ? Number(page.targetPlatform.id)
+                                           : (page.targetCommunity ? Number(page.targetCommunity.id) : Config.communityId)
     // The two differ off the platform path: categories are keyed by the selected
     // sub-community, the post itself by its top-level source. Keep both as they were.
-    readonly property string catCommunityName: page.targetPlatform ? page.targetPlatform.title : Config.currentCommunityName
-    readonly property string postCommunityName: page.targetPlatform ? page.targetPlatform.title : Config.communityName
+    readonly property string catCommunityName: page.targetPlatform ? page.targetPlatform.title
+                                               : (page.targetCommunity ? page.targetCommunity.name : Config.currentCommunityName)
+    readonly property string postCommunityName: page.targetPlatform ? page.targetPlatform.title
+                                                : (page.targetCommunity ? page.targetCommunity.name : Config.communityName)
 
     // Real platforms the user may post in. Countries and superhubs are containers
     // (you post in their children, not in them), and the Global feed hides the
@@ -60,6 +67,7 @@ Page {
     // When set, this page edits an existing post (sends its permlink to update in place) instead of creating a new one.
     property var editPost: null
     readonly property bool isEdit: !!editPost
+
     // isNew = true for a freshly published post (false for an in-place edit), so
     // the feed can jump to Latest only when there's actually a new post to show.
     signal saved(bool isNew)
@@ -89,12 +97,9 @@ Page {
             return;
         }
         page.categoriesLoading = true;
-        // currentCommunityName can lag a tick behind communityId here — read the
-        // source object directly. The platform-picker path (My Feed compose)
-        // overrides both with the picked platform (postCommunityId covers it).
-        var communityTitle = page.targetPlatform ? page.targetPlatform.title
-                           : (Config.selectedSubCommunity ? Config.selectedSubCommunity.name : Config.communityName);
-        CategoryService.listByCommunity(Config.baseUrl, communityTitle, page.postCommunityId, Session.token,
+        // catCommunityName/postCommunityId already resolve targetPlatform (My Feed
+        // compose) > targetCommunity (source-scoped compose picker) > Config fallback.
+        CategoryService.listByCommunity(Config.baseUrl, page.catCommunityName, page.postCommunityId, Session.token,
             function (names, raw) {
                 if (epoch !== page.catEpoch) return;   // stale community switch
                 page.categoriesLoading = false;
@@ -150,10 +155,11 @@ Page {
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
-    // The community can't change while this page is up, but react anyway so the list is always correct for the active source.
+    // The community can't change while this page is up, but react anyway so the list is always correct for
+    // the active source — unless a specific target community was chosen via the compose picker step.
     Connections {
         target: Config
-        function onCommunityIdChanged() { page.loadCategories() }
+        function onCommunityIdChanged() { if (!page.targetCommunity) page.loadCategories() }
     }
 
     header: Item { height: 0 }

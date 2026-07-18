@@ -467,7 +467,9 @@ MainView {
             id: feedBtn
             visible: Session.isLoggedIn
             anchors.centerIn: parent
-            width: root.wideMode ? units.gu(5) : units.gu(4)
+            // Tap target fills the header height so it is comfortable to hit;
+            // the icon inside keeps its smaller visual size.
+            width: units.gu(6)
             height: width
             onClicked: {
                 var stack = root.currentTab === 0 ? homeStack

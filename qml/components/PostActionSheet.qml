@@ -8,6 +8,7 @@ import "../services/AccountService.js" as AccountService
 import "../services/ReportService.js" as ReportService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
+import "../services/YouTube.js" as YouTube
 
 Item {
     id: sheet
@@ -49,7 +50,7 @@ Item {
         if (!visible) { navRows = []; navIndex = -1; return; }
         var rows = [];
         if (step === 0) {
-            var candidates = [saveOfflineBtn, editPostBtn, editCaptionBtn, deletePostBtn,
+            var candidates = [saveOfflineBtn, saveVideoBtn, editPostBtn, editCaptionBtn, deletePostBtn,
                               hidePostBtn, reportPostBtn, blockUserBtn];
             for (var i = 0; i < candidates.length; i++)
                 if (candidates[i].visible) rows.push(candidates[i]);
@@ -256,6 +257,63 @@ Item {
             });
     }
 
+    // ---- Video offline download (mirrors VideoDetailPage's routing so the sheet
+    // can save a video without opening the detail page). SEREY-hosted / direct-file
+    // videos download the file directly; YouTube clips resolve a direct URL via
+    // InnerTube first, then reuse the same download path.
+    function _isDirectFile(u) {
+        return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
+    }
+    function _videoRemoteUrl(v) {
+        if (!v) return "";
+        if (v.platform === "SEREY") return v.videoLink || v.embedUrl || "";
+        if (_isDirectFile(v.videoLink)) return v.videoLink;
+        if (_isDirectFile(v.embedUrl)) return v.embedUrl;
+        return "";
+    }
+    function _videoYoutubeId(v) {
+        if (!v) return "";
+        if (v.platform === "YOUTUBE" && (v.videoId || "").length === 11) return v.videoId;
+        var s = (v.embedUrl || "") + " " + (v.videoLink || "");
+        var m = s.match(/(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+        return m ? m[1] : "";
+    }
+    function _videoIsYouTube(v) {
+        return v && v.platform === "YOUTUBE" && _videoYoutubeId(v).length > 0;
+    }
+    function _videoCanDownload(v) {
+        return _videoRemoteUrl(v).length > 0 || _videoIsYouTube(v);
+    }
+    function doVideoDownloadToggle() {
+        var p = PostActions.post;
+        if (!p || saveVideoBtn._busy) return;
+        var pl = p.permlink || "";
+        if (pl.length === 0) return;
+        if (saveVideoBtn._saved) { Downloads.remove(pl); sheet.closeSheet(); return; }
+        var direct = sheet._videoRemoteUrl(p);
+        if (direct.length > 0) {
+            Downloads.start(p, direct);
+            Toast.show(Lang.tr("Downloading video…"));
+            sheet.closeSheet();
+            return;
+        }
+        if (sheet._videoIsYouTube(p)) {
+            var id = sheet._videoYoutubeId(p);
+            saveVideoBtn._extracting = true;
+            Toast.show(Lang.tr("Preparing download…"));
+            YouTube.extract(id, function (result, errMsg) {
+                saveVideoBtn._extracting = false;
+                if (result && result.url) {
+                    Downloads.start(p, result.url);
+                    Toast.show(Lang.tr("Downloading video…"));
+                } else {
+                    Toast.error(Lang.tr("This YouTube video can't be downloaded."));
+                }
+                sheet.closeSheet();
+            });
+        }
+    }
+
     // Delete the viewer's own post, then ask feed pages to prune the row.
     function doDelete() {
         var p = PostActions.post;
@@ -388,15 +446,58 @@ Item {
                 }
             }
 
+            // Save video for offline playback (SEREY/direct-file or YouTube via InnerTube).
+            // Toggles to "Remove download" when already saved; spinner while in flight.
+            AbstractButton {
+                id: saveVideoBtn
+                width: parent.width; height: units.gu(8)
+                readonly property string _pl: PostActions.post ? (PostActions.post.permlink || "") : ""
+                visible: PostActions.kind === "video" && _pl.length > 0
+                         && sheet._videoCanDownload(PostActions.post)
+                readonly property bool _saved: (Downloads.rev, Downloads.isSaved(saveVideoBtn._pl))
+                readonly property var _active: (Downloads.rev, Downloads.activeFor(saveVideoBtn._pl))
+                property bool _extracting: false
+                readonly property bool _busy: !!saveVideoBtn._active || saveVideoBtn._extracting
+                onClicked: sheet.doVideoDownloadToggle()
+                Row {
+                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingM
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(4.5); height: width; radius: width / 2
+                        color: Style.iconBackground
+                        Icon {
+                            anchors.centerIn: parent; width: units.gu(2.2); height: width
+                            visible: !saveVideoBtn._busy
+                            name: saveVideoBtn._saved ? "tick" : "save"
+                            color: saveVideoBtn._saved ? Style.brand : Style.textPrimary
+                        }
+                        ActivityIndicator {
+                            anchors.centerIn: parent; width: units.gu(2.2); height: width
+                            visible: saveVideoBtn._busy; running: saveVideoBtn._busy
+                        }
+                    }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
+                        Label { text: saveVideoBtn._busy ? Lang.tr("Downloading…")
+                                      : (saveVideoBtn._saved ? Lang.tr("Remove download") : Lang.tr("Save video offline"))
+                                font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
+                        Label { text: saveVideoBtn._saved ? Lang.tr("Available offline")
+                                      : Lang.tr("Watch this video without a connection")
+                                font.pixelSize: Style.fontSmall; color: Style.textSecondary }
+                    }
+                }
+            }
+
             // Separates utility actions (Save) from owner/moderation actions below.
             Rectangle {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.dp(2)
                 color: Style.lightGray
-                visible: saveOfflineBtn.visible
+                visible: saveOfflineBtn.visible || saveVideoBtn.visible
             }
-            Item { width: 1; height: Style.spacingS; visible: saveOfflineBtn.visible }
+            Item { width: 1; height: Style.spacingS; visible: saveOfflineBtn.visible || saveVideoBtn.visible }
 
             // ----- Owner actions (your own post): Edit (blog/gallery only — no video editor) / Delete -----
             AbstractButton {

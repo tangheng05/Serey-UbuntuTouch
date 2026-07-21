@@ -27,10 +27,9 @@ Page {
     // window had no focus item at all), leaving the site unscrollable until a click.
     Component.onCompleted: if (visible) Qt.callLater(webApp.forceActiveFocus)
 
-    // Adopt a community the web side moved to — at any depth, not just the
-    // country rows. Config.communityId then changes, which re-points siteUrl(),
-    // so a bridge-only request (superhub cards, which don't navigate themselves)
-    // also takes the web view along.
+    // Adopt a community the web side moved to, at any depth. Config.communityId
+    // then re-points siteUrl(), so a bridge-only request (a superhub card, which
+    // doesn't navigate itself) takes the web view along too.
     function applyCommunity(communityId) {
         if (String(communityId) === String(Config.communityId)) return;
         Config.selectCommunityById(communityId);
@@ -48,10 +47,8 @@ Page {
         communityId: String(Config.communityId)
         communityName: Config.communityName
         onOpenCommunityRequested: page.applyCommunity(communityId)
-        // Same for navigations the site does itself (community card taps): read
-        // the community out of the landed URL and mirror it natively. No-ops when
-        // the URL names no community, or the one already selected — which is what
-        // keeps our own siteUrl() hops from looping.
+        // Same for card taps the site handles itself. Ignoring the already-selected
+        // community is what stops our own siteUrl() hops from looping.
         onSiteNavigated: page.applyCommunity(Config.communityIdForUrl(url))
 
         // Buy-plan: bridge calls and intercepted Stripe redirects both land in

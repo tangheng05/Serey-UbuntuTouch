@@ -388,7 +388,7 @@ var nl = {
     "Save name":                                        "Naam opslaan",
     "Platform name updated.":                           "Platformnaam bijgewerkt.",
     "Couldn't update the name.":                        "Kan de naam niet bijwerken.",
-    "Posting":                                          "Plaatsen",
+    "Posting Permissions":                              "Plaatsingsrechten",
     "Article posting":                                  "Artikelen plaatsen",
     "Video posting":                                    "Video's plaatsen",
     "Only me":                                          "Alleen ik",

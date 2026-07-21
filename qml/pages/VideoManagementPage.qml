@@ -152,7 +152,7 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 0
 
-            SettingsSectionHeader { text: Lang.tr("Posting") }
+            SettingsSectionHeader { text: Lang.tr("Posting Permissions") }
             Item {
                 width: parent.width
                 height: units.gu(6.5)

@@ -27,6 +27,10 @@ QtObject {
     // Homepage web-view tracing + page console forwarding. Chatty, so off for
     // release. Flip on and: clickable logs | grep -E "WebAppView|SEREY_PROF"
     readonly property bool debugWebApp: false
+    // Runs the profiler's scroll benchmark once per load (p50/p90/p99 frame times,
+    // grep "scroll\[auto\]"). Scrolls the page out from under the user, so it's
+    // only for a measurement run, and it needs debugWebApp on as well.
+    readonly property bool debugScrollTest: false
     property bool useLocalDev: false
 
     readonly property string baseUrl: useLocalDev ? devBase : prodBase
@@ -149,13 +153,10 @@ QtObject {
     // child community id (string) -> parent id, from the same get-communities tree.
     property var parentCommunityById: ({})
 
-    /*
-     * Select any community by id, whatever its depth: a country row (sources),
-     * a platform under one, or a superhub child. The Homepage mini app navigates
-     * by community id, so this is what keeps the header pill, the picker and the
-     * News/Video feeds in step with whatever the web side moved to.
-     * Returns false when the id isn't in the cached tree (selection untouched).
-     */
+    // Select any community by id, whatever its depth: a country row, a platform
+    // under one, or a superhub child. This is what keeps the pill and the native
+    // feeds in step with the mini app, which navigates by community id.
+    // False when the id isn't in the cached tree — selection then stays put.
     function selectCommunityById(id) {
         var idStr = String(id);
         if (idStr === "" || idStr === "undefined" || idStr === "null") return false;
@@ -168,8 +169,8 @@ QtObject {
         }
         var c = communityById[idStr];
         if (!c) return false;
-        // Point the top-level row at this community's country, so opening the
-        // picker lands in the right place; the selection itself is the community.
+        // Point the top-level row at this community's country so the picker opens
+        // in the right place; the selection itself stays the community.
         var ancestor = idStr, guard = 0;
         while (parentCommunityById[ancestor] !== undefined && guard++ < 12)
             ancestor = parentCommunityById[ancestor];
@@ -185,15 +186,13 @@ QtObject {
         return true;
     }
 
-    // Community id for a URL the mini app navigated to, or "" if it names none.
-    // Two shapes: the landing site's own /<community_id> route, and a platform on
-    // its own subdomain (dns), which the site links out to directly.
+    // Community id for a URL the mini app landed on, or "" if it names none: the
+    // landing site's /<community_id> route, or a platform on its own subdomain.
     function communityIdForUrl(u) {
         if (!u) return "";
         var m = String(u).match(/^https?:\/\/([^\/?#]+)([^?#]*)/);
         if (!m) return "";
-        // Path first: the landing host may itself be a community dns, and the
-        // route is the more specific answer.
+        // Path first — the landing host can itself be a community dns.
         var seg = (m[2] || "").split("/")[1] || "";
         if (/^[0-9]+$/.test(seg)) return seg;
         var host = m[1].toLowerCase();

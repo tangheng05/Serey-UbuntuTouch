@@ -72,9 +72,8 @@ FocusScope {
     // Never wire this to Session.setAuth — the web side's identity comes from its own persistent cookies and can be stale, silently switching accounts.
     signal authTokenReceived(string token, string username)
     signal openCommunityRequested(string communityId)
-    // The mini app also switches community on its own (a card tap, an internal
-    // link) without going through the bridge. The shell has to follow that, or
-    // the header pill and the native feeds keep showing the previous community.
+    // The mini app also switches community on its own, without the bridge. The
+    // shell follows, or the pill and the native feeds keep showing the old one.
     signal siteNavigated(string url)
     signal openExternalBrowserRequested(string url)
     // params: { subscription_plan_id, method: "crypto"|"stripe" }
@@ -125,6 +124,25 @@ FocusScope {
                     "  document.documentElement.classList.add('serey-native');" +
                     "});"
 
+                // Decorative effects the device's rasteriser can't afford. Kept
+                // here rather than in the site's CSS so later community pages get
+                // them too; page-specific costs stay in the site's .serey-native rules.
+                readonly property string perfCss: "" +
+                    "window.__sereyWhenDocumentReady(function() {" +
+                    "  if (document.getElementById('serey-native-perf')) return;" +
+                    "  var s = document.createElement('style');" +
+                    "  s.id = 'serey-native-perf';" +
+                    "  s.textContent = " + JSON.stringify(
+                        // Frosted glass reads back everything behind it, every frame.
+                        "*, *::before, *::after {"
+                        + " backdrop-filter: none !important;"
+                        + " -webkit-backdrop-filter: none !important; }"
+                        // A fixed background repaints as the page scrolls under it.
+                        + "* { background-attachment: scroll !important; }"
+                    ) + ";" +
+                    "  (document.head || document.documentElement).appendChild(s);" +
+                    "});"
+
                 // Viewport spoofing is mobile-only — in desktop mode the page uses its own real navigator/screen
                 readonly property string mobileSpoof: "" +
                     "Object.defineProperty(navigator, 'userAgent', { get: function() { return '" + webAppView.mobileUA + "'; }, configurable: true });" +
@@ -141,7 +159,7 @@ FocusScope {
                     "  (document.head || document.documentElement).appendChild(meta);" +
                     "});"
 
-                sourceCode: preamble + nativeMarker
+                sourceCode: preamble + nativeMarker + perfCss
                             + (webAppView.desktopMode ? "" : mobileSpoof)
             }
         ]
@@ -149,7 +167,9 @@ FocusScope {
         // Fires for real loads and for the SPA's own pushState hops alike.
         onUrlChanged: {
             var u = webView.url.toString();
-            if (u !== "") webAppView.siteNavigated(u);
+            if (u === "") return;
+            webAppView._loadedUrl = u;
+            webAppView.siteNavigated(u);
         }
 
         onLoadingChanged: {
@@ -206,6 +226,9 @@ FocusScope {
 
     // Is there a loaded page to hand a route change to?
     property bool _pageReady: false
+    // Where that page actually is. Community subdomains run the same Next app, so
+    // one would accept __sereyNavigate and route to the right path on the wrong host.
+    property string _loadedUrl: ""
 
     // Re-pointing `url` reloads the whole web app — a few seconds of blank
     // spinner. It's an SPA, so once loaded we hand it the route instead and it
@@ -218,7 +241,7 @@ FocusScope {
     onUrlChanged: {
         if (url === "") return;
         _navStartedAt = Date.now();
-        if (_pageReady && _samePagePath(url) !== "") {
+        if (_pageReady && _samePagePath(url) !== "" && _samePagePath(_loadedUrl) !== "") {
             _log("url -> " + url + " | in-place hop queued");
             navTimer.restart();   // coalesce; see below
         } else {
@@ -416,7 +439,10 @@ FocusScope {
             "    }" +
             "    if (!hits) console.log('SEREY_PROF: no inner scrollers found');" +
             "  };" +
-            // Not auto-running sereyScrollTest here — it'd fight the user.
+            // Not auto-run normally — it'd fight the user.
+            (Config.debugScrollTest
+                ? "  setTimeout(function(){ window.sereyScrollTest('auto'); }, 6000);"
+                : "") +
             "  setTimeout(function(){" +
             "    var m = (performance && performance.memory)" +
             "      ? ' jsHeap=' + Math.round(performance.memory.usedJSHeapSize/1048576) + 'MB' : '';" +

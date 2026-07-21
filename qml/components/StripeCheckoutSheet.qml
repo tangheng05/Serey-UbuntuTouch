@@ -106,7 +106,7 @@ Item {
 
         Label {
             anchors.centerIn: parent
-            text: Lang.tr("Secure checkout")
+            text: Lang.tr("Checkout")
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
             font.family: Style.fontFamily
@@ -143,6 +143,7 @@ Item {
                     offTheRecord: false
                     httpUserAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                 }
+                zoomFactor: Math.max(1, units.gu(1) / 8)
                 Component.onCompleted: url = webLoader.checkoutUrl
                 onUrlChanged: {
                     var s = url.toString();

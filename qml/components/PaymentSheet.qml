@@ -426,15 +426,6 @@ Item {
             }
             Item { width: 1; height: Style.spacingM }
 
-            // Fallback: the hosted NOWPayments page in the system browser.
-            LinkButton {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: sheet.payment !== null && sheet.payment.paymentUrl.length > 0
-                label: Lang.tr("Open payment page in browser")
-                onClicked: Qt.openUrlExternally(sheet.payment.paymentUrl)
-            }
-            Item { width: 1; height: Style.spacingM }
-
             AbstractButton {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter

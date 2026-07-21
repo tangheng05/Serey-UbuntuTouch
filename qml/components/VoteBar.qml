@@ -89,13 +89,23 @@ RowLayout {
             bar.votes   = saved.votes;
         }
     }
+    // A 401 is already surfaced (and the session cleared) by Http.js's global
+    // unauthorized handler in Main.qml, so re-toasting it here would double up.
+    // The server sends one for a rotated posting key, not just an expired token.
+    function _isHandledAuthFailure(e) {
+        return !!e && e.status === 401;
+    }
     function _fail(e) {
         bar.busy = false;
+        if (_isHandledAuthFailure(e))
+            return;
         Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
     }
     // "Already voted" means the server already has our vote — reconcile the UI; must not be shared with flag/removeVote or a failed unvote flips to "liked".
     function _failUpvote(e) {
         bar.busy = false;
+        if (_isHandledAuthFailure(e))
+            return;
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
         if (msg.indexOf("already") >= 0) {
             if (!bar.upvoted) { bar.votes = bar.votes + 1; bar.upvoted = true; bar._cache(); }

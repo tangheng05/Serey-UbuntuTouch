@@ -34,6 +34,9 @@ function listAll(baseUrl, onOk, onErr) {
             // name/icon (e.g. an owned sub-community) without a dedicated
             // "get community by id" endpoint.
             var byId = {};
+            // child id -> parent id, so a community picked deep in the tree can be
+            // walked back up to the country row the picker indexes by.
+            var parents = {};
 
             function collectHubs(node) {
                 if (node.id !== undefined) byId[String(node.id)] = M.toCommunity(node);
@@ -43,7 +46,11 @@ function listAll(baseUrl, onOk, onErr) {
                     for (var i = 0; i < kids.length; i++) mapped.push(M.toCommunity(kids[i]));
                     hubs[String(node.id)] = mapped;
                 }
-                for (var j = 0; j < kids.length; j++) collectHubs(kids[j]);
+                for (var j = 0; j < kids.length; j++) {
+                    if (kids[j].id !== undefined && node.id !== undefined)
+                        parents[String(kids[j].id)] = String(node.id);
+                    collectHubs(kids[j]);
+                }
             }
 
             for (var g = 0; g < groups.length; g++) {
@@ -58,7 +65,7 @@ function listAll(baseUrl, onOk, onErr) {
                     }
                 }
             }
-            onOk(out, hubs, byId, hiddenIds);
+            onOk(out, hubs, byId, hiddenIds, parents);
         }, onErr);
 }
 

@@ -7,7 +7,12 @@ import "../components"
 Page {
     id: page
 
-    function siteUrl() { return Config.homeLandingPageUrl + "?community_id=" + Config.communityId; }
+    // Go straight to the resolved route — `/` only redirects here anyway, and
+    // that hop cost a remount plus a wait on the bridge before anything painted.
+    function siteUrl() {
+        return Config.homeLandingPageUrl + "/" + Config.communityId
+             + "?community_id=" + Config.communityId;
+    }
 
     // Zero-height header: the global AppHeader is the real top bar.
     header: Item { height: 0 }
@@ -22,14 +27,13 @@ Page {
     // window had no focus item at all), leaving the site unscrollable until a click.
     Component.onCompleted: if (visible) Qt.callLater(webApp.forceActiveFocus)
 
-    // Map a community id requested by the web side to one of our sources.
+    // Adopt a community the web side moved to — at any depth, not just the
+    // country rows. Config.communityId then changes, which re-points siteUrl(),
+    // so a bridge-only request (superhub cards, which don't navigate themselves)
+    // also takes the web view along.
     function applyCommunity(communityId) {
-        for (var i = 0; i < Config.sources.length; i++) {
-            if (String(Config.sources[i].id) === String(communityId)) {
-                Config.sourceIndex = i;
-                return;
-            }
-        }
+        if (String(communityId) === String(Config.communityId)) return;
+        Config.selectCommunityById(communityId);
     }
 
     WebAppView {
@@ -44,6 +48,11 @@ Page {
         communityId: String(Config.communityId)
         communityName: Config.communityName
         onOpenCommunityRequested: page.applyCommunity(communityId)
+        // Same for navigations the site does itself (community card taps): read
+        // the community out of the landed URL and mirror it natively. No-ops when
+        // the URL names no community, or the one already selected — which is what
+        // keeps our own siteUrl() hops from looping.
+        onSiteNavigated: page.applyCommunity(Config.communityIdForUrl(url))
 
         // Buy-plan: bridge calls and intercepted Stripe redirects both land in
         // the native payment flow (PaymentSheet / StripeCheckoutSheet).

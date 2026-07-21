@@ -79,6 +79,8 @@ Item {
     property bool subscriptionsLoaded: false
 
     function open() {
+        picker._closing = false
+        closeGuard.stop()
         picker.visible = true
         cpBackdropFade.start()
         cpSlide.start()
@@ -96,8 +98,29 @@ Item {
         picker.navSrc = Config.sourceIndex; picker.navCat = -1; picker.navCom = -1
         picker.navActive = false
     }
-    function close()         { picker.visible = false }
-    function closeAnimated() { cpBackdropFadeOut.start(); cpSlideOut.start() }
+    function close()         { picker._closing = false; closeGuard.stop(); picker.visible = false }
+
+    // Closing, but still visible until cpSlideOut finishes. The backdrop is a
+    // full-screen MouseArea and opacity:0 still hit-tests, so without this it
+    // keeps eating touches for however long that animation takes — which isn't
+    // bounded when choosing a community also kicks off a web-view reload.
+    property bool _closing: false
+
+    function closeAnimated() {
+        if (picker._closing) return
+        picker._closing = true
+        cpBackdropFadeOut.start()
+        cpSlideOut.start()
+        closeGuard.restart()
+    }
+
+    // onStopped isn't guaranteed to fire — close anyway.
+    Timer {
+        id: closeGuard
+        interval: 400   // comfortably past cpSlideOut's 250ms
+        repeat: false
+        onTriggered: if (picker.visible) picker.close()
+    }
 
     // ── Keyboard cursor ──────────────────────────────────────────────────────
     // Rows live in nested Repeaters (source → category → community), so the cursor
@@ -419,7 +442,12 @@ Item {
         anchors.fill: parent
         color: Qt.rgba(0, 0, 0, 0.4)
         opacity: 0
-        MouseArea { anchors.fill: parent; onClicked: picker.closeAnimated() }
+        // enabled gate: see picker._closing
+        MouseArea {
+            anchors.fill: parent
+            enabled: !picker._closing
+            onClicked: picker.closeAnimated()
+        }
     }
     NumberAnimation { id: cpBackdropFade;    target: cpBackdrop; property: "opacity"; from: 0; to: 1;  duration: 200 }
     NumberAnimation { id: cpBackdropFadeOut; target: cpBackdrop; property: "opacity"; to: 0;            duration: 200 }

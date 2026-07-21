@@ -23,6 +23,10 @@ QtObject {
     readonly property string devBaseV1: "http://localhost:5050/api/v1"
 
     readonly property bool showDevOptions: false   // set true locally to expose dev tools
+
+    // Homepage web-view tracing + page console forwarding. Chatty, so off for
+    // release. Flip on and: clickable logs | grep -E "WebAppView|SEREY_PROF"
+    readonly property bool debugWebApp: false
     property bool useLocalDev: false
 
     readonly property string baseUrl: useLocalDev ? devBase : prodBase
@@ -141,6 +145,64 @@ QtObject {
     // getHiddenFeedIds(). Anything choosing communities itself (My Feed's
     // suggestions) must skip these, or it offers what the feeds filter out.
     property var hiddenCommunityIds: ({})
+
+    // child community id (string) -> parent id, from the same get-communities tree.
+    property var parentCommunityById: ({})
+
+    /*
+     * Select any community by id, whatever its depth: a country row (sources),
+     * a platform under one, or a superhub child. The Homepage mini app navigates
+     * by community id, so this is what keeps the header pill, the picker and the
+     * News/Video feeds in step with whatever the web side moved to.
+     * Returns false when the id isn't in the cached tree (selection untouched).
+     */
+    function selectCommunityById(id) {
+        var idStr = String(id);
+        if (idStr === "" || idStr === "undefined" || idStr === "null") return false;
+        for (var i = 0; i < sources.length; i++) {
+            if (String(sources[i].id) === idStr) {
+                sourceIndex = i;
+                selectedSubCommunity = null;
+                return true;
+            }
+        }
+        var c = communityById[idStr];
+        if (!c) return false;
+        // Point the top-level row at this community's country, so opening the
+        // picker lands in the right place; the selection itself is the community.
+        var ancestor = idStr, guard = 0;
+        while (parentCommunityById[ancestor] !== undefined && guard++ < 12)
+            ancestor = parentCommunityById[ancestor];
+        for (var j = 0; j < sources.length; j++)
+            if (String(sources[j].id) === ancestor) { sourceIndex = j; break; }
+        selectedSubCommunity = {
+            id: idStr,
+            name: c.title || "",
+            icon: c.icon || "",
+            allowPost: !!c.allowPost,
+            videoAllowPost: !!c.videoAllowPost
+        };
+        return true;
+    }
+
+    // Community id for a URL the mini app navigated to, or "" if it names none.
+    // Two shapes: the landing site's own /<community_id> route, and a platform on
+    // its own subdomain (dns), which the site links out to directly.
+    function communityIdForUrl(u) {
+        if (!u) return "";
+        var m = String(u).match(/^https?:\/\/([^\/?#]+)([^?#]*)/);
+        if (!m) return "";
+        // Path first: the landing host may itself be a community dns, and the
+        // route is the more specific answer.
+        var seg = (m[2] || "").split("/")[1] || "";
+        if (/^[0-9]+$/.test(seg)) return seg;
+        var host = m[1].toLowerCase();
+        for (var k in communityById) {
+            var d = (communityById[k].dns || "").toLowerCase();
+            if (d && d === host) return k;
+        }
+        return "";
+    }
 
     // Looks up a community's {title, icon, dns, ...} by id from the cached tree, or null if unknown
     function communityInfoFor(id) {

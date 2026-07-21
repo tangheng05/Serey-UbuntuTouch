@@ -373,7 +373,7 @@ Page {
                     Label {
                         width: parent.width
                         text: page.postToBlockchain
-                            ? Lang.tr("Can earn votes and rewards.")
+                            ? Lang.tr("Permanent, tamper proof storage on the blockchain. Proves authorship and earns SRY rewards")
                             : Lang.tr("Serey only, no votes or rewards.")
                         font.pixelSize: Style.fontXSmall
                         font.family: Style.fontFor(text)

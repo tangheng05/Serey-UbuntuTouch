@@ -72,6 +72,10 @@ FocusScope {
     // Never wire this to Session.setAuth — the web side's identity comes from its own persistent cookies and can be stale, silently switching accounts.
     signal authTokenReceived(string token, string username)
     signal openCommunityRequested(string communityId)
+    // The mini app also switches community on its own (a card tap, an internal
+    // link) without going through the bridge. The shell has to follow that, or
+    // the header pill and the native feeds keep showing the previous community.
+    signal siteNavigated(string url)
     signal openExternalBrowserRequested(string url)
     // params: { subscription_plan_id, method: "crypto"|"stripe" }
     signal buyPlanRequested(var params)
@@ -96,36 +100,87 @@ FocusScope {
                 injectionPoint: WebEngineScript.DocumentCreation
                 worldId: WebEngineScript.MainWorld
                 runOnSubframes: true
-                // Empty in desktop mode — page uses its own real navigator/screen
-                sourceCode: webAppView.desktopMode ? "" : ("" +
+                // documentElement is null this early, and a throw here kills the
+                // rest of the script — that's how the viewport meta below ended up
+                // never being injected. Defer anything needing an element.
+                readonly property string preamble: "" +
+                    "window.__SEREY_NATIVE__ = 'ubuntu';" +
+                    (Config.debugWebApp ? "window.__SEREY_DEBUG__ = true;" : "") +
+                    "window.__sereyWhenDocumentReady = function(fn) {" +
+                    "  var run = function() {" +
+                    "    if (!document.documentElement) return false;" +
+                    "    try { fn(); } catch (e) { console.log('serey-native init failed: ' + e); }" +
+                    "    return true;" +
+                    "  };" +
+                    "  if (!run()) {" +
+                    "    document.addEventListener('readystatechange', run);" +
+                    "    document.addEventListener('DOMContentLoaded', run);" +
+                    "  }" +
+                    "};"
+
+                // Our UA is an Android spoof, so the site can't sniff for us —
+                // it gates its cheap-render path on this class instead.
+                readonly property string nativeMarker: "" +
+                    "window.__sereyWhenDocumentReady(function() {" +
+                    "  document.documentElement.classList.add('serey-native');" +
+                    "});"
+
+                // Viewport spoofing is mobile-only — in desktop mode the page uses its own real navigator/screen
+                readonly property string mobileSpoof: "" +
                     "Object.defineProperty(navigator, 'userAgent', { get: function() { return '" + webAppView.mobileUA + "'; }, configurable: true });" +
                     "Object.defineProperty(navigator, 'platform', { get: function() { return 'Linux armv8l'; }, configurable: true });" +
                     "Object.defineProperty(navigator, 'maxTouchPoints', { get: function() { return 5; }, configurable: true });" +
                     "Object.defineProperty(window, 'innerWidth', { get: function() { return 412; }, configurable: true });" +
                     "Object.defineProperty(window, 'outerWidth', { get: function() { return 412; }, configurable: true });" +
-                    "Object.defineProperty(document.documentElement, 'clientWidth', { get: function() { return 412; }, configurable: true });" +
                     "Object.defineProperty(screen, 'width', { get: function() { return 412; }, configurable: true });" +
                     "Object.defineProperty(screen, 'availWidth', { get: function() { return 412; }, configurable: true });" +
-                    "var meta = document.createElement('meta'); meta.name = 'viewport';" +
-                    "meta.content = 'width=412, initial-scale=1, maximum-scale=1, user-scalable=no';" +
-                    "(document.head || document.documentElement).appendChild(meta);")
+                    "window.__sereyWhenDocumentReady(function() {" +
+                    "  Object.defineProperty(document.documentElement, 'clientWidth', { get: function() { return 412; }, configurable: true });" +
+                    "  var meta = document.createElement('meta'); meta.name = 'viewport';" +
+                    "  meta.content = 'width=412, initial-scale=1, maximum-scale=1, user-scalable=no';" +
+                    "  (document.head || document.documentElement).appendChild(meta);" +
+                    "});"
+
+                sourceCode: preamble + nativeMarker
+                            + (webAppView.desktopMode ? "" : mobileSpoof)
             }
         ]
+
+        // Fires for real loads and for the SPA's own pushState hops alike.
+        onUrlChanged: {
+            var u = webView.url.toString();
+            if (u !== "") webAppView.siteNavigated(u);
+        }
 
         onLoadingChanged: {
             if (loadRequest.status === WebEngineLoadRequest.LoadSucceededStatus) {
                 webAppView.loading = false;
+                webAppView._pageReady = true;
                 webAppView._injectBridge();
+                webAppView._injectProfiler();
+                webAppView._log("full load succeeded after "
+                                + (Date.now() - webAppView._navStartedAt) + "ms");
             } else if (loadRequest.status === WebEngineLoadRequest.LoadStartedStatus) {
                 webAppView.loading = true;
+                webAppView._pageReady = false;
+                webAppView._log("full load started: " + loadRequest.url);
             } else if (loadRequest.status === WebEngineLoadRequest.LoadFailedStatus) {
                 webAppView.loading = false;
+                webAppView._pageReady = false;
+                webAppView._log("full load FAILED: " + loadRequest.errorString
+                                + " (" + loadRequest.url + ")");
             }
         }
 
         onJavaScriptConsoleMessage: {
-            if (message.indexOf("UBUNTU_BRIDGE:") === 0)
+            if (message.indexOf("UBUNTU_BRIDGE:") === 0) {
                 webAppView._handleBridgeMessage(message.substring(14));
+                return;
+            }
+            // Otherwise the page's own errors are invisible on device.
+            if (Config.debugWebApp)
+                console.log("WebAppView[page]: " + message
+                            + " (" + sourceID + ":" + lineNumber + ")");
         }
 
         // Keep the mini app on the plan page when the site redirects to Stripe
@@ -146,11 +201,91 @@ FocusScope {
         id: loadTimer
         interval: 100
         repeat: false
-        onTriggered: webView.url = webAppView.url
+        onTriggered: { navTimer.stop(); navVerify.stop(); webView.url = webAppView.url; }
     }
 
-    onUrlChanged: if (url !== "") loadTimer.restart()
+    // Is there a loaded page to hand a route change to?
+    property bool _pageReady: false
+
+    // Re-pointing `url` reloads the whole web app — a few seconds of blank
+    // spinner. It's an SPA, so once loaded we hand it the route instead and it
+    // re-renders in place. Sites without the hook fall back to a full load.
+    property double _navStartedAt: 0
+    function _log(msg) {
+        if (Config.debugWebApp) console.log("WebAppView: " + msg);
+    }
+
+    onUrlChanged: {
+        if (url === "") return;
+        _navStartedAt = Date.now();
+        if (_pageReady && _samePagePath(url) !== "") {
+            _log("url -> " + url + " | in-place hop queued");
+            navTimer.restart();   // coalesce; see below
+        } else {
+            _log("url -> " + url + " | full load"
+                 + (_pageReady ? " (cross-origin)" : " (no page loaded yet)"));
+            loadTimer.restart();
+        }
+    }
     Component.onCompleted: if (url !== "") loadTimer.start()
+
+    // Flicking through the picker changes `url` repeatedly; wait for it to
+    // settle so we only ask for the community actually landed on.
+    Timer {
+        id: navTimer
+        interval: 150
+        repeat: false
+        onTriggered: {
+            var path = webAppView._samePagePath(webAppView.url);
+            if (path === "") { loadTimer.restart(); return; }
+            webAppView._log("in-place hop -> " + path);
+            webView.runJavaScript(
+                "(function(){ if (typeof window.__sereyNavigate !== 'function') return false;" +
+                "  try { window.__sereyNavigate(" + JSON.stringify(path) + "); return true; }" +
+                "  catch (e) { return false; } })()",
+                function (handled) {
+                    if (handled) {
+                        webAppView._log("in-place hop accepted after "
+                                        + (Date.now() - webAppView._navStartedAt) + "ms");
+                        navVerify.restart();
+                    } else {
+                        webAppView._log("in-place hop refused (site has no __sereyNavigate) — full load");
+                        loadTimer.restart();
+                    }
+                });
+        }
+    }
+
+    // Accepting the call only means __sereyNavigate ran, not that the route
+    // actually changed — the site's router can cancel or reject a push and we'd
+    // never know, leaving the previous community on screen. Confirm where the
+    // page ended up, and fall back to a real load if it didn't move.
+    Timer {
+        id: navVerify
+        interval: 1500
+        repeat: false
+        onTriggered: {
+            var want = webAppView._samePagePath(webAppView.url).split("?")[0];
+            if (want === "") return;
+            webView.runJavaScript("window.location.pathname", function (got) {
+                if (got === want) {
+                    webAppView._log("in-place hop landed at " + got);
+                } else {
+                    webAppView._log("in-place hop did NOT land (at " + got
+                                    + ", wanted " + want + ") — falling back to full load");
+                    loadTimer.restart();
+                }
+            });
+        }
+    }
+
+    // path+query if `u` is on the site we already have loaded, else "".
+    function _samePagePath(u) {
+        var origin = Config.homeLandingPageUrl;
+        if (u.indexOf(origin) !== 0) return "";
+        var rest = u.substring(origin.length);
+        return rest === "" ? "/" : rest;
+    }
 
     // Apply the Frozen state once the view has had a moment to become hidden, guarded on `suspended` in case the tab was re-activated within the delay.
     Timer {
@@ -180,6 +315,7 @@ FocusScope {
     }
 
     function reload() {
+        navTimer.stop(); navVerify.stop();   // a pending hop is moot once we reload
         webView.url = "";
         loadTimer.restart();
     }
@@ -190,6 +326,111 @@ FocusScope {
                 && typeof mobileProfile.cookieStore.deleteAllCookies === "function") {
             mobileProfile.cookieStore.deleteAllCookies();
         }
+    }
+
+    // Debug-only profiler. Works on any page including the deployed site, so we
+    // can measure production. sereyScrollTest()/sereyKillAnimations() are for A/B.
+    function _injectProfiler() {
+        if (!Config.debugWebApp) return;
+        webView.runJavaScript(
+            "(function(){" +
+            "  if (window.__sereyProfiler) return; window.__sereyProfiler = true;" +
+            "  try {" +
+            "    new PerformanceObserver(function(l){" +
+            "      l.getEntries().forEach(function(e){" +
+            "        if (e.duration >= 50) console.log('SEREY_PROF: longtask ' + Math.round(e.duration) + 'ms');" +
+            "      });" +
+            "    }).observe({entryTypes:['longtask']});" +
+            "  } catch (e) { console.log('SEREY_PROF: no longtask support'); }" +
+            // Passive scroll-jank meter: the gap between consecutive scroll
+            // events IS the stall the user feels. Costs nothing and only runs
+            // while actually scrolling, so it can stay on without skewing what
+            // it measures (a permanent rAF loop would).
+            "  var lastEvt = 0, worstGap = 0, evts = 0, startY = 0, tmr = null;" +
+            "  window.addEventListener('scroll', function(){" +
+            "    var now = performance.now();" +
+            "    if (!evts) startY = window.scrollY;" +
+            "    if (lastEvt) { var gap = now - lastEvt; if (gap > worstGap) worstGap = gap; }" +
+            "    lastEvt = now; evts++;" +
+            "    clearTimeout(tmr);" +
+            "    tmr = setTimeout(function(){" +
+            "      console.log('SEREY_PROF: scrolled ' + Math.round(window.scrollY - startY) + 'px'" +
+            "        + ' events=' + evts + ' worstGap=' + Math.round(worstGap) + 'ms'" +
+            "        + ' y=' + Math.round(window.scrollY));" +
+            "      lastEvt = 0; worstGap = 0; evts = 0;" +
+            "    }, 400);" +
+            "  }, {passive:true});" +
+            // If this never fires while the user swipes, the document isn't the
+            // thing scrolling - which was the original bug.
+            "  window.addEventListener('touchstart', function(){" +
+            "    console.log('SEREY_PROF: touchstart y=' + Math.round(window.scrollY));" +
+            "  }, {passive:true});" +
+            "  window.sereyKillAnimations = function(){" +
+            "    var s = document.createElement('style');" +
+            "    s.textContent = '*,*::before,*::after{animation:none !important;transition:none !important;}';" +
+            "    document.head.appendChild(s);" +
+            "    console.log('SEREY_PROF: animations disabled');" +
+            "  };" +
+            // Percentiles, not an average — jank lives in the tail.
+            "  window.sereyScrollTest = function(label){" +
+            "    return new Promise(function(res){" +
+            "      window.scrollTo(0,0);" +
+            "      var f = [], last = performance.now(), t0 = last;" +
+            "      function step(){" +
+            "        var n = performance.now(); f.push(n - last); last = n;" +
+            "        window.scrollBy(0, 14);" +
+            "        if (n - t0 < 4000) requestAnimationFrame(step);" +
+            "        else {" +
+            "          f.sort(function(a,b){return a-b;});" +
+            "          var q = function(p){ return f[Math.min(f.length-1, Math.floor(f.length*p))].toFixed(1); };" +
+            "          console.log('SEREY_PROF: scroll[' + label + '] frames=' + f.length" +
+            "            + ' p50=' + q(0.5) + ' p90=' + q(0.9) + ' p99=' + q(0.99)" +
+            "            + ' max=' + f[f.length-1].toFixed(1) + ' scrollY=' + window.scrollY" +
+            "            + ' height=' + document.body.scrollHeight);" +
+            "          res();" +
+            "        }" +
+            "      }" +
+            "      requestAnimationFrame(step);" +
+            "    });" +
+            "  };" +
+            // Which element actually scrolls? If it isn't the document, scrolling
+            // behaves very differently on touch.
+            "  window.sereyFindScrollers = function(){" +
+            "    var de = document.documentElement, b = document.body;" +
+            "    console.log('SEREY_PROF: doc scrollH=' + de.scrollHeight + ' clientH=' + de.clientHeight" +
+            "      + ' bodyScrollH=' + b.scrollHeight + ' bodyClientH=' + b.clientHeight" +
+            "      + ' htmlOverflowY=' + getComputedStyle(de).overflowY" +
+            "      + ' bodyOverflowY=' + getComputedStyle(b).overflowY" +
+            "      + ' bodyPos=' + getComputedStyle(b).position" +
+            "      + ' scrollingElement=' + (document.scrollingElement === de ? 'html' : (document.scrollingElement === b ? 'body' : 'other')));" +
+            "    var all = document.getElementsByTagName('*'), hits = 0;" +
+            "    for (var i = 0; i < all.length && hits < 6; i++) {" +
+            "      var el = all[i], cs = getComputedStyle(el);" +
+            "      if (el === de || el === b) continue;" +
+            "      if (el.scrollHeight - el.clientHeight > 40 && /auto|scroll/.test(cs.overflowY)) {" +
+            "        hits++;" +
+            "        console.log('SEREY_PROF: inner scroller <' + el.tagName.toLowerCase() + ' class=\"'" +
+            "          + (el.className || '').toString().slice(0,70) + '\"> scrollH=' + el.scrollHeight" +
+            "          + ' clientH=' + el.clientHeight + ' overflowY=' + cs.overflowY + ' height=' + cs.height);" +
+            "      }" +
+            "    }" +
+            "    if (!hits) console.log('SEREY_PROF: no inner scrollers found');" +
+            "  };" +
+            // Not auto-running sereyScrollTest here — it'd fight the user.
+            "  setTimeout(function(){" +
+            "    var m = (performance && performance.memory)" +
+            "      ? ' jsHeap=' + Math.round(performance.memory.usedJSHeapSize/1048576) + 'MB' : '';" +
+            "    console.log('SEREY_PROF: imgs=' + document.images.length" +
+            "      + ' nodes=' + document.getElementsByTagName('*').length" +
+            "      + ' height=' + document.body.scrollHeight" +
+            "      + ' dpr=' + window.devicePixelRatio" +
+            "      + ' vw=' + window.innerWidth + 'x' + window.innerHeight" +
+            "      + ' native=' + (document.documentElement.classList.contains('serey-native') ? 'yes' : 'NO')" +
+            "      + m);" +
+            "    window.sereyFindScrollers();" +
+            "  }, 2500);" +
+            "  console.log('SEREY_PROF: profiler installed');" +
+            "})();");
     }
 
     function _injectBridge() {

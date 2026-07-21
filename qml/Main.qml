@@ -40,7 +40,19 @@ MainView {
     }
 
     property int currentTab: 0
-    onCurrentTabChanged: { Config.currentTab = currentTab; _ensureTab(currentTab); body.opacity = 0; tabFadeIn.start(); }
+    // No fade for the Homepage — animating opacity over the live Chromium view
+    // recomposites it every frame and the tab arrives visibly late.
+    onCurrentTabChanged: {
+        Config.currentTab = currentTab;
+        _ensureTab(currentTab);
+        if (currentTab === 0) {
+            tabFadeIn.stop();
+            body.opacity = 1;
+        } else {
+            body.opacity = 0;
+            tabFadeIn.start();
+        }
+    }
 
     // Tabs are created lazily on first visit — launching all four at once made the Homepage web view janky on low-end devices.
     function _ensureTab(tab) {
@@ -123,8 +135,9 @@ MainView {
     // refreshed, so the picker only showed the change after an app restart.
     function _loadCommunities() {
         CommunityService.listAll(Config.baseUrl,
-            function (list, superhubChildren, byId, hiddenIds) {
+            function (list, superhubChildren, byId, hiddenIds, parents) {
                 Config.hiddenCommunityIds = hiddenIds || ({});
+                Config.parentCommunityById = parents || ({});
                 var icons = CommunityService.iconMap(list);
                 Config.allowPostByDns = CommunityService.allowPostMap(list);
                 Config.videoAllowPostByDns = CommunityService.videoAllowPostMap(list);

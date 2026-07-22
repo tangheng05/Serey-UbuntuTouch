@@ -4,17 +4,7 @@ import "../Theme"
 import "../Session"
 import "../services/CommunitySubscriberService.js" as SubscriberService
 
-// My Feed's empty state. A new account subscribes to nothing and follows nobody,
-// so the feed is empty by definition — this offers the action that fills it.
-//
-// Suggesting communities only works because My Feed reads
-// /serey-web/list-by-feed-mixed (follows OR community subscriptions). If that
-// ever reverts to list-by-feed-following, subscribing here would leave the feed
-// just as empty and this screen becomes a lie — keep the two in step.
-//
-// Suggestions come ranked from a single backend route (leaf communities by
-// subscriber count, exclude_home subtree already filtered server-side) —
-// no more get-communities pool + one subscriberCount request per candidate.
+// My Feed empty state; suggests platforms to subscribe to
 Item {
     id: root
 

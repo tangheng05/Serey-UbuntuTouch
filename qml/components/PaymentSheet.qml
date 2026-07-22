@@ -4,19 +4,7 @@ import "../Theme"
 import "../Session"
 import "../services/PaymentService.js" as PaymentService
 
-/*
- * Native crypto (NOWPayments) buy-plan flow. State lives in Theme/Payments.qml
- * (Payments.openCrypto(planId) → this sheet); mounted once in Main.qml like
- * PostActionSheet/ShareSheet.
- *
- * Steps: pick a currency → create-payment → show deposit address (QR + copy)
- * with an expiry countdown while polling check-status → success / error.
- * The user pays from an external wallet; "finished" from the poll is the only
- * terminal success (the backend activates the plan inside check-status — no
- * webhook). Pure QML — no second Chromium (unlike the Stripe path). A created
- * payment is also persisted via Payments.setPendingCrypto so Main.qml's
- * background check completes it if the sheet (or app) is closed before paying.
- */
+// native crypto (NOWPayments) buy-plan flow; state in Theme/Payments.qml
 Item {
     id: sheet
     anchors.fill: parent
@@ -51,8 +39,7 @@ Item {
         sheetSlideOut.start();
     }
 
-    // The recommended options (mirrors the web's smart default, usdttrc20
-    // first) — shown at the top; everything else follows alphabetically.
+    // recommended options shown first, then alphabetical
     readonly property var preferredCurrencies: [
         "usdttrc20", "usdterc20", "usdtmatic", "usdtbsc",
         "usdc", "usdcmatic", "btc", "eth", "sol", "bnb"
@@ -71,9 +58,7 @@ Item {
         return head.concat(tail);
     }
 
-    // Only the recommended currencies at first; "More currencies" expands to
-    // everything NOWPayments offers. If none of the preferred ones are
-    // available, there's nothing sensible to collapse to — show all.
+    // recommended currencies first; "More currencies" expands to all
     readonly property var visibleCurrencies:
         (showAllCurrencies || preferredCount === 0) ? currencies
                                                     : currencies.slice(0, preferredCount)
@@ -93,8 +78,7 @@ Item {
             });
     }
 
-    // NOWPayments codes are lowercase with the network glued on; show the
-    // common stablecoin variants with a readable network suffix.
+    // readable network suffix for stablecoin variants
     function prettyCurrency(code) {
         var known = {
             usdttrc20: "USDT (TRC20)", usdterc20: "USDT (ERC20)",
@@ -104,17 +88,12 @@ Item {
         return known[code] || String(code).toUpperCase();
     }
 
-    // What the user actually picked — the backend reuses a still-valid pending
-    // payment for the same plan regardless of the requested currency (no cancel
-    // endpoint exists), so the response can come back in a different currency.
-    // We surface that instead of silently showing the "wrong" coin.
+    // backend may return a pending payment in a different currency
     property string requestedCode: ""
     readonly property bool currencyMismatch: payment !== null && requestedCode !== ""
         && payment.payCurrency.toLowerCase() !== requestedCode.toLowerCase()
 
-    // Called from the currency list delegate — must live at root level, the
-    // imported PaymentService is null inside delegate handlers (see the
-    // js-import-null-in-delegates memory).
+    // must live at root level; imported JS is null inside delegate handlers
     function selectCurrency(code) {
         if (sheet.busy) return;
         sheet.busy = true;
@@ -125,9 +104,7 @@ Item {
             function (pm) {
                 sheet.busy = false;
                 sheet.payment = pm;
-                // Remember it persistently: if the user pays after closing the
-                // sheet (or the app), Main.qml's background check still
-                // activates the plan (crypto has no webhook fallback).
+                // persisted so background check can complete it later
                 Payments.setPendingCrypto(pm.paymentId, Payments.planId, pm.expiresAt);
                 sheet.payStatus = "waiting";
                 sheet._startCountdown(pm.expiresAt);
@@ -168,10 +145,7 @@ Item {
         PaymentService.checkCryptoStatus(Config.baseUrl, Session.token, sheet.payment.paymentId,
             function (status) {
                 sheet.payStatus = status;
-                // Only "finished" is terminal: the backend activates the plan
-                // inside check-status when NOWPayments reports finished (no
-                // webhook reliance), so we must keep pinging through
-                // confirming/confirmed/sending until it flips.
+                // only "finished" is terminal
                 if (status === "finished") {
                     pollTimer.stop(); countdownTimer.stop();
                     Payments.clearPendingCrypto();
@@ -193,8 +167,7 @@ Item {
     Timer { id: pollTimer;      interval: 10000; repeat: true; onTriggered: sheet._pollStatus() }
     Timer { id: countdownTimer; interval: 1000;  repeat: true; onTriggered: sheet._tickCountdown() }
 
-    // Backdrop. While waiting for a payment a stray tap must not dismiss the
-    // sheet (losing the address mid-payment), so step 1 ignores backdrop taps.
+    // step 1 ignores backdrop taps (mid-payment)
     Rectangle {
         id: backdrop
         anchors.fill: parent
@@ -324,8 +297,7 @@ Item {
             spacing: 0
             visible: sheet.step === 1
 
-            // Pending-payment notice: the backend returned an earlier, still
-            // valid payment in a different currency than the one just picked.
+            // pending payment in a different currency
             Label {
                 visible: sheet.currencyMismatch
                 width: parent.width - Style.spacingL * 2
@@ -486,8 +458,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
                 onClicked: {
-                    // The plan is active — funnel straight into creating the
-                    // platform, unless the user already owns one.
+                    // funnel into platform creation unless already owned
                     var owns = false;
                     for (var k in Config.ownedCommunityIdSet) { owns = true; break; }
                     sheet.closeSheet();

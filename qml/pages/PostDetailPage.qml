@@ -16,33 +16,33 @@ Page {
     property string permlink: ""
     property string title: ""
 
-    // Adapt, not scale: caps the article to a centered column on wide windows
+    // cap article width on wide windows
     readonly property real maxContentWidth: units.gu(100)
 
-    // Passed in when opened from Saved Articles, so it renders instantly offline
+    // from Saved Articles, renders instantly offline
     property var preloadedPost: null
 
     property var post: null
     property var comments: []
     property int commentCount: 0
-    // Broadcast so the feed card behind this page reflects adds/deletes when the user goes back; feed pages patch the row by permlink.
+    // patches feed card behind this page on go-back
     onCommentCountChanged: if (page.permlink) PostActions.commentCountChanged(page.permlink, page.commentCount)
     property bool loading: false
     property bool posting: false
     property string errorMsg: ""
-    // When opened from a notification, scroll to this comment permlink after load.
+    // deep-link scroll target after load
     property string scrollToCommentPermlink: ""
-    // On-screen-keyboard height; the docked comment composer rides above it.
+    // on-screen-keyboard height, composer rides above it
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
-    // Set while replying to a specific comment rather than the post itself; cleared after posting or via the composer's Cancel.
+    // replying to a specific comment, cleared after post/cancel
     property var replyTarget: null
 
     readonly property bool postReady: page.post !== null && (page.permlink || "").length > 0
     readonly property bool isSaved: (SavedPosts.rev, SavedPosts.isSaved(page.permlink))
-    // Same URL shape the VoteBar's share button and the feed rows use.
+    // same URL shape as VoteBar share / feed rows
     readonly property string shareUrl: (page.author.length > 0 && page.permlink.length > 0)
         ? ("https://serey.io/authors/" + page.author + "/" + page.permlink) : ""
-    // The viewer owns this post, so offer Edit/Delete instead of moderation (you can't report or block yourself).
+    // own post gets Edit/Delete instead of moderation
     readonly property bool isOwnPost: Session.isLoggedIn && page.author !== "" && page.author === Session.username
 
     function toggleSaved() {
@@ -50,7 +50,7 @@ Page {
         else SavedPosts.save(page.post);
     }
 
-    // Same as the sheet's Hide row, plus a pop: you're looking at the post you just hid.
+    // same as sheet's Hide row, plus a pop
     function hidePost() {
         HiddenPosts.hide(page.permlink);
         PostActions.hideRequested(page.author, page.permlink);
@@ -62,8 +62,7 @@ Page {
         if (ed && ed.saved) ed.saved.connect(page.load);
     }
 
-    // Delete and Block run in the sheet and only reach us as signals; either way this
-    // page is left showing content that's gone, so unwind to the feed behind it.
+    // content is gone either way, unwind to feed
     Connections {
         target: PostActions
         function onPostDeleted(author, permlink) {
@@ -146,7 +145,7 @@ Page {
         return "serey";
     }
 
-    // A post is a video if its (primary) category says so — same rule FeedPage uses to route to VideoDetailPage.
+    // same rule FeedPage uses to route to VideoDetailPage
     function isVideoPost() {
         var p = page.post;
         if (!p) return false;
@@ -165,10 +164,10 @@ Page {
                 page.comments = result.replies || [];
                 page.commentCount = page._countAll(page.comments);
                 page._parseBody();
-                // Deep-link from a comment/reply notification: scroll to the target once the comment rows have laid out.
+                // scroll to comment notification target once laid out
                 if (page.scrollToCommentPermlink !== "") scrollToTimer.start();
 
-                // Sync vote bar: cache wins over API data since the feed may have recorded a vote the detail endpoint hasn't caught up with.
+                // cache wins over API, feed may be ahead
                 if (detailVoteBar) {
                     detailVoteBar.voters = result.post.voters || [];
                     var cached = VoteService.getCached(page.author, page.permlink);
@@ -236,7 +235,7 @@ Page {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
         Toast.success(Lang.tr("Comment deleted"));
-        // Must run in this page-level scope: the CommentService import resolves to null inside Loader-created reply row delegates.
+        // must run in page scope, JS import is null in Loader delegates
         CommentService.remove(Config.baseUrl, permlinkToRemove, Session.username, Session.token,
             function () {},
             function (err) {
@@ -314,7 +313,7 @@ Page {
                 page.commentCount = page.commentCount + 1;
                 page.replyTarget = null;
                 Toast.success(Lang.tr("Comment posted"));
-                // Reload so the optimistic comment gets its real server permlink, otherwise replying to it would fail (parent_permlink required).
+                // reload for real server permlink
                 page.load();
             },
             function (err) {
@@ -347,7 +346,7 @@ Page {
             return;
         var html = page.post.body || "";
 
-        // Custom editor containers carry the real src in data-image-url; replace the entire parent tag with a plain <img> so the splitter catches them.
+        // data-image-url containers -> plain <img> for the splitter
         html = html.replace(/<[^>]*data-image-url="([^"]*)"[^>]*>/g, '<img src="$1"/>');
 
         var pieces = [];
@@ -373,7 +372,7 @@ Page {
                 bodyModel.append({ type: "image", content: piece.content, links: "[]" });
             } else {
                 var text = piece.content;
-                // The blocks render as RichText, which collapses literal "\n" to a space — block boundaries become <br/> tags, and a paragraph gap is a double break.
+                // RichText collapses "\n", use <br/> for block boundaries
                 text = text.replace(/<\/p>/gi, "<br/><br/>");
                 text = text.replace(/<p[^>]*>/gi, "");
                 text = text.replace(/<div[^>]*>/gi, "");
@@ -394,7 +393,7 @@ Page {
                 text = text.replace(/&lt;/g, "<");
                 text = text.replace(/&gt;/g, ">");
                 text = text.replace(/&quot;/g, "\"");
-                // Decode numeric entities (smart quotes etc.) that the rich-text renderer can't render, but leave &,<,> encoded so they aren't mistaken for markup.
+                // decode numeric entities, keep &,<,> encoded
                 text = text.replace(/&#(\d+);/g, function (mm, n) {
                     var code = parseInt(n, 10);
                     return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
@@ -403,13 +402,11 @@ Page {
                     var code = parseInt(n, 16);
                     return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
                 });
-                // Collapse runs of breaks and trim leading/trailing ones so blocks don't start or end with blank lines.
+                // collapse/trim break runs, no blank-line edges
                 text = text.replace(/(?:<br\/>\s*){3,}/gi, "<br/><br/>");
                 text = text.replace(/^(?:\s|<br\/>)+/i, "");
                 text = text.replace(/(?:\s|<br\/>)+$/i, "");
-                // Lomiri TextArea has no linkAt(), so capture each anchor's href and the
-                // exact visible text it renders. The delegate hit-tests a tap position
-                // (positionAt) against these spans in the displayed plain text to open links.
+                // capture anchor href + visible text for tap-to-open
                 var links = [];
                 var reA = /<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
                 var am;
@@ -444,7 +441,7 @@ Page {
     }
     function openAuthor() { if (page.post) page.openProfile(page.post.author); }
 
-    // Scroll to a specific comment after the layout settles post-load (deep-link from a notification).
+    // deep-link scroll target, after layout settles
     Timer {
         id: scrollToTimer
         interval: 350
@@ -463,29 +460,25 @@ Page {
         }
     }
 
-    // The scroll view owns arrow-key focus so a keyboard user can scroll the article;
-    // AdaptiveStack.focusDetail() targets this when entering from the list.
+    // owns arrow-key focus, focusDetail() targets this
     property Item keyboardFocusItem: scroll
 
     KeyboardAwareFlickable {
         id: scroll
         anchors { top: postDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         anchors.bottomMargin: footer.visible ? footer.height + page.kbHeight : 0
-        // Animate in step with the footer's own bottomMargin so the list and the docked composer move together when the keyboard shows/hides.
+        // move in step with footer's own bottomMargin
         Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
         visible: page.post !== null
-        // Dismiss the keyboard on scroll only when the docked composer is the focused input, so editing a comment inline isn't interrupted.
+        // dismiss keyboard only if composer was focused
         onMovementStarted: if (composer.activeFocus) Qt.inputMethod.hide()
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
-        // Keyboard reading: a plain Flickable ignores keys, so arrow/Page/Space/Home/End
-        // scroll the article here. Focus lands on the flick when the article opens
-        // (guarded so it never steals focus from the comment box); tapping the body
-        // TextArea still hands focus over for native text selection.
+        // arrow/Page/Space/Home/End scroll the article
         activeFocusOnTab: true
         function _kbScroll(dy) {
             var maxY = Math.max(0, scroll.contentHeight - scroll.height + scroll.bottomMargin);
@@ -501,7 +494,7 @@ Page {
             else if (event.key === Qt.Key_Home)     { scroll.contentY = 0; event.accepted = true; }
             else if (event.key === Qt.Key_End)      { scroll._kbScroll(scroll.contentHeight); event.accepted = true; }
             else if (event.key === Qt.Key_Space)    { scroll._kbScroll((event.modifiers & Qt.ShiftModifier) ? -pageStep : pageStep); event.accepted = true; }
-            // Hand focus back to the master list (the sidebar) so the reader can pick the next post.
+            // back to master list
             else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
         }
         onVisibleChanged: if (visible && !composer.activeFocus) Qt.callLater(scroll.forceActiveFocus)
@@ -641,7 +634,7 @@ Page {
 
             Rectangle { width: parent.width; height: units.dp(1); color: "black" }
 
-            // Featured/cover image: Rectangle.clip only clips to the bounding box, so the Image is masked against a rounded Rectangle for a true rounded crop.
+            // masked against rounded Rectangle for true rounded crop
             Item {
                 id: coverFrame
                 width: parent.width - Style.spacingM * 2
@@ -679,7 +672,7 @@ Page {
                 }
             }
 
-            // Body is parsed into text blocks and rounded images; inset once here so every block shares the same left/right padding as the title/author row.
+            // shared left/right inset for text blocks and images
             Column {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -731,44 +724,33 @@ Page {
 
                         Component {
                             id: bodyTextComp
-                            // Wrapped in an Item sized to full content height, else the surrounding Loader/Column only sees a one-line implicit height and clips the rest.
+                            // sized to full content height, avoid clipping
                             Item {
                                 width: parent.width - Style.wrapSafeMargin
                                 height: bodyTxt.height
 
-                                // Lomiri TextArea (not plain Text) for the native long-press selection UI (drag handles + Copy popover).
+                                // native long-press selection UI (drag handles + Copy)
                                 TextArea {
                                     id: bodyTxt
                                     width: parent.width
-                                    // Stray-selection guard. When the focusing press also scrolls, the
-                                    // Flickable steals the grab but TextEdit's press-and-hold word-select timer
-                                    // is NOT cancelled, so it fires 0.4-0.7s AFTER motion stops (anchored to the
-                                    // press, not scroll-end — a fixed time window from scroll-end is unreliable).
-                                    // The reliable invariant: a scroll occurred during this press. A deliberate
-                                    // long-press has no scroll in its gesture. So we flag "scrolled since focus"
-                                    // and clear any selection that appears while it's set. The idle-timer part
-                                    // re-allows selection once scrolling has been quiet, in case focus never
-                                    // dropped between a scroll and a later deliberate hold.
+                                    // stray-selection guard: ignore selection from a scroll gesture
                                     property real _lastScrollMs: 0
                                     property bool _scrolledSinceFocus: false
                                     readonly property int _scrollSelGuardMs: 1500
                                     text: model.content
                                     textFormat: TextEdit.RichText
                                     readOnly: true
-                                    // autoSize + maximumLineCount<=0 disables the TextArea's internal scroll so the outer Flickable's scroll can cancel the long-press timer natively.
+                                    // disables internal scroll so outer Flickable can cancel long-press
                                     autoSize: true
                                     maximumLineCount: 0
-                                    // autoSize under-measures RichText (taller bold/heading lines) — grow to the true painted height.
+                                    // autoSize under-measures RichText, grow to painted height
                                     onPaintedHeightChanged: Qt.callLater(_fitHeight)
                                     onLineCountChanged: Qt.callLater(_fitHeight)
                                     Component.onCompleted: Qt.callLater(_fitHeight)
                                     function _fitHeight() { if (height < paintedHeight) height = paintedHeight; }
-                                    // Long-press selection requires the field to already be focused
+                                    // long-press needs focus first
                                     activeFocusOnPress: true
-                                    // Once clicked/selected, the read-only text cursor would swallow the
-                                    // reading keys. TextEdit forwards keys to its TextArea root first, so
-                                    // chain them to the flick: it accepts arrows/Page/Space/Left/Escape,
-                                    // while copy & select-all fall through untouched.
+                                    // forward reading keys to flick, copy/select-all pass through
                                     Keys.forwardTo: [scroll]
                                     font.pixelSize: Config.wideMode ? Style.fontMedium * 1.2 : Style.fontMedium
                                     font.family: Style.fontFor(text)
@@ -780,15 +762,11 @@ Page {
                                         overlaySpacing: 0
                                     }
                                     onLinkActivated: Qt.openUrlExternally(link)
-                                    // A fresh press (focus gained) starts a new gesture — reset the flag so a
-                                    // deliberate long-press with no scroll is never blocked.
+                                    // fresh press resets stray-scroll flag
                                     onActiveFocusChanged: if (activeFocus) bodyTxt._scrolledSinceFocus = false
-                                    // Caret visible only while selected, gating the native Copy popover; always-on left an idle blue cursor while reading.
+                                    // caret visible only while selected, gates Copy popover
                                     onSelectedTextChanged: {
-                                        // Stray if the scroller is in motion, OR a scroll happened during this
-                                        // press and it's still recent (the late press-and-hold timer that the
-                                        // stolen grab never cancelled). A deliberate long-press (no scroll since
-                                        // focus, or well after the last scroll) is never cleared.
+                                        // clear stray selection from scroll gesture
                                         if (selectedText.length > 0
                                                 && (scroll.moving || scroll.flicking
                                                     || (bodyTxt._scrolledSinceFocus
@@ -801,8 +779,7 @@ Page {
                                     onCursorVisibleChanged: if (!cursorVisible && selectedText.length > 0) cursorVisible = true
                                 }
 
-                                // Track scroll activity so the selection guard above can distinguish a stray
-                                // (scroll happened during this press) from a deliberate long-press.
+                                // feeds the selection guard above
                                 Connections {
                                     target: scroll
                                     onMovementStarted: { bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now(); bodyTxt.deselect() }
@@ -812,11 +789,7 @@ Page {
                                     onDraggingChanged: { if (scroll.dragging) bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now() }
                                 }
 
-                                // Tap-to-open links. Lomiri TextArea has no linkAt() and doesn't reliably emit
-                                // onLinkActivated for a tap inside a Flickable, so resolve the link ourselves:
-                                // map the tap to a character position (positionAt) and test it against this
-                                // block's link spans located in the displayed plain text (getText). A non-link
-                                // press falls through (mouse.accepted = false) so selection and scrolling keep working.
+                                // resolve tap position to a link span ourselves
                                 MouseArea {
                                     anchors.fill: bodyTxt
                                     propagateComposedEvents: true
@@ -840,8 +813,7 @@ Page {
                                     }
                                     onPressed: {
                                         _pendingHref = _hrefAt(mouse.x, mouse.y);
-                                        // Only grab the press when it's on a link; otherwise let the TextArea/
-                                        // Flickable underneath handle selection and scrolling.
+                                        // only grab press when it's on a link
                                         mouse.accepted = (_pendingHref.length > 0);
                                     }
                                     onClicked: {
@@ -909,7 +881,7 @@ Page {
     Rectangle {
         id: footer
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        // Ride above the on-screen keyboard so the composer stays visible while typing; the scroll above is anchored to footer.top and shrinks to suit.
+        // ride above on-screen keyboard
         anchors.bottomMargin: page.kbHeight
         Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
         height: footerCol.height
@@ -937,7 +909,7 @@ Page {
             showShare: false   // Share now lives in the header action bar, not duplicated here
             onRequireLogin: page.pushLogin()
 
-            // Apply cached vote state on every visibility change and on init, so the count always matches what the feed card shows.
+            // sync count with what feed card shows
             function applyCache() {
                 var cached = VoteService.getCached(page.author, page.permlink);
                 if (cached) {
@@ -983,7 +955,7 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.spacingS
 
-            // Lomiri TextField (not a raw TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste; StyleHints keep the gray-pill look.
+            // styled TextField for native selection + Cut/Copy/Paste
             TextField {
                 id: composer
                 width: parent.width - sendButton.width - Style.spacingS

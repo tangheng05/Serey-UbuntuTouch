@@ -6,7 +6,7 @@ import "../Theme"
 QtObject {
     id: store
 
-    // Saved view-models (the original video object + { localPath }), newest first.
+    // saved view-models, newest first
     property var items: []
     // Bumped on every mutation so UI re-reads the lookup helpers.
     property int rev: 0
@@ -25,12 +25,7 @@ QtObject {
         return _dbHandle;
     }
 
-    // Scoped to the signed-in account so switching accounts shows a fresh list;
-    // logged-out downloads are their own bucket. That bucket must NOT be the empty
-    // string: QML LocalStorage binds an empty JS string as SQL NULL, and `x = NULL`
-    // is never true, so a logged-out `owner = ?` matched nothing and the list came
-    // back empty on every restart. `__guest__` is unusable as a Steem username
-    // (underscores are illegal), so it can't collide with a real account.
+    // guest bucket, avoids empty-string-as-NULL matching bug
     readonly property string guestOwner: "__guest__"
 
     function _owner() {
@@ -38,8 +33,7 @@ QtObject {
                 ? Session.username : store.guestOwner;
     }
 
-    // Rows written before the sentinel existed have owner NULL or ''; fold both onto
-    // the guest bucket so old downloads stay visible.
+    // fold legacy NULL/'' owner rows onto guest bucket
     readonly property string _ownerExpr: "IFNULL(NULLIF(owner,''),'" + guestOwner + "')"
 
     function _load() {
@@ -47,15 +41,13 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS downloads(permlink TEXT, local_path TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                // Add `owner` to tables created before per-account scoping existed; harmlessly throws (caught) once the column is present.
+                // migrate old tables missing owner column
                 try { tx.executeSql("ALTER TABLE downloads ADD COLUMN owner TEXT DEFAULT ''"); } catch (e2) { }
                 var rs = tx.executeSql("SELECT permlink, local_path, data FROM downloads WHERE " + store._ownerExpr + " = ? ORDER BY saved_at DESC", [store._owner()]);
                 var seen = {};
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);
-                    // A NULL owner also defeats PRIMARY KEY(permlink, owner) dedupe
-                    // (SQLite allows repeated NULLs in a PK), so older duplicate rows
-                    // can exist; newest-first ordering means the first wins.
+                    // dedupe legacy NULL-owner duplicates, newest wins
                     if (seen[row.permlink]) continue;
                     seen[row.permlink] = true;
                     var vm = {};
@@ -72,15 +64,13 @@ QtObject {
         store.rev++;
     }
 
-    // `owner` is passed explicitly for downloads finishing after an account switch; defaults to the current account for synchronous saves.
+    // owner passed explicitly for downloads finishing after account switch
     function _persist(vm, localPath, owner) {
         var o = (owner === undefined) ? store._owner() : owner;
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS downloads(permlink TEXT, local_path TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                // Explicit delete before insert: legacy rows with owner NULL (see
-                // _owner) can't be deduped by the PRIMARY KEY, so INSERT OR REPLACE
-                // piled up a new row per download instead of replacing the old one.
+                // explicit delete before insert, legacy NULL owner rows can't dedupe
                 tx.executeSql("DELETE FROM downloads WHERE permlink = ? AND " + store._ownerExpr + " = ?", [vm.permlink, o]);
                 tx.executeSql("INSERT INTO downloads(permlink, local_path, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
                     [vm.permlink, localPath, Date.now(), JSON.stringify(vm), o]);
@@ -106,7 +96,7 @@ QtObject {
         return false;
     }
 
-    // file://-prefixed URL ready for QtMultimedia / Chromium <video>, or "".
+    // file:// URL ready for playback, or ""
     function pathFor(permlink) {
         for (var i = 0; i < items.length; i++) {
             if (items[i].permlink === permlink) {
@@ -128,11 +118,7 @@ QtObject {
         return _comp;
     }
 
-    // Copy a video view-model into a plain JS object. page.video can be a threaded
-    // ListModel element (QQmlListModelWorkerAgent) whose JSON.stringify hits an
-    // "unregistered datatype QV4::ExecutionEngine*" error and whose thread affinity
-    // made the persisted row invisible to the reload (isSaved stayed false → no tick,
-    // endless re-downloads). A plain object serializes cleanly and is main-thread.
+    // copy into plain JS object, avoids threaded ListModel serialize issues
     function _toPlain(v) {
         var keys = ["id", "author", "permlink", "title", "body", "excerpt", "thumbnail",
                     "localThumb", "authorImage", "date", "votes", "comments", "payout",
@@ -148,11 +134,11 @@ QtObject {
 
     function start(video, url) {
         if (!video || !url || url.length === 0) return;
-        // Snapshot to a plain object immediately — everything downstream uses this.
+        // snapshot to plain object
         var pv = _toPlain(video);
         var permlink = pv.permlink || "";
         if (permlink.length === 0 || isSaved(permlink) || _active[permlink]) return;
-        // Capture the account that started this download so it's filed under the requester even if the account switches mid-download.
+        // capture account, in case it switches mid-download
         var startOwner = store._owner();
 
         var comp = _downloaderComponent();
@@ -168,7 +154,7 @@ QtObject {
         _active[permlink] = { progress: 0, downloader: dl };
         store.rev++;
 
-        // Grab the poster too, so the thumbnail shows offline.
+        // grab poster too, for offline thumbnail
         store._saveThumb(pv, permlink);
 
         dl.progress.connect(function (pct) {
@@ -179,9 +165,7 @@ QtObject {
             var t = store._pendingThumb[permlink];
             if (t) { vm = Object.assign({}, pv, { localThumb: t }); delete store._pendingThumb[permlink]; }
             store._persist(vm, path, startOwner);
-            // Update the in-memory list directly so the tick + downloaded list reflect
-            // the save right away, independent of the DB reload (which the worker-thread
-            // affinity could return empty). Persist above still records it for next launch.
+            // update in-memory list directly, independent of DB reload
             var savedVm = Object.assign({}, vm, { permlink: permlink, localPath: path });
             var next = [savedVm];
             for (var i = 0; i < store.items.length; i++)
@@ -204,7 +188,7 @@ QtObject {
         dl.start(url);
     }
 
-    // Best-effort poster copy for offline thumbnails; failures fall back to the remote URL
+    // best-effort poster copy, falls back to remote URL
     function _saveThumb(video, permlink) {
         var thumb = (video && video.thumbnail) || "";
         if (thumb.indexOf("http") !== 0) return;       // only remote http(s) posters
@@ -224,7 +208,7 @@ QtObject {
         tdl.start(thumb);
     }
 
-    // Patch an already-saved row with the local poster path (poster finished after the video did).
+    // patch saved row with local poster path
     function _updateThumb(permlink, fp) {
         for (var i = 0; i < items.length; i++) {
             if (items[i].permlink !== permlink) continue;
@@ -245,7 +229,7 @@ QtObject {
 
     Component.onCompleted: _load()
 
-    // QtObject has no default property so this must be assigned, not a child; react to both username and token changes.
+    // react to account changes
     property Connections _sessionWatcher: Connections {
         target: Session
         onUsernameChanged: store._load()

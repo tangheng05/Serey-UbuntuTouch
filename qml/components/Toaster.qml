@@ -5,9 +5,7 @@ import "../Theme"
 Item {
     id: toaster
     anchors.fill: parent
-    // Above every overlay sheet (PostActionSheet/PaymentSheet 1500, Stripe
-    // checkout 1600) — toasts like "Address copied" fire while a sheet is
-    // open and must not be hidden behind it.
+    // above every overlay sheet
     z: 2000
 
     Rectangle {

@@ -17,9 +17,9 @@ Item {
     z: 1500
 
     readonly property string authorName: PostActions.post ? (PostActions.post.author || "") : ""
-    // The viewer owns this post, so show Edit/Delete instead of moderation actions (you can't report or block yourself).
+    // own post: show Edit/Delete not moderation
     readonly property bool isOwn: Session.isLoggedIn && authorName !== "" && authorName === Session.username
-    // No video editor exists, so Edit is offered for blog/gallery only.
+    // no video editor; edit blog/gallery only
     readonly property bool canEdit: isOwn && PostActions.kind !== "video"
     property bool deleting: false
     property bool blocking: false
@@ -28,22 +28,18 @@ Item {
     property bool reportTypesLoaded: false
     property bool reportTypesLoading: false
     property string selectedReportTypeId: ""
-    // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm, 4 = edit video caption.
+    // step: 0 menu, 1 report, 2 delete, 3 block, 4 edit caption
     property int step: 0
     property bool savingCaption: false
 
-    // Lift the sheet above the OSK (the edit-caption step has text inputs).
+    // lift sheet above OSK
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
-    // ---- Keyboard navigation (UBports HIG input parity: everything a touch user
-    // reaches by tapping must be drivable by keyboard). Up/Down (or Tab/Backtab)
-    // move a highlight over the current step's actions, Enter/Space activates it,
-    // Escape backs out of a sub-step / closes the sheet. The highlight only
-    // appears after a key press, so touch and pointer behaviour are unchanged.
+    // arrow-key navigation over step actions
     property var navRows: []
     property int navIndex: -1
     readonly property Item navCurrent: (navIndex >= 0 && navIndex < navRows.length) ? navRows[navIndex] : null
-    // Whatever held keyboard focus before the sheet opened (e.g. the focused card) — restored on close.
+    // focus to restore on close
     property var _prevFocus: null
 
     function _rebuildNav() {
@@ -102,24 +98,24 @@ Item {
     onStepChanged: {
         if (step !== 4) {
             Qt.inputMethod.hide();
-            // Reclaim key events from the caption fields when leaving the edit step.
+            // reclaim keys from caption fields
             if (visible) sheet.forceActiveFocus();
         }
         Qt.callLater(_rebuildNav);
     }
 
-    // Report reasons arrive async; refresh the arrow-key row list when they land.
+    // refresh nav rows when report types load
     onReportTypesChanged: if (step === 1) Qt.callLater(_rebuildNav)
 
     onVisibleChanged: {
         if (!visible) {
             step = 0;
             selectedReportTypeId = "";
-            // Clear in-flight busy flags so a sheet dismissed mid-request doesn't reopen stuck on "Blocking…"/disabled rows.
+            // reset busy flags on close
             reporting = false;
             blocking = false;
             navRows = []; navIndex = -1;
-            // Hand keyboard focus back so the card's focus ring / arrow keys keep working.
+            // restore prior focus
             if (_prevFocus) {
                 try { if (_prevFocus.visible) _prevFocus.forceActiveFocus(); } catch (e) { /* item destroyed since */ }
                 _prevFocus = null;
@@ -128,7 +124,7 @@ Item {
             step = PostActions.startStep;
             backdropFade.start();
             sheetSlide.start();
-            // Guard on !reportTypesLoading too, so reopening before the first fetch resolves doesn't fire a duplicate concurrent request.
+            // avoid duplicate concurrent fetch
             if (!reportTypesLoaded && !reportTypesLoading) _loadReportTypes();
             _prevFocus = Window.activeFocusItem;
             sheet.forceActiveFocus();
@@ -142,11 +138,11 @@ Item {
             function (arr) {
                 sheet.reportTypesLoading = false;
                 sheet.reportTypes = arr || [];
-                // Only latch as "loaded" on a non-empty result; an empty list means try again next open rather than showing a dead panel.
+                // only mark loaded if non-empty
                 sheet.reportTypesLoaded = sheet.reportTypes.length > 0;
             },
             function (err) {
-                // Leave reportTypesLoaded false so reopening the sheet retries — there is no hardcoded fallback, the backend owns the ids.
+                // retry on next open
                 sheet.reportTypesLoading = false;
                 sheet.reportTypesLoaded = false;
                 Toast.error((err && err.message) ? err.message
@@ -167,7 +163,7 @@ Item {
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in to report.")); return; }
         var p = PostActions.post;
         if (!p) return;
-        // Backend expects the post id; fall back to permlink only if present.
+        // prefer post id, fall back to permlink
         var postId = (p.id !== undefined && p.id !== null) ? p.id : (p.permlink || "");
         if (postId === "" || postId === null || postId === undefined) {
             Toast.error(Lang.tr("Failed to submit report."));
@@ -205,7 +201,7 @@ Item {
             });
     }
 
-    // The stored description is HTML; strip tags for editing and rebuild <p> paragraphs (text re-escaped) when saving.
+    // HTML <-> plain text for caption editing
     function _htmlToPlain(html) {
         return (html || "")
             .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
@@ -227,7 +223,7 @@ Item {
         return out.join("");
     }
 
-    // Update a video post's caption in place by reusing the create-or-update endpoint with the existing permlink; other fields resent unchanged.
+    // update caption via create-or-update endpoint
     function doSaveCaption() {
         var p = PostActions.post;
         if (!p || sheet.savingCaption) return;
@@ -257,10 +253,7 @@ Item {
             });
     }
 
-    // ---- Video offline download (mirrors VideoDetailPage's routing so the sheet
-    // can save a video without opening the detail page). SEREY-hosted / direct-file
-    // videos download the file directly; YouTube clips resolve a direct URL via
-    // InnerTube first, then reuse the same download path.
+    // video offline download: direct file or YouTube via InnerTube
     function _isDirectFile(u) {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
@@ -314,7 +307,7 @@ Item {
         }
     }
 
-    // Delete the viewer's own post, then ask feed pages to prune the row.
+    // delete own post, notify feeds
     function doDelete() {
         var p = PostActions.post;
         if (!p) return;
@@ -397,7 +390,7 @@ Item {
             }
             Item { width: 1; height: Style.spacingL }
 
-            // Save for offline (blog only) fetches the full article first since the feed view-model only carries an excerpt, then persists it; toggles to "Remove from saved" when already saved.
+            // save for offline (blog only)
             AbstractButton {
                 id: saveOfflineBtn
                 width: parent.width; height: units.gu(8)
@@ -489,7 +482,7 @@ Item {
                 }
             }
 
-            // Separates utility actions (Save) from owner/moderation actions below.
+            // divider before owner/moderation actions
             Rectangle {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -499,7 +492,7 @@ Item {
             }
             Item { width: 1; height: Style.spacingS; visible: saveOfflineBtn.visible || saveVideoBtn.visible }
 
-            // ----- Owner actions (your own post): Edit (blog/gallery only — no video editor) / Delete -----
+            // owner actions: Edit / Delete
             AbstractButton {
                 id: editPostBtn
                 width: parent.width; height: units.gu(8)
@@ -526,7 +519,7 @@ Item {
                 }
             }
 
-            // Edit caption (own video — title/description only; the media itself can't be re-uploaded).
+            // edit caption (own video)
             AbstractButton {
                 id: editCaptionBtn
                 width: parent.width; height: units.gu(8)
@@ -643,7 +636,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: units.gu(4.5); height: width; radius: width / 2
                         color: Style.iconBackground
-                        // No "block" icon in the Suru theme — draw it (circle + diagonal bar)
+                        // draw block icon (no theme icon)
                         Item {
                             anchors.centerIn: parent
                             width: units.gu(2.2); height: width
@@ -720,7 +713,7 @@ Item {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Loading spinner while fetching report types driven by the loading flag, not array length, so a failed/empty fetch doesn't spin forever.
+            // loading spinner for report types
             Item {
                 visible: sheet.reportTypesLoading
                 width: reportCol.width; height: units.gu(6)
@@ -1030,9 +1023,7 @@ Item {
             Item { width: 1; height: Style.spacingM }
         }
 
-        // Keyboard-highlight ring: one Rectangle reparented into whichever row is
-        // arrow-key selected (same brand ring as the card focus ring, so keyboard
-        // users see one consistent affordance). Touch/pointer users never see it.
+        // keyboard highlight ring, reparented to selected row
         Rectangle {
             parent: sheet.navCurrent ? sheet.navCurrent : sheetRect
             anchors.fill: parent

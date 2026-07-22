@@ -6,12 +6,7 @@ QtObject {
     id: style
 
     // --- Theme ----------------------------------------------------------------
-    // Single light/dark switch. Main.qml binds this to the system theme
-    // (MainView.theme) so every neutral/semantic token below re-skins centrally
-    // for SuruDark, with no call site changing. Left of each `dark ? …` ternary
-    // is Ambiance (light), right is SuruDark; values are the Suru palette hexes
-    // (see docs/ubports-design-concepts/01-system-palette.md). Brand tokens stay
-    // fixed — Serey blue is a deliberate identity, not a theme role.
+    // light/dark switch, bound to system theme by Main.qml
     property bool dark: false
 
     // --- Brand (fixed across themes) ------------------------------------------
@@ -54,12 +49,7 @@ QtObject {
     readonly property real cellPadding: units.gu(2)
 
     // --- Type scale -----------------------------------------------------------
-    // Sizes are expressed in grid units (units.gu) per the Ubuntu typography guide,
-    // which defines type via named steps so text scales phone→tablet→desktop.
-    // Suru named steps: small 1.5gu · medium 1.75gu · large 2.5gu · x-large 3.5gu.
-    // On Ubuntu Touch gu(n) == dp(8n), so these render pixel-identical to the prior
-    // dp() values on every device — a units-correctness change, not a resize.
-    // fontMedium/Large/Title keep the app's finer intermediate steps.
+    // grid-unit steps per Ubuntu typography guide
     readonly property int fontXSmall: units.gu(1.375) // ~x-small
     readonly property int fontSmall:  units.gu(1.5)   // small
     readonly property int fontRegular: units.gu(1.75) // medium
@@ -67,7 +57,7 @@ QtObject {
     readonly property int fontLarge:  units.gu(2)
     readonly property int fontTitle:  units.gu(2.75)
 
-    // Radii: Lomiri/Suru is low-radius and flat — subtle rounding, not iOS-style pills.
+    // low-radius, flat — not iOS-style pills
     readonly property real radius: units.gu(0.6)
     readonly property real thumbRadius: units.gu(0.8)
     readonly property real cardRadius: units.gu(0.6)
@@ -83,14 +73,14 @@ QtObject {
     readonly property real coinIconSize: units.dp(16)
     readonly property real fabSize: units.gu(7)
 
-    // Bundled Noto Sans Khmer/SC fonts don't cover each other's glyphs and Qt won't fall back between them, so pick the right face via `fontFor(text)` to avoid tofu (□).
+    // pick face via fontFor(text) to avoid tofu glyphs
     property FontLoader fontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansKhmer-Regular.ttf")
     }
     readonly property string fontFamily: fontLoader.status === FontLoader.Ready
                                          ? fontLoader.name : "Ubuntu"
 
-    // CJK face (~8 MB, so not the default) — also covers Latin, so mixed Latin/Chinese titles render from one face.
+    // CJK face (~8 MB, not default), covers Latin too
     property FontLoader cjkFontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansSC-Regular.otf")
     }
@@ -103,7 +93,7 @@ QtObject {
     readonly property string bengaliFamily: bengaliFontLoader.status === FontLoader.Ready
                                             ? bengaliFontLoader.name : fontFamily
 
-    // Script face by codepoint, else Khmer/Latin default.
+    // script face by codepoint, else Khmer/Latin default
     function fontFor(text) {
         if (text && /[⺀-鿿豈-﫿＀-￯]/.test(text))
             return cjkFamily;
@@ -112,10 +102,10 @@ QtObject {
         return fontFamily;
     }
 
-    // Khmer combining vowel signs can ink past their advance-width box, so wrapped text needs this margin subtracted to avoid clipping.
+    // Khmer vowel signs can ink past advance-width, subtract to avoid clipping
     readonly property real wrapSafeMargin: units.gu(0.5)
 
-    // Helpers: relative timestamp formatted as "just now / Xm / Xh / Xd ago / DD Mon [YYYY]".
+    // relative timestamp: "just now / Xm / Xh / Xd ago / DD Mon [YYYY]"
     function formatTimeAgo(dateStr) {
         if (!dateStr)
             return "";
@@ -134,7 +124,7 @@ QtObject {
         return d.getDate() + " " + months[d.getMonth()] + " " + d.getFullYear();
     }
 
-    // Blue-tinted avatar fallback background derived from a username.
+    // blue-tinted avatar fallback background
     function avatarTint(name) {
         return Qt.rgba(0, 0.51, 0.98, 0.12);
     }

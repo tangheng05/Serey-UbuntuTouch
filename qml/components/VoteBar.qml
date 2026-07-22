@@ -17,13 +17,13 @@ RowLayout {
     property int flaggers: 0
     property int comments: 0
     property string payout: ""
-    // Usernames who upvoted (Mappers.js's `voters` array) — backs the hover/press-and-hold "who upvoted" popover.
+    // usernames who upvoted
     property var voters: []
 
     property bool upvoted: false
     property bool flagged: false
     property bool busy: false
-    // Off-chain (DB-only) posts: like/dislike stay, but weight popover and payout pill are suppressed, mirroring the web's simpleVote/showCoins.
+    // off-chain posts suppress weight popover/payout
     property bool onChain: true
     property bool showComments: true
     property bool showShare: true
@@ -38,9 +38,7 @@ RowLayout {
 
     spacing: Style.spacingM
 
-    // "alice, bob, carol and 4 more" style summary for the voters popover.
-    // `voters` may be a plain array or a dynamicRoles-wrapped ListModel (has
-    // `.count`/`.get(i)` instead of `.length`/`[i]`) — handle both shapes.
+    // voters summary text; handles array or ListModel
     function _votersText() {
         var v = bar.voters;
         if (!v) return "";
@@ -51,8 +49,7 @@ RowLayout {
         for (var i = 0; i < limit; i++) {
             var item = (typeof v.get === "function") ? v.get(i) : v[i];
             var name = (item && item.modelData !== undefined) ? item.modelData : item;
-            // Only accept real usernames — a ListModel-wrapped entry is a QML
-            // object that would stringify as "@QQmlDM..." garbage.
+            // only accept real username strings
             if (typeof name === "string" && name.length > 0) shown.push("@" + name);
         }
         if (shown.length === 0) return "";
@@ -69,7 +66,7 @@ RowLayout {
         }
         return !bar.busy;
     }
-    // Vote count updated optimistically, not from r.voterCount, since the async chain broadcast means the immediate response still carries the pre-vote count.
+    // optimistic vote count update
     function _apply(r) {
         bar.busy = false;
         bar.flaggers = r.flaggerCount;
@@ -89,9 +86,7 @@ RowLayout {
             bar.votes   = saved.votes;
         }
     }
-    // A 401 is already surfaced (and the session cleared) by Http.js's global
-    // unauthorized handler in Main.qml, so re-toasting it here would double up.
-    // The server sends one for a rotated posting key, not just an expired token.
+    // 401 already handled by global unauthorized handler
     function _isHandledAuthFailure(e) {
         return !!e && e.status === 401;
     }
@@ -101,7 +96,7 @@ RowLayout {
             return;
         Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
     }
-    // "Already voted" means the server already has our vote — reconcile the UI; must not be shared with flag/removeVote or a failed unvote flips to "liked".
+    // reconcile UI if server says already voted
     function _failUpvote(e) {
         bar.busy = false;
         if (_isHandledAuthFailure(e))
@@ -258,9 +253,7 @@ RowLayout {
             }
         }
 
-        // Mouse hover (desktop) or press-and-hold (touch) reveals who upvoted.
-        // Topmost MouseArea gets the press first; a short tap is unaccepted so
-        // it falls through to upvoteBtn's own click, only the hold is caught here.
+        // hover/hold reveals who upvoted
         MouseArea {
             anchors.fill: parent
             hoverEnabled: true
@@ -278,10 +271,7 @@ RowLayout {
             id: votersPopup
             visible: false
             anchors { bottom: parent.top; bottomMargin: Style.spacingXs }
-            // Centered on the button but clamped inside the bar: the upvote
-            // button sits at the screen's left edge, so a centered long list
-            // would run off-screen. x is in upvoteBtn coordinates, hence the
-            // -upvoteBtn.x offsets to express the bar's own edges.
+            // clamp popover inside bar
             x: {
                 var centered = (upvoteBtn.width - width) / 2;
                 var minX = -upvoteBtn.x;
@@ -326,7 +316,7 @@ RowLayout {
         }
     }
 
-    // "Voters" caption used on the post-detail summary bar in place of a redundant comment-count icon already covered above.
+    // voters caption for detail summary bar
     Label {
         visible: bar.showVotersLabel
         Layout.alignment: Qt.AlignVCenter

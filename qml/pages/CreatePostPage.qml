@@ -12,44 +12,35 @@ Page {
 
     property bool submitting: false
     property string selectedCategory: ""
-    // Optional sub-category under the selected main category, sent in `subcategories`.
+    // optional sub-category, sent in `subcategories`
     property string selectedSubCategory: ""
     property bool catSheetOpen: false
-    // On-screen-keyboard height; the formatting toolbar rides above it so B/I/U stay reachable while typing.
+    // keyboard height, keeps toolbar reachable
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     readonly property int titleMaxLength: 250
     readonly property real maxContentWidth: units.gu(60)
     property string coverImageUrl: ""
     property bool uploading: false
-    // Maps editor placeholder "[image N]" -> uploaded URL; publish() swaps them back to <img>
+    // "[image N]" placeholder -> uploaded URL
     property var bodyImages: []
-    // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
+    // on = broadcast on-chain, off = Serey DB only
     property bool postToBlockchain: true
 
-    // Normally the post goes to the community the app's source switcher is on.
-    // Entry points that aren't tied to a source (My Feed's "Write your first
-    // post" — the feed spans every community) set pickPlatform: the platform is
-    // chosen here instead, and categories only load once one is picked.
+    // set when entry point isn't tied to a single source
     property bool pickPlatform: false
     property var targetPlatform: null       // {id, title, icon} from Config.communityById
     property bool platformSheetOpen: false
-    // Set by the compose flow's community-picker step ({id, name, ...}) to post into a
-    // specific (sub-)community regardless of whichever one is currently browsed in Config.
-    // Checked after targetPlatform so the two picker paths never fight over an entry point.
+    // set by compose flow's community-picker step
     property var targetCommunity: null
     readonly property int postCommunityId: page.targetPlatform ? Number(page.targetPlatform.id)
                                            : (page.targetCommunity ? Number(page.targetCommunity.id) : Config.communityId)
-    // The two differ off the platform path: categories are keyed by the selected
-    // sub-community, the post itself by its top-level source. Keep both as they were.
+    // categories keyed by sub-community, post by top-level source
     readonly property string catCommunityName: page.targetPlatform ? page.targetPlatform.title
                                                : (page.targetCommunity ? page.targetCommunity.name : Config.currentCommunityName)
     readonly property string postCommunityName: page.targetPlatform ? page.targetPlatform.title
                                                 : (page.targetCommunity ? page.targetCommunity.name : Config.communityName)
 
-    // Real platforms the user may post in. Countries and superhubs are containers
-    // (you post in their children, not in them), and the Global feed hides the
-    // exclude_home subtree server-side, so offering it would mean posting where
-    // the feeds never look.
+    // real platforms the user may post in, excludes containers
     readonly property var platformOptions: {
         var out = [];
         for (var k in Config.communityById) {
@@ -64,23 +55,21 @@ Page {
         return out;
     }
 
-    // When set, this page edits an existing post (sends its permlink to update in place) instead of creating a new one.
+    // set to edit an existing post in place
     property var editPost: null
     readonly property bool isEdit: !!editPost
 
-    // isNew = true for a freshly published post (false for an in-place edit), so
-    // the feed can jump to Latest only when there's actually a new post to show.
+    // isNew: false for in-place edit
     signal saved(bool isNew)
 
-    // Categories are per-community, loaded from the backend for the currently-selected source rather than hardcoded.
+    // per-community categories loaded from backend
     property var categories: []
-    // Map of main-category name -> array of its sub-category names, so the picker
-    // can offer sub-categories (posts send them in `subcategories`).
+    // main-category name -> array of sub-category names
     property var subcatsByCat: ({})
     property bool categoriesLoading: false
     property int catEpoch: 0
 
-    // Sub-categories for whichever main category is currently selected.
+    // sub-categories for the selected main category
     function subsForSelected() {
         var s = page.subcatsByCat[page.selectedCategory];
         return (s && s.length) ? s : [];
@@ -89,7 +78,7 @@ Page {
     function loadCategories() {
         var epoch = ++page.catEpoch;
         var prev = page.selectedCategory;
-        // Nothing to fetch until a platform is picked — categories are per-community.
+        // nothing to fetch until a platform is picked
         if (page.pickPlatform && !page.targetPlatform) {
             page.categoriesLoading = false;
             page.categories = [];
@@ -97,14 +86,12 @@ Page {
             return;
         }
         page.categoriesLoading = true;
-        // catCommunityName/postCommunityId already resolve targetPlatform (My Feed
-        // compose) > targetCommunity (source-scoped compose picker) > Config fallback.
         CategoryService.listByCommunity(Config.baseUrl, page.catCommunityName, page.postCommunityId, Session.token,
             function (names, raw) {
                 if (epoch !== page.catEpoch) return;   // stale community switch
                 page.categoriesLoading = false;
                 page.categories = names;
-                // Build the main -> [sub names] map from the raw records.
+                // build main -> [sub names] map
                 var map = {};
                 for (var i = 0; i < (raw ? raw.length : 0); i++) {
                     var subsRaw = raw[i].sub_categories || raw[i].sub || [];
@@ -130,9 +117,9 @@ Page {
     Component.onCompleted: {
         if (page.editPost) {
             titleField.text = page.editPost.title || "";
-            // Strip the leading cover <img> we prepend on publish so it isn't duplicated; the cover is restored from the post's thumbnail.
+            // strip leading cover <img>, restored from thumbnail
             var b = (page.editPost.body || "").replace(/^\s*<img[^>]*>\s*/i, "");
-            // Turn remaining inline images into "[image N]" placeholders so the editor shows readable text; publish() restores them.
+            // inline images -> "[image N]" placeholders
             var imgs = [];
             b = b.replace(/<img[^>]*src=["']([^"']*)["'][^>]*\/?>/gi, function (m, src) {
                 imgs.push(src);
@@ -141,22 +128,18 @@ Page {
             page.bodyImages = imgs;
             bodyArea.text = b;
             page.coverImageUrl = page.editPost.thumbnail || "";
-            // primaryCategory is a scalar since the categories array is wrapped by the feed ListModel and loses [] indexing.
             page.selectedCategory = page.editPost.primaryCategory || "";
-            // Best-effort sub-category prefill (field name varies across sources).
+            // sub-category field name varies across sources
             var eSub = page.editPost.subCategory || page.editPost.subcategory || "";
             if (!eSub) {
                 var eSubs = page.editPost.subCategories || page.editPost.subcategories;
                 if (eSubs && eSubs.length) eSub = (typeof eSubs[0] === "string") ? eSubs[0] : (eSubs[0] && eSubs[0].name) || "";
             }
             page.selectedSubCategory = eSub || "";
-            // Prefill the toggle from the saved post (default on if absent).
             page.postToBlockchain = (page.editPost.postToBlockchain !== false);
         }
-        loadCategories();   // captures selectedCategory above as the kept value
+        loadCategories();
     }
-    // The community can't change while this page is up, but react anyway so the list is always correct for
-    // the active source — unless a specific target community was chosen via the compose picker step.
     Connections {
         target: Config
         function onCommunityIdChanged() { if (!page.targetCommunity) page.loadCategories() }
@@ -222,7 +205,7 @@ Page {
         }
     }
 
-    // Where the next picked image goes: the cover slot, or inline into the article body at the cursor — one shared picker/uploader serves both.
+    // where the next picked image goes: cover or body
     property string imageTarget: "cover"
 
     function pickCoverImage() {
@@ -242,7 +225,7 @@ Page {
         }
     }
 
-    // Downscales + uploads the picked image; keeps the spinner honest.
+    // downscales + uploads picked image
     PhotoUploader {
         id: imgUploader
         onUploadingChanged: page.uploading = uploading
@@ -262,10 +245,7 @@ Page {
         onFailed: Toast.error(message)
     }
 
-    // Qt's RichText TextEdit re-serializes formatting as style-based spans
-    // (e.g. <span style="font-weight:600">) rather than the simple <b>/<i>/<s>
-    // tags the rest of the app's HTML renderers whitelist — collapse them back
-    // so bold/italic/strikethrough survive display elsewhere (feed, detail page).
+    // collapse RichText style spans back to <b>/<i>/<s>
     function _richHtmlToSimple(html) {
         var t = html || "";
         var bodyMatch = t.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -290,13 +270,13 @@ Page {
             return;
         }
         var body = page._richHtmlToSimple(bodyArea.text).trim();
-        // Swap "[image N]" placeholders back into real <img> tags; unknown numbers are left as typed.
+        // swap placeholders back to <img> tags
         var imgs = page.bodyImages || [];
         body = body.replace(/\[image (\d+)\]/gi, function (m, n) {
             var u = imgs[parseInt(n, 10) - 1];
             return u ? '<img src="' + u + '" style="max-width:100%;height:auto;" />' : m;
         });
-        // Prepend cover image to body if one was uploaded
+        // prepend cover image
         if (page.coverImageUrl.length > 0) {
             body = '<img src="' + page.coverImageUrl + '" style="max-width:100%;height:auto;" />\n' + body;
         }
@@ -304,7 +284,7 @@ Page {
         PostService.createPost(Config.baseUrl, {
             title: titleField.text.trim(),
             body: body,
-            // On edit, keep the post in its own community (resolve by its title) rather than the currently-selected source.
+            // on edit, keep post in its own community
             communityId: page.isEdit ? 0 : page.postCommunityId,
             communityName: page.isEdit ? (page.editPost.community || Config.communityName)
                                        : page.postCommunityName,
@@ -312,7 +292,7 @@ Page {
             subcategories: page.selectedSubCategory.length > 0 ? [page.selectedSubCategory] : [],
             postToBlockchain: page.postToBlockchain,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
-            // Also send in `images` (json_meta.image) since the web derives the card thumbnail from that field, not from the body <img>.
+            // web derives card thumbnail from json_meta.image
             images: page.coverImageUrl.length > 0 ? [page.coverImageUrl] : []
         }, Session.token,
         function (data) {
@@ -329,9 +309,7 @@ Page {
         });
     }
 
-    // Applies real formatting to the selection (rich text, not literal tags) —
-    // requires a selection since a plain TextEdit has no "current format" state
-    // to toggle for future-typed characters.
+    // applies formatting to the selection
     function wrapSelection(tagOpen, tagClose) {
         var start = bodyArea.selectionStart;
         var end = bodyArea.selectionEnd;
@@ -389,7 +367,7 @@ Page {
         }
     }
 
-    // Move active focus onto a neutral item so the on-screen keyboard drops on tapping any empty area of the form.
+    // dismiss keyboard by shifting focus
     Item { id: focusSink }
     function dismissKeyboard() {
         focusSink.forceActiveFocus();
@@ -405,7 +383,7 @@ Page {
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
-        // Sits behind the form (z -1); taps that miss a field dismiss the keyboard, while a tap still flicks since Flickable steals drag gestures.
+        // tap outside a field dismisses keyboard
         MouseArea {
             width: scroll.width
             height: Math.max(scroll.height, col.height + Style.spacingL)
@@ -430,11 +408,7 @@ Page {
                 border.width: units.dp(1.5)
                 border.color: titleField.activeFocus ? Style.brand : Style.divider
 
-                // The TextInput is one line tall and pinned to the top, so most
-                // of this box (padding, the counter's row) was dead space and the
-                // keyboard only opened if you hit that line exactly. Declared
-                // FIRST so it sits under the input: taps on the text itself still
-                // reach the input, this only catches the surrounding gap.
+                // catches taps on the surrounding gap, not just the input line
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
@@ -494,11 +468,7 @@ Page {
                 border.width: units.dp(1.5)
                 border.color: bodyArea.activeFocus ? Style.brand : Style.divider
 
-                // Same as the title: the editor is only as tall as its text, so
-                // an empty gu(25) box was tappable on its first line alone.
-                // Declared FIRST so it sits under the editor — taps on the text
-                // (and drag-to-select) still go to it; this catches the blank
-                // area below and drops the cursor at the end.
+                // catches taps in blank area below the text
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
@@ -554,7 +524,7 @@ Page {
                 }
             }
 
-            // Platform selector — only on the pickPlatform path; picking one loads that platform's categories.
+            // platform selector, pickPlatform path only
             AbstractButton {
                 width: parent.width
                 height: units.gu(6)
@@ -600,7 +570,7 @@ Page {
                 }
             }
 
-            // Category selector hidden for communities that haven't defined any categories yet (publish() falls back to "general").
+            // hidden if community has no categories
             AbstractButton {
                 width: parent.width
                 height: units.gu(6)
@@ -783,7 +753,7 @@ Page {
         }
     }
 
-    // Shared formatting-button row — reused by the phone bottom dock and the desktop inline toolbar.
+    // shared formatting-button row
     Component {
         id: formatButtonsComp
         Row {
@@ -857,8 +827,7 @@ Page {
         }
     }
 
-    // Phone: docked above the OSK. Desktop has no OSK, so this stays hidden
-    // there and an inline copy sits directly under the body field instead.
+    // phone: docked above the OSK
     Rectangle {
         id: toolbar
         visible: !Config.wideMode
@@ -909,10 +878,8 @@ Page {
 
         Rectangle {
             id: catSheetRect
-            // Full-width sheet on phone, centered width-capped card on desktop
+            // full-width on phone, capped card on desktop
             readonly property bool wide: Config.wideMode
-            // Centered + explicit width handles both cases (full-width on phone, capped
-            // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
             anchors {
                 horizontalCenter: parent.horizontalCenter
                 bottom: parent.bottom
@@ -956,8 +923,7 @@ Page {
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-                // Scrollable list: caps the sheet height so a category with many
-                // sub-categories scrolls instead of overflowing off the top.
+                // caps sheet height, scrolls instead of overflowing
                 Flickable {
                     id: catListFlick
                     width: parent.width
@@ -971,7 +937,7 @@ Page {
                         width: parent.width
                         spacing: 0
 
-                // Loading / empty state while categories fetch for this community.
+                // loading / empty state
                 Item {
                     width: parent.width
                     height: units.gu(8)
@@ -993,7 +959,7 @@ Page {
                 Repeater {
                     model: page.categories
 
-                    // Main category + (when expanded via the arrow) its sub-categories.
+                    // main category + expandable sub-categories
                     delegate: Column {
                         id: catRow
                         width: catSheetCol.width
@@ -1003,12 +969,10 @@ Page {
                             return (s && s.length) ? s : []
                         }
                         readonly property bool isSelected: page.selectedCategory === catName
-                        // Sub list is revealed only by tapping the arrow; a fresh row starts
-                        // expanded when it's the already-selected category with a sub chosen.
+                        // expanded by default if already selected with a sub chosen
                         property bool expanded: catRow.isSelected && page.selectedSubCategory.length > 0
 
-                        // Main row: tapping the row body picks the MAIN category and closes.
-                        // Only the arrow (separate tap target on the right) expands the subs.
+                        // tapping row picks main category; arrow expands subs
                         Item {
                             width: parent.width
                             height: units.gu(6)
@@ -1050,8 +1014,7 @@ Page {
                                     visible: (catRow.isSelected && page.selectedSubCategory.length === 0) || catRow.subs.length > 0
                                 }
                             }
-                            // Arrow hit area (on top of the row's MouseArea, right side):
-                            // expands/collapses the sub list without selecting or closing.
+                            // expands/collapses sub list without selecting
                             MouseArea {
                                 visible: catRow.subs.length > 0
                                 enabled: visible
@@ -1065,12 +1028,12 @@ Page {
                             }
                         }
 
-                        // Sub-category rows (indented), shown only when expanded via the arrow.
+                        // sub-category rows, shown when expanded
                         Column {
                             width: parent.width
                             visible: catRow.expanded && catRow.subs.length > 0
 
-                            // "No sub-category" — post under the main category only.
+                            // post under main category only
                             AbstractButton {
                                 width: parent.width
                                 height: units.gu(5.5)
@@ -1211,7 +1174,7 @@ Page {
                         width: parent.width
                         spacing: 0
 
-                        // The tree is fetched at startup; empty means nothing postable was found.
+                        // empty if nothing postable was found
                         Item {
                             width: parent.width
                             height: units.gu(8)

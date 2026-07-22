@@ -2,33 +2,19 @@ pragma Singleton
 import QtQuick 2.7
 import QtQuick.LocalStorage 2.0
 
-/*
- * App-wide buy-plan payment state. Same state-vs-renderer split as
- * Toast/PostActions/Share: the mini app (via the WebAppView `buyPlan` bridge
- * or the checkout.stripe.com navigation intercept) calls open*(); the
- * renderers — PaymentSheet (native crypto flow) and StripeCheckoutSheet
- * (in-app Stripe checkout WebView) — are mounted once in Main.qml.
- *
- * `stripeOpen` matters beyond visibility: HomepagePage ORs it into the mini
- * app's `suspended` binding so the Homepage Chromium is frozen while the
- * checkout WebEngineView is alive (two live Chromium views SIGSEGV the
- * Pixel 3a — see dual-Chromium memory). The crypto sheet is pure QML.
- */
+// app-wide buy-plan payment state
 QtObject {
     id: payments
 
-    // Crypto (NOWPayments) sheet.
+    // crypto (NOWPayments) sheet
     property bool cryptoOpen: false
     property int planId: 0
 
-    // Stripe checkout sheet. `stripeUrl` empty => the sheet creates the
-    // checkout session itself from `planId`; non-empty (interception path) =>
-    // it loads the URL directly.
+    // Stripe checkout sheet; empty stripeUrl = create session from planId
     property bool stripeOpen: false
     property string stripeUrl: ""
 
-    // Fired on a confirmed payment (either method); HomepagePage reloads the
-    // mini app so the site reflects the new plan.
+    // fired on confirmed payment, reloads mini app
     signal paymentSucceeded()
 
     function openCrypto(id) {
@@ -48,12 +34,7 @@ QtObject {
     function closeCrypto() { cryptoOpen = false; }
     function closeStripe() { stripeOpen = false; stripeUrl = ""; }
 
-    // ---- Pending crypto payment, persisted across app restarts ------------
-    // Crypto activation only happens when OUR client pings check-status (no
-    // webhook reliance), so a payment made after the user closed the sheet or
-    // the app would never activate unless we remember it and keep checking.
-    // Main.qml runs the background check (a singleton QtObject can't own a
-    // Timer); null = nothing pending. { paymentId, planId, expiresAt }.
+    // pending crypto payment, persisted across restarts; null = none
     property var pendingCrypto: null
 
     function _db() {

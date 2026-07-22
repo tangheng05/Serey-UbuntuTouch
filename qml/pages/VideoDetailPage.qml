@@ -35,7 +35,7 @@ Page {
     // Off-chain videos skip the vote-weight popover/award (see doUpvote)
     readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
 
-    // Download state, shared by the header action and the in-content download button.
+    // download state, shared by header action + in-content button
     readonly property string dlPermlink: (page.video && page.video.permlink) || ""
     readonly property var dlActive: (Downloads.rev, Downloads.activeFor(page.dlPermlink))
     readonly property bool dlSaved: (Downloads.rev, Downloads.isSaved(page.dlPermlink))
@@ -43,7 +43,7 @@ Page {
     readonly property int dlPct: page.dlActive ? Math.round(page.dlActive.progress || 0) : 0
     readonly property bool canDownload: page.remoteDirectUrl().length > 0 || page.isYouTube()
     property bool commentSheetOpen: false
-    // YouTube stream extraction is in flight, resolving a direct URL before the download daemon can fetch it; drives the download button's spinner.
+    // extracting YouTube stream URL
     property bool ytExtracting: false
 
     property var comments: []
@@ -69,7 +69,7 @@ Page {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
 
-    // Remote direct media URL (empty for embeds — also the download-button gate)
+    // remote direct media URL, empty for embeds
     function remoteDirectUrl() {
         var v = page.video;
         if (v.platform === "SEREY") return v.videoLink || v.embedUrl || "";
@@ -78,7 +78,7 @@ Page {
         return "";
     }
 
-    // The 11-char YouTube id, from the backend's video_id or parsed out of the embed/watch URL; empty for non-YouTube videos.
+    // 11-char YouTube id, parsed from URL if needed
     function youtubeId() {
         var v = page.video;
         if (v.platform === "YOUTUBE" && (v.videoId || "").length === 11) return v.videoId;
@@ -87,12 +87,12 @@ Page {
         return m ? m[1] : "";
     }
 
-    // YouTube videos have no direct file URL up front, but they're still downloadable via InnerTube extraction.
+    // downloadable via InnerTube extraction
     function isYouTube() {
         return page.video && page.video.platform === "YOUTUBE" && youtubeId().length > 0;
     }
 
-    // Resolves a YouTube clip to a direct URL, then reuses the Serey download path; ytExtracting gates the button against repeat taps.
+    // resolve YouTube clip then reuse download path
     function downloadYouTube() {
         if (page.ytExtracting) return;
         var id = youtubeId();
@@ -118,13 +118,13 @@ Page {
         else if (page.isYouTube()) page.downloadYouTube();
     }
 
-    // Saved offline copy if one exists, else the remote file; startPlay()'s extension routing still applies since the local path keeps its extension.
+    // offline copy if saved, else remote file
     function directUrl() {
         var local = Downloads.pathFor((page.video && page.video.permlink) || "");
         return local.length > 0 ? local : page.remoteDirectUrl();
     }
 
-    // Playable embed URL augments YouTube with params it needs to play inline on mobile (a bare embed URL renders a black frame).
+    // adds params so YouTube plays inline on mobile
     function embedSrc() {
         var v = page.video;
         var url = v.embedUrl || "";
@@ -150,11 +150,11 @@ Page {
         if (direct.length > 0) {
             var isLocal = direct.indexOf("file://") === 0;
             if (!isLocal && /\.mov(\?|$)/i.test(direct)) {
-                // Remote .mov: Chromium's <video> decodes audio but not the video track; media-hub/GStreamer renders it fine, and the AppArmor block below only applies to local files.
+                // remote .mov: Chromium can't decode video track
                 page.nativeMode = true;
                 page.webVideoMode = false;
             } else {
-                // Local files and remote mp4/webm/m4v use Chromium <video>, not QtMultimedia, since media-hub's AppArmor profile can't read our download-manager file (SIGSEGV via 0x0 surface).
+                // local/mp4/webm/m4v use Chromium <video>
                 page.nativeMode = false;
                 page.webVideoMode = true;
             }
@@ -168,15 +168,13 @@ Page {
         }
     }
 
-    // Reparents the player Loader into the fullscreen host or back to the inline stage; webLoader's anchors.fill follows whichever it lands in.
+    // reparents player Loader into fullscreen host or back
     function setFullscreen(on) {
         page.isFullscreen = on;
         webLoader.parent = on ? fsHost : stage;
     }
 
-    // Space-bar playback control: starts playback if it hasn't begun, else
-    // toggles pause on whichever player is live. Cross-origin embeds (YouTube
-    // iframe) can't be driven from outside — their own controls apply.
+    // space-bar play/pause control
     function togglePlayPause() {
         if (!page.playing) { page.startPlay(); return; }
         var it = webLoader.item;
@@ -186,10 +184,10 @@ Page {
         // else: cross-origin embed (YouTube) can't be controlled from outside.
     }
 
-    // Native (.mov) player failed — retry via Chromium's <video> before falling back to the system handler.
+    // native player failed, retry via Chromium
     function onNativeFailed() {
         if (page.webVideoMode) {
-            // Even Chromium failed — last resort is the system handler.
+            // Chromium also failed, last resort
             var link = page.directUrl() || page.video.videoLink || page.video.embedUrl;
             if ((link || "").length > 0) Qt.openUrlExternally(link);
             return;
@@ -252,7 +250,7 @@ Page {
                 function (r) { page.upvoted = false; page.voteCount = Math.max(0, page.voteCount - 1); page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
                 page._voteFail);
         } else if (!page.onChain) {
-            // Off-chain (DB-only) video: plain one-tap like, no weight popover, matching fe-serey-web's simpleVote.
+            // off-chain: plain one-tap like, no weight popover
             page._sendUpvote(100);
         } else {
             PopupUtils.open(voteWeightDialog);
@@ -392,7 +390,7 @@ Page {
                 // answer_count can be stale — trust replies.length when larger
                 serverCount = (result.post && result.post.comments) || 0;
                 page.commentCount = Math.max(serverCount, replies.length);
-                // Only ever set upvoted true from voters — the API's list can be incomplete, so never use it to override an already-true state.
+                // only set upvoted true from voters, never override
                 if (!VoteService.getCached(video.author, video.permlink) && !page.upvoted) {
                     voters = (result.post && result.post.voters) || [];
                     me2 = Session.username || "";
@@ -419,7 +417,7 @@ Page {
         page.comments = page._removeFrom(page.comments, permlinkToRemove);
         page.commentCount = Math.max(0, page.commentCount - 1);
         Toast.success(Lang.tr("Comment deleted"));
-        // Must run in this page-level scope: the CommentService import resolves to null inside Loader-created reply row delegates.
+        // must run in page-level scope
         CommentService.remove(Config.baseUrl, permlinkToRemove, Session.username, Session.token,
             function () {},
             function (err) {
@@ -443,7 +441,7 @@ Page {
     function editComment(permlinkToEdit, newBody, parentAuthor, parentPermlink) {
         page.comments = page._editIn(page.comments, permlinkToEdit, newBody);
         Toast.success(Lang.tr("Comment updated"));
-        // Same page-level-scope reason as removeComment; existing permlink = update
+        // page-level scope, existing permlink = update
         CommentService.create(Config.baseUrl,
             { parentAuthor: parentAuthor, parentPermlink: parentPermlink,
               body: newBody, permlink: permlinkToEdit },
@@ -572,7 +570,7 @@ Page {
         id: removeDialog
         Dialog {
             id: rdlg
-            // Title carries the video name so the dialog reads clearly on its own (HIG drop-the-title test); falls back when the title is missing.
+            // title carries the video name, falls back if missing
             title: (page.video && page.video.title)
                    ? Lang.tr("Remove “%1”?").arg(page.video.title)
                    : Lang.tr("Remove download?")
@@ -589,8 +587,7 @@ Page {
         }
     }
 
-    // The scroll view owns arrow-key focus so a keyboard user can scroll the page;
-    // AdaptiveStack.focusDetail() targets this when entering from the video list.
+    // scroll view owns arrow-key focus
     property Item keyboardFocusItem: scroll
 
     Flickable {
@@ -602,9 +599,7 @@ Page {
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
-        // Keyboard parity with PostDetailPage's reading keys, plus video-specific
-        // Space/Enter = play-pause (a video page's Space belongs to the player,
-        // not page-scrolling; PageDown/PageUp still scroll).
+        // Space/Enter = play-pause, PageDown/Up still scroll
         activeFocusOnTab: true
         function _kbScroll(dy) {
             var maxY = Math.max(0, scroll.contentHeight - scroll.height);
@@ -622,13 +617,11 @@ Page {
             else if (event.key === Qt.Key_Space
                   || event.key === Qt.Key_Return
                   || event.key === Qt.Key_Enter)    { page.togglePlayPause(); event.accepted = true; }
-            // Escape leaves fullscreen first; otherwise Left/Escape hand focus
-            // back to the master list so the viewer can pick the next video.
+            // Escape leaves fullscreen first, else focus master list
             else if (event.key === Qt.Key_Escape && page.isFullscreen) { page.setFullscreen(false); event.accepted = true; }
             else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
         }
-        // Focus lands on the flick when the video opens (guarded so it never
-        // steals focus from the comment composer).
+        // focus lands here on open, unless composer has focus
         onVisibleChanged: if (visible && !composer.activeFocus) Qt.callLater(scroll.forceActiveFocus)
         Component.onCompleted: if (visible && !composer.activeFocus) scroll.forceActiveFocus()
 
@@ -636,11 +629,7 @@ Page {
             id: contentCol
             width: scroll.width
 
-            // Player wrapper: full-width row. The stage centers within it and is
-            // capped by the available viewport height, so the title/description
-            // and upvote row stay visible without scrolling on wide windows; the
-            // leftover width becomes side padding. Phones (tall/narrow) stay
-            // full-width since the 16:9 height is well under the cap.
+            // player wrapper, stage caps to viewport height
             Item {
                 id: stageWrap
                 width: parent.width
@@ -649,9 +638,7 @@ Page {
                 Rectangle {
                     id: stage
                     anchors.horizontalCenter: parent.horizontalCenter
-                    // Height-cap keeps the title/description + upvote row above
-                    // the fold; then give back 50% of the side padding (Lomiri
-                    // prescribes no fixed media size). Stays 16:9.
+                    // height-cap keeps content above the fold, stays 16:9
                     readonly property real _capW: Math.min(stageWrap.width, scroll.height * 0.5 * 16 / 9)
                     width: _capW + (stageWrap.width - _capW) * 0.5
                     height: width * 9 / 16
@@ -689,7 +676,7 @@ Page {
                     id: webLoader
                     anchors.fill: parent
                     active: page.playing
-                    // Native player only for nativeMode; webVideoMode and embed playback both use the WebView (HTML5 <video> vs iframe).
+                    // native player for nativeMode; else WebView
                     source: page.playing
                         ? (page.nativeMode ? Qt.resolvedUrl("../components/VideoNativePlayer.qml")
                                            : Qt.resolvedUrl("../components/VideoWebView.qml"))
@@ -705,7 +692,7 @@ Page {
                             item.wrap = true;
                             item.embedUrl = page.embedSrc();
                         }
-                        // Both WebView modes (<video> + YouTube iframe) can request fullscreen; the native player can't.
+                        // WebView modes can request fullscreen; native can't
                         if (!page.nativeMode)
                             item.fullscreenToggled.connect(page.setFullscreen);
                     }
@@ -797,15 +784,14 @@ Page {
                     }
                 }
 
-                // Hugs the row's actual rendered content, not the full width up to moreBtn, else the dead space in between wrongly opens the profile on tap.
+                // hugs row content, not full width to moreBtn
                 MouseArea {
                     anchors { left: authorRow.left; top: parent.top; bottom: parent.bottom }
                     width: authorRow.width
                     onClicked: page.openProfile()
                 }
 
-                // Metadata sits with "...more" on the trailing edge, leaving the leading
-                // side for identity: avatar + name + Follow.
+                // "...more" trails, leading side is identity
                 Label {
                     id: dateLabel
                     anchors { right: moreBtn.left; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
@@ -830,21 +816,13 @@ Page {
                     }
                 }
 
-                // Follow acts on the AUTHOR, so it sits directly beside the author it
-                // follows, not in the page header (whose actions are all about this video)
-                // and not on the vote row (video actions). Anchored to the name rather than
-                // right-aligned: on a desktop-width window the trailing edge is ~1200px from
-                // the author and reads as unrelated again.
-                // Outside authorRow on purpose: the profile MouseArea spans that Row's width
-                // and would otherwise swallow the tap.
+                // Follow acts on author, sits beside author row
                 AbstractButton {
                     id: followBtn
                     visible: (page.video.author || "") !== "" && page.video.author !== Session.username
                     anchors { left: authorRow.right; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: followInner.implicitWidth
-                    // Keeps Lomiri's gu(4) minimum touch target while the visible mark stays
-                    // light: a filled pill overpowered a row of fontSmall text and a gu(3.5)
-                    // avatar. Matches the "...more" link's weight, in brand colour.
+                    // gu(4) touch target, light visible mark
                     height: units.gu(4)
                     onClicked: page.toggleFollow()
 
@@ -871,8 +849,7 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Vote row: actions on the VIDEO itself. Share/Download live in the page
-            // header's action slots; Follow sits on the author row above.
+            // vote row: actions on the video itself
             RowLayout {
                 x: Style.spacingM
                 width: parent.width - Style.spacingM * 2
@@ -984,7 +961,7 @@ Page {
         }
     }
 
-    // Fullscreen host: setFullscreen() reparents the player Loader in here to fill the screen, above content and bottom sheets (z 1500).
+    // fullscreen host, above content and bottom sheets
     Item {
         id: fsHost
         anchors.fill: parent
@@ -1101,7 +1078,7 @@ Page {
             Column {
                 id: cmtFooter
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-                // Ride above the on-screen keyboard; the comment list above is anchored to cmtFooter.top and shrinks to keep both visible.
+                // ride above on-screen keyboard
                 anchors.bottomMargin: page.kbHeight
                 Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
 
@@ -1141,7 +1118,7 @@ Page {
                     x: Style.spacingM
                     spacing: Style.spacingS
 
-                    // Lomiri TextField (not a raw TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste; StyleHints keep the gray-pill look.
+                    // styled TextField for native selection + Cut/Copy/Paste
                     TextField {
                         id: composer
                         width: parent.width - cmtSendBtn.width - Style.spacingS
@@ -1380,7 +1357,7 @@ Page {
                                 t = t.replace(/<(?!\/?(?:b|i|u|a)\b)[^>]+>/g, "");
                                 t = t.replace(/&nbsp;/g, " ");
                                 t = t.replace(/&amp;/g, "&");
-                                // Decode numeric entities (smart quotes etc.) that StyledText can't render; keep &,<,> encoded.
+                                // decode numeric entities, keep &,<,> encoded
                                 t = t.replace(/&#(\d+);/g, function (mm, n) {
                                     var code = parseInt(n, 10);
                                     return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);

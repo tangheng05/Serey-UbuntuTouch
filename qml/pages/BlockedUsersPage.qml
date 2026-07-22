@@ -21,7 +21,7 @@ Page {
 
     ListModel { id: blockedModel; dynamicRoles: true }
 
-    // Fetches each user's profile (for a real avatar) after the block list itself loads
+    // fetch avatar for block list entry
     function _fetchAvatar(index, username) {
         AccountService.profile(Config.baseUrl, username, Session.token,
             function (user) { blockedModel.setProperty(index, "avatarUrl", user.profileUrl || "") },
@@ -63,8 +63,7 @@ Page {
 
     Component.onCompleted: page.load()
 
-    // Keyboard nav: settings' Nav.focusDetail targets this list; Left/Escape
-    // return to the settings list, arrows move the cursor, Enter opens a profile.
+    // keyboard nav target from settings list
     property Item keyboardFocusItem: list
     onVisibleChanged: if (visible) { list.kbEngaged = false; list.forceActiveFocus(); }
 
@@ -74,9 +73,7 @@ Page {
         width: Math.min(parent.width, page.maxContentWidth)
         model: blockedModel
         clip: true
-        // Gates the cursor ring below so the page's auto-focus on show (needed
-        // so arrow keys work without an explicit Tab first) never paints a ring
-        // for touch/mouse users — only a real key press reveals it.
+        // only show focus ring after real key press
         property bool kbEngaged: false
         Keys.onPressed: list.kbEngaged = true
         Keys.onLeftPressed: Nav.focusMaster()
@@ -85,8 +82,7 @@ Page {
             var it = blockedModel.get(list.currentIndex);
             if (it) page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: it.username });
         }
-        // Keyboard cursor ring (the delegate is a plain Item, not a ListItem, so
-        // there's no native focus frame — draw one on the current row).
+        // keyboard cursor ring
         highlight: Rectangle {
             z: 5
             width: list.width

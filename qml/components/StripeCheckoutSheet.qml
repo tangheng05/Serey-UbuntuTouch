@@ -5,23 +5,7 @@ import "../Theme"
 import "../Session"
 import "../services/PaymentService.js" as PaymentService
 
-/*
- * In-app Stripe Checkout for buy-plan. State lives in Theme/Payments.qml:
- * openStripe(planId) creates the checkout session here; openStripeUrl(url)
- * (the WebAppView checkout.stripe.com interception path) loads the URL
- * directly. Mounted once in Main.qml.
- *
- * The hosted checkout runs in its OWN WebEngineView instead of navigating the
- * Homepage mini app away — the mini app keeps its state, and the backend's
- * fixed redirect to FRONTEND_ORIGIN/subscription/return (?success=true /
- * ?cancel=true) is caught here and turned into a native Toast + close.
- *
- * Dual-Chromium guard: this is a second Chromium next to the Homepage's
- * (two live views SIGSEGV the Pixel 3a), so (a) HomepagePage ORs
- * Payments.stripeOpen into the mini app's `suspended` binding to freeze it
- * while we're open, and (b) the view lives behind a Loader that is torn down
- * on close so the renderer process doesn't linger.
- */
+// in-app Stripe Checkout for buy-plan
 Item {
     id: sheet
     anchors.fill: parent
@@ -29,7 +13,7 @@ Item {
     z: 1600
 
     property bool creating: false
-    // Set once /subscription/return is seen so late redirects can't double-fire.
+    // guards against double-firing on late redirects
     property bool finished: false
 
     onVisibleChanged: {
@@ -71,10 +55,7 @@ Item {
         sheet.finished = true;
         var success = urlStr.indexOf("success=true") !== -1;
         if (success) {
-            // Activation comes from Stripe's webhook, but check-status also
-            // activates a paid-not-yet-activated session server-side — fire it
-            // once (not awaited) so the plan is live even if the webhook lags,
-            // mirroring what the web return page does.
+            // fallback activation if webhook lags
             var m = urlStr.match(/[?&]session_id=([^&#]+)/);
             if (m) {
                 PaymentService.checkStripeStatus(Config.baseUrl, Session.token,
@@ -85,9 +66,7 @@ Item {
         if (success) {
             Toast.success(Lang.tr("Payment successful!"));
             Payments.paymentSucceeded();
-            // Same funnel as the crypto sheet's Done: plan is active, so take
-            // the buyer straight into creating their platform (unless they
-            // already own one).
+            // send to platform creation unless already owned
             var owns = false;
             for (var k in Config.ownedCommunityIdSet) { owns = true; break; }
             if (!owns) Nav.createPlatform();
@@ -116,8 +95,7 @@ Item {
             anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
             width: units.gu(4); height: units.gu(4)
             onClicked: {
-                // Leaving checkout mid-flow counts as a cancel; Stripe expires
-                // the abandoned session on its own.
+                // leaving mid-flow counts as cancel
                 Payments.closeStripe();
                 Toast.show(Lang.tr("Payment cancelled."));
             }
@@ -132,8 +110,7 @@ Item {
     Loader {
         id: webLoader
         anchors { top: header.bottom; topMargin: units.dp(1); left: parent.left; right: parent.right; bottom: parent.bottom }
-        // The WebEngineView only exists while there is a URL to show; clearing
-        // this tears the whole Chromium renderer down (see file-top comment).
+        // clearing this tears down the renderer
         property string checkoutUrl: ""
         active: Payments.stripeOpen && checkoutUrl.length > 0
         sourceComponent: Component {

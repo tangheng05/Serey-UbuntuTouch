@@ -13,13 +13,13 @@ Page {
     property var profile: null
     property bool loading: false
     property string errorMsg: ""
-    // Caps content to a centered column on tablet/desktop; phone gets the full width
+    // centered column on tablet/desktop
     readonly property real maxContentWidth: units.gu(60)
 
     property bool searching: false
     property bool searchOpen: false
     property int searchGeneration: 0
-    // Search field is revealed by the header search action (Lomiri pattern).
+    // revealed by header search action
     property bool searchActive: false
 
     ListModel { id: searchModel }
@@ -72,14 +72,10 @@ Page {
             })
     }
 
-    // Suppress the default header and draw our own, since Page.header didn't render the right-side search action icon reliably.
+    // custom header, replaces default
     header: Item { height: 0 }
 
-    // ---- Keyboard navigation (HIG input parity). The rows live in a Column
-    // inside a Flickable (no ListView cursor), so the page keeps its own row
-    // cursor — same pattern as PostActionSheet: candidates filtered by
-    // visibility on every move (login state / platform ownership change what
-    // exists), one reparenting ring, Enter on key RELEASE (see KeyTapArea).
+    // custom row cursor nav (Flickable has no ListView cursor)
     property Item keyboardFocusItem: scroll
     property Item navCurrent: null
 
@@ -101,7 +97,7 @@ Page {
         page.navCurrent = rows[i];
         page._ensureRowVisible(page.navCurrent);
     }
-    // Keep the cursor row inside the Flickable viewport.
+    // keep cursor row inside viewport
     function _ensureRowVisible(it) {
         var y = it.mapToItem(col, 0, 0).y;
         if (y < scroll.contentY) scroll.contentY = Math.max(0, y);
@@ -109,9 +105,7 @@ Page {
             scroll.contentY = y + it.height - scroll.height;
     }
 
-    // Focus the row list when the tab is shown so keyboard nav works without a
-    // click; cursor appears on first key press, not on show. (Merged into the
-    // single onVisibleChanged below — a Page allows only one handler per signal.)
+    // focus row list when tab shown
     function _onShownForKeyboard() {
         if (!searchField.activeFocus) {
             page.navCurrent = null;
@@ -122,14 +116,12 @@ Page {
     Rectangle {
         id: settingsHeader
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        // Matches PageHeader's own height (Ambiance style: titleAreaHeight gu(6) + 1dp divider)
-        // so this row lines up with a pushed detail page's PageHeader (e.g. Edit profile) in split/wide layouts.
+        // matches PageHeader height
         height: units.gu(6) + units.dp(1)
         color: Style.surface
         z: 50
 
-        // Centered column that caps at maxContentWidth; on phone widths this
-        // just equals settingsHeader's full width, so the layout is unchanged.
+        // centered column, caps at maxContentWidth
         Item {
             id: headerContent
             anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
@@ -177,8 +169,7 @@ Page {
                 }
             }
 
-            // ----- Active state: back chevron + inline search field (Lomiri header
-            // search — the field expands into the header, per the HIG reference). -----
+            // ----- Active state: back chevron + inline search field -----
             AbstractButton {
                 id: searchBack
                 visible: page.searchActive
@@ -270,13 +261,13 @@ Page {
     }
 
     function refreshProfile() {
-        // Also reset `loading`: logging out mid-fetch would otherwise leave the earlier request's loading=true with profile nulled, a stuck spinner.
+        // reset loading to avoid stuck spinner
         if (!Session.isLoggedIn) { profile = null; loading = false; return; }
         loading = true;
         errorMsg = "";
         AccountService.profile(Config.baseUrl, Session.username, Session.token,
             function (user) {
-                // A response landing after logout must not repaint the stale profile.
+                // skip stale response after logout
                 if (!Session.isLoggedIn) { loading = false; return; }
                 loading = false;
                 page.profile = user;
@@ -308,7 +299,7 @@ Page {
         }
     }
 
-    // Following someone happens on another tab, so the in-memory follower count would otherwise stay stale until this tab is revisited.
+    // refresh so follower count stays current
     onVisibleChanged: if (visible) { refreshProfile(); _onShownForKeyboard(); }
 
     Connections {
@@ -316,7 +307,7 @@ Page {
         function onTokenChanged() { page.refreshProfile(); }
     }
 
-    // Re-fetch when returning from a pushed sub-page (e.g. Edit profile) so the header avatar/name reflect any just-saved changes.
+    // re-fetch after returning from a pushed sub-page
     Connections {
         target: page.pageStack
         function onDepthChanged() {
@@ -327,7 +318,7 @@ Page {
         }
     }
 
-    // Confirm before logging out (logout is otherwise instant and unannounced).
+    // confirm before logging out
     Component {
         id: logoutDialog
         Dialog {
@@ -355,15 +346,11 @@ Page {
         contentHeight: col.height
         clip: true
 
-        // Arrow cursor over the settings rows; Enter activates on release so
-        // the pushed sub-page / dialog doesn't inherit the tail of the press.
+        // arrow cursor, Enter activates on release
         activeFocusOnTab: true
         property bool _armed: false
         Keys.onPressed: {
-            // A mouse click on a row gives that AbstractButton keyboard focus, so
-            // scroll loses activeFocus (the arrow keys still bubble up here, but
-            // the ring is gated on scroll.activeFocus). Reclaim focus on the first
-            // nav key so the cursor reappears and keyboard nav resumes.
+            // reclaim focus so cursor reappears
             if (!scroll.activeFocus) scroll.forceActiveFocus();
             if (event.key === Qt.Key_Down)      { page._navMove(1);  event.accepted = true; }
             else if (event.key === Qt.Key_Up)   { page._navMove(-1); event.accepted = true; }
@@ -379,9 +366,7 @@ Page {
                 scroll._armed = false;
                 if (page.navCurrent) {
                     page.navCurrent.clicked();
-                    // If the row pushed a detail page (split mode), move focus into
-                    // it. No-op for dialog/external rows (nothing was pushed) and
-                    // for narrow mode (the pushed page auto-focuses itself).
+                    // move focus into pushed detail page, if any
                     Qt.callLater(function () { Nav.focusDetail(); });
                 }
                 event.accepted = true;
@@ -619,19 +604,12 @@ Page {
                     id: langDlg
                     title: Lang.tr("Language")
 
-                    // Keyboard nav: Up/Down move the selection, Enter activates,
-                    // Escape cancels. The ring adapts colour so it stays visible
-                    // even on the brand-blue active-language button.
+                    // Up/Down select, Enter activates, Escape cancels
                     property int selIndex: Session.language === "nl" ? 1 : 0
-                    // Restore keyboard focus to the settings list when the dialog closes.
+                    // restore focus to settings list on close
                     function _closeAndRestore() { PopupUtils.close(langDlg); Qt.callLater(function () { scroll.forceActiveFocus(); }); }
 
-                    // Zero-size focus holder: Keys on the Dialog root (or its
-                    // Buttons) didn't reliably own focus — the settings list behind
-                    // the modal kept it, so arrows moved the hidden list cursor.
-                    // This item grabs focus (deferred until the modal is mounted)
-                    // and handles all keys. Zero size keeps the Dialog's Column
-                    // layout intact.
+                    // zero-size focus holder, handles all keys
                     Item {
                         id: keyGrab
                         width: 0; height: 0
@@ -704,7 +682,7 @@ Page {
             }
 
             // ===== Your Platform ==========================================
-            // One platform per user: creators see "Create", owners/managers see the CMS hub instead.
+            // one platform per user
             SettingsSectionHeader { text: Lang.tr("Your Platform"); visible: Session.isLoggedIn }
             SettingsRow {
                 id: createPlatformRow
@@ -752,7 +730,7 @@ Page {
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
             }
-            // Not gated on isLoggedIn: downloads/saved articles work signed out too.
+            // works signed out too
             SettingsRow {
                 id: downloadsRow
                 iconName: "save"
@@ -792,10 +770,7 @@ Page {
         }
     }
 
-    // Keyboard cursor: one ring reparented into whichever row is selected (same
-    // approach as PostActionSheet). Fallback parent is `page` (NOT the Column
-    // `col`, which disables its own layout if given an anchored child). Only
-    // visible once a key has moved the cursor, so touch users never see it.
+    // keyboard cursor ring, reparented to selected row
     Rectangle {
         parent: page.navCurrent ? page.navCurrent : page
         anchors.fill: parent
@@ -810,12 +785,12 @@ Page {
 
     ActivityIndicator {
         anchors.centerIn: parent
-        // isLoggedIn guard: logout must never leave this spinning (see refreshProfile).
+        // guard: logout must not leave this spinning
         running: Session.isLoggedIn && page.loading && page.profile === null
         visible: running
     }
 
-    // ── Search results overlay ────────────────────────────────────────────────
+    // search results overlay
     Rectangle {
         id: searchOverlay
         visible: page.searchOpen && (searchModel.count > 0 || page.searching)

@@ -10,9 +10,7 @@ Page {
 
     property bool busy: false
     property string errorMsg: ""
-    // What to do right after a successful login. "" (default) pops back to
-    // wherever the login-gate interrupted (e.g. voting); "feed" is a primary
-    // entry point (Settings "Log in", or the tail end of a fresh signup).
+    // post-login destination: "" pops back, "feed" goes to feed
     property string afterSuccess: ""
 
     header: PageHeader {
@@ -32,7 +30,7 @@ Page {
         AccountService.login(Config.baseUrl, usernameField.text, passwordField.text,
             function (auth) {
                 busy = false;
-                // Clear -> set, never overwrite in place, so account B never inherits anything cached from account A.
+                // clear before set, avoid stale account data
                 Session.clear();
                 FollowStore.reset();
                 Session.setAuth(auth.token, usernameField.text);

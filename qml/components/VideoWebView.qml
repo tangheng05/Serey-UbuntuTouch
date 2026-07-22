@@ -12,25 +12,17 @@ Item {
     property bool controls: true
     property bool loop: false
 
-    // Inside this WebView a CSS pixel is a physical pixel (no devicePixelRatio),
-    // so fixed-px controls that look right on a desktop monitor render ~2.6x
-    // smaller on a phone panel — too small to tap. Scale the control bar by the
-    // same grid-unit ratio the rest of the app adapts with (gu = 8px on desktop,
-    // ~21px on the Pixel 3a); quantized to 0.25 so reloads on trivial width
-    // changes can't thrash _load().
+    // scale control bar to match app grid units
     property real cssScale: Math.max(1, Math.round((units.gu(1) / 8) * 4) / 4)
-    // True once the <video> has a decoded frame — hosts fade in on this so the WebView's blank first frame never flashes.
+    // true once video has a decoded frame
     property bool ready: false
     property bool paused: false
     signal fullscreenToggled(bool on)
 
-    // Freeze the Chromium renderer on app background/suspend — same SIGBUS-on-resume issue and lifecycleState int trap as WebAppView.
+    // freeze renderer on app background/suspend
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
-    // Unfocused is not the same as put away: side by side, our window stays on
-    // screen while another app holds focus, and freezing there blanked a video
-    // the user was still watching. Freeze only once the shell has actually
-    // suspended us, or the window has stopped being shown.
+    // freeze only once actually suspended, not just unfocused
     readonly property bool _windowShown: Window.visibility !== Window.Hidden
                                          && Window.visibility !== Window.Minimized
     property bool appAway: Qt.application.state === Qt.ApplicationSuspended
@@ -51,10 +43,7 @@ Item {
         interval: 300
         onTriggered: if (root.appAway) wv.lifecycleState = root._lcFrozen
     }
-    // Thawing restores the renderer but not its dropped compositor frame, and a
-    // paused <video> never paints a new one — the surface stays black. Re-seeking
-    // to the current position forces a decode; the opacity nudge covers the
-    // iframe case, where the <video> lives cross-origin and is out of reach.
+    // re-seek to force a repaint after thaw
     Timer {
         id: vwRepaintTimer
         interval: 150
@@ -86,7 +75,7 @@ Item {
     onCssScaleChanged: _load()   // sizes are baked into the wrapper HTML
     Component.onCompleted: _load()
 
-    // Off-the-record: unlike the Homepage profile, video doesn't need persistent login
+    // off-the-record profile
     WebEngineProfile {
         id: videoProfile
         httpUserAgent: root.mobileUA
@@ -98,13 +87,13 @@ Item {
         anchors.fill: parent
         profile: videoProfile
 
-        // Autoplay without a user gesture (our overlay tap is the gesture); local-file access lets an offline file:// <video> load from its wrapper.
+        // autoplay without gesture; allow local file access
         settings.playbackRequiresUserGesture: false
         settings.fullScreenSupportEnabled: true
         settings.localContentCanAccessFileUrls: true
         settings.localContentCanAccessRemoteUrls: true
 
-        // Make every frame report a mobile navigator, defeating client-side desktop sniffing.
+        // spoof mobile navigator
         userScripts: [
             WebEngineScript {
                 injectionPoint: WebEngineScript.DocumentCreation
@@ -122,7 +111,7 @@ Item {
             root.fullscreenToggled(request.toggleOn);
         }
 
-        // LoadSucceededStatus == 2 (enum-not-exposed trap); directVideo waits for the __SEREY_READY__ sentinel instead of page-load, which fires before the first frame paints.
+        // LoadSucceededStatus == 2; directVideo waits for ready sentinel instead
         onLoadingChanged: function (loadRequest) {
             if (loadRequest.status === 2 && !root.directVideo)
                 root.ready = true;
@@ -134,7 +123,7 @@ Item {
         }
     }
 
-    // Wrapper is served from serey.io so embeds see a normal referrer; offline copies base on the file's own directory so <video src> is same-origin.
+    // wrapper origin for referrer/same-origin
     readonly property string _origin: "https://serey.io"
     function _baseUrl() {
         if (directVideo && embedUrl.indexOf("file://") === 0) {
@@ -154,11 +143,7 @@ Item {
                '</iframe></body></html>';
     }
 
-    // Chromium's own <video controls> timeline is a slider whose touch path only
-    // seeks on touchmove, so a tap on the track does nothing and only dragging
-    // the playhead works. It's in a closed shadow root and can't be patched, so
-    // we render our own bar and seek from pointerdown — one code path for mouse
-    // and touch alike.
+    // custom seek bar; Chromium's touch seek is broken
     readonly property string _svgPlay: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'
     readonly property string _svgPause: '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
     readonly property string _svgFull: '<svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>'
@@ -188,12 +173,7 @@ Item {
                'function seek(x){var b=trk.getBoundingClientRect();' +
                'var p=Math.min(1,Math.max(0,(x-b.left)/b.width));' +
                'if(v.duration&&isFinite(v.duration))v.currentTime=p*v.duration;upd();poke();}' +
-               // The drag latch must be release-proof: UT's QtWebEngine can drop the
-               // pointerup after a track tap, and a stuck drag turned every later
-               // touch into a seek clamped to 0 (left) or the end (right). Belt and
-               // braces: release on buttons-up during a move, on window-level
-               // up/cancel (capture can die without the track ever seeing them),
-               // and on lostpointercapture.
+               // release-proof drag latch
                'trk.addEventListener("pointerdown",function(e){drag=true;' +
                'try{trk.setPointerCapture(e.pointerId);}catch(_){}' +
                'seek(e.clientX);e.preventDefault();});' +
@@ -219,9 +199,7 @@ Item {
     function _videoHtml() {
         var attrs = 'autoplay playsinline webkit-playsinline preload="auto"';
         if (loop) attrs += ' loop';
-        // Every control dimension multiplies by cssScale so the bar has the same
-        // physical size (and tappable area) on a dense phone panel as on a desktop
-        // monitor. px() rounds to whole CSS pixels.
+        // scale control dimensions by cssScale
         var s = root.cssScale;
         function px(v) { return Math.round(v * s) + 'px'; }
         return '<!DOCTYPE html><html><head>' +
@@ -237,8 +215,7 @@ Item {
                '#row{display:flex;align-items:center}' +
                '.btn{width:' + px(30) + ';height:' + px(30) + ';flex:none;fill:#fff;cursor:pointer}' +
                '.btn svg{width:100%;height:100%}' +
-               // min-width keeps the track usable if the fixed elements (buttons +
-               // time label) ever crowd a narrow stage at high scale.
+               // keep track usable at high scale
                '#track{position:relative;flex:1;min-width:' + px(60) + ';height:' + px(30) + ';margin:0 ' + px(8) + ';' +
                'display:flex;align-items:center;touch-action:none;cursor:pointer}' +
                '#trk,#fill{position:absolute;height:' + px(4) + ';border-radius:' + px(2) + '}' +

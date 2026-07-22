@@ -7,14 +7,14 @@ Item {
     id: root
     property string source: ""
 
-    // True only on a real user pause — media-hub reports buffering pre-roll as "paused" too, so playbackState alone can't tell them apart.
+    // True only on a real user pause
     property bool _userPaused: false
 
     // GStreamer decode error or watchdog timeout — caller retries via Chromium <video>
     signal failed()
 
     onSourceChanged: {
-        // Explicit assign (not binding + autoPlay) so the file loads exactly once — both together raced a load against this handler's stop().
+        // explicit assign avoids double-load race
         player.stop();
         root._userPaused = false;
         if (source.length > 0) {
@@ -27,7 +27,7 @@ Item {
         }
     }
 
-    // Tear down the GStreamer pipeline on deactivate/pop — else it keeps buffering
+    // tear down pipeline on deactivate
     Component.onDestruction: player.stop()
 
     MediaPlayer {
@@ -41,10 +41,10 @@ Item {
         onStatusChanged: if (status === MediaPlayer.Buffered) watchdog.stop()
     }
 
-    // Stalled/unreachable-file watchdog — stops and emits failed() if nothing's playing/buffered after a timeout, instead of freezing on a spinner.
+    // stalled/unreachable-file watchdog
     Timer {
         id: watchdog
-        // Generous timeout: non-faststart .mov streams buffer ~7-10s on media-hub, and the Chromium fallback can't render .mov at all.
+        // generous timeout for slow buffering
         interval: 20000
         repeat: false
         onTriggered: {
@@ -63,9 +63,7 @@ Item {
         fillMode: VideoOutput.PreserveAspectFit
     }
 
-    // Toggle play/pause; tracks an explicit user pause so the overlay can tell it
-    // apart from media-hub's buffering "paused". Public so the detail page's
-    // Space-bar handler drives it too (same API name as VideoWebView).
+    // toggle play/pause; tracks user-pause for overlay
     function togglePause() {
         if (player.playbackState === MediaPlayer.PlayingState) {
             player.pause();
@@ -81,7 +79,7 @@ Item {
         onClicked: root.togglePause()
     }
 
-    // Loading spinner shown for the whole "play requested but no frames yet" window, hidden only once actually playing, ended, or user-paused.
+    // loading spinner until playing
     ActivityIndicator {
         anchors.centerIn: parent
         running: root.source.length > 0
@@ -92,7 +90,7 @@ Item {
         visible: running
     }
 
-    // Centre play glyph shown only on a real user pause (or at end for replay), never over the loading frame.
+    // play glyph on pause/end
     Icon {
         anchors.centerIn: parent
         width: units.gu(7)

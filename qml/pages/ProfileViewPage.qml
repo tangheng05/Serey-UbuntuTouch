@@ -15,11 +15,10 @@ Page {
     property string username: ""
     property var profile: null
     property bool profileLoading: false
-    // Wider reading column on desktop/tablet so the profile doesn't sit as a thin
-    // strip in the detail panel; phones stay full-width (parent.width wins the min).
+    // wider reading column on desktop/tablet
     readonly property real maxContentWidth: Config.wideMode ? units.gu(72) : units.gu(60)
 
-    // `st` is mutated in place, so `rev` is bumped to make `cur*` bindings re-evaluate
+    // rev bump forces cur* bindings to re-evaluate
     property int tab: 0          // 0 posts, 1 gallery, 2 video
     property int rev: 0
     property var st: ({
@@ -144,7 +143,7 @@ Page {
     function openGallery(p) { page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"), { author: p.author, permlink: p.permlink }); }
     function openVideo(v) { page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v }); }
 
-    // Remove a hidden post from whichever tab holds it (the action sheet is shared).
+    // remove a hidden post from whichever tab holds it
     function removeRow(permlink) {
         var models = [m0, m1, m2];
         for (var k = 0; k < models.length; k++) {
@@ -178,7 +177,7 @@ Page {
                 }
             }
         }
-        // Sync if blocked/unblocked elsewhere, or a stale state re-sends a duplicate block the backend rejects with a 400.
+        // sync block state from elsewhere
         function onUserBlocked(username) { if (username === page.username) page.isBlocked = true; }
         function onUserUnblocked(username) { if (username === page.username) page.isBlocked = false; }
         function onEditRequested(post) {
@@ -266,9 +265,7 @@ Page {
                         z: 10
                         onClicked: PopupUtils.open(blockDialog)
 
-                        // Scrim disc so the control stays legible over any cover
-                        // photo and in both themes: dark by default, solid red
-                        // once the user is blocked.
+                        // scrim disc for legibility
                         Rectangle {
                             anchors.fill: parent
                             radius: width / 2
@@ -276,10 +273,7 @@ Page {
                                 ? Qt.rgba(Style.danger.r, Style.danger.g, Style.danger.b, 0.92)
                                 : Qt.rgba(0, 0, 0, 0.38)
                         }
-                        // Prohibition / "no entry" mark — drawn as a vector (the
-                        // Suru theme has no "block" icon; this is the same shape
-                        // PostActionSheet uses), dropping the custom PNG asset.
-                        // White so it reads on the dark/red scrim.
+                        // no-entry mark, drawn as vector
                         Item {
                             anchors.centerIn: parent
                             width: units.gu(2.4); height: width

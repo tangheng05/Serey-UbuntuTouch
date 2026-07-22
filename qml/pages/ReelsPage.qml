@@ -146,7 +146,7 @@ Page {
             });
     }
 
-    // Model is a plain JS array — reassign (not mutate) to refresh delegates, and restore pager position; the current reel remounts.
+    // reassign array to refresh delegates
     Connections {
         target: PostActions
         function onPostUpdated(author, permlink, title, body) {
@@ -210,11 +210,11 @@ Page {
         highlightMoveDuration: 130          // snappier page-snap (was 200)
         maximumFlickVelocity: units.gu(700) // let a flick page promptly
         boundsBehavior: Flickable.StopAtBounds
-        // Pre-creates neighbouring delegates so posters decode ahead of scroll (only the current reel mounts a WebView).
+        // pre-creates neighbouring delegates
         cacheBuffer: pager.height
         clip: true
 
-        // End-of-feed hint: dragging up past the last reel reveals this, then the pager snaps back (StrictlyEnforceRange keeps the last reel in range).
+        // end-of-feed hint
         footer: Item {
             width: pager.width
             height: units.gu(12)
@@ -246,7 +246,7 @@ Page {
             height: pager.height
             readonly property bool current: ListView.isCurrentItem
 
-            // Vote state prefers the session cache (reflects votes cast this session), falling back to the voters list the API returned.
+            // prefer session vote cache, fall back to API voters list
             readonly property var _vc: VoteService.getCached(modelData.author || "", modelData.permlink || "")
             property bool upvoted: _vc ? _vc.upvoted : (modelData.voters || []).indexOf(Session.username) >= 0
             property bool flagged: _vc ? _vc.flagged : false
@@ -261,7 +261,7 @@ Page {
                 VoteService._updateCache(modelData.author, modelData.permlink,
                                          reel.upvoted, reel.flagged, reel.votes, modelData.payout || "");
             }
-            // Optimistic: flip icon/count immediately since the async broadcast lags a couple seconds, revert only if the request fails.
+            // revert optimistic vote on failure
             function _revert(wasUp, wasFlag, prevVotes, e) {
                 reel.upvoted = wasUp; reel.flagged = wasFlag; reel.votes = prevVotes;
                 reel.busy = false; reel._vcache();
@@ -302,7 +302,7 @@ Page {
                 }
             }
 
-            // Stays mounted under the player, which fades in once loaded, so the WebView's initial blank frame never shows.
+            // poster, player fades in above it
             Image {
                 anchors.fill: parent
                 source: modelData.thumbnail || ""
@@ -323,7 +323,7 @@ Page {
                 Behavior on opacity { NumberAnimation { duration: 180 } }
             }
 
-            // Tap-to-pause overlay sits above the video but below the action rail and caption so taps on those still reach their targets.
+            // tap-to-pause overlay
             MouseArea {
                 anchors.fill: parent
                 z: 1
@@ -368,7 +368,7 @@ Page {
                     GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.6) }
                 }
             }
-            // Caption uses Lomiri author treatment (avatar disc + name), mirroring VideoCard's author row, not a bare TikTok @handle.
+            // author row: avatar disc + name
             Row {
                 anchors { left: parent.left; right: actionRail.left; bottom: parent.bottom
                           leftMargin: Style.spacingM; rightMargin: Style.spacingS; bottomMargin: Style.spacingM }
@@ -446,8 +446,7 @@ Page {
 
                         Label {
                             id: descPreviewLabel
-                            // Always reserve the "more" slot. Making the width depend on
-                            // moreLabel.visible looped: visible <- this.truncated <- this.width.
+                            // always reserve "more" slot
                             width: parent.width - moreLabel.width - units.dp(4)
                             text: page._descPreview(modelData.body || "")
                             color: Qt.rgba(1, 1, 1, 0.85)
@@ -479,7 +478,7 @@ Page {
                 }
             }
 
-            // Comment/share open in the system browser — a second WebView over this live reel would trip the dual-Chromium crash.
+            // comment/share open in system browser
             Rectangle {
                 id: actionRail
                 anchors { right: parent.right; rightMargin: Style.spacingS
@@ -613,7 +612,7 @@ Page {
         Timer { id: wheelCooldown; interval: 350; onTriggered: parent.cooling = false }
     }
 
-    // Back button (the app header/nav are hidden on this pushed page).
+    // back button
     BackButton {
         anchors { left: parent.left; top: parent.top; leftMargin: Style.spacingS; topMargin: Style.spacingS }
         z: 100
@@ -621,7 +620,7 @@ Page {
         onClicked: page.pageStack.pop()
     }
 
-    // In-app comment thread (no WebView — safe to overlay the live reel player).
+    // in-app comment thread
     CommentsSheet { id: commentSheet }
 
     // Full-description bottom sheet, opened from a reel's "more" tap

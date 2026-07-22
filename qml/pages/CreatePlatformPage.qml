@@ -7,22 +7,7 @@ import "../components"
 import "../services/PlatformService.js" as PlatformService
 import "../services/AccountService.js" as AccountService
 
-/*
- * Native "Create your platform" wizard — the app-side equivalent of the web
- * CreateCommunityForm (fe-serey-web social-media-owners), scoped to plain
- * communities only (no SuperHub/Topic creation in this version).
- *
- * Entry is gated on an active subscription plan (GET /subscription/active);
- * without one we show a CTA that routes to the Homepage plan page. Other
- * backend rules (one community per user, name charset) are enforced
- * server-side — we surface the server's message rather than duplicating them.
- *
- * Steps: 0 name + web address (live subdomain check) · 1 location (independent
- * or under a country, + optional category) · 2 branding images + create ·
- * 3 success. Branding images are optional; the server requires the URL fields,
- * so unset ones fall back to the site's "/logo.png" placeholder exactly like
- * the web wizard.
- */
+// create platform wizard: name/address, location, branding, success
 Page {
     id: page
 
@@ -74,9 +59,7 @@ Page {
                                       && /^[a-zA-Z0-9 ]+$/.test(nameText)
     readonly property bool canContinue:
         step === 0 ? (nameValid && subStatus === "free")
-        // Web-wizard parity: a category is REQUIRED once a country is chosen
-        // (skip the requirement only if the category list failed to load, so
-        // the user is never hard-stuck — the server defaults to "Other").
+        // category required once a country is chosen
       : step === 1 ? (independent || (country !== null
                                       && (categoryId > 0 || categories.length === 0)))
       : !creating && uploadingTarget === ""
@@ -104,12 +87,10 @@ Page {
             function () { countriesLoading = false; countriesFailed = true; });
         PlatformService.getCategories(Config.baseUrl,
             function (rows) { categories = rows; },
-            function () { /* optional — the server defaults to "Other" */ });
+            function () { /* optional, server defaults to "Other" */ });
     }
 
     // ── Subdomain availability ───────────────────────────────────────────────
-    // Same constraints the web wizard enforces client-side: 1-54 chars of
-    // [a-z0-9-], no leading/trailing hyphen, not purely numeric, no dots.
     function slugProblem(s) {
         if (s.length === 0) return "";
         if (s.length > 54) return Lang.tr("Address is too long (max 54 characters).");
@@ -143,15 +124,13 @@ Page {
                 },
                 function () {
                     if (epoch !== page.subEpoch) return;
-                    // Couldn't verify — let the user retry by editing; the
-                    // server checks again on create anyway.
+                    // couldn't verify, let user retry
                     page.subStatus = "idle";
                 });
         }
     }
 
-    // Called from list delegates (imported JS is unreliable inside delegate
-    // handlers — route through page-level functions).
+    // route through page-level functions for delegates
     function selectCountry(c) {
         country = { id: c.id, name: c.name, iconUrl: c.iconUrl };
         independent = false;
@@ -214,16 +193,9 @@ Page {
             page.createdDns = res.dns || (slug + ".serey.io");
             page.step = 3;
             Toast.success(Lang.tr("Your platform has been created!"));
-            // Rebuild the community picker so the new platform (and its parent
-            // country, if this was the country's first) shows without a restart.
+            // refresh community picker for new platform
             Nav.refreshCommunities();
-            // Seed the new community into the in-session cache so the CMS hub
-            // shows its name/logo and loads ITS categories immediately, without
-            // waiting on the refreshCommunities round-trip above. Keep this even
-            // though the server now busts its communities caches on create: an
-            // API instance other than the one that handled the create can still
-            // serve its own in-process copy for up to 60s, so the re-fetch is
-            // not guaranteed fresh — this local seed is.
+            // seed new community into cache immediately
             if (res.id) {
                 Config.addOrUpdateCommunity({
                     id: res.id,
@@ -234,16 +206,14 @@ Page {
                     videoAllowPost: false
                 });
             }
-            // The owner may now post to their own community even where posting
-            // is owner-only — refresh the owned-communities set Main.qml seeded.
+            // refresh owned-communities set for posting permission
             AccountService.ownedCommunityIds(Config.baseUrl, Session.token,
                 function (ids) {
                     var set = {};
                     for (var i = 0; i < ids.length; i++) set[ids[i]] = true;
                     if (res.id) set[res.id] = true;   // ensure managedCommunityId resolves now
                     Config.ownedCommunityIdSet = set;
-                    // Pin the CMS hub to the community just created (deterministic
-                    // even if the user somehow owns more than one).
+                    // pin CMS hub to the new community
                     if (res.id) Config.overrideManagedCommunityId = res.id;
                 }, function () {
                     if (res.id) {
@@ -278,7 +248,7 @@ Page {
     Column {
         visible: page.gate === "noplan" || page.gate === "error"
         anchors.centerIn: parent
-        // Convergence: cap the width so the CTA doesn't stretch on desktop.
+        // cap width on desktop
         width: Math.min(parent.width - Style.spacingL * 2, units.gu(45))
         spacing: Style.spacingM
 
@@ -343,9 +313,7 @@ Page {
 
         Column {
             id: form
-            // Convergence: not scale but adapt. Phones get the full width
-            // (minus margins); on tablet/desktop windows the form becomes a
-            // centered column instead of fields stretched across the screen.
+            // centered column on wide windows
             anchors { top: parent.top; topMargin: Style.spacingL; horizontalCenter: parent.horizontalCenter }
             width: Math.min(parent.width - Style.spacingM * 2, units.gu(60))
             spacing: Style.spacingM
@@ -429,10 +397,7 @@ Page {
                     color: Style.danger
                 }
 
-                // Subdomain (underline input, forced lowercase slug). The
-                // fixed ".serey.io" suffix sits INSIDE the field so it always
-                // reads as "yoursub.serey.io" — the address is a Serey
-                // subdomain, never a free-form URL.
+                // subdomain input, fixed ".serey.io" suffix inside field
                 Item {
                     width: parent.width
                     height: units.gu(5)
@@ -533,9 +498,7 @@ Page {
                 }
                 Item { width: 1; height: Style.spacingM }
 
-                // Country row — the standard path (per user: independent is the
-                // exception, tucked behind a small link below). Pressed wash and
-                // divider run FULL-BLEED per the Lomiri list-item reference.
+                // country row, standard path
                 Item {
                     visible: !page.independent
                     width: parent.width
@@ -659,9 +622,7 @@ Page {
                     }
                 }
 
-                // Small opt-in/out link — same quiet style as "More currencies"
-                // in the payment sheet. Independent stays available but is not
-                // the standard path.
+                // opt-in/out link
                 Item { width: 1; height: Style.spacingS }
                 LinkButton {
                     label: page.independent ? Lang.tr("Choose a country instead")
@@ -702,8 +663,7 @@ Page {
                         width: form.width
                         height: units.gu(9)
 
-                        // Flat square preview with a hairline border (Lomiri
-                        // image tiles are square/unrounded).
+                        // square preview, hairline border
                         Rectangle {
                             id: preview
                             anchors { left: parent.left; verticalCenter: parent.verticalCenter }
@@ -859,9 +819,6 @@ Page {
                     color: Style.textSecondary
                 }
                 Item { width: 1; height: Style.spacingS }
-                // Primary action stays in the app: the CMS hub manages this platform
-                // natively. createCommunity refreshed ownedCommunityIdSet, so
-                // Config.managedCommunityId already resolves to the new platform.
                 PrimaryButton {
                     text: Lang.tr("Manage my platform")
                     onClicked: {
@@ -869,8 +826,7 @@ Page {
                         page.pageStack.push(Qt.resolvedUrl("PlatformAdminPage.qml"));
                     }
                 }
-                // The live site is its own subdomain, which the Homepage tab can't show
-                // (homeLandingPageUrl is a fixed site), so viewing it needs a browser.
+                // live site needs a browser
                 LinkButton {
                     label: Lang.tr("View live site")
                     onClicked: Qt.openUrlExternally("https://" + page.createdDns)
@@ -912,12 +868,10 @@ Page {
         color: Style.surface
         z: 10
 
-        // Swallow clicks under the sheet.
+        // swallow clicks under the sheet
         MouseArea { anchors.fill: parent }
 
-        // Lomiri header-search pattern (docs/ubports-design 02-header-uses):
-        // back chevron + a rounded search field inline in ONE header row, with
-        // a hairline underneath — not a separate search bar on the page.
+        // back chevron + inline search field
         Item {
             id: pickerHeader
             anchors { top: parent.top; left: parent.left; right: parent.right }
@@ -1002,7 +956,7 @@ Page {
 
         ListView {
             anchors { top: pickerHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
-            // Keep the last rows reachable while the search keyboard is up.
+            // keep rows reachable above keyboard
             bottomMargin: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
             clip: true
             model: {

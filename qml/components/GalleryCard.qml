@@ -10,9 +10,9 @@ Item {
 
     property var post: ({})
     readonly property var p: post ? post : ({})
-    // Computed once per bind — _images() splits a string/walks the model and was previously re-run 3-4x per card inside bindings.
+    // computed once per bind, not re-run inside every binding
     readonly property var imgs: _images()
-    // Shared, reactive follow state (see Theme/FollowStore.qml).
+    // shared reactive follow state
     readonly property bool isFollowing: FollowStore.isFollowing(p.author)
 
     signal clicked()
@@ -28,10 +28,7 @@ Item {
         _syncVoteBar();
     }
 
-    // ListModel.set() mutates the object the delegate already holds as `p` —
-    // the reference never changes, so onPChanged does NOT fire on an in-place
-    // row swap and the imperatively-assigned vote count/payout would keep the
-    // previous post's values (see PostCard, same fix).
+    // onPChanged doesn't fire on in-place ListModel.set() row swaps
     readonly property int _pVotes: p.votes || 0
     readonly property string _pPayout: p.payout || ""
     readonly property string _pPermlink: p.permlink || ""
@@ -53,7 +50,7 @@ Item {
             var me = Session.username || "";
             galVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
             galVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
-            // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
+            // re-assert imperatively; recycled delegate breaks the binding
             galVoteBar.votes = p.votes || 0;
             galVoteBar.payout = p.payout || "";
         }
@@ -75,9 +72,9 @@ Item {
         if (typeof v.count === "number") return v.count;
         return 0;
     }
-    // images may arrive as a plain JS array or a wrapped ListModel (dynamicRoles re-binding); normalise to a plain array.
+    // normalise images to a plain array (may arrive as ListModel)
     function _images() {
-        // Prefer the scalar `imagesStr` since a dynamicRoles ListModel destroys the wrapped `images` array, whereas the joined string survives intact.
+        // prefer imagesStr; dynamicRoles ListModel destroys the images array
         if (typeof p.imagesStr === "string" && p.imagesStr.length > 0)
             return p.imagesStr.split("\n");
         var v = p.images;
@@ -226,7 +223,7 @@ Item {
             }
         }
 
-        // Cover shows only the first image (a SwipeView per recycled delegate is expensive); the swipeable carousel lives on the detail page.
+        // shows first image only; carousel lives on detail page
         Item {
             id: cover
             width: parent.width
@@ -249,8 +246,7 @@ Item {
 
             MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
 
-            // Category tag — top-left, since top-right is the "+N" photo-count badge.
-            // categories is ListModel-wrapped here — use the mapper's scalar copy instead.
+            // category tag — top-left ("+N" badge is top-right)
             Rectangle {
                 visible: (p.primaryCategory || "") !== ""
                 anchors { top: parent.top; left: parent.left; topMargin: Style.spacingS; leftMargin: Style.spacingS }
@@ -299,8 +295,7 @@ Item {
             voteType: "post"
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
-            // From the voterStr scalar — the feed ListModel mangles string arrays
-            // (see PostCard's cardVoteBar).
+            // voterStr scalar; ListModel mangles string arrays
             voters: (p.voterStr || "").split(",").filter(function (n) { return n.length > 0; })
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0
@@ -309,7 +304,7 @@ Item {
             onCommentRequested: root.clicked()
         }
 
-        // Caption spacing uses visible-gated spacer Items since Lomiri Label has no top/bottomPadding in Components 1.3.
+        // spacer Items for caption; Label has no top/bottomPadding
         Item { width: 1; height: Style.spacingXs; visible: (p.caption || "") !== "" }
 
         Label {
@@ -331,8 +326,7 @@ Item {
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }
 
-    // Pointer/keyboard parity: right-click or MENU opens the ••• context menu;
-    // Enter opens the post (same as a tap). See ContextActionArea.
+    // right-click/MENU opens ••• menu; Enter opens post
     ContextActionArea {
         onTriggered: root.moreClicked()
         onActivated: root.clicked()

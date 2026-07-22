@@ -4,8 +4,7 @@ import Lomiri.Components 1.3
 import QtWebEngine 1.10
 import "../Theme"
 
-// FocusScope so forceActiveFocus() on this component lands on the Chromium
-// view — the web page then receives arrow/PageDown/space keys for scrolling.
+// forceActiveFocus() routes keys to Chromium
 FocusScope {
     id: webAppView
 
@@ -18,19 +17,15 @@ FocusScope {
     property string authToken: ""
     property string username: ""
 
-    // When true (Homepage tab hidden), freeze the Chromium renderer since two live Chromium views exhausted shared memory and SIGSEGV'd the app.
+    // freeze renderer when tab hidden
     property bool suspended: false
     // UT's QtWebEngine doesn't expose LifecycleState enum names to QML
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
-    // Freezing is only legal once `visible` has settled hidden, so defer it; resuming to Active is always legal.
+    // defer freeze until hidden
     onSuspendedChanged: {
         if (suspended) {
-            // Active->Frozen is rejected while the page is visible. On a tab
-            // switch the parent stack hides us anyway, but when `suspended`
-            // comes from an overlay (the Stripe checkout sheet covering this
-            // tab) the view is still visible — hide it explicitly or the
-            // freeze silently fails and both Chromiums stay live.
+            // hide explicitly; overlay can leave view visible
             webView.visible = false;
             freezeTimer.restart();
         } else {
@@ -40,11 +35,7 @@ FocusScope {
         }
     }
 
-    // Also freeze on app suspend — avoids a SIGBUS-on-resume. Unfocused is not
-    // the same as put away: side by side, our window stays on screen while
-    // another app holds focus, so freezing on ApplicationInactive blanked a
-    // view the user could still see. Wait for a real suspend, or for the window
-    // to stop being shown.
+    // freeze on app suspend, not just unfocused
     readonly property bool _windowShown: Window.visibility !== Window.Hidden
                                          && Window.visibility !== Window.Minimized
     property bool appAway: Qt.application.state === Qt.ApplicationSuspended
@@ -64,16 +55,15 @@ FocusScope {
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     readonly property string desktopUA: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    // Grid units, not raw pixels — a phone's native resolution can exceed a flat px threshold
+    // grid units, not raw pixels
     readonly property bool desktopMode: webAppView.width >= Config.convergenceBreakpoint
     onDesktopModeChanged: reload()
 
     signal getUserInfoRequested()
-    // Never wire this to Session.setAuth — the web side's identity comes from its own persistent cookies and can be stale, silently switching accounts.
+    // web identity is its own cookies, may be stale
     signal authTokenReceived(string token, string username)
     signal openCommunityRequested(string communityId)
-    // The mini app also switches community on its own, without the bridge. The
-    // shell follows, or the pill and the native feeds keep showing the old one.
+    // mini app can switch community without bridge
     signal siteNavigated(string url)
     signal openExternalBrowserRequested(string url)
     // params: { subscription_plan_id, method: "crypto"|"stripe" }
@@ -99,9 +89,7 @@ FocusScope {
                 injectionPoint: WebEngineScript.DocumentCreation
                 worldId: WebEngineScript.MainWorld
                 runOnSubframes: true
-                // documentElement is null this early, and a throw here kills the
-                // rest of the script — that's how the viewport meta below ended up
-                // never being injected. Defer anything needing an element.
+                // defer until documentElement exists
                 readonly property string preamble: "" +
                     "window.__SEREY_NATIVE__ = 'ubuntu';" +
                     (Config.debugWebApp ? "window.__SEREY_DEBUG__ = true;" : "") +
@@ -117,33 +105,30 @@ FocusScope {
                     "  }" +
                     "};"
 
-                // Our UA is an Android spoof, so the site can't sniff for us —
-                // it gates its cheap-render path on this class instead.
+                // UA spoof gates site's cheap-render path
                 readonly property string nativeMarker: "" +
                     "window.__sereyWhenDocumentReady(function() {" +
                     "  document.documentElement.classList.add('serey-native');" +
                     "});"
 
-                // Decorative effects the device's rasteriser can't afford. Kept
-                // here rather than in the site's CSS so later community pages get
-                // them too; page-specific costs stay in the site's .serey-native rules.
+                // disable effects the device can't afford
                 readonly property string perfCss: "" +
                     "window.__sereyWhenDocumentReady(function() {" +
                     "  if (document.getElementById('serey-native-perf')) return;" +
                     "  var s = document.createElement('style');" +
                     "  s.id = 'serey-native-perf';" +
                     "  s.textContent = " + JSON.stringify(
-                        // Frosted glass reads back everything behind it, every frame.
+                        // disable backdrop-filter
                         "*, *::before, *::after {"
                         + " backdrop-filter: none !important;"
                         + " -webkit-backdrop-filter: none !important; }"
-                        // A fixed background repaints as the page scrolls under it.
+                        // disable fixed background repaint
                         + "* { background-attachment: scroll !important; }"
                     ) + ";" +
                     "  (document.head || document.documentElement).appendChild(s);" +
                     "});"
 
-                // Viewport spoofing is mobile-only — in desktop mode the page uses its own real navigator/screen
+                // viewport spoof is mobile-only
                 readonly property string mobileSpoof: "" +
                     "Object.defineProperty(navigator, 'userAgent', { get: function() { return '" + webAppView.mobileUA + "'; }, configurable: true });" +
                     "Object.defineProperty(navigator, 'platform', { get: function() { return 'Linux armv8l'; }, configurable: true });" +
@@ -164,7 +149,7 @@ FocusScope {
             }
         ]
 
-        // Fires for real loads and for the SPA's own pushState hops alike.
+        // fires for full loads and pushState hops
         onUrlChanged: {
             var u = webView.url.toString();
             if (u === "") return;
@@ -203,10 +188,7 @@ FocusScope {
                             + " (" + sourceID + ":" + lineNumber + ")");
         }
 
-        // Keep the mini app on the plan page when the site redirects to Stripe
-        // Checkout — the shell shows it in the native StripeCheckoutSheet
-        // instead. Enum names can be undefined on UT's QtWebEngine (see the
-        // lifecycleState ints above), so use the raw value: IgnoreRequest=255.
+        // intercept Stripe redirect; raw enum 255 = IgnoreRequest
         onNavigationRequested: {
             var u = request.url.toString();
             if (u.indexOf("https://checkout.stripe.com") === 0) {
@@ -226,13 +208,10 @@ FocusScope {
 
     // Is there a loaded page to hand a route change to?
     property bool _pageReady: false
-    // Where that page actually is. Community subdomains run the same Next app, so
-    // one would accept __sereyNavigate and route to the right path on the wrong host.
+    // loaded page's actual location
     property string _loadedUrl: ""
 
-    // Re-pointing `url` reloads the whole web app — a few seconds of blank
-    // spinner. It's an SPA, so once loaded we hand it the route instead and it
-    // re-renders in place. Sites without the hook fall back to a full load.
+    // in-place route hop avoids full reload spinner
     property double _navStartedAt: 0
     function _log(msg) {
         if (Config.debugWebApp) console.log("WebAppView: " + msg);
@@ -252,8 +231,7 @@ FocusScope {
     }
     Component.onCompleted: if (url !== "") loadTimer.start()
 
-    // Flicking through the picker changes `url` repeatedly; wait for it to
-    // settle so we only ask for the community actually landed on.
+    // debounce community picker flicks
     Timer {
         id: navTimer
         interval: 150
@@ -279,10 +257,7 @@ FocusScope {
         }
     }
 
-    // Accepting the call only means __sereyNavigate ran, not that the route
-    // actually changed — the site's router can cancel or reject a push and we'd
-    // never know, leaving the previous community on screen. Confirm where the
-    // page ended up, and fall back to a real load if it didn't move.
+    // verify route actually changed, fallback if not
     Timer {
         id: navVerify
         interval: 1500
@@ -310,7 +285,7 @@ FocusScope {
         return rest === "" ? "/" : rest;
     }
 
-    // Apply the Frozen state once the view has had a moment to become hidden, guarded on `suspended` in case the tab was re-activated within the delay.
+    // apply Frozen state once hidden
     Timer {
         id: freezeTimer
         interval: 300
@@ -318,7 +293,7 @@ FocusScope {
         onTriggered: if (webAppView.suspended) webView.lifecycleState = webAppView._lcFrozen
     }
 
-    // App-suspend counterpart: freeze once the view has been hidden, guarded in case the app was re-activated within the delay.
+    // freeze once app-suspended view is hidden
     Timer {
         id: appFreezeTimer
         interval: 300
@@ -343,7 +318,7 @@ FocusScope {
         loadTimer.restart();
     }
 
-    // Drops the web side's login since the persistent profile keeps the previous account's cookies across a native logout/switch; cookieStore may be missing on older QtWebEngine.
+    // clear web login cookies
     function clearSession() {
         if (mobileProfile && mobileProfile.cookieStore
                 && typeof mobileProfile.cookieStore.deleteAllCookies === "function") {
@@ -351,8 +326,7 @@ FocusScope {
         }
     }
 
-    // Debug-only profiler. Works on any page including the deployed site, so we
-    // can measure production. sereyScrollTest()/sereyKillAnimations() are for A/B.
+    // debug-only profiler
     function _injectProfiler() {
         if (!Config.debugWebApp) return;
         webView.runJavaScript(
@@ -365,10 +339,7 @@ FocusScope {
             "      });" +
             "    }).observe({entryTypes:['longtask']});" +
             "  } catch (e) { console.log('SEREY_PROF: no longtask support'); }" +
-            // Passive scroll-jank meter: the gap between consecutive scroll
-            // events IS the stall the user feels. Costs nothing and only runs
-            // while actually scrolling, so it can stay on without skewing what
-            // it measures (a permanent rAF loop would).
+            // scroll-jank meter
             "  var lastEvt = 0, worstGap = 0, evts = 0, startY = 0, tmr = null;" +
             "  window.addEventListener('scroll', function(){" +
             "    var now = performance.now();" +
@@ -383,8 +354,7 @@ FocusScope {
             "      lastEvt = 0; worstGap = 0; evts = 0;" +
             "    }, 400);" +
             "  }, {passive:true});" +
-            // If this never fires while the user swipes, the document isn't the
-            // thing scrolling - which was the original bug.
+            // verify document is actually scrolling
             "  window.addEventListener('touchstart', function(){" +
             "    console.log('SEREY_PROF: touchstart y=' + Math.round(window.scrollY));" +
             "  }, {passive:true});" +
@@ -416,8 +386,7 @@ FocusScope {
             "      requestAnimationFrame(step);" +
             "    });" +
             "  };" +
-            // Which element actually scrolls? If it isn't the document, scrolling
-            // behaves very differently on touch.
+            // find which element actually scrolls
             "  window.sereyFindScrollers = function(){" +
             "    var de = document.documentElement, b = document.body;" +
             "    console.log('SEREY_PROF: doc scrollH=' + de.scrollHeight + ' clientH=' + de.clientHeight" +
@@ -523,9 +492,7 @@ FocusScope {
                 _sendResponse(id, { status: "ok", message: "Community opened" });
                 break;
             case "buyPlan":
-                // Only claim the purchase when a native session exists — the
-                // payment endpoints need the native JWT. Rejecting makes the
-                // site's Promise fail so it falls back to its web flow.
+                // only claim purchase if native session exists
                 if (!webAppView.authToken) {
                     _sendError(id, "No native session");
                 } else if (!params.subscription_plan_id) {

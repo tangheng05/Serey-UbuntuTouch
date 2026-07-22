@@ -18,13 +18,7 @@ Item {
     property var cache: ({})
     property int loadingIndex: -1
 
-    // Both `cache` and `expandedIndex` are keyed by ROW INDEX, so they only stay
-    // valid while Config.sources holds still. After a platform create/delete the
-    // source list is rebuilt and can shrink — every row below the removed country
-    // shifts up one, and the stale cache then showed the deleted country's
-    // children under whichever country inherited its index. The children data is
-    // also genuinely stale at that point, so drop everything and re-fetch on the
-    // next expand.
+    // reset cache/index on source list changes (index-keyed, can go stale)
     property Connections _sourcesWatcher: Connections {
         target: Config
         function onSourcesChanged() {
@@ -33,21 +27,7 @@ Item {
             picker.loadingIndex = -1
         }
     }
-    /*
-     * Geo hint (Config.detectedCountryCode, via Cloudflare — see GeoService.js):
-     * put the user's own country at the top, expanded, and fold everything else
-     * behind "See more".
-     *
-     * This reorders the VIEW ONLY. Config.sources must keep its order:
-     * Config.sourceIndex is an index into it, and this picker's `cache`,
-     * `expandedIndex` and keyboard cursor are all keyed by that same index (see
-     * the _sourcesWatcher above, which exists precisely because index-keyed
-     * state goes stale). So each display row carries its real index in
-     * `_realIndex`, and every id/cache/selection path keeps using that.
-     *
-     * No detection, or a country we have no community for -> detectedIndex is
-     * -1 and the sheet renders exactly as it always has.
-     */
+    // geo-detected country shown first/expanded; view order only, real index in _realIndex
     readonly property int detectedIndex: Config.indexForCountryCode(Config.detectedCountryCode)
     property bool showAll: false
     readonly property var displaySources: picker._buildDisplaySources()
@@ -64,12 +44,10 @@ Item {
         var di = picker.detectedIndex
         if (di < 0) return out          // undetected: today's list, untouched
 
-        // Global stays pinned at the top — it's the default combined feed and
-        // the app's home row, so the geo hint slots in BELOW it rather than
-        // pushing it down. (di is never 0: _indexForCountry skips Global.)
+        // Global stays pinned at top; geo hint slots in below it
         var mine = out.splice(di, 1)[0]
         out.splice(1, 0, mine)
-        // Collapsed: Global + the user's country. The rest are one tap away.
+        // collapsed: Global + user's country only
         return picker.showAll ? out : [out[0], mine]
     }
 
@@ -85,25 +63,19 @@ Item {
         cpBackdropFade.start()
         cpSlide.start()
         if (Session.isLoggedIn && !subscriptionsLoaded) _loadSubscriptions()
-        // Geo-detected country opens expanded: it's the one row we're confident
-        // the user wants, and collapsed it would show nothing but its own name.
-        // Only when the user hasn't already expanded something themselves.
+        // geo-detected country opens expanded by default
         if (picker.detectedIndex > 0 && picker.expandedIndex === -1)
             picker._toggleExpand(picker.detectedIndex)
-        // Keyboard users can open this via the header pill (Enter): own the keys
-        // while open so Escape dismisses and Tab can't tunnel to the page below.
+        // own keyboard focus while open
         picker._prevFocus = Window.activeFocusItem
         picker.forceActiveFocus()
-        // Cursor starts on the active source; the ring only shows once a key is pressed.
+        // cursor starts on active source; ring shows on first key press
         picker.navSrc = Config.sourceIndex; picker.navCat = -1; picker.navCom = -1
         picker.navActive = false
     }
     function close()         { picker._closing = false; closeGuard.stop(); picker.visible = false }
 
-    // Closing, but still visible until cpSlideOut finishes. The backdrop is a
-    // full-screen MouseArea and opacity:0 still hit-tests, so without this it
-    // keeps eating touches for however long that animation takes — which isn't
-    // bounded when choosing a community also kicks off a web-view reload.
+    // closing but still visible until slide-out finishes
     property bool _closing: false
 
     function closeAnimated() {
@@ -123,18 +95,13 @@ Item {
     }
 
     // ── Keyboard cursor ──────────────────────────────────────────────────────
-    // Rows live in nested Repeaters (source → category → community), so the cursor
-    // is data coordinates, not collected Items: each row binds its own ring and so
-    // survives delegate recreation. cat/com = -1 means the source row itself.
+    // cursor is data coordinates (src/cat/com), not Items; -1 = source row itself
     property int navSrc: -1
     property int navCat: -1
     property int navCom: -1
     property bool navActive: false
 
-    // Selectable rows in visual order; category headers are labels, so not included.
-    // Walks displaySources, not Config.sources: the geo hint can hoist a row to
-    // the top and fold the rest behind "See more", and the cursor must visit
-    // what's actually on screen, in that order. `src` stays the REAL index.
+    // selectable rows in visual (displaySources) order; src stays the real index
     function _navEntries() {
         var out = [], srcs = picker.displaySources || []
         for (var d = 0; d < srcs.length; d++) {
@@ -192,7 +159,7 @@ Item {
             id: String(m.id || m._id || ""),
             name: m.title || m.name || "",
             icon: m.icon_url || m.logo_url || m.profile_image || "",
-            // Posting permissions for this sub-community gate the compose buttons; modelData is a raw list-by-parent-id object using the API's snake_case names.
+            // gates compose buttons
             allowPost: !!m.is_allow_post,
             videoAllowPost: !!m.video_is_allow_post
         }
@@ -271,7 +238,7 @@ Item {
         if (picker.cache[srcIndex] !== undefined) return
         picker.loadingIndex = srcIndex
 
-        // Fetch communities, then categories, then group the former by the latter; Global uses categories/list directly since list-by-parent-id/1 returns only hubs.
+        // fetch communities, then categories, group by category
 
         var apiId = Config.sources[srcIndex].id
         if (apiId === 0) apiId = 1
@@ -316,7 +283,7 @@ Item {
         }
 
         function _applyCategories(sourceComms, catArr) {
-            // Build community_category_id -> {name, icon, color} map from both communities and categories, which both carry community_category_id.
+            // build category id -> {name, icon, color} map
             var catMap = {}
             for (var i = 0; i < catArr.length; i++) {
                 var meta = _catMeta(catArr[i], i)
@@ -523,7 +490,7 @@ Item {
                     delegate: Column {
                         id: sourceCol
                         width: sheetContent.width
-                        // Global (index 0) applies no community filter and is shown as a plain selectable row with no chevron (no sub-communities).
+                        // Global: no chevron, no sub-communities
                         visible: true
                         property int srcIndex: modelData._realIndex
                         property bool isExpanded: picker.expandedIndex === sourceCol.srcIndex
@@ -584,7 +551,6 @@ Item {
                                 }
                             }
 
-                            // Anchored to the tap zone directly since it previously sat left of the zone, so arrow taps selected the source instead.
                             Icon {
                                 anchors { right: parent.right; rightMargin: Style.spacingM
                                           verticalCenter: parent.verticalCenter }
@@ -940,7 +906,7 @@ Item {
                                                                     id: childBtn.cId,
                                                                     name: childBtn.cName,
                                                                     icon: childBtn.cIcon,
-                                                                    // modelData is a mapped superhub child (M.toCommunity), so the fields use the mapper's camelCase names.
+                                                                    // camelCase mapper fields
                                                                     allowPost: !!modelData.allowPost,
                                                                     videoAllowPost: !!modelData.videoAllowPost
                                                                 }
@@ -1011,9 +977,6 @@ Item {
                 }
 
                 // ── See more ─────────────────────────────────────────────
-                // Only exists while a geo-detected country is holding the list
-                // down to itself; expanding is one-way for the session, so the
-                // full list behaves exactly as it always has once shown.
                 AbstractButton {
                     id: seeMoreBtn
                     visible: picker.detectedIndex >= 0 && !picker.showAll

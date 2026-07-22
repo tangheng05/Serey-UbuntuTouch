@@ -17,13 +17,7 @@ QtObject {
         return _dbHandle;
     }
 
-    // Scoped to the signed-in account so switching accounts shows a fresh list;
-    // logged-out saves are their own bucket. That bucket must NOT be the empty
-    // string: QML LocalStorage binds an empty JS string as SQL NULL, and `x = NULL`
-    // is never true, so a logged-out `owner = ?` matched nothing — the article
-    // saved but reloaded as absent (no tick, empty list on restart). `__guest__`
-    // is unusable as a Steem username (underscores are illegal), so it can't
-    // collide with a real account.
+    // guest bucket, avoids empty-string-as-NULL matching bug
     readonly property string guestOwner: "__guest__"
 
     function _owner() {
@@ -31,8 +25,7 @@ QtObject {
                 ? Session.username : store.guestOwner;
     }
 
-    // Rows written before the sentinel existed have owner NULL or ''; fold both onto
-    // the guest bucket so old saves stay visible.
+    // fold legacy NULL/'' owner rows onto guest bucket
     readonly property string _ownerExpr: "IFNULL(NULLIF(owner,''),'" + guestOwner + "')"
 
     function _load() {
@@ -40,14 +33,13 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT, author TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                // Add `owner` to tables created before per-account scoping existed; harmlessly throws (caught) once the column is present.
+                // migrate old tables missing owner column
                 try { tx.executeSql("ALTER TABLE saved_posts ADD COLUMN owner TEXT DEFAULT ''"); } catch (e2) { }
                 var rs = tx.executeSql("SELECT permlink, data FROM saved_posts WHERE " + store._ownerExpr + " = ? ORDER BY saved_at DESC", [store._owner()]);
                 var seen = {};
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);
-                    // A NULL owner also defeats PRIMARY KEY dedupe, so older duplicate
-                    // rows can exist; newest-first ordering means the first wins.
+                    // dedupe legacy NULL-owner duplicates, newest wins
                     if (seen[row.permlink]) continue;
                     seen[row.permlink] = true;
                     var vm = {};
@@ -79,9 +71,7 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT, author TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                // Explicit delete before insert: legacy rows with owner NULL (see
-                // _owner) can't be deduped by the PRIMARY KEY, so INSERT OR REPLACE
-                // piled up a new row per save instead of replacing the old one.
+                // explicit delete before insert, legacy NULL owner rows can't dedupe
                 tx.executeSql("DELETE FROM saved_posts WHERE permlink = ? AND " + store._ownerExpr + " = ?", [post.permlink, store._owner()]);
                 tx.executeSql("INSERT INTO saved_posts(permlink, author, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
                     [post.permlink, post.author || "", Date.now(), JSON.stringify(post), store._owner()]);
@@ -93,7 +83,7 @@ QtObject {
 
     function save(post) {
         if (!post || !post.permlink || post.permlink.length === 0) return;
-        // Persist the text immediately, then cache images in the background and rewrite to local paths as they arrive.
+        // persist text now, cache images in background
         _persist(post);
         store._load();
         Toast.success("Saved for offline");
@@ -107,7 +97,7 @@ QtObject {
         return _dlComp;
     }
 
-    // Collect every remote http(s) image URL referenced by the post: cover thumbnail plus each <img src>/data-image-url in the body HTML.
+    // collect remote image URLs: thumbnail + body img/data-image-url
     function _imageUrls(post) {
         var urls = [];
         function add(u) { if (u && u.indexOf("http") === 0 && urls.indexOf(u) < 0) urls.push(u); }
@@ -143,7 +133,7 @@ QtObject {
         }
     }
 
-    // Rewrite the saved copy's image URLs to downloaded local paths so it renders offline; failed downloads keep their remote URL.
+    // rewrite image URLs to local paths for offline rendering
     function _applyLocalImages(permlink, map) {
         var post = get(permlink);
         if (!post) return;
@@ -174,7 +164,7 @@ QtObject {
 
     Component.onCompleted: _load()
 
-    // QtObject has no default property so this must be assigned, not a child; react to both username and token changes.
+    // react to account changes
     property Connections _sessionWatcher: Connections {
         target: Session
         onUsernameChanged: store._load()

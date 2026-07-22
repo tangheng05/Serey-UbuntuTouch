@@ -20,9 +20,7 @@ Page {
     property string _pendingRemoveArticle: ""
     readonly property real maxContentWidth: units.gu(100)
 
-    // Keyboard nav: the active list owns arrow focus; settings' Nav.focusDetail
-    // targets this when the row is activated. Left/Escape return to the settings
-    // list; Up-at-top climbs into the Video/Articles strip.
+    // active list owns arrow focus
     property Item keyboardFocusItem: tabIndex === 0 ? videoList : articleList
     function _focusActiveList() { (tabIndex === 0 ? videoList : articleList).forceActiveFocus(); }
     onVisibleChanged: if (visible) _focusActiveList()
@@ -80,7 +78,7 @@ Page {
         visible: page.tabIndex === 0
         model: Downloads.items
         cacheBuffer: units.gu(16)
-        // Left/Escape return to the settings list; Up at top climbs to the strip.
+        // Left/Escape to settings list, Up-at-top to strip
         Keys.onLeftPressed: Nav.focusMaster()
         Keys.onEscapePressed: Nav.focusMaster()
         Keys.onUpPressed: {
@@ -162,7 +160,7 @@ Page {
         visible: page.tabIndex === 1
         model: SavedPosts.items
         cacheBuffer: units.gu(20)
-        // Left/Escape return to the settings list; Up at top climbs to the strip.
+        // Left/Escape to settings list, Up-at-top to strip
         Keys.onLeftPressed: Nav.focusMaster()
         Keys.onEscapePressed: Nav.focusMaster()
         Keys.onUpPressed: {
@@ -219,8 +217,7 @@ Page {
                 ]
             }
 
-            // Pointer/keyboard parity: right-click or the MENU key opens the same
-            // Remove/Share actions the swipe exposes (see ContextActionArea).
+            // right-click/MENU opens same Remove/Share actions
             ContextActionArea {
                 id: contextArea
                 onActivated: page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),

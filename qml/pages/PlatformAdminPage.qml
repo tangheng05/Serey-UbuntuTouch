@@ -10,20 +10,14 @@ import "../services/CommunitySubscriberService.js" as CommunitySubscriberService
 import "../services/CommunityService.js" as CommunityService
 import "../services/PlatformService.js" as PlatformService
 
-// CMS hub for community owners/managers, trimmed from the web "Serey CMS" hub (see docs/cms-endpoints-navbar-blog-video-platform.md)
+// CMS hub for community owners/managers
 Page {
     id: page
 
-    // Adapt, not scale: banner stays full-bleed, actionable content caps to a centered column on wide windows
+    // cap content column, banner stays full-bleed
     readonly property real maxContentWidth: units.gu(60)
 
-    // Platform identity shown at the top of the hub — for the MANAGED
-    // community (Config.managedCommunityId), not whatever happens to be
-    // selected in the picker (those can differ, e.g. picker on "Global" while
-    // you own a specific sub-community). Resolved from the cached
-    // get-communities tree (Config.communityInfoFor); only if that community
-    // truly is the one currently selected do we fall back to the picker's
-    // name/icon. loadPlatformIdentity() below refines both from the backend.
+    // identity for MANAGED community, not the picker selection
     readonly property var _managedInfo: Config.communityInfoFor(Config.managedCommunityId)
     property string platformName: page._managedInfo ? page._managedInfo.title
         : (Config.managedCommunityId === Config.communityId ? Config.currentCommunityName : "")
@@ -31,9 +25,7 @@ Page {
         : (Config.managedCommunityId === Config.communityId ? Config.currentCommunityIconUrl : "")
     property int subscriberCount: 0
     property bool uploadingLogo: false
-    // No banner (or hero section not loaded yet) falls back to a brand-colored
-    // gradient rather than a blank strip. Read-only on mobile — the web CMS
-    // owns editing it (see loadHeroBanner below for where it's fetched from).
+    // falls back to gradient if unset, read-only on mobile
     property string platformBannerUrl: ""
 
     // Inline rename (Settings > Edit Profile pattern)
@@ -66,7 +58,7 @@ Page {
         ]
     }
 
-    // Reads Config's cache instead of re-fetching get-communities, which is cached server-side and can still return the old name right after a rename.
+    // reads Config's cache instead of re-fetching
     function loadPlatformName() {
         var info = Config.communityInfoFor(Config.managedCommunityId)
         if (info && info.title && info.title.length > 0) page.platformName = info.title
@@ -75,8 +67,7 @@ Page {
     function loadPlatformIdentity() {
         LandingPageService.getByCommunity(Config.baseUrl, Config.managedCommunityId, Session.token,
             function (data) {
-                // Name comes from loadPlatformName (the community record); only the
-                // logo is taken from the landing page here.
+                // name comes from loadPlatformName, only logo here
                 var logo = data.logo || data.logo_url || data.icon_url || data.image
                 if (logo) page.platformLogoUrl = logo
             },
@@ -87,12 +78,7 @@ Page {
         page.loadHeroBanner()
     }
 
-    // GET /landing-page-v2/get-by-community/:id — the hero section's photo
-    // renders behind the logo (landing_page_v2_section.js). bg_image_url is a
-    // separate background-overlay field that's commonly unset, so prefer the
-    // section's actual image_url (confirmed via a live response: bg_image_url
-    // was "" while image_url held the real hero photo). Read-only display —
-    // editing the banner is left to the web CMS.
+    // hero photo, prefer image_url over bg_image_url (often unset)
     function loadHeroBanner() {
         LandingPageV2Service.getByCommunity(Config.baseUrl, Config.managedCommunityId, Session.token,
             function (sections) {
@@ -102,16 +88,13 @@ Page {
             function () { /* non-fatal: no landing page v2 content yet — keep gradient */ })
     }
 
-    // POST /community/update-logo (JWT). Uploads through the same
-    // downscale-then-host flow as EditProfilePage's avatar/cover.
+    // same upload flow as EditProfilePage's avatar
     function uploadLogo(fileUrl) {
         page.uploadingLogo = true
         logoUploader.upload(fileUrl)
     }
 
-    // { id, title } for every community the user owns/manages, resolved from
-    // the cached get-communities tree (Config.communityInfoFor). Backs the
-    // "Switch Platform" picker, only shown when there's more than one.
+    // backs the Switch Platform picker
     function ownedCommunitiesList() {
         var ids = Object.keys(Config.ownedCommunityIdSet)
         var out = []
@@ -126,10 +109,7 @@ Page {
     function switchPlatform(id) {
         if (id === Config.managedCommunityId) return
         Config.overrideManagedCommunityId = id
-        // Reset display state so the previous platform's data doesn't flash
-        // while the new one's loads (platformName/platformLogoUrl/etc. were
-        // already overwritten by loadPlatformIdentity's imperative assignment,
-        // so their initial Config.communityInfoFor binding no longer applies).
+        // reset display state, avoid flash of old platform's data
         var info = Config.communityInfoFor(id)
         page.platformName = info ? info.title : ""
         page.platformLogoUrl = info ? info.icon : ""
@@ -140,9 +120,7 @@ Page {
     }
 
     Component.onCompleted: page.loadPlatformIdentity()
-    // Refresh the name whenever the hub reappears (e.g. back from a rename in the
-    // Platform Information page), and on first show. onCompleted covers logo/subs.
-    // Also grabs keyboard focus for the reading flick (split-view detail nav).
+    // refresh name on reappear, also grab keyboard focus
     onVisibleChanged: if (visible) { page.loadPlatformName(); scroll.forceActiveFocus(); }
 
     PhotoUploader {
@@ -197,9 +175,7 @@ Page {
         }
     }
 
-    // Keyboard nav: settings' Nav.focusDetail targets this flick; arrows scroll,
-    // Left/Escape return to the settings list. (Focus grab is merged into the
-    // onVisibleChanged above — a Page allows only one handler per signal.)
+    // arrows scroll, Left/Escape return to settings list
     property Item keyboardFocusItem: scroll
 
     Flickable {
@@ -232,8 +208,7 @@ Page {
             bottomPadding: Style.spacingL
 
             // ===== Platform identity: banner + logo + name/switch/subscribers =====
-            // Own Column (tight spacing) so the outer Style.spacingL section-gap
-            // doesn't land between the logo and the name below it.
+            // tight own spacing, not outer section-gap
             Column {
                 width: parent.width
                 spacing: Style.spacingXs
@@ -269,8 +244,7 @@ Page {
                         enabled: !page.uploadingLogo
                         onClicked: PopupUtils.open(logoPickerComponent)
 
-                        // White backing ring so the logo reads cleanly against the
-                        // banner photo underneath (matches the web CMS reference).
+                        // white backing ring behind logo
                         Rectangle {
                             anchors.fill: parent
                             radius: width / 2
@@ -502,8 +476,7 @@ Page {
                 width: Math.min(parent.width, page.maxContentWidth)
             }
 
-            // Own Column (spacing 0) so the outer Style.spacingL section-gap
-            // doesn't get inserted between the Blog and Video rows too.
+            // zero own spacing, not outer section-gap
             Column {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: Math.min(parent.width, page.maxContentWidth)

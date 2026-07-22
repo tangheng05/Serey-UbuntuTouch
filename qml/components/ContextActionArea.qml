@@ -4,57 +4,34 @@ import Lomiri.Components.ListItems 1.3 as ListItems
 import Lomiri.Components.Popups 1.3
 import "../Theme"
 
-/*
- * Input-method parity (UBports HIG, Other design considerations >
- * Convergence & Accessibility): the context actions a touch user reaches by
- * swiping or long-pressing a list item MUST also be reachable by POINTER
- * (right-click) and KEYBOARD (the MENU key / Shift+F10), so no action is
- * touch-only.
- *
- * Two ways to wire it, depending on the card/row:
- *   - `triggered()`   — for rows that already have a single "context menu"
- *                       affordance (the ••• overflow / PostActions sheet).
- *                       Right-click / MENU just fires it.
- *   - `menuActions`   — for rows whose only context actions are swipe actions
- *                       (Remove / Share …). Set this to an ActionList and
- *                       right-click / MENU opens a Lomiri ActionSelectionPopover
- *                       listing exactly those actions (never a bare destructive
- *                       trigger — a right-click must present a menu, not delete).
- *
- * It listens for the RIGHT button only, so left-clicks, taps, and the enclosing
- * Lomiri ListItem swipe fall straight through to the row's own handlers. A thin
- * brand outline marks the row when it holds keyboard focus.
- */
+// context actions reachable by right-click / MENU key, not just touch
 Item {
     id: area
     anchors.fill: parent
 
     signal triggered()
-    // Emitted when the focused row is activated by keyboard (Enter/Return) — wire
-    // it to the row's primary "open" action so keyboard users can enter an item,
-    // matching a tap/left-click.
+    // fires row's primary open action on Enter/Return
     signal activated()
-    // Optional ActionList presented as a context menu (see above).
+    // optional ActionList shown as context menu
     property var menuActions: null
 
-    // byKeyboard: the HIG reference shows a keyboard-opened menu with its first
-    // item already highlighted, while a right-click menu highlights nothing.
+    // keyboard-opened menu highlights first item; right-click doesn't
     function _invoke(byKeyboard) {
         if (!area.menuActions) { area.triggered(); return; }
         var p = PopupUtils.open(menuComp, area);
         if (p && byKeyboard) p.navFirst();
     }
-    // Public: lets a visible ••• button open the same menu right-click/MENU does.
+    // lets a ••• button open the same menu
     function open() { area._invoke(false); }
 
-    // Pointer: right-click anywhere on the row.
+    // right-click anywhere on the row
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.RightButton
         onClicked: area._invoke(false)
     }
 
-    // Keyboard: focus the row (Tab), then the platform "open context menu" keys.
+    // Tab to focus, MENU/Shift+F10 to open
     activeFocusOnTab: true
     Keys.onPressed: {
         if (event.key === Qt.Key_Menu ||
@@ -67,23 +44,19 @@ Item {
         }
     }
 
-    // Lomiri-native context menu, built from the row's own actions. The toolkit's
-    // ActionSelectionPopover ships no key handling at all (Popover only closes on
-    // Escape), so the arrow cursor and highlight are supplied here.
+    // context menu; adds arrow-key nav ActionSelectionPopover lacks
     Component {
         id: menuComp
         ActionSelectionPopover {
             id: popover
             actions: area.menuActions
 
-            // The highlighted action, matched by object: the delegate is loaded in
-            // THIS file's scope, so it can't see the popover Repeater's `index`.
+            // highlighted action, matched by object (not Repeater index)
             property var navAction: null
             function navFirst() { var l = popover._navList(); popover.navAction = l.length ? l[0] : null; }
             function _navList() {
                 var a = popover.actions;
                 if (!a) return [];
-                // Same shape check the toolkit's own Repeater model uses.
                 var arr = a.hasOwnProperty("actions") ? a.children : a;
                 var out = [];
                 for (var i = 0; i < arr.length; i++)
@@ -98,8 +71,7 @@ Item {
                                               : l[(cur + d + l.length) % l.length];
             }
 
-            // Zero-size grabber: Lomiri popups never take keyboard focus themselves,
-            // so without this the arrows keep driving the list behind the menu.
+            // zero-size grabber for keyboard focus (popups don't take it themselves)
             Item {
                 id: keyGrab
                 width: 0; height: 0
@@ -117,7 +89,7 @@ Item {
                 }
             }
 
-            // Mirrors the toolkit's default delegate, plus the keyboard highlight.
+            // default delegate plus keyboard highlight
             delegate: ListItems.Empty {
                 id: menuRow
                 onTriggered: popover.hide()

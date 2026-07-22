@@ -23,7 +23,7 @@ Page {
     property bool uploadingVideo: false
     property int uploadPercent: 0      // chunked-upload progress (0-100)
     property bool grabbingThumb: false
-    // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
+    // on = broadcast on-chain, off = Serey DB only
     property bool postToBlockchain: true
 
     readonly property bool hasCommunity: Config.communityId > 0
@@ -54,7 +54,7 @@ Page {
         page.videoUrl = "";
         page.videoId = "";
         page.thumbUrl = "";
-        // Start the upload and the (optional) thumbnail capture in parallel.
+        // upload and thumbnail capture run in parallel
         page.uploadingVideo = true;
         page.uploadPercent = 0;
         Uploads.uploadVideo(Config.storageCreateUploadUrl, Session.token, fileUrl,
@@ -62,7 +62,7 @@ Page {
                 page.uploadingVideo = false;
                 page.videoUrl = url;
                 page.videoId = (job && job.id) ? job.id : "";
-                // Server-side thumbnail as fallback if the local frame grab failed or hasn't produced one.
+                // server-side thumbnail fallback
                 if (!page.thumbUrl && job && job.thumbnail_url)
                     page.thumbUrl = job.thumbnail_url;
                 Toast.success(Lang.tr("Video uploaded"));
@@ -82,7 +82,7 @@ Page {
 
     function clearVideo() {
         Uploads.abort();
-        // Upload had already finished (post-upload discard) — clean up the now-orphaned file so it doesn't sit on the storage server forever.
+        // clean up orphaned upload on discard
         if (page.videoId)
             Uploads.deleteVideo(Config.storageDeleteUploadUrl, Session.token, page.videoId);
         page.videoFileUrl = "";
@@ -122,7 +122,7 @@ Page {
     Item { id: focusSink }
     function dismissKeyboard() { focusSink.forceActiveFocus(); Qt.inputMethod.hide(); }
 
-    // Uploads.js has no setTimeout (QML JS library); this Timer drives the delay between status polls.
+    // drives delay between status polls
     Timer {
         id: uploadDelayTimer
         repeat: false
@@ -134,10 +134,10 @@ Page {
         }
     }
 
-    // C++ streaming file reader: uploads read 25 MB slices from disk instead of loading the whole video into RAM (big files OOM-crashed phones).
+    // reads slices from disk, avoids loading whole video into RAM
     FileUtils.FileChunkReader { id: chunkReader }
 
-    // Survives app restarts, letting Uploads.js resume a half-finished upload instead of re-sending from byte 0.
+    // survives app restarts, resumes upload
     Settings {
         id: uploadResumeStore
         category: "VideoUpload"
@@ -164,7 +164,7 @@ Page {
         VideoPicker { onPicked: page.onVideoPicked(fileUrl) }
     }
 
-    // Captures a frame from the picked local video as a JPEG data URL and uploads it as the thumbnail; failure just leaves thumbUrl empty.
+    // grabs a frame as thumbnail; failure leaves thumbUrl empty
     VideoThumbnailGrabber {
         id: thumbGrabber
         onGrabbed: Uploads.uploadImageData(Config.uploadUrl, Config.uploadSecret, dataUrl,
@@ -277,11 +277,7 @@ Page {
                 width: parent.width
                 height: Math.max(units.gu(5), titleField.contentHeight + Style.spacingM)
 
-                // The editor is only as tall as its text, so the box's padding
-                // was dead space and the keyboard only opened on the text line
-                // itself. Declared FIRST so it sits under the editor: taps on
-                // the text still reach it, this catches the surrounding gap
-                // (same fix as CreatePostPage).
+                // catches taps on the surrounding gap
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
@@ -319,8 +315,7 @@ Page {
                 width: parent.width
                 height: Math.max(units.gu(10), descField.contentHeight + Style.spacingM)
 
-                // Same dead-space fix as the title field above: catch taps on
-                // the empty area below the one-line editor.
+                // catches taps below the one-line editor
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
@@ -465,7 +460,7 @@ Page {
                     Label {
                         anchors.horizontalCenter: parent.horizontalCenter
                         visible: page.uploadingVideo
-                        // 100% = all chunks sent; the server is then validating/remuxing before it returns the URL.
+                        // 100% = server validating/remuxing
                         text: page.uploadPercent >= 100
                               ? Lang.tr("Processing video…")
                               : (page.uploadPercent > 0

@@ -8,20 +8,17 @@ Item {
     property var model: []
     property int currentIndex: 0
     signal selected(int index)
-    // Emitted when a keyboard user presses Down on the strip — the host page
-    // should move focus back to its content list.
+    // Down on strip moves focus to content list
     signal focusList()
 
-    // Focus the active section's key area (hosts call this from the list's
-    // Up-at-top handler so the strip is reachable without Tab-cycling).
+    // focus active tab's key area
     function focusCurrent() { _focusTab(Math.max(0, currentIndex)) }
     function _focusTab(i) {
         var it = rep.itemAt(i);
         if (it) it.keyArea.forceActiveFocus();
     }
 
-    // Matches PageHeader's own height (Ambiance style: titleAreaHeight gu(6) + 1dp divider)
-    // so the master-pane tab strip and the detail-pane PageHeader line up in split/wide layouts.
+    // matches PageHeader height for split/wide layout alignment
     implicitHeight: units.gu(6) + units.dp(1)
 
     RowLayout {
@@ -50,10 +47,7 @@ Item {
                     opacity: 0.12
                     visible: keyTap.activeFocus
                 }
-                // Controlled component: only emit; the parent updates the property that
-                // `currentIndex` is bound to. Writing currentIndex here would break that
-                // binding, so a later programmatic change (e.g. showLatest -> feedIndex=1)
-                // would reload the data but leave the highlight stuck on the old tab.
+                // only emit; parent owns currentIndex binding
                 onClicked: root.selected(index)
 
                 Label {

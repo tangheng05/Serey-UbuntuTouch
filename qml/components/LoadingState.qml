@@ -14,9 +14,7 @@ Item {
 
     readonly property real inset: Style.spacingM
     readonly property real contentWidth: root.width - inset * 2
-    // Covers sit a shade lighter than the text bars (Style.skeleton) so the skeleton
-    // keeps the real card's title-vs-photo hierarchy. Needs a dark variant of its
-    // own: the light value was a glowing slab against a dark surface.
+    // dark variant needed; light value glows on dark surface
     readonly property color coverTone: Style.dark ? "#333333" : "#ECECEC"
     readonly property string photoGlyph: "image-x-generic-symbolic"
 
@@ -28,7 +26,7 @@ Item {
         spacing: 0
 
         Repeater {
-            // Gate on visibility so the pulse animations don't keep ticking when the skeleton is hidden — no work while off-screen.
+            // gated on visibility so pulse animations stop off-screen
             model: root.visible ? root.count : 0
             delegate: Column {
                 width: root.width

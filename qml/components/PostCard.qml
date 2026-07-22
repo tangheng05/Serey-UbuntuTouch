@@ -10,7 +10,7 @@ Item {
     id: root
 
     property var post: ({})
-    // Guard: the delegate may rebind `post` to undefined while the model is cleared/recycled — `p` is always a safe object to read from.
+    // safe fallback when post is undefined
     readonly property var p: post ? post : ({})
 
     signal clicked()
@@ -21,7 +21,7 @@ Item {
     width: parent ? parent.width : units.gu(45)
     implicitHeight: col.height
 
-    // The feed ListModel (dynamicRoles) wraps array fields as nested ListModels with `count` but no indexOf/length; these helpers read either shape safely.
+    // reads length from array or ListModel
     function _len(v) {
         if (!v) return 0;
         if (typeof v.length === "number") return v.length;
@@ -29,22 +29,14 @@ Item {
         return 0;
     }
 
-    // Ensure the shared store knows this author's state, then refresh vote state from session cache or model voters.
+    // refresh follow state and vote bar
     onPChanged: {
         if (Session.isLoggedIn && p.author && p.author !== Session.username)
             FollowStore.load(Config.baseUrl, Session.username, p.author);
         _syncVoteBar();
     }
 
-    /*
-     * The list refreshes rows with ListModel.set(), which MUTATES the very object
-     * the delegate already holds as `p` — the reference never changes, so
-     * onPChanged does NOT fire. Declarative bindings (p.title, p.excerpt) still
-     * update, but the vote count and payout are assigned imperatively below and
-     * would keep the PREVIOUS post's values: a brand-new post rendered with a
-     * stale cached row's "4 votes / 2332.290 SEREY". Watching the values
-     * themselves is what re-runs the sync on an in-place row swap.
-     */
+    // watch values since ListModel.set() mutates p in place
     readonly property int _pVotes: p.votes || 0
     readonly property string _pPayout: p.payout || ""
     readonly property string _pPermlink: p.permlink || ""
@@ -52,9 +44,7 @@ Item {
     on_PPayoutChanged: _syncVoteBar()
     on_PPermlinkChanged: _syncVoteBar()
 
-    // Vote state checks session cache first (survives navigation), falling back to the model's voters array; set imperatively so VoteBar's own changes aren't overridden.
-    // Children exist by now, so a row whose values arrived before the bar was
-    // built still gets its counts.
+    // sync vote state: session cache, else model voters
     Component.onCompleted: _syncVoteBar()
 
     function _syncVoteBar() {
@@ -69,7 +59,7 @@ Item {
             var me = Session.username || "";
             cardVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
             cardVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
-            // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
+            // re-assert count/payout on recycled delegate
             cardVoteBar.votes = p.votes || 0;
             cardVoteBar.payout = p.payout || "";
         }
@@ -218,24 +208,13 @@ Item {
             x: Style.spacingM
             height: visible ? width * 0.56 : 0
 
-            // Rectangle.clip only clips to the bounding box, so the Image is masked against a rounded Rectangle instead for a true rounded crop.
+            // masked for true rounded crop
             Rectangle {
                 anchors.fill: parent
                 radius: Style.thumbRadius
                 color: Style.iconBackground
             }
-            /*
-             * Double-buffered cover. A QML Image discards its old frame the moment
-             * `source` changes, so when a tab switch rewrites the row the card went
-             * black until the new image arrived — on the phone that's a full
-             * re-download (the pixmap cache evicts: ten covers decode to ~20MB
-             * there, versus ~3MB on desktop where a gu is 8px, which is why the
-             * desktop never showed it). Instead, `coverLoader` (never rendered)
-             * fetches the new source while `coverImg` keeps showing the last-good
-             * frame, slightly dimmed to signal the transition; the swap happens
-             * only on READY and is a guaranteed pixmap-cache hit because the
-             * loader still holds a reference. No disk, no extra downloads.
-             */
+            // double-buffered cover to avoid black flash on swap
             Image {
                 id: coverLoader
                 anchors.fill: parent
@@ -243,17 +222,14 @@ Item {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 autoTransform: true     // honour EXIF orientation
-                // HIG scaling: snap the decode size to a breakpoint instead of tracking
-                // `cover.width`, which re-rasterized every visible cover on any width
-                // change (window resize, entering/leaving the split pane). Mirrors VideoCard.
+                // snap decode size to a breakpoint
                 sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
                 onStatusChanged: {
                     if (status === Image.Ready) {
                         coverImg.source = source;
                     } else if (status === Image.Error || String(source).length === 0) {
-                        // Unloadable or removed cover: don't keep showing the
-                        // previous article's image under this one's title.
+                        // clear stale cover
                         coverImg.source = "";
                     }
                 }
@@ -266,11 +242,7 @@ Item {
                 autoTransform: true
                 sourceSize.width: coverLoader.sourceSize.width
                 visible: false
-                // While the loader replaces a stale frame, fade the old image fully
-                // out (to the placeholder) rather than dimming it: a 40% ghost of
-                // the previous tab's photo under the new title read as the wrong
-                // thumbnail. The Behavior is what separates this from the original
-                // bug — a smooth fade out and in, not an instant cut to black.
+                // fade out fully during transition, not dim
                 readonly property bool transitioning:
                     coverLoader.status === Image.Loading && status === Image.Ready
                 Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -290,7 +262,7 @@ Item {
             }
 
             Rectangle {
-                // categories is ListModel-wrapped here — use the mapper's scalar copy instead.
+                // use scalar copy, not ListModel
                 visible: (p.primaryCategory || "") !== ""
                 anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
                 width: catLabel.width + Style.spacingM
@@ -328,7 +300,7 @@ Item {
         // Bottom margin below the thumbnail (always visible, unlike the vote row)
         Item { width: 1; height: Style.spacingS }
 
-        // Vote/comment/share row shown narrow mode only — wide mode shows these in the detail column instead.
+        // narrow mode only; wide mode uses detail column
         VoteBar {
             id: cardVoteBar
             visible: !Config.wideMode
@@ -339,9 +311,7 @@ Item {
             voteType: "post"
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
-            // Rebuilt from the voterStr scalar: the feed's dynamicRoles ListModel
-            // wraps the `voters` string array into a nested model whose entries
-            // stringify as QML objects (the popover showed "@QQmlDM..." garbage).
+            // rebuilt from voterStr scalar
             voters: (p.voterStr || "").split(",").filter(function (n) { return n.length > 0; })
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0
@@ -355,8 +325,7 @@ Item {
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }
 
-    // Pointer/keyboard parity: right-click or MENU opens the ••• context menu;
-    // Enter opens the post (same as a tap). See ContextActionArea.
+    // right-click/MENU opens ••• menu, Enter opens post
     ContextActionArea {
         onTriggered: root.moreClicked()
         onActivated: root.clicked()

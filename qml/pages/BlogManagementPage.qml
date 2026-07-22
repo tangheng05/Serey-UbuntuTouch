@@ -36,7 +36,7 @@ Page {
         { mode: "custom",   label: Lang.tr("Custom"),   desc: Lang.tr("Only members you pick can post. Manage members in the web dashboard.") }
     ]
 
-    // is_allow_post=true → everyone; false + poster members → custom; false alone → only me (web-dashboard parity).
+    // maps allowPost/poster members to blog mode
     function loadPostingPermission() {
         var info = Config.communityInfoFor(Config.managedCommunityId)
         PlatformService.hasPosterMembers(Config.baseUrl, Config.managedCommunityId,
@@ -44,7 +44,7 @@ Page {
             function () { page.blogMode = (info && info.allowPost) ? "everyone" : "only_me" })
     }
 
-    // Radio modes only change on server success — a failed call just leaves the previous selection lit.
+    // only update selection on server success
     function setBlogMode(mode) {
         if (permBusy || mode === blogMode) return
         permBusy = true
@@ -65,15 +65,11 @@ Page {
     }
 
     // ── Category management ────────────────────────────────────────────────
-    // Sub-categories live in a JSONB column on each category; we keep them as a
-    // JSON string per row (subsJson) so the dynamicRoles ListModel doesn't wrap
-    // them as a nested QQmlListModel (which has no .length/.push — see gotchas).
+    // sub-categories kept as JSON string per row (subsJson)
     ListModel { id: categoryModel; dynamicRoles: true }
     property bool categoriesLoading: false
     property bool categorySaving: false
-    // id -> true while a delete/sub-edit request for that category is in flight,
-    // so a second tap can't fire a duplicate request (the source of the old
-    // "click twice, second says not found" bug).
+    // guards against duplicate in-flight requests per id
     property var _busyIds: ({})
 
     function _findIndexById(id) {
@@ -86,9 +82,7 @@ Page {
         var info = Config.communityInfoFor(Config.managedCommunityId)
         var title = info ? info.title
                          : (Config.managedCommunityId === Config.communityId ? Config.currentCommunityName : "")
-        // Never fall back to "global": the service defaults an empty title to the
-        // Global list, which would show every Global category for a community that
-        // has none (the bug seen right after creating a platform). Show empty instead.
+        // don't fall back to global category list
         if (!title || title.length === 0) {
             page.categoriesLoading = false
             categoryModel.clear()
@@ -102,7 +96,7 @@ Page {
                 for (var i = 0; i < raw.length; i++) {
                     var subs = raw[i].sub_categories || raw[i].sub || []
                     if (!Array.isArray(subs)) subs = []
-                    // Normalize each sub to {name, position} so re-saving satisfies the schema.
+                    // normalize subs to {name, position}
                     var norm = []
                     for (var j = 0; j < subs.length; j++) {
                         var nm = (subs[j] && (typeof subs[j] === "string" ? subs[j] : subs[j].name) || "").trim()
@@ -147,7 +141,7 @@ Page {
         var id = item.id
         if (page._busyIds[id]) return          // guard rapid double-taps
         page._busyIds[id] = true
-        // Optimistic: drop the row now so it feels instant; a real failure reloads.
+        // optimistic remove
         categoryModel.remove(index)
         CategoryService.remove(Config.baseUrl, Session.token, id,
             function () {
@@ -156,16 +150,14 @@ Page {
             },
             function (err) {
                 delete page._busyIds[id]
-                // 404 = the row was already gone server-side: the goal (it's
-                // removed) is met, so treat it as success rather than an error.
+                // 404 means already deleted, treat as success
                 if (err && err.status === 404) { Toast.show(Lang.tr("Category deleted.")); return }
                 Toast.error((err && err.message) || Lang.tr("Failed to delete category."))
                 page.loadCategories()          // restore the optimistically-removed row
             })
     }
 
-    // Persist a category's whole record (name/icon/color preserved) with a new
-    // sub-category list. Used for both adding and removing sub-categories.
+    // saves category with new sub-category list
     function _saveSubs(index, subs, okMsg) {
         var item = categoryModel.get(index)
         if (!item) return
@@ -301,12 +293,11 @@ Page {
         }
     }
 
-    // On-screen-keyboard height; the list shrinks above it so focused inputs (the
-    // sub-category field sits low in the list) aren't hidden behind the keyboard.
+    // on-screen keyboard height
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     property var _focusTarget: null
 
-    // Scroll the list so `item` clears the (shrunken) viewport above the keyboard.
+    // scroll item clear of keyboard
     function ensureVisible(item) {
         if (!item) return
         var top = item.mapToItem(list.contentItem, 0, 0).y
@@ -317,7 +308,7 @@ Page {
         else if (top < list.contentY)
             list.contentY = Math.max(0, top)
     }
-    // Runs after the keyboard animation settles (list.height reflects kbHeight by then).
+    // fires after keyboard animation settles
     Timer {
         id: scrollTimer
         interval: 350
@@ -406,11 +397,7 @@ Page {
                     Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "add"; color: Style.brand }
                     MouseArea {
                         anchors.fill: parent
-                        // Must stay ALWAYS enabled: gating on text length disabled the
-                        // button whenever the typed text was still in the input method's
-                        // uncommitted preedit buffer (not yet in .text), which is why only
-                        // the Enter key (which commits preedit) worked. Commit on press,
-                        // then read the now-flushed text.
+                        // always enabled; commit preedit before reading text
                         onPressed: {
                             Qt.inputMethod.commit()
                             page.addCategory(newCategoryField.text)
@@ -555,9 +542,7 @@ Page {
                                 Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "add"; color: Style.brand }
                                 MouseArea {
                                     anchors.fill: parent
-                                    // Always enabled + commit preedit on press (see the category
-                                    // add button): gating on text length disabled the button while
-                                    // letters were still in the uncommitted input-method buffer.
+                                    // always enabled; commit preedit before reading text
                                     onPressed: {
                                         Qt.inputMethod.commit()
                                         page.addSubCategory(index, newSubField.text)
@@ -580,8 +565,7 @@ Page {
                 color: Style.textSecondary
             }
 
-            // Extra bottom room so the lowest sub-category field can scroll clear
-            // of the keyboard when focused (see ensureVisible).
+            // extra room to scroll clear of keyboard
             Item { width: 1; height: units.gu(8) }
         }
     }

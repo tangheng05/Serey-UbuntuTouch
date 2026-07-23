@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(serey)
 
-# QML app with one compiled plugin (Serey.FileUtils — streaming file reads so
+# QML app with one compiled plugin (Serey.FileUtils, streaming file reads so
 # large video uploads don't hold the whole file in RAM). We configure the
-# manifest with the framework / architecture supplied by Clickable, build the
+# manifest with the framework and architecture supplied by Clickable, build the
 # plugin, then install the QML, assets and hooks into the click package root.
 
 set(QT_IMPORTS_DIR "lib/${CMAKE_LIBRARY_ARCHITECTURE}")

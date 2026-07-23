@@ -26,16 +26,13 @@ Page {
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
-    // Normally the post goes to the community the app's source switcher is on.
-    // Entry points that aren't tied to a source (My Feed's "Write your first
-    // post" — the feed spans every community) set pickPlatform: the platform is
-    // chosen here instead, and categories only load once one is picked.
+    // Entry points not tied to a source (My Feed compose) set pickPlatform:
+    // the platform is chosen here and categories load once one is picked.
     property bool pickPlatform: false
     property var targetPlatform: null       // {id, title, icon} from Config.communityById
     property bool platformSheetOpen: false
-    // Set by the compose flow's community-picker step ({id, name, ...}) to post into a
-    // specific (sub-)community regardless of whichever one is currently browsed in Config.
-    // Checked after targetPlatform so the two picker paths never fight over an entry point.
+    // Set by the compose flow's community-picker step to post into a specific
+    // (sub-)community regardless of the browsed one. Checked after targetPlatform.
     property var targetCommunity: null
     readonly property int postCommunityId: page.targetPlatform ? Number(page.targetPlatform.id)
                                            : (page.targetCommunity ? Number(page.targetCommunity.id) : Config.communityId)
@@ -46,10 +43,9 @@ Page {
     readonly property string postCommunityName: page.targetPlatform ? page.targetPlatform.title
                                                 : (page.targetCommunity ? page.targetCommunity.name : Config.communityName)
 
-    // Real platforms the user may post in. Countries and superhubs are containers
-    // (you post in their children, not in them), and the Global feed hides the
-    // exclude_home subtree server-side, so offering it would mean posting where
-    // the feeds never look.
+    // Real platforms the user may post in. Countries/superhubs are containers,
+    // and the exclude_home subtree is hidden from the Global feed server-side,
+    // so posts there would never surface.
     readonly property var platformOptions: {
         var out = [];
         for (var k in Config.communityById) {
@@ -89,7 +85,7 @@ Page {
     function loadCategories() {
         var epoch = ++page.catEpoch;
         var prev = page.selectedCategory;
-        // Nothing to fetch until a platform is picked — categories are per-community.
+        // Nothing to fetch until a platform is picked; categories are per-community.
         if (page.pickPlatform && !page.targetPlatform) {
             page.categoriesLoading = false;
             page.categories = [];
@@ -155,8 +151,8 @@ Page {
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
-    // The community can't change while this page is up, but react anyway so the list is always correct for
-    // the active source — unless a specific target community was chosen via the compose picker step.
+    // React to source changes so the category list stays correct, unless a
+    // specific target community was chosen via the compose picker step.
     Connections {
         target: Config
         function onCommunityIdChanged() { if (!page.targetCommunity) page.loadCategories() }
@@ -222,7 +218,7 @@ Page {
         }
     }
 
-    // Where the next picked image goes: the cover slot, or inline into the article body at the cursor — one shared picker/uploader serves both.
+    // Where the next picked image goes: cover slot or inline body; one shared picker/uploader serves both.
     property string imageTarget: "cover"
 
     function pickCoverImage() {
@@ -262,10 +258,9 @@ Page {
         onFailed: Toast.error(message)
     }
 
-    // Qt's RichText TextEdit re-serializes formatting as style-based spans
-    // (e.g. <span style="font-weight:600">) rather than the simple <b>/<i>/<s>
-    // tags the rest of the app's HTML renderers whitelist — collapse them back
-    // so bold/italic/strikethrough survive display elsewhere (feed, detail page).
+    // Qt's RichText TextEdit re-serializes formatting as style spans, not the
+    // simple <b>/<i>/<s> tags our HTML renderers whitelist; collapse them back
+    // so formatting survives display elsewhere.
     function _richHtmlToSimple(html) {
         var t = html || "";
         var bodyMatch = t.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -329,9 +324,8 @@ Page {
         });
     }
 
-    // Applies real formatting to the selection (rich text, not literal tags) —
-    // requires a selection since a plain TextEdit has no "current format" state
-    // to toggle for future-typed characters.
+    // Applies formatting to the selection; a selection is required since a plain
+    // TextEdit has no "current format" state to toggle for future typing.
     function wrapSelection(tagOpen, tagClose) {
         var start = bodyArea.selectionStart;
         var end = bodyArea.selectionEnd;
@@ -421,7 +415,7 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Title field — outlined rounded box with inline character counter
+            // Title field, outlined rounded box with inline character counter
             Rectangle {
                 width: parent.width
                 height: titleField.height + Style.spacingM * 2 + counterLabel.height + Style.spacingXs
@@ -430,11 +424,9 @@ Page {
                 border.width: units.dp(1.5)
                 border.color: titleField.activeFocus ? Style.brand : Style.divider
 
-                // The TextInput is one line tall and pinned to the top, so most
-                // of this box (padding, the counter's row) was dead space and the
-                // keyboard only opened if you hit that line exactly. Declared
-                // FIRST so it sits under the input: taps on the text itself still
-                // reach the input, this only catches the surrounding gap.
+                // Declared FIRST so it sits under the input: catches taps in the
+                // box's dead space (the one-line input is pinned to the top) and
+                // focuses the field.
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {

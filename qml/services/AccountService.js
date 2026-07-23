@@ -16,7 +16,7 @@ function login(baseUrl, username, password, onOk, onErr) {
     }, onErr);
 }
 
-// No startup token-verify: /auth/authenticated needs a device JWT the native client never has, so it always 401s — calling it on launch would wrongly log out.
+// No startup token-verify: /auth/authenticated needs a device JWT the native client never has, so it always 401s. Calling it on launch would wrongly log out.
 
 function logout(baseUrl, token, onOk, onErr) {
     Http.del(baseUrl, "/auth/logout", token, onOk, onErr);
@@ -29,12 +29,8 @@ function profile(baseUrl, username, token, onOk, onErr) {
     }, onErr);
 }
 
-/*
- * Community ids the signed-in user owns/manages (CommunityManager). Used to let
- * an owner/manager post to their own community even when it is set to owner-only
- * (allow_post / video_allow_post = false). Backend returns
- * community_owner.community_ids. onOk receives an array of numeric ids.
- */
+// Community ids the user owns/manages, so an owner can post to an owner-only
+// community. onOk gets an array of numeric ids (community_owner.community_ids).
 function ownedCommunityIds(baseUrl, token, onOk, onErr) {
     Http.get(baseUrl, "/user-permission/permission-by-current-user", {}, token,
              function (data) {
@@ -43,22 +39,16 @@ function ownedCommunityIds(baseUrl, token, onOk, onErr) {
     }, onErr);
 }
 
-/*
- * Standard (custodial) signup + password reset — mirrors the web's standard
- * account flow. Keys are generated server-side; the user only provides a
- * username, email, OTP and password. Phone OTP is Cambodia-only on the
- * backend, so this client uses the email path only.
- *
- * Password rule (enforced server-side): 8–16 chars, with a lowercase, an
- * uppercase and a digit. Username: 5–30 chars, [a-z0-9-].
- */
+// Custodial signup + password reset, email OTP only (phone OTP is Cambodia-only).
+// Server-enforced rules: password 8-16 chars with lower+upper+digit,
+// username 5-30 chars [a-z0-9-].
 var PASSWORD_RE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?#&^()[\]{}]{8,16}$/;
 var USERNAME_RE = /^[a-z0-9-]{5,30}$/;
 
 function isValidPassword(p) { return PASSWORD_RE.test(p || ""); }
 function isValidUsername(u) { return USERNAME_RE.test(u || ""); }
 
-// Backend returns HTTP 200 status:false when taken, which Http.js treats as a failure — so onOk means available, onErr means taken (or a network error).
+// Backend returns HTTP 200 status:false when taken, which Http.js treats as a failure: onOk means available, onErr means taken (or a network error).
 function checkUsernameAvailable(baseUrl, username, onOk, onErr) {
     Http.get(baseUrl, "/accounts/check-existing-username/" + encodeURIComponent(username),
              null, null, onOk, onErr);

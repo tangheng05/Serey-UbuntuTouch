@@ -1,13 +1,8 @@
 .pragma library
 .import "Http.js" as Http
 
-/*
- * Landing page / site content (/landing-page, v2) and premium/paid community
- * settings (/premium-community-setting). Backend schema not available in
- * this repo — field names are inferred from
- * docs/cms-endpoints-navbar-blog-video-platform.md; verify against a real
- * response and adjust if needed.
- */
+// Landing page content and premium community settings. Field names inferred
+// from docs, not a backend schema; verify against a real response if in doubt.
 
 function getByCommunity(baseUrl, communityId, token, onOk, onErr) {
     Http.get(baseUrl, "/landing-page/get-by-community/" + communityId, {}, token, function (data) {

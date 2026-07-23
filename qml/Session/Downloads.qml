@@ -25,12 +25,9 @@ QtObject {
         return _dbHandle;
     }
 
-    // Scoped to the signed-in account so switching accounts shows a fresh list;
-    // logged-out downloads are their own bucket. That bucket must NOT be the empty
-    // string: QML LocalStorage binds an empty JS string as SQL NULL, and `x = NULL`
-    // is never true, so a logged-out `owner = ?` matched nothing and the list came
-    // back empty on every restart. `__guest__` is unusable as a Steem username
-    // (underscores are illegal), so it can't collide with a real account.
+    // Per-account buckets; logged-out uses "__guest__", never "": QML LocalStorage
+    // binds an empty string as SQL NULL, so a guest `owner = ?` matched nothing
+    // and the list came back empty on restart. "__guest__" can't be a real username.
     readonly property string guestOwner: "__guest__"
 
     function _owner() {
@@ -128,11 +125,9 @@ QtObject {
         return _comp;
     }
 
-    // Copy a video view-model into a plain JS object. page.video can be a threaded
-    // ListModel element (QQmlListModelWorkerAgent) whose JSON.stringify hits an
-    // "unregistered datatype QV4::ExecutionEngine*" error and whose thread affinity
-    // made the persisted row invisible to the reload (isSaved stayed false → no tick,
-    // endless re-downloads). A plain object serializes cleanly and is main-thread.
+    // Copy the view-model to a plain JS object: threaded ListModel elements fail
+    // JSON.stringify ("unregistered datatype") and their thread affinity hid the
+    // persisted row from reload (isSaved stayed false -> endless re-downloads).
     function _toPlain(v) {
         var keys = ["id", "author", "permlink", "title", "body", "excerpt", "thumbnail",
                     "localThumb", "authorImage", "date", "votes", "comments", "payout",
@@ -148,7 +143,7 @@ QtObject {
 
     function start(video, url) {
         if (!video || !url || url.length === 0) return;
-        // Snapshot to a plain object immediately — everything downstream uses this.
+        // Snapshot to a plain object immediately; everything downstream uses this.
         var pv = _toPlain(video);
         var permlink = pv.permlink || "";
         if (permlink.length === 0 || isSaved(permlink) || _active[permlink]) return;

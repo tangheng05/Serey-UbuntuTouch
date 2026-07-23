@@ -7,7 +7,7 @@ QtObject {
 
     property string token: ""
     property string username: ""
-    // Not persisted — refetched each launch via AccountService.profile()
+    // Not persisted; refetched each launch via AccountService.profile()
     property string avatarUrl: ""
     property bool pushEnabled: true
     property string language: "en"   // "en" or "nl"
@@ -47,7 +47,7 @@ QtObject {
         }
     }
 
-    // Write then read back and verify — a silent write failure is how an old account resurrects next launch.
+    // Write then read back and verify; a silent write failure is how an old account resurrects next launch.
     function _writeAuthOnce() {
         _db().transaction(function (tx) {
             tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");

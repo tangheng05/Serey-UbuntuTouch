@@ -5,7 +5,7 @@ function toInt(v) {
     return isNaN(n) ? 0 : n;
 }
 
-// Default true (on-chain) — only an explicit false/"false"/0 means DB-only
+// Default true (on-chain); only an explicit false/"false"/0 means DB-only
 function onChainFlag(raw) {
     return raw.post_to_blockchain !== false
         && raw.post_to_blockchain !== "false"
@@ -70,7 +70,7 @@ function firstImage(raw) {
     return m ? fixThumb(m[1]) : "";
 }
 
-// Normalise a voters/flaggers list to plain usernames — the API sends either ["alice"] or [{voter:"alice"}] depending on endpoint.
+// Normalise a voters/flaggers list to plain usernames; the API sends either ["alice"] or [{voter:"alice"}] depending on endpoint.
 function voterNames(arr) {
     if (!arr || !Array.isArray(arr))
         return [];
@@ -135,7 +135,7 @@ function toGalleryPost(raw) {
         authorImage: raw.author_image_url || "",
         date: raw.publish_date || "",
         images: imgs,
-        // A dynamicRoles ListModel wraps `images` and loses the bare URL strings — the feed card reads this scalar instead.
+        // A dynamicRoles ListModel wraps `images` and loses the bare URL strings; the feed card reads this scalar instead.
         imagesStr: imgs.join("\n"),
         caption: raw.title || "",
         votes: toInt(raw.voter_count),
@@ -217,7 +217,7 @@ function toCommunity(raw) {
         icon: raw.icon_url || raw.logo_url || "",
         country: raw.country || "",
         level: toInt(raw.level),
-        // is_allow_post=true means anyone may post, false means owner/managers only — drives whether the compose buttons are shown for this community.
+        // is_allow_post=true means anyone may post, false means owner/managers only; drives whether the compose buttons are shown for this community.
         allowPost: !!raw.is_allow_post,
         // video_is_allow_post gates the Video upload FAB independently of the blog flag (true = anyone, false = owner/managers only).
         videoAllowPost: !!raw.video_is_allow_post,
@@ -228,7 +228,7 @@ function toCommunity(raw) {
 
 function toUser(username, raw) {
     raw = raw || {};
-    // `full_name` is an object { first_name, last_name } (the DB `name` column) — flatten it, falling back to the blockchain account `name` string.
+    // `full_name` is an object { first_name, last_name } (the DB `name` column); flatten it, falling back to the blockchain account `name` string.
     var fn = "", ln = "";
     if (raw.full_name && typeof raw.full_name === "object") {
         fn = raw.full_name.first_name || "";

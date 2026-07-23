@@ -3,28 +3,9 @@ import Lomiri.Components 1.3
 import "../Theme"
 
 /*
- * Convergent per-tab navigation container (HIG: adapt, not scale).
- *
- * Narrow windows keep the phone model: the root page fills the tab and pushed
- * pages cover it full-screen. Wide windows (>= Config.convergenceBreakpoint)
- * show the root page as a fixed-width leading panel and route pushed pages into
- * a detail panel on the right, master-detail style. Crossing the breakpoint is
- * a pure geometry change — nothing is reparented, so live WebViews/players
- * survive a resize.
- *
- * Internals are two REAL PageStacks (master + detail), NOT a shim over
- * AdaptivePageLayout. The shim desynced on push -> pop -> re-push (opening
- * Login, backing out, reopening threw "sourcePage must be added to the view"
- * and wedged navigation). Native PageStack push/pop can't desync.
- *
- * detailStack is seeded with an invisible placeholder page so the FIRST real
- * detail sits at detailStack.depth 2. Lomiri only auto-injects a PageHeader
- * back button when a page isn't the root of its PageStack, so without the
- * placeholder the first-pushed detail (e.g. Login) had no back button.
- *
- * Public API (push/pop/depth/columns/currentPage + singleColumnUntilPushed/
- * emptyDetail*) is unchanged, so Main.qml and every `pageStack.push()` call
- * site keep working untouched.
+ * Per-tab master-detail container: phones push full-screen, wide windows split list + detail.
+ * Breakpoint crossings are pure geometry (no reparenting), so live WebViews survive resizes.
+ * Two REAL PageStacks, not an AdaptivePageLayout shim (the shim desynced on push/pop/re-push).
  */
 Item {
     id: root
@@ -32,8 +13,7 @@ Item {
     // --- Public API --------------------------------------------------------
     property bool singleColumnUntilPushed: false
     // Never enter master-detail: the root fills the tab and every push covers it
-    // full-screen (the Homepage web app is the panel — a 320gu master would
-    // cram the full website and strand pushed pages beside it).
+    // full-screen. Used by Homepage, where the web app itself is the panel.
     property bool neverSplit: false
     property string emptyDetailIconName: ""
     property string emptyDetailMessage: ""
@@ -47,11 +27,9 @@ Item {
     // Real detail pages, excluding the invisible placeholder at detailStack[0].
     readonly property int _detailCount: Math.max(0, detailStack.depth - 1)
 
-    // Decide split on Config.wideMode (driven by the WINDOW width) rather than this
-    // component's own width. Reading `width` here created a binding loop: width ->
-    // body.width -> side-nav-rail presence (showNavBar -> activeColumns -> columns)
-    // -> split -> width. Config.wideMode is a root-level quantity, so it breaks the
-    // cycle and also aligns the split point with the nav rail's own breakpoint.
+    // Split on Config.wideMode (window width), not our own width: reading `width` here
+    // created a binding loop (width -> nav-rail presence -> columns -> split -> width),
+    // and wideMode aligns the split point with the nav rail's breakpoint.
     readonly property bool split: !neverSplit && Config.wideMode
                                   && (!singleColumnUntilPushed || _detailCount > 0)
     readonly property int columns: split ? 2 : 1
@@ -70,17 +48,9 @@ Item {
         Page { visible: false; header: Item { height: 0 } }
     }
 
-    // First push is the tab root (master column); every later push is a detail.
-    // Only the root page's `pageStack` is re-pointed here, so ITS pushes land in
-    // the detail column; detail pages keep pageStack == detailStack so Lomiri's
-    // native back button and their own pop() operate on the real stack.
-    //
-    // A push routed through HERE comes from the master list (a root page whose
-    // pageStack we set to `root`), so it REPLACES the current detail — Lomiri's
-    // AdaptivePageLayout semantics: the detail column shows the current
-    // selection, it does not accumulate a back-stack of every item you clicked.
-    // Deeper navigation *within* a detail page (article -> author profile) calls
-    // detailStack directly (its pageStack == detailStack) and still stacks.
+    // First push is the tab root; later pushes land in the detail column. Only the root
+    // page's pageStack points here, so a master-list push REPLACES the current detail;
+    // navigation within a detail page uses detailStack directly and still stacks.
     function push(pageUrl, properties) {
         var props = properties || {};
         if (rootStack.depth === 0) {

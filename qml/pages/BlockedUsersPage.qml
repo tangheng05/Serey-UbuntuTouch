@@ -74,9 +74,8 @@ Page {
         width: Math.min(parent.width, page.maxContentWidth)
         model: blockedModel
         clip: true
-        // Gates the cursor ring below so the page's auto-focus on show (needed
-        // so arrow keys work without an explicit Tab first) never paints a ring
-        // for touch/mouse users — only a real key press reveals it.
+        // Gates the cursor ring: the page auto-focuses on show, but the ring
+        // only appears after a real key press, never for touch/mouse users.
         property bool kbEngaged: false
         Keys.onPressed: list.kbEngaged = true
         Keys.onLeftPressed: Nav.focusMaster()
@@ -86,7 +85,7 @@ Page {
             if (it) page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: it.username });
         }
         // Keyboard cursor ring (the delegate is a plain Item, not a ListItem, so
-        // there's no native focus frame — draw one on the current row).
+        // there's no native focus frame; draw one on the current row).
         highlight: Rectangle {
             z: 5
             width: list.width

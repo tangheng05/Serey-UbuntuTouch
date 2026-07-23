@@ -5,13 +5,13 @@ import "../services/Flags.js" as Flags
 QtObject {
     id: config
 
-    // App version shown in Settings and reported to the web bridge — keep in sync with manifest.json.in "version" on every release.
+    // App version shown in Settings and reported to the web bridge; keep in sync with manifest.json.in "version" on every release.
     readonly property string appVersion: "1.1.4"
 
     // Single source of truth for the convergence breakpoint, shared by Main.qml and AdaptiveStack.qml so the two never drift out of sync.
     readonly property real convergenceBreakpoint: units.gu(80)
 
-    // Convergence readability caps (HIG: adapt, not scale — don't let a column
+    // Convergence readability caps (HIG: adapt, not scale; don't let a column
     // stretch edge-to-edge on a desktop window). Long-form reading/detail columns
     // cap at readingMaxWidth centered; bottom sheets/pickers at sheetMaxWidth.
     readonly property real readingMaxWidth: units.gu(80)
@@ -42,11 +42,11 @@ QtObject {
     // Upstream media host used to normalise some relative asset paths.
     readonly property string uploadHost: "https://upload.serey.io"
 
-    // Image upload endpoint + key (same public key shipped in the web bundle, not a private secret) — avatars POST here and get a hosted URL back.
+    // Image upload endpoint + key (same public key shipped in the web bundle, not a private secret); avatars POST here and get a hosted URL back.
     readonly property string uploadUrl: "https://upload.serey.io/uploads/upload_image"
     readonly property string uploadSecret: "5876aafc87185dc0521afcqceo87185dc058718affc7b382730e89s"
 
-    // Dedicated video storage API (tus resumable uploads) — see Uploads.js for the scoped-token upload flow.
+    // Dedicated video storage API (tus resumable uploads); see Uploads.js for the scoped-token upload flow.
     readonly property string storageCreateUploadUrl: "https://serey.io/api/storage/create-upload"
     readonly property string storageDeleteUploadUrl: "https://serey.io/api/storage/delete-upload"
 
@@ -63,11 +63,9 @@ QtObject {
     // The live source list, seeded with baseSources; Main.qml appends every other top-level country from the backend at startup. Indexed by sourceIndex everywhere.
     property var sources: baseSources
 
-    // Rebuild the source list: the fixed three, then the given backend countries
-    // (skipping any dns already present). Called at startup and again after a
-    // platform create/delete, so the list can shrink — keep the current selection
-    // pinned to its dns, and fall back to Global if that dns disappeared, or
-    // sourceIndex would point at the wrong row (or past the end).
+    // Rebuild sources: the fixed three plus backend countries (deduped by dns).
+    // The list can shrink after a platform delete, so re-pin the selection by
+    // dns and fall back to Global if that dns disappeared.
     function appendCountries(extra) {
         var currentDns = sources[sourceIndex] ? sources[sourceIndex].dns : "";
         var seen = {};
@@ -84,7 +82,7 @@ QtObject {
         if (sourceIndex !== newIndex) sourceIndex = newIndex;
     }
 
-    // Mirrored from Main.currentTab — HomepagePage reads it to suspend its WebView while another tab shows (two live Chromium views crashed the app).
+    // Mirrored from Main.currentTab; HomepagePage reads it to suspend its WebView while another tab shows (two live Chromium views crashed the app).
     property int currentTab: 0
 
     // Mirrored from Main.wideMode
@@ -94,7 +92,7 @@ QtObject {
     // Set when user picks a sub-community from the picker; null = use top-level source.
     property var selectedSubCommunity: null
 
-    // selectedSubCommunity.id arrives as a string — coerce explicitly.
+    // selectedSubCommunity.id arrives as a string; coerce explicitly.
     readonly property int communityId: selectedSubCommunity
                                        ? Number(selectedSubCommunity.id)
                                        : sources[sourceIndex].id
@@ -109,16 +107,12 @@ QtObject {
     readonly property string communityDns: sources[sourceIndex].dns
     readonly property string communityName: sources[sourceIndex].name
 
-    // ISO-3166 alpha-2 of the user's country per Cloudflare's edge, resolved once
-    // at startup (see services/GeoService.js). "" = not detected (offline, VPN,
-    // or Cloudflare reported XX) — every consumer must treat that as "no hint"
-    // and keep its normal layout, never block on it.
+    // ISO-3166 alpha-2 from Cloudflare's edge, resolved once at startup (see
+    // GeoService.js). "" = not detected; treat as "no hint", never block on it.
     property string detectedCountryCode: ""
 
-    // sources row for an ISO-3166 alpha-2 code, or -1 when we have no community
-    // for it. Skips row 0: Global is the combined feed, not a country, so it can
-    // never be the "detected" row. Shared by Main (auto-select on launch) and
-    // CommunityPicker (hoist to top) so both agree on the match.
+    // sources row for an ISO-3166 alpha-2 code, or -1. Skips row 0 (Global is
+    // not a country). Shared by Main and CommunityPicker so both agree.
     function indexForCountryCode(code) {
         if (!code) return -1;
         var want = String(code).toLowerCase();
@@ -137,26 +131,22 @@ QtObject {
     // Map of every community (string id -> {id,title,dns,icon,...}) at any nesting depth, unlike superhubChildrenById
     property var communityById: ({})
 
-    // { id: true } for the top level of that tree — the country hubs. They hold
-    // platforms, you don't post in them, and their icon lives in iconByDns (a
-    // flag) rather than on the record, so anything listing postable platforms
-    // has to skip them. childCount alone doesn't: a country with no platforms
-    // yet looks exactly like a leaf.
+    // { id: true } for the country hubs (tree top level). Not postable, so
+    // postable-platform lists must skip them; childCount alone can't tell
+    // (a country with no platforms yet looks exactly like a leaf).
     property var topLevelCommunityIds: ({})
 
-    // { id: true } for the community the Global feed hides (?exclude_home=1) and
-    // all its descendants — the client-side mirror of serey-api's
-    // getHiddenFeedIds(). Anything choosing communities itself (My Feed's
-    // suggestions) must skip these, or it offers what the feeds filter out.
+    // { id: true } for the community the Global feed hides (?exclude_home=1)
+    // plus descendants; mirrors serey-api's getHiddenFeedIds(). Anything picking
+    // communities client-side must skip these.
     property var hiddenCommunityIds: ({})
 
     // child community id (string) -> parent id, from the same get-communities tree.
     property var parentCommunityById: ({})
 
-    // Select any community by id, whatever its depth: a country row, a platform
-    // under one, or a superhub child. This is what keeps the pill and the native
-    // feeds in step with the mini app, which navigates by community id.
-    // False when the id isn't in the cached tree — selection then stays put.
+    // Select any community by id at any depth; keeps the pill and native feeds
+    // in step with the mini app. False when the id isn't in the cached tree
+    // (selection then stays put).
     function selectCommunityById(id) {
         var idStr = String(id);
         if (idStr === "" || idStr === "undefined" || idStr === "null") return false;
@@ -192,7 +182,7 @@ QtObject {
         if (!u) return "";
         var m = String(u).match(/^https?:\/\/([^\/?#]+)([^?#]*)/);
         if (!m) return "";
-        // Path first — the landing host can itself be a community dns.
+        // Path first: the landing host can itself be a community dns.
         var seg = (m[2] || "").split("/")[1] || "";
         if (/^[0-9]+$/.test(seg)) return seg;
         var host = m[1].toLowerCase();
@@ -227,10 +217,8 @@ QtObject {
         updateCommunityFields(id, { title: title });
     }
 
-    // Insert (or merge) a community into the cache. Used right after creating a
-    // platform so the CMS hub resolves its name/logo/categories in the same
-    // session — get-communities is server-cached and omits a just-created
-    // community, so a re-fetch wouldn't help.
+    // Insert/merge a community into the cache; used right after creating a
+    // platform (get-communities is server-cached and would still omit it).
     function addOrUpdateCommunity(entry) {
         if (!entry || entry.id === undefined || entry.id === null) return;
         var idStr = String(entry.id);
@@ -245,11 +233,11 @@ QtObject {
     // Community ids the signed-in user owns/manages, fetched from /user-permission/permission-by-current-user; empty when logged out.
     property var ownedCommunityIdSet: ({})
 
-    // Whether the signed-in user owns/manages the selected community — OR-ed into the compose gates since an owner may post even when owner-only.
+    // Whether the signed-in user owns/manages the selected community; OR-ed into the compose gates since an owner may post even when owner-only.
     readonly property bool isOwnerCurrent: communityId > 0
                                            && !!ownedCommunityIdSet[communityId]
 
-    // Owns/manages any community at all — drives the "Manage your platform" entry point in Settings
+    // Owns/manages any community at all; drives the "Manage your platform" entry point in Settings
     readonly property bool hasAnyOwnedCommunity: Object.keys(ownedCommunityIdSet).length > 0
 
     // Explicit "Switch Platform" pick from the CMS hub for owners of more than one community; 0 = no override

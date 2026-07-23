@@ -1,7 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-// ListView recycling re-asks for follow state per card — cache per author for the session and coalesce concurrent first-time requests via `_pending`.
+// ListView recycling re-asks for follow state per card, so cache per author for the session and coalesce concurrent first-time requests via `_pending`.
 var _cache = {};            // author -> bool
 var _pending = {};          // author -> [ {onOk, onErr}, ... ]
 var _cacheViewer = null;
@@ -30,10 +30,9 @@ function status(baseUrl, viewerUsername, author, onOk, onErr) {
         });
 }
 
-// GET /follow/list-all-followings (JWT) -> { username: true } for everyone the
-// signed-in user follows. Not paginated server-side. My Feed needs this because
-// there is NO following-filtered video endpoint (only `/video-component/`, a
-// whole-community listing), so videos are filtered against this set client-side.
+// Returns { username: true } for everyone the user follows (not paginated).
+// My Feed needs this: there is NO following-filtered video endpoint, so videos
+// are filtered against this set client-side.
 function listAllFollowings(baseUrl, token, onOk, onErr) {
     return Http.get(baseUrl, "/follow/list-all-followings", {}, token,
         function (data) {

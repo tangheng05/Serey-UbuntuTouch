@@ -4,7 +4,7 @@ import QtQuick 2.7
 QtObject {
     property var post: null
     property bool visible: false
-    // What kind of content the menu opened for ("blog"|"gallery"|"video") — drives owner actions like hiding Edit for video.
+    // What kind of content the menu opened for ("blog"|"gallery"|"video"); drives owner actions like hiding Edit for video.
     property string kind: "blog"
 
     signal hideRequested(string author, string permlink)

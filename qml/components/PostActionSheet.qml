@@ -35,15 +35,13 @@ Item {
     // Lift the sheet above the OSK (the edit-caption step has text inputs).
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
-    // ---- Keyboard navigation (UBports HIG input parity: everything a touch user
-    // reaches by tapping must be drivable by keyboard). Up/Down (or Tab/Backtab)
-    // move a highlight over the current step's actions, Enter/Space activates it,
-    // Escape backs out of a sub-step / closes the sheet. The highlight only
-    // appears after a key press, so touch and pointer behaviour are unchanged.
+    // ---- Keyboard navigation (UBports HIG input parity): Up/Down or Tab move a
+    // highlight over the current step's actions, Enter/Space activates, Escape backs
+    // out/closes. The highlight only appears after a key press, so touch is unchanged.
     property var navRows: []
     property int navIndex: -1
     readonly property Item navCurrent: (navIndex >= 0 && navIndex < navRows.length) ? navRows[navIndex] : null
-    // Whatever held keyboard focus before the sheet opened (e.g. the focused card) — restored on close.
+    // Whatever held keyboard focus before the sheet opened (e.g. the focused card); restored on close.
     property var _prevFocus: null
 
     function _rebuildNav() {
@@ -115,7 +113,7 @@ Item {
         if (!visible) {
             step = 0;
             selectedReportTypeId = "";
-            // Clear in-flight busy flags so a sheet dismissed mid-request doesn't reopen stuck on "Blocking…"/disabled rows.
+            // Clear in-flight busy flags so a sheet dismissed mid-request doesn't reopen stuck on "Blocking..."/disabled rows.
             reporting = false;
             blocking = false;
             navRows = []; navIndex = -1;
@@ -146,7 +144,7 @@ Item {
                 sheet.reportTypesLoaded = sheet.reportTypes.length > 0;
             },
             function (err) {
-                // Leave reportTypesLoaded false so reopening the sheet retries — there is no hardcoded fallback, the backend owns the ids.
+                // Leave reportTypesLoaded false so reopening the sheet retries; no hardcoded fallback, the backend owns the ids.
                 sheet.reportTypesLoading = false;
                 sheet.reportTypesLoaded = false;
                 Toast.error((err && err.message) ? err.message
@@ -257,10 +255,8 @@ Item {
             });
     }
 
-    // ---- Video offline download (mirrors VideoDetailPage's routing so the sheet
-    // can save a video without opening the detail page). SEREY-hosted / direct-file
-    // videos download the file directly; YouTube clips resolve a direct URL via
-    // InnerTube first, then reuse the same download path.
+    // ---- Video offline download, mirroring VideoDetailPage's routing: direct-file
+    // videos download as-is, YouTube clips resolve a direct URL via InnerTube first.
     function _isDirectFile(u) {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
@@ -499,7 +495,7 @@ Item {
             }
             Item { width: 1; height: Style.spacingS; visible: saveOfflineBtn.visible || saveVideoBtn.visible }
 
-            // ----- Owner actions (your own post): Edit (blog/gallery only — no video editor) / Delete -----
+            // ----- Owner actions (your own post): Edit (blog/gallery only, no video editor) / Delete -----
             AbstractButton {
                 id: editPostBtn
                 width: parent.width; height: units.gu(8)
@@ -526,7 +522,7 @@ Item {
                 }
             }
 
-            // Edit caption (own video — title/description only; the media itself can't be re-uploaded).
+            // Edit caption (own video, title/description only; the media itself can't be re-uploaded).
             AbstractButton {
                 id: editCaptionBtn
                 width: parent.width; height: units.gu(8)
@@ -554,7 +550,7 @@ Item {
                 }
             }
 
-            // Delete → confirm step
+            // Delete: goes to confirm step
             AbstractButton {
                 id: deletePostBtn
                 width: parent.width; height: units.gu(8)
@@ -607,7 +603,7 @@ Item {
                 }
             }
 
-            // Report → go to step 1
+            // Report: goes to step 1
             AbstractButton {
                 id: reportPostBtn
                 width: parent.width; height: units.gu(8)
@@ -630,7 +626,7 @@ Item {
                 }
             }
 
-            // Block → confirm step
+            // Block: goes to confirm step
             AbstractButton {
                 id: blockUserBtn
                 width: parent.width; height: units.gu(8)
@@ -643,7 +639,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: units.gu(4.5); height: width; radius: width / 2
                         color: Style.iconBackground
-                        // No "block" icon in the Suru theme — draw it (circle + diagonal bar)
+                        // No "block" icon in the Suru theme, so draw one (circle + diagonal bar)
                         Item {
                             anchors.centerIn: parent
                             width: units.gu(2.2); height: width
@@ -727,7 +723,7 @@ Item {
                 ActivityIndicator { anchors.centerIn: parent; running: parent.visible }
             }
 
-            // Empty / failed state — reopening the sheet retries the fetch.
+            // Empty / failed state; reopening the sheet retries the fetch.
             Label {
                 visible: !sheet.reportTypesLoading && sheet.reportTypes.length === 0
                 width: reportCol.width - Style.spacingM * 2
@@ -909,7 +905,7 @@ Item {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Cancel → back to main menu
+            // Cancel: back to main menu
             AbstractButton {
                 id: deleteCancelBtn
                 width: parent.width - Style.spacingM * 2

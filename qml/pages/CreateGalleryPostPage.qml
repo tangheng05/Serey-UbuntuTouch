@@ -193,7 +193,7 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Caption field — outlined rounded box
+            // Caption field, outlined rounded box
             Rectangle {
                 width: parent.width
                 height: Math.max(units.gu(12), captionField.contentHeight + Style.spacingM * 2)

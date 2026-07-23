@@ -3,13 +3,9 @@ import Lomiri.Components 1.3
 import "../Theme"
 
 /*
- * Back chevron for custom headers, matching Lomiri's own PageHeader leading
- * action: the themed "back" suru icon, no background chip. The old version drew
- * its own arrow on a hardcoded white Rectangle — in dark mode that rendered a
- * white square with a near-white arrow (Style.textPrimary), i.e. invisible.
- *
- * overlay: for buttons floating over media (Reels, profile cover) — a dark
- * scrim circle with a white icon, readable on any photo in either theme.
+ * Back chevron matching Lomiri's PageHeader leading action: themed "back" icon, no chip
+ * (the old self-drawn arrow on a white Rectangle was invisible in dark mode).
+ * overlay: dark scrim circle + white icon for buttons floating over media.
  */
 AbstractButton {
     id: root

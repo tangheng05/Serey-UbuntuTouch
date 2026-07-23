@@ -2,11 +2,9 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-// Lightweight bottom sheet for a short, page-local action list (e.g. the •••
-// menu on a saved/downloaded article row). Call show([{iconName, text, danger,
-// onTriggered}, ...]) to slide it up; tapping a row runs onTriggered and closes.
-// For a post's full options menu use PostActionSheet/PostActions instead — this
-// is for pages that just need Remove/Share without the ownership logic.
+// Lightweight page-local action sheet: show([{iconName, text, danger, onTriggered}, ...])
+// slides it up; a tap runs onTriggered and closes. For a post's full options menu
+// use PostActionSheet/PostActions instead.
 Item {
     id: sheet
     anchors.fill: parent

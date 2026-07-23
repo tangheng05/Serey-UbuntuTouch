@@ -80,7 +80,7 @@ Item {
     function removeComment(p) {
         sheet.comments = _removeFrom(sheet.comments, p);
         sheet.countChanged(-1);
-        // Server delete must run in this sheet-level scope — the CommentService import resolves to null inside Repeater/Loader-created reply row delegates.
+        // Server delete must run in this sheet-level scope; the CommentService import resolves to null inside Repeater/Loader-created reply row delegates.
         CommentService.remove(Config.baseUrl, p, Session.username, Session.token,
             function () {},
             function (err) {

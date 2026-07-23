@@ -14,17 +14,8 @@ function create(baseUrl, params, token, onOk, onErr) {
               function (data) { onOk(data || {}); }, onErr);
 }
 
-/*
- * Delete a comment (or post). JWT-only; the backend authorises against the
- * token's username, so a user can only delete their own comment.
- *
- * Uses the POST alias of /serey-web/delete-post-or-comment: Qt's QML
- * XMLHttpRequest cannot attach a body to a DELETE request, so the backend
- * exposes the same handler over POST for native clients.
- *
- *   POST /serey-web/delete-post-or-comment
- *     { username, permlink }
- */
+// Delete a comment (or post); backend authorises against the token's username.
+// Uses the POST alias because Qt's QML XMLHttpRequest can't attach a body to DELETE.
 function remove(baseUrl, permlink, username, token, onOk, onErr) {
     Http.post(baseUrl, "/serey-web/delete-post-or-comment",
               { username: username, permlink: permlink }, token,

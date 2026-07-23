@@ -16,7 +16,7 @@ Rectangle {
     height: units.gu(6)
     color: Style.surface
 
-    // Left: community selector — a flag chip with a caret; flat by default, with a soft pill only on press for touch feedback.
+    // Left: community selector, a flag chip with a caret; flat by default, soft pill on press for touch feedback.
     AbstractButton {
         id: titleBtn
         anchors {
@@ -69,7 +69,7 @@ Rectangle {
                     color: Style.textSecondary
                     visible: !cIcon.loaded
                 }
-                // Hairline ring so a light-edged flag (e.g. the Dutch white stripe) stays crisp against the white header instead of bleeding.
+                // Hairline ring so a light-edged flag (e.g. the Dutch white stripe) doesn't bleed into the white header.
                 Rectangle {
                     anchors.fill: parent
                     radius: width / 2
@@ -79,8 +79,8 @@ Rectangle {
                 }
             }
 
-            // Community name — shown beside the flag on wide windows (there's
-            // room for it there; phones keep the compact icon-only chip).
+            // Community name, shown beside the flag on wide windows only;
+            // phones keep the compact icon-only chip.
             Label {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: appHeader.wide && text !== ""
@@ -93,7 +93,7 @@ Rectangle {
                 width: Math.min(implicitWidth, units.gu(24))
             }
 
-            // Real vector caret — the old "▾" glyph rendered chunky and off-baseline.
+            // Real vector caret; the old text-glyph caret rendered chunky and off-baseline.
             Icon {
                 anchors.verticalCenter: parent.verticalCenter
                 width: appHeader.wide ? units.gu(2) : units.gu(1.5); height: width

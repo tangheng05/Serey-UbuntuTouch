@@ -2,22 +2,9 @@ pragma Singleton
 import QtQuick 2.7
 import QtQuick.LocalStorage 2.0
 
-/*
- * Last-seen page-0 rows for the News and Video feeds, so a relaunch paints
- * content instead of a skeleton.
- *
- * Two jobs, deliberately separate:
- *   peek(key)    — the rows we last saw, available synchronously at page mount.
- *   request(...) — fire the real request, store the result, and coalesce callers.
- *
- * `request` never returns the cache; it always hits the network. Pages paint
- * peek() first and let request() replace those rows when it lands
- * (stale-while-revalidate), so the skeleton only ever shows on a cold cache.
- *
- * Coalescing matters because Main.qml prefetches these feeds at launch: without
- * it, a user who taps News while the prefetch is still in flight would fire a
- * second identical request. Same idea as FollowService's per-author coalescing.
- */
+// Page-0 cache for the News/Video feeds so a relaunch paints rows, not a
+// skeleton. peek() = cached rows, sync; request() always hits the network and
+// coalesces concurrent callers (startup prefetch vs. an early tab-tap).
 QtObject {
     id: store
 
@@ -28,7 +15,7 @@ QtObject {
     property var _dbHandle: null
 
     // Enough to fill the first screen, no more. This is a paint-fast cache, not
-    // an offline store — SavedPosts/Downloads are the real offline features.
+    // an offline store; SavedPosts/Downloads are the real offline features.
     readonly property int maxRows: 12
     // Rows older than this are dropped at load: showing week-old rows for the
     // instant it takes to revalidate is worse than showing the skeleton.
@@ -51,7 +38,7 @@ QtObject {
                     var row = rs.rows.item(i);
                     try {
                         mem[row.key] = { items: JSON.parse(row.data), fetchedAt: row.fetched_at };
-                    } catch (e) { /* unparseable row — treat as a miss */ }
+                    } catch (e) { /* unparseable row, treat as a miss */ }
                 }
             });
         } catch (e) {
@@ -66,10 +53,8 @@ QtObject {
         return (e && e.items && e.items.length > 0) ? e.items : null;
     }
 
-    // Drop a key outright. Needed because put() refuses to store an empty list,
-    // so a feed that legitimately went empty (followed nobody / unfollowed
-    // everyone) could never overwrite its old rows — they'd paint on every
-    // launch until the 3-day expiry.
+    // Drop a key: put() refuses empty lists, so a feed that legitimately went
+    // empty could never overwrite its old rows without this.
     function remove(key) {
         delete store._mem[key];
         try {
@@ -84,7 +69,7 @@ QtObject {
 
     function put(key, items) {
         var trimmed = (items || []).slice(0, store.maxRows);
-        // Empty means "nothing to paint next time" — clear, don't keep stale rows.
+        // Empty means "nothing to paint next time": clear, don't keep stale rows.
         if (trimmed.length === 0) { store.remove(key); return; }
         var entry = { items: trimmed, fetchedAt: Date.now() };
         store._mem[key] = entry;
@@ -99,13 +84,9 @@ QtObject {
         }
     }
 
-    /*
-     * `starter(ok, err)` must fire the request and return its xhr.
-     * Returns that xhr, or null when this call attached to an in-flight request
-     * (nothing of its own to abort — callers already guard `if (inflight)`).
-     * Callers keep their own reqEpoch guard: attaching means the response can
-     * outlive a reload, exactly like a direct request would.
-     */
+    // `starter(ok, err)` must fire the request and return its xhr; returns null
+    // when attached to an in-flight request (nothing to abort). Callers keep
+    // their own reqEpoch guard, same as a direct request.
     function request(key, starter, onOk, onErr) {
         if (store._waiters[key]) {
             store._waiters[key].push({ ok: onOk, err: onErr });

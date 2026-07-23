@@ -6,7 +6,7 @@ QtObject {
 
     property bool visible: false
     property string url: ""
-    // Button that triggered the sheet, if any — lets the dropdown anchor to it.
+    // Button that triggered the sheet, if any; lets the dropdown anchor to it.
     property var anchorItem: null
 
     function open(u, anchor) {

@@ -44,7 +44,7 @@ Item {
         var text = item.editText.trim();
         if (text.length === 0)
             return;
-        // Emit only — CommentItem is Loader-instantiated for nested replies where JS module imports resolve to null, so the host page's handler makes the server call.
+        // Emit only. CommentItem is Loader-instantiated for nested replies, where JS module imports resolve to null, so the host page's handler makes the server call.
         item.editing = false;
         item.edited(c.permlink, text, c.parentAuthor || "", c.parentPermlink || "");
     }
@@ -69,7 +69,7 @@ Item {
         }
         spacing: Style.spacingXs
 
-        // Author row: avatar + name + time on the left, ••• on the right
+        // Author row: avatar + name + time on the left, overflow button on the right
         Item {
             width: parent.width
             height: avatar.height
@@ -359,7 +359,7 @@ Item {
             }
         }
 
-        // Nested replies — only indent one level deep; deeper replies stay flat
+        // Nested replies: only indent one level deep; deeper replies stay flat
         Item {
             visible: item.repliesExpanded && item.replies.length > 0
             width: parent.width
@@ -390,7 +390,7 @@ Item {
                 }
 
                 Repeater {
-                    // Only instantiate reply rows while expanded — collapsing frees them, and nested levels aren't built until expanded.
+                    // Only instantiate reply rows while expanded; collapsing frees them.
                     model: item.repliesExpanded ? item.replies : []
                     delegate: Loader {
                         id: replyLoader

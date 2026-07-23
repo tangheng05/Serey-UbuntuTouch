@@ -1,6 +1,6 @@
 .pragma library
 
-// Fired on a 401 (expired/invalid JWT) — Main.qml registers this once to clear the session and prompt re-login.
+// Fired on a 401 (expired/invalid JWT). Main.qml registers this once to clear the session and prompt re-login.
 var _onUnauthorized = null;
 function setUnauthorizedHandler(fn) { _onUnauthorized = fn; }
 

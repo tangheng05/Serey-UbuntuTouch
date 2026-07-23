@@ -18,13 +18,8 @@ Item {
     property var cache: ({})
     property int loadingIndex: -1
 
-    // Both `cache` and `expandedIndex` are keyed by ROW INDEX, so they only stay
-    // valid while Config.sources holds still. After a platform create/delete the
-    // source list is rebuilt and can shrink — every row below the removed country
-    // shifts up one, and the stale cache then showed the deleted country's
-    // children under whichever country inherited its index. The children data is
-    // also genuinely stale at that point, so drop everything and re-fetch on the
-    // next expand.
+    // cache/expandedIndex are keyed by row index, so they go stale when Config.sources
+    // is rebuilt (indices shift after platform create/delete). Drop and re-fetch.
     property Connections _sourcesWatcher: Connections {
         target: Config
         function onSourcesChanged() {
@@ -34,19 +29,9 @@ Item {
         }
     }
     /*
-     * Geo hint (Config.detectedCountryCode, via Cloudflare — see GeoService.js):
-     * put the user's own country at the top, expanded, and fold everything else
-     * behind "See more".
-     *
-     * This reorders the VIEW ONLY. Config.sources must keep its order:
-     * Config.sourceIndex is an index into it, and this picker's `cache`,
-     * `expandedIndex` and keyboard cursor are all keyed by that same index (see
-     * the _sourcesWatcher above, which exists precisely because index-keyed
-     * state goes stale). So each display row carries its real index in
-     * `_realIndex`, and every id/cache/selection path keeps using that.
-     *
-     * No detection, or a country we have no community for -> detectedIndex is
-     * -1 and the sheet renders exactly as it always has.
+     * Geo hint: hoist the detected country to the top, expanded, rest behind "See more".
+     * Reorders the VIEW ONLY; all state stays keyed by the real Config.sources index,
+     * carried per display row as `_realIndex`. No detection -> detectedIndex -1, normal list.
      */
     readonly property int detectedIndex: Config.indexForCountryCode(Config.detectedCountryCode)
     property bool showAll: false
@@ -64,16 +49,15 @@ Item {
         var di = picker.detectedIndex
         if (di < 0) return out          // undetected: today's list, untouched
 
-        // Global stays pinned at the top — it's the default combined feed and
-        // the app's home row, so the geo hint slots in BELOW it rather than
-        // pushing it down. (di is never 0: _indexForCountry skips Global.)
+        // Global stays pinned at the top (default combined feed); the geo hint
+        // slots in BELOW it. (di is never 0: _indexForCountry skips Global.)
         var mine = out.splice(di, 1)[0]
         out.splice(1, 0, mine)
         // Collapsed: Global + the user's country. The rest are one tap away.
         return picker.showAll ? out : [out[0], mine]
     }
 
-    // Map of communityId (string) → true for communities the user is subscribed to.
+    // Map of communityId (string) -> true for communities the user is subscribed to.
     property var subscribedMap: ({})
     property int subscribedRev: 0
     property bool subscriptionsLoaded: false
@@ -100,10 +84,8 @@ Item {
     }
     function close()         { picker._closing = false; closeGuard.stop(); picker.visible = false }
 
-    // Closing, but still visible until cpSlideOut finishes. The backdrop is a
-    // full-screen MouseArea and opacity:0 still hit-tests, so without this it
-    // keeps eating touches for however long that animation takes — which isn't
-    // bounded when choosing a community also kicks off a web-view reload.
+    // Closing but still visible until cpSlideOut finishes. The backdrop MouseArea still
+    // hit-tests at opacity 0, so it must be disabled while the exit animation runs.
     property bool _closing: false
 
     function closeAnimated() {
@@ -114,7 +96,7 @@ Item {
         closeGuard.restart()
     }
 
-    // onStopped isn't guaranteed to fire — close anyway.
+    // onStopped isn't guaranteed to fire; close anyway.
     Timer {
         id: closeGuard
         interval: 400   // comfortably past cpSlideOut's 250ms
@@ -122,19 +104,16 @@ Item {
         onTriggered: if (picker.visible) picker.close()
     }
 
-    // ── Keyboard cursor ──────────────────────────────────────────────────────
-    // Rows live in nested Repeaters (source → category → community), so the cursor
-    // is data coordinates, not collected Items: each row binds its own ring and so
-    // survives delegate recreation. cat/com = -1 means the source row itself.
+    // --- Keyboard cursor ---
+    // Rows live in nested Repeaters (source > category > community), so the cursor is
+    // data coordinates, not Items; it survives delegate recreation. cat/com -1 = source row.
     property int navSrc: -1
     property int navCat: -1
     property int navCom: -1
     property bool navActive: false
 
-    // Selectable rows in visual order; category headers are labels, so not included.
-    // Walks displaySources, not Config.sources: the geo hint can hoist a row to
-    // the top and fold the rest behind "See more", and the cursor must visit
-    // what's actually on screen, in that order. `src` stays the REAL index.
+    // Selectable rows in visual order (category headers excluded). Walks displaySources,
+    // not Config.sources, so the cursor visits what's on screen; `src` stays the REAL index.
     function _navEntries() {
         var out = [], srcs = picker.displaySources || []
         for (var d = 0; d < srcs.length; d++) {
@@ -200,7 +179,7 @@ Item {
         picker.closeAnimated()
     }
 
-    // Whatever held keyboard focus before the picker opened — restored on close.
+    // Whatever held keyboard focus before the picker opened; restored on close.
     property var _prevFocus: null
     // True when a platform was actually chosen (vs. cancel/Escape). Focus then belongs
     // in the reloaded feed, not back on the pill, whose KeyTapArea has no arrow nav.
@@ -242,7 +221,7 @@ Item {
         picker.subscriptionsLoaded = true  // mark before call so retries don't stack
         SubscriberService.fetchSubscribed(Config.baseUrl, Session.token,
             function (map) { picker.subscribedMap = map; picker.subscribedRev++ },
-            function () { /* silent — picker still works without subscription data */ })
+            function () { /* silent; picker still works without subscription data */ })
     }
 
     function _toggleSubscribe(commId, currentlySubscribed) {
@@ -253,7 +232,7 @@ Item {
             for (var k in picker.subscribedMap) m[k] = true
             if (add) m[id] = true
             else delete m[id]
-            return m   // new object → QML detects the change and re-evaluates bindings
+            return m   // new object so QML detects the change and re-evaluates bindings
         }
 
         if (currentlySubscribed) {
@@ -397,7 +376,7 @@ Item {
             }
 
         } else {
-            // Netherlands / US: step 1 — get communities for this source
+            // Netherlands / US: step 1, get communities for this source
             var xhrP = new XMLHttpRequest()
             xhrP.open("GET", Config.baseUrl + "/community/list-by-parent-id/" + apiId)
             xhrP.setRequestHeader("Accept", "application/json")
@@ -412,7 +391,7 @@ Item {
 
                 if (sourceComms.length === 0) { _store(srcIndex, []); return }
 
-                // Step 2 — fetch categories to try to group them
+                // Step 2: fetch categories to try to group them
                 var xhrC = new XMLHttpRequest()
                 xhrC.open("GET", Config.baseUrl + "/community/categories/list?limit=100")
                 xhrC.setRequestHeader("Accept", "application/json")
@@ -424,7 +403,7 @@ Item {
                         var arr = _parseCategoryList(JSON.parse(xhrC.responseText))
                         cats = _applyCategories(sourceComms, arr)
                     } catch (e) { }
-                    // Remove uncategorised group (empty name) — only show properly categorised communities.
+                    // Remove the uncategorised group (empty name); only show categorised communities.
                     cats = cats.filter(function(c) { return c.name.length > 0 })
                     // Fallback: if nothing matched any category, show flat without header
                     if (cats.length === 0) cats = [{ name: "", icon: "", color: "", communities: sourceComms }]
@@ -436,7 +415,7 @@ Item {
         }
     }
 
-    // ── Backdrop ─────────────────────────────────────────────────────────────
+    // --- Backdrop ---
     Rectangle {
         id: cpBackdrop
         anchors.fill: parent
@@ -452,7 +431,7 @@ Item {
     NumberAnimation { id: cpBackdropFade;    target: cpBackdrop; property: "opacity"; from: 0; to: 1;  duration: 200 }
     NumberAnimation { id: cpBackdropFadeOut; target: cpBackdrop; property: "opacity"; to: 0;            duration: 200 }
 
-    // ── Sheet ─────────────────────────────────────────────────────────────────
+    // --- Sheet ---
     // Full-width sheet on phone, centered width-capped card on desktop
     Rectangle {
         id: sheet
@@ -493,7 +472,7 @@ Item {
                 id: sheetContent
                 width: flickable.width
 
-                // ── Header ───────────────────────────────────────────────
+                // --- Header ---
                 Item { width: 1; height: Style.spacingL }
                 Row {
                     width: parent.width - Style.spacingM * 2
@@ -514,10 +493,10 @@ Item {
                 }
                 Item { width: 1; height: Style.spacingM }
 
-                // ── Source rows ──────────────────────────────────────────
+                // --- Source rows ---
                 Repeater {
                     // Display order, which may differ from Config.sources when a
-                    // country is geo-detected — srcIndex carries the real index.
+                    // country is geo-detected; srcIndex carries the real index.
                     model: picker.displaySources
 
                     delegate: Column {
@@ -534,7 +513,7 @@ Item {
                             id: sourceRow
                             width: parent.width
                             height: units.gu(7)
-                            // Chevron touch target width — used to split the two hit areas.
+                            // Chevron touch target width, used to split the two hit areas.
                             readonly property int chevronW: sourceCol.srcIndex !== 0 ? units.gu(7) : 0
 
                             readonly property bool isCursor: picker.navActive
@@ -594,7 +573,7 @@ Item {
                                 visible: sourceCol.srcIndex !== 0
                             }
 
-                            // Left zone (flag + name) → select this source and close
+                            // Left zone (flag + name): select this source and close
                             MouseArea {
                                 anchors {
                                     left: parent.left; top: parent.top; bottom: parent.bottom
@@ -603,7 +582,7 @@ Item {
                                 onClicked: picker._selectSource(sourceCol.srcIndex)
                             }
 
-                            // Right zone (chevron) → toggle dropdown (NL/US only)
+                            // Right zone (chevron): toggle dropdown (NL/US only)
                             MouseArea {
                                 anchors {
                                     right: parent.right; top: parent.top; bottom: parent.bottom
@@ -697,7 +676,7 @@ Item {
                                                     anchors.centerIn: parent
                                                     spacing: units.gu(0.5)
 
-                                                    // Category icon — backend image if available, fallback icon otherwise
+                                                    // Category icon: backend image if available, fallback icon otherwise
                                                     Item {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: units.gu(2); height: width
@@ -748,7 +727,7 @@ Item {
                                         delegate: Column {
                                             width: sheetContent.width
 
-                                            // ── Main platform card ─────────────────────────
+                                            // --- Main platform card ---
                                             Item {
                                             id: commBtn
                                             width: sheetContent.width
@@ -837,7 +816,7 @@ Item {
                                                         elide: Text.ElideRight
                                                     }
 
-                                                    // HUB badge — marks a superhub platform
+                                                    // HUB badge: marks a superhub platform
                                                     Rectangle {
                                                         id: hubBadge
                                                         visible: commBtn.isSuperhub
@@ -858,7 +837,7 @@ Item {
                                                         }
                                                     }
 
-                                                    // Subscribe button — defined last so it renders on top of the navigate MouseArea
+                                                    // Subscribe button: defined last so it renders on top of the navigate MouseArea
                                                     Rectangle {
                                                         id: subBtn
                                                         anchors.verticalCenter: parent.verticalCenter
@@ -888,7 +867,7 @@ Item {
                                             }
                                             }
 
-                                            // ── Superhub children (indented, with a connector line) ──
+                                            // --- Superhub children (indented, with a connector line) ---
                                             Repeater {
                                                 model: commBtn.hubChildren
 

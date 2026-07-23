@@ -8,20 +8,9 @@ import "../services/PlatformService.js" as PlatformService
 import "../services/AccountService.js" as AccountService
 
 /*
- * Native "Create your platform" wizard — the app-side equivalent of the web
- * CreateCommunityForm (fe-serey-web social-media-owners), scoped to plain
- * communities only (no SuperHub/Topic creation in this version).
- *
- * Entry is gated on an active subscription plan (GET /subscription/active);
- * without one we show a CTA that routes to the Homepage plan page. Other
- * backend rules (one community per user, name charset) are enforced
- * server-side — we surface the server's message rather than duplicating them.
- *
- * Steps: 0 name + web address (live subdomain check) · 1 location (independent
- * or under a country, + optional category) · 2 branding images + create ·
- * 3 success. Branding images are optional; the server requires the URL fields,
- * so unset ones fall back to the site's "/logo.png" placeholder exactly like
- * the web wizard.
+ * "Create your platform" wizard, plain communities only. Gated on an active
+ * subscription (GET /subscription/active); other rules (one community per
+ * user, name charset) are enforced server-side, surface the server message.
  */
 Page {
     id: page
@@ -33,21 +22,21 @@ Page {
         ]
     }
 
-    // ── Plan gate ────────────────────────────────────────────────────────────
-    // "checking" while /subscription/active runs → "ok" | "noplan" | "error".
+    // --- Plan gate ---
+    // "checking" while /subscription/active runs -> "ok" | "noplan" | "error".
     property string gate: "checking"
     property string gateError: ""
 
-    // ── Wizard state ─────────────────────────────────────────────────────────
+    // --- Wizard state ---
     property int step: 0                 // 0..2 form steps, 3 = success
     readonly property int stepCount: 3
 
-    // Step 0 — name + subdomain
+    // Step 0 - name + subdomain
     property string subStatus: "idle"    // idle|invalid|checking|free|taken
     property string subProblem: ""       // message when invalid
     property int subEpoch: 0             // drops stale availability responses
 
-    // Step 1 — location
+    // Step 1 - location
     property var countries: []
     property bool countriesLoading: false
     property bool countriesFailed: false
@@ -57,7 +46,7 @@ Page {
     property int categoryId: 0           // 0 = none (server defaults to Other)
     property bool countryPickerOpen: false
 
-    // Step 2 — branding
+    // Step 2 - branding
     property string iconUrl: ""
     property string logoUrl: ""
     property string footerUrl: ""
@@ -65,7 +54,7 @@ Page {
     property string uploadingTarget: ""
     property bool creating: false
 
-    // Step 3 — success
+    // Step 3 - success
     property string createdDns: ""
 
     readonly property string nameText: nameField.text.trim()
@@ -74,9 +63,8 @@ Page {
                                       && /^[a-zA-Z0-9 ]+$/.test(nameText)
     readonly property bool canContinue:
         step === 0 ? (nameValid && subStatus === "free")
-        // Web-wizard parity: a category is REQUIRED once a country is chosen
-        // (skip the requirement only if the category list failed to load, so
-        // the user is never hard-stuck — the server defaults to "Other").
+        // Web-wizard parity: category required once a country is chosen, unless
+        // the category list failed to load (server defaults to "Other").
       : step === 1 ? (independent || (country !== null
                                       && (categoryId > 0 || categories.length === 0)))
       : !creating && uploadingTarget === ""
@@ -104,10 +92,10 @@ Page {
             function () { countriesLoading = false; countriesFailed = true; });
         PlatformService.getCategories(Config.baseUrl,
             function (rows) { categories = rows; },
-            function () { /* optional — the server defaults to "Other" */ });
+            function () { /* optional; the server defaults to "Other" */ });
     }
 
-    // ── Subdomain availability ───────────────────────────────────────────────
+    // --- Subdomain availability ---
     // Same constraints the web wizard enforces client-side: 1-54 chars of
     // [a-z0-9-], no leading/trailing hyphen, not purely numeric, no dots.
     function slugProblem(s) {
@@ -143,7 +131,7 @@ Page {
                 },
                 function () {
                     if (epoch !== page.subEpoch) return;
-                    // Couldn't verify — let the user retry by editing; the
+                    // Couldn't verify; let the user retry by editing. The
                     // server checks again on create anyway.
                     page.subStatus = "idle";
                 });
@@ -151,7 +139,7 @@ Page {
     }
 
     // Called from list delegates (imported JS is unreliable inside delegate
-    // handlers — route through page-level functions).
+    // handlers, so route through page-level functions).
     function selectCountry(c) {
         country = { id: c.id, name: c.name, iconUrl: c.iconUrl };
         independent = false;
@@ -162,7 +150,7 @@ Page {
         categoryId = id;
     }
 
-    // ── Branding uploads ─────────────────────────────────────────────────────
+    // --- Branding uploads ---
     function pickImage(target) {
         if (uploadingTarget !== "") return;
         pickTarget = target;
@@ -195,7 +183,7 @@ Page {
         }
     }
 
-    // ── Create ───────────────────────────────────────────────────────────────
+    // --- Create ---
     function create() {
         if (creating) return;
         creating = true;
@@ -217,13 +205,9 @@ Page {
             // Rebuild the community picker so the new platform (and its parent
             // country, if this was the country's first) shows without a restart.
             Nav.refreshCommunities();
-            // Seed the new community into the in-session cache so the CMS hub
-            // shows its name/logo and loads ITS categories immediately, without
-            // waiting on the refreshCommunities round-trip above. Keep this even
-            // though the server now busts its communities caches on create: an
-            // API instance other than the one that handled the create can still
-            // serve its own in-process copy for up to 60s, so the re-fetch is
-            // not guaranteed fresh — this local seed is.
+            // Seed the new community into the in-session cache: another API
+            // instance can serve a stale communities list for up to 60s, so
+            // the re-fetch above is not guaranteed fresh; this seed is.
             if (res.id) {
                 Config.addOrUpdateCommunity({
                     id: res.id,
@@ -235,7 +219,7 @@ Page {
                 });
             }
             // The owner may now post to their own community even where posting
-            // is owner-only — refresh the owned-communities set Main.qml seeded.
+            // is owner-only, so refresh the owned-communities set Main.qml seeded.
             AccountService.ownedCommunityIds(Config.baseUrl, Session.token,
                 function (ids) {
                     var set = {};
@@ -268,7 +252,7 @@ Page {
     Item { id: focusSink }
     function dismissKeyboard() { focusSink.forceActiveFocus(); Qt.inputMethod.hide(); }
 
-    // ═════════════════════ Gate states ═════════════════════
+    // --- Gate states ---
     ActivityIndicator {
         anchors.centerIn: parent
         running: page.gate === "checking"
@@ -333,7 +317,7 @@ Page {
         }
     }
 
-    // ═════════════════════ Wizard ═════════════════════
+    // --- Wizard ---
     KeyboardAwareFlickable {
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: page.gate === "ok"
@@ -350,7 +334,7 @@ Page {
             width: Math.min(parent.width - Style.spacingM * 2, units.gu(60))
             spacing: Style.spacingM
 
-            // ── Step indicator ──
+            // --- Step indicator ---
             Column {
                 visible: page.step < 3
                 width: parent.width
@@ -377,7 +361,7 @@ Page {
                 }
             }
 
-            // ═══ Step 0 — Name + web address ═══
+            // --- Step 0 - Name + web address ---
             Column {
                 visible: page.step === 0
                 width: parent.width
@@ -429,10 +413,9 @@ Page {
                     color: Style.danger
                 }
 
-                // Subdomain (underline input, forced lowercase slug). The
-                // fixed ".serey.io" suffix sits INSIDE the field so it always
-                // reads as "yoursub.serey.io" — the address is a Serey
-                // subdomain, never a free-form URL.
+                // Subdomain slug, forced lowercase. The fixed ".serey.io" suffix
+                // sits inside the field so it always reads as a Serey subdomain,
+                // never a free-form URL.
                 Item {
                     width: parent.width
                     height: units.gu(5)
@@ -509,7 +492,7 @@ Page {
                 }
             }
 
-            // ═══ Step 1 — Location ═══
+            // --- Step 1 - Location ---
             Column {
                 visible: page.step === 1
                 width: parent.width
@@ -533,9 +516,8 @@ Page {
                 }
                 Item { width: 1; height: Style.spacingM }
 
-                // Country row — the standard path (per user: independent is the
-                // exception, tucked behind a small link below). Pressed wash and
-                // divider run FULL-BLEED per the Lomiri list-item reference.
+                // Country row, the standard path. Pressed wash and divider run
+                // full-bleed per the Lomiri list-item reference.
                 Item {
                     visible: !page.independent
                     width: parent.width
@@ -659,9 +641,8 @@ Page {
                     }
                 }
 
-                // Small opt-in/out link — same quiet style as "More currencies"
-                // in the payment sheet. Independent stays available but is not
-                // the standard path.
+                // Quiet opt-in/out link: independent stays available but is
+                // not the standard path.
                 Item { width: 1; height: Style.spacingS }
                 LinkButton {
                     label: page.independent ? Lang.tr("Choose a country instead")
@@ -670,7 +651,7 @@ Page {
                 }
             }
 
-            // ═══ Step 2 — Branding + create ═══
+            // --- Step 2 - Branding + create ---
             Column {
                 visible: page.step === 2
                 width: parent.width
@@ -813,7 +794,7 @@ Page {
                 }
             }
 
-            // ═══ Step 3 — Success ═══
+            // --- Step 3 - Success ---
             Column {
                 visible: page.step === 3
                 width: parent.width
@@ -859,9 +840,8 @@ Page {
                     color: Style.textSecondary
                 }
                 Item { width: 1; height: Style.spacingS }
-                // Primary action stays in the app: the CMS hub manages this platform
-                // natively. createCommunity refreshed ownedCommunityIdSet, so
-                // Config.managedCommunityId already resolves to the new platform.
+                // The CMS hub manages the platform natively; ownedCommunityIdSet was
+                // refreshed so Config.managedCommunityId already resolves to it.
                 PrimaryButton {
                     text: Lang.tr("Manage my platform")
                     onClicked: {
@@ -881,7 +861,7 @@ Page {
                 }
             }
 
-            // ── Wizard navigation ──
+            // --- Wizard navigation ---
             Column {
                 visible: page.step < 3
                 width: parent.width
@@ -905,7 +885,7 @@ Page {
         }
     }
 
-    // ═════════════════════ Country picker (overlay sheet) ═════════════════════
+    // --- Country picker (overlay sheet) ---
     Rectangle {
         visible: page.countryPickerOpen
         anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -915,9 +895,8 @@ Page {
         // Swallow clicks under the sheet.
         MouseArea { anchors.fill: parent }
 
-        // Lomiri header-search pattern (docs/ubports-design 02-header-uses):
-        // back chevron + a rounded search field inline in ONE header row, with
-        // a hairline underneath — not a separate search bar on the page.
+        // Lomiri header-search pattern: back chevron + rounded search field in
+        // one header row with a hairline underneath, not a separate search bar.
         Item {
             id: pickerHeader
             anchors { top: parent.top; left: parent.left; right: parent.right }

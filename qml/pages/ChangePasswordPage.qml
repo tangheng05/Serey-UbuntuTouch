@@ -59,7 +59,7 @@ Page {
             spacing: Style.spacingM
             topPadding: Style.spacingL
 
-            // ── Change password ──────────────────────────────────────────
+            // --- Change password ---
             Label {
                 width: parent.width
                 text: Lang.tr("Change password")

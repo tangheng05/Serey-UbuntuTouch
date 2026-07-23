@@ -10,7 +10,7 @@ Item {
     id: root
 
     property var post: ({})
-    // Guard: the delegate may rebind `post` to undefined while the model is cleared/recycled — `p` is always a safe object to read from.
+    // Guard: the delegate may rebind `post` to undefined while the model is cleared/recycled; `p` is always a safe object to read from.
     readonly property var p: post ? post : ({})
 
     signal clicked()
@@ -36,15 +36,9 @@ Item {
         _syncVoteBar();
     }
 
-    /*
-     * The list refreshes rows with ListModel.set(), which MUTATES the very object
-     * the delegate already holds as `p` — the reference never changes, so
-     * onPChanged does NOT fire. Declarative bindings (p.title, p.excerpt) still
-     * update, but the vote count and payout are assigned imperatively below and
-     * would keep the PREVIOUS post's values: a brand-new post rendered with a
-     * stale cached row's "4 votes / 2332.290 SEREY". Watching the values
-     * themselves is what re-runs the sync on an in-place row swap.
-     */
+    // ListModel.set() mutates the object `p` already references, so onPChanged never
+    // fires on an in-place row swap and the imperatively-set votes/payout would keep
+    // the previous post's values. Watching the values themselves re-runs the sync.
     readonly property int _pVotes: p.votes || 0
     readonly property string _pPayout: p.payout || ""
     readonly property string _pPermlink: p.permlink || ""
@@ -224,18 +218,9 @@ Item {
                 radius: Style.thumbRadius
                 color: Style.iconBackground
             }
-            /*
-             * Double-buffered cover. A QML Image discards its old frame the moment
-             * `source` changes, so when a tab switch rewrites the row the card went
-             * black until the new image arrived — on the phone that's a full
-             * re-download (the pixmap cache evicts: ten covers decode to ~20MB
-             * there, versus ~3MB on desktop where a gu is 8px, which is why the
-             * desktop never showed it). Instead, `coverLoader` (never rendered)
-             * fetches the new source while `coverImg` keeps showing the last-good
-             * frame, slightly dimmed to signal the transition; the swap happens
-             * only on READY and is a guaranteed pixmap-cache hit because the
-             * loader still holds a reference. No disk, no extra downloads.
-             */
+            // Double-buffered cover: an Image drops its old frame when `source` changes,
+            // flashing black until the new one loads (a full re-download on phone).
+            // coverLoader (hidden) fetches while coverImg keeps the last-good frame.
             Image {
                 id: coverLoader
                 anchors.fill: parent
@@ -266,11 +251,8 @@ Item {
                 autoTransform: true
                 sourceSize.width: coverLoader.sourceSize.width
                 visible: false
-                // While the loader replaces a stale frame, fade the old image fully
-                // out (to the placeholder) rather than dimming it: a 40% ghost of
-                // the previous tab's photo under the new title read as the wrong
-                // thumbnail. The Behavior is what separates this from the original
-                // bug — a smooth fade out and in, not an instant cut to black.
+                // Fade the stale frame fully out, not just dimmed: a ghost of the
+                // previous photo under the new title read as the wrong thumbnail.
                 readonly property bool transitioning:
                     coverLoader.status === Image.Loading && status === Image.Ready
                 Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -290,7 +272,7 @@ Item {
             }
 
             Rectangle {
-                // categories is ListModel-wrapped here — use the mapper's scalar copy instead.
+                // categories is ListModel-wrapped here; use the mapper's scalar copy instead.
                 visible: (p.primaryCategory || "") !== ""
                 anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
                 width: catLabel.width + Style.spacingM
@@ -328,7 +310,7 @@ Item {
         // Bottom margin below the thumbnail (always visible, unlike the vote row)
         Item { width: 1; height: Style.spacingS }
 
-        // Vote/comment/share row shown narrow mode only — wide mode shows these in the detail column instead.
+        // Vote/comment/share row shown in narrow mode only; wide mode shows these in the detail column instead.
         VoteBar {
             id: cardVoteBar
             visible: !Config.wideMode
@@ -355,8 +337,8 @@ Item {
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }
 
-    // Pointer/keyboard parity: right-click or MENU opens the ••• context menu;
-    // Enter opens the post (same as a tap). See ContextActionArea.
+    // Pointer/keyboard parity: right-click or MENU opens the overflow context
+    // menu; Enter opens the post (same as a tap). See ContextActionArea.
     ContextActionArea {
         onTriggered: root.moreClicked()
         onActivated: root.clicked()

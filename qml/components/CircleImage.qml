@@ -5,7 +5,7 @@ Item {
     id: root
 
     property url source: ""
-    // Cap the decoded resolution (px) since remote avatars/icons are large and decoding full-size into a tiny circle wastes texture memory; 0 = uncapped.
+    // Cap the decoded resolution (px); remote avatars are large and decoding full-size into a tiny circle wastes texture memory. 0 = uncapped.
     property int decode: 0
     readonly property bool loaded: img.status === Image.Ready && String(source) !== ""
 
@@ -24,7 +24,7 @@ Item {
         asynchronous: true
         sourceSize.width: root.decode
         sourceSize.height: root.decode
-        // Honour the EXIF Orientation tag — Qt's Image ignores it unless autoTransform is set, so camera-captured avatars would otherwise render sideways.
+        // Honour the EXIF Orientation tag; without autoTransform, camera-captured avatars render sideways.
         autoTransform: true
         layer.enabled: true
         layer.effect: OpacityMask { maskSource: mask }

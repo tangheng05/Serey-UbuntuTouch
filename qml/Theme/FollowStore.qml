@@ -20,17 +20,9 @@ QtObject {
         if (_viewer !== viewer) { _map = ({}); _busy = ({}); _queue = []; _viewer = viewer; rev++; }
     }
 
-    /*
-     * The first feed paints ~10 cards at once and each asks for its author's
-     * follow state, so a burst of /follow/status requests left the gate at the
-     * exact moment the thumbnails did — and thumbnails are what the user is
-     * actually waiting to see. Hold the first burst briefly so images get the
-     * connection first; the buttons just render "Follow" until it lands, which
-     * they already did while the request was in flight.
-     *
-     * Only the first burst waits. Once flushed, `_warm` sends later queries
-     * (scrolling, new cards) straight out with no delay.
-     */
+    // The first feed's ~10 cards each query /follow/status at once, competing
+    // with the thumbnails the user is waiting for. Hold that first burst so
+    // images get the connection; once flushed, `_warm` sends queries directly.
     property bool _warm: false
     property var _queue: []
     property Timer _burstTimer: Timer {
@@ -69,7 +61,7 @@ QtObject {
 
     function set(author, val) { _map[author] = !!val; rev++; }
 
-    // Optimistically flip now, confirm with the server, revert on failure — returns the optimistic state so the caller can toast.
+    // Flip optimistically, confirm with the server, revert on failure. Returns the optimistic state so the caller can toast.
     function toggle(baseUrl, author, token) {
         var was = !!_map[author];
         _map[author] = !was; rev++;

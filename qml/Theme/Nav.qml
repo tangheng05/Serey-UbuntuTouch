@@ -7,7 +7,7 @@ QtObject {
     // Tab index to switch to (0 = Homepage); Main listens and also clears the stack the auth flow was pushed onto.
     signal goToTab(int tab)
 
-    // Buy-plan → create-platform funnel: emitted by the payment sheets after a
+    // Buy-plan -> create-platform funnel: emitted by the payment sheets after a
     // successful purchase; Main switches to Settings and pushes the wizard.
     signal createPlatform()
 
@@ -17,7 +17,7 @@ QtObject {
     signal focusMaster()
     signal focusDetail()
 
-    // Focus the tab navigation itself (side rail / bottom bar) — emitted by a
+    // Focus the tab navigation itself (side rail / bottom bar), emitted by a
     // list's Left key (step out of content) and by the F6 shortcut; Main acts.
     signal focusNav()
 
@@ -31,14 +31,14 @@ QtObject {
     signal filterCategory(string category, var community)
     property string pendingCategory: ""
 
-    // Re-fetch get-communities and rebuild Config.sources — emitted after
-    // creating or deleting a platform so the community picker reflects it
-    // without an app restart. Main acts (it owns the fetch + icon mapping).
+    // Re-fetch get-communities and rebuild Config.sources, emitted after
+    // creating or deleting a platform so the picker updates without a
+    // restart. Main acts (it owns the fetch + icon mapping).
     signal refreshCommunities()
 
     // Emitted right after a login/signup completes at a primary entry point
     // (not a login-gate interruption): land on My Feed instead of Homepage.
-    // Session-only — app relaunch always shows the normal Homepage.
+    // Session-only; a relaunch always shows the normal Homepage.
     signal goToFeed()
 
     function home() { goToTab(0); }

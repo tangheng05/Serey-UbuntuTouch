@@ -1,20 +1,8 @@
 .pragma library
 
-// Country detection via Cloudflare, mirroring fe-serey-web.
-//
-// The web reads Cloudflare's `cf-ipcountry` request header (see
-// src/pages/api/geo/detect-country.js). A native client can't: Cloudflare adds
-// that header to requests arriving at the origin, so only serey.io's own server
-// sees it. `/cdn-cgi/trace` is Cloudflare's client-facing equivalent — served by
-// the same edge, from the same IP lookup — and returns `loc=KH` in a plain-text
-// key=value body. serey.io sits behind Cloudflare, so this is the direct route.
-//
-// If the edge can't be reached we fall back to serey.io's own geo route, which
-// re-does cf-ipcountry server-side and then ip-api.com (the web's own fallback
-// for non-Cloudflare traffic).
-//
-// Deliberately NOT via Http.js: these are serey.io, not the API base, need no
-// auth, and must never trip the global 401 -> logout handler.
+// Country detection: a native client can't read cf-ipcountry (origin-only header),
+// so use Cloudflare's client-facing /cdn-cgi/trace (loc=XX), falling back to
+// serey.io's own geo route. Not via Http.js: no auth, must never trip the 401 handler.
 var TRACE_URL = "https://serey.io/cdn-cgi/trace";
 var FALLBACK_URL = "https://serey.io/api/geo/detect-country";
 
@@ -47,11 +35,8 @@ function detectCountry(onOk, onErr) {
             if (f.status !== 200) { fail(); return; }
             try {
                 var d = JSON.parse(f.responseText);
-                // Match the web's guard (see cambodia/index.js): localhost and
-                // unknown IPs answer status:true with NO countryCode, so
-                // `status` alone is not enough. Read countryCode, not country —
-                // on the Cloudflare path the name comes from a 6-entry map
-                // (KH/BD/RU/UA/NL/VE) and is null everywhere else.
+                // Unknown IPs answer status:true with NO countryCode, so check
+                // countryCode itself (country is null outside a 6-entry map).
                 var code = (d && d.status) ? _clean(d.countryCode) : "";
                 if (code) onOk(code); else fail();
             } catch (e) { fail(); }

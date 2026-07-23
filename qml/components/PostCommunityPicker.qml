@@ -3,11 +3,9 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 
-// Bottom sheet asking which community a new blog post should go into.
-// Opened from the compose button: if the current source (e.g. a parent
-// community) has sub-communities, the user must pick one before the
-// composer opens. If a sub-community was already the active context, it
-// comes pre-selected — the user can still change it before continuing.
+// Bottom sheet asking which community a new blog post should go into. Opened from
+// the compose button; if the current source has sub-communities the user must pick
+// one first. An already-active sub-community comes pre-selected but can be changed.
 Item {
     id: picker
     anchors.fill: parent
@@ -20,7 +18,7 @@ Item {
     property string selectedId: ""
     property bool loading: false
     // True when `items` is the country list (Global's root fetch) rather than a single
-    // country's own sub-communities — only then can rows be expanded for their children.
+    // country's own sub-communities; only then can rows be expanded for their children.
     property bool topLevelIsCountries: false
     // country id (string) -> its fetched children, or undefined until expanded.
     property var childCache: ({})
@@ -33,12 +31,9 @@ Item {
     // Drops soft-deleted rows the backend still returns in these list endpoints.
     function _isDeleted(m) { return !!(m.deleted || m.deleted_at || m.is_deleted); }
 
-    // The Global feed (source id 0) is a filter sentinel, but the backend also
-    // has a real, postable "Global" community record (dns serey.io) at the top
-    // of the tree. Resolve it from the cached get-communities map so Global can
-    // be offered as a direct post target; null while the tree hasn't loaded or
-    // if that record isn't open for posting. Marked non-expandable: its
-    // children in the raw tree are the countries, which already fill the list.
+    // Source id 0 is a filter sentinel, but the backend also has a real, postable
+    // "Global" community (dns serey.io); resolve it from the cached tree so it can be
+    // a post target. Non-expandable: its children are the countries already listed.
     function _globalEntry() {
         var dns = Config.sources[0].dns;
         for (var k in Config.communityById) {
@@ -93,11 +88,9 @@ Item {
         var apiId = Config.sources[Config.sourceIndex].id;
         picker.topLevelIsCountries = (apiId === 0);
 
-        // Global (id 0) has no target of its own. Rather than hitting
-        // list-by-parent-id/1 (the raw Country table — includes countries with
-        // no real community, and deleted ones), reuse Config.sources: the same
-        // curated, non-deleted country list the community switcher's rows show,
-        // already fetched once at startup via CommunityService.listAll.
+        // For Global, reuse Config.sources (the curated country list fetched at
+        // startup) instead of list-by-parent-id/1, whose raw Country table includes
+        // deleted countries and ones with no real community.
         if (picker.topLevelIsCountries) {
             var out0 = [];
             // Global itself first, when its backend record allows posting.
@@ -150,7 +143,7 @@ Item {
 
             var mapped = picker._mapCommunities(comms);
             if (mapped.length === 0) {
-                // Nothing to choose between — post straight into the current context.
+                // Nothing to choose between; post straight into the current context.
                 var cb = picker._onChosen; picker._onChosen = null;
                 if (cb) cb(null);
                 return;
@@ -218,15 +211,13 @@ Item {
         picker._loadChildren(id);
     }
 
-    // If the pre-selected sub-community belongs to one of the top-level country
-    // rows, expand that row up front so the auto-selected pick is visible right
-    // when the sheet opens, instead of just silently highlighted off-screen.
-    // Checks every country's actual children rather than trusting a `country`
-    // name field on the community record, which nested records may not carry.
+    // If the pre-selected sub-community belongs to a top-level country row, expand
+    // that row up front so the pick is visible when the sheet opens. Checks each
+    // country's actual children; nested records may not carry a `country` field.
     function _autoExpandForSelection(countryItems) {
         if (picker.selectedId.length === 0) return;
         var target = picker.selectedId;
-        // Already one of the top-level rows itself (rare, but possible) — nothing to expand.
+        // Already one of the top-level rows itself (rare, but possible); nothing to expand.
         for (var i = 0; i < countryItems.length; i++)
             if (countryItems[i].id === target) return;
 
@@ -294,9 +285,8 @@ Item {
                 id: sheetContent
                 width: flickable.width
 
-                // ── Brand-tinted header band — distinct from the plain grabber-bar
-                // header the general community switcher uses, so the two sheets
-                // don't get mistaken for one another at a glance.
+                // --- Brand-tinted header band, distinct from the community switcher's
+                // plain grabber-bar header so the two sheets aren't confused.
                 Rectangle {
                     width: parent.width
                     height: headerCol.height + Style.spacingL * 2
@@ -347,10 +337,9 @@ Item {
 
                 Item { width: 1; height: Style.spacingS }
 
-                // ── Flat radio list (no cards) — visually distinct from the
-                // bordered platform cards in the community switcher. When browsing
-                // from Global, each row is a country and can expand to reveal its
-                // own communities so a target can be picked without leaving here.
+                // --- Flat radio list (no cards), visually distinct from the community
+                // switcher. From Global, each row is a country that can expand to
+                // reveal its own communities.
                 Repeater {
                     model: picker.items
 
@@ -368,7 +357,7 @@ Item {
                             readonly property bool isSelected: picker.selectedId === modelData.id
                             readonly property int chevronW: rowCol.expandable ? units.gu(6) : 0
 
-                            // Left zone (radio + icon + name) — selects this row.
+                            // Left zone (radio + icon + name) selects this row.
                             AbstractButton {
                                 anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: row.chevronW }
                                 onClicked: picker.selectedId = modelData.id
@@ -415,7 +404,7 @@ Item {
                                 }
                             }
 
-                            // Right zone (chevron) — expands to load this country's own communities.
+                            // Right zone (chevron) expands to load this country's own communities.
                             AbstractButton {
                                 visible: rowCol.expandable
                                 anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
@@ -443,7 +432,7 @@ Item {
                             ActivityIndicator { anchors.centerIn: parent; running: parent.visible }
                         }
 
-                        // Empty state — country has no (non-deleted) communities of its own.
+                        // Empty state: country has no (non-deleted) communities of its own.
                         Item {
                             visible: rowCol.isExpanded && picker.childLoadingId !== modelData.id
                                      && picker.childCache[modelData.id] !== undefined && rowCol.children.length === 0

@@ -1,15 +1,9 @@
 .pragma library
 .import "Http.js" as Http
 
-/*
- * Navbar/menu management under /custom-menu (custom_menu_route.js). The
- * `website` column (custom_menu.js) is a free-text field, but the only place
- * the backend itself sets one (the auto-injected "Premium" menu row in
- * premium_community_setting_service.js) hardcodes the platform-wide literal
- * "SEREY" — not a per-community value — so that's used as the default here.
- * Confirmed via a live 400 ("Invalid parameter") that list-by-website-and-community
- * requires BOTH `website` and `community_id`.
- */
+// Navbar/menu management. The backend hardcodes `website` as the literal "SEREY"
+// (not per-community), so that's the default here; list-by-website-and-community
+// requires BOTH `website` and `community_id` (confirmed via a live 400).
 
 var DEFAULT_WEBSITE = "SEREY";
 

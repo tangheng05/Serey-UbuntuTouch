@@ -21,7 +21,7 @@ Page {
         ]
     }
 
-    // ── Posting permission (only_me | everyone | custom) ──────────────────
+    // --- Posting permission (only_me | everyone | custom) ---
     property string blogMode: "only_me"
     property bool permBusy: false
 
@@ -36,7 +36,7 @@ Page {
         { mode: "custom",   label: Lang.tr("Custom"),   desc: Lang.tr("Only members you pick can post. Manage members in the web dashboard.") }
     ]
 
-    // is_allow_post=true → everyone; false + poster members → custom; false alone → only me (web-dashboard parity).
+    // is_allow_post=true -> everyone; false + poster members -> custom; false alone -> only me (web-dashboard parity).
     function loadPostingPermission() {
         var info = Config.communityInfoFor(Config.managedCommunityId)
         PlatformService.hasPosterMembers(Config.baseUrl, Config.managedCommunityId,
@@ -44,7 +44,7 @@ Page {
             function () { page.blogMode = (info && info.allowPost) ? "everyone" : "only_me" })
     }
 
-    // Radio modes only change on server success — a failed call just leaves the previous selection lit.
+    // Radio modes only change on server success; a failed call leaves the previous selection lit.
     function setBlogMode(mode) {
         if (permBusy || mode === blogMode) return
         permBusy = true
@@ -64,16 +64,14 @@ Page {
             })
     }
 
-    // ── Category management ────────────────────────────────────────────────
-    // Sub-categories live in a JSONB column on each category; we keep them as a
-    // JSON string per row (subsJson) so the dynamicRoles ListModel doesn't wrap
-    // them as a nested QQmlListModel (which has no .length/.push — see gotchas).
+    // --- Category management ---
+    // Sub-categories are kept as a JSON string per row (subsJson) so the
+    // dynamicRoles ListModel doesn't wrap them as a nested QQmlListModel.
     ListModel { id: categoryModel; dynamicRoles: true }
     property bool categoriesLoading: false
     property bool categorySaving: false
-    // id -> true while a delete/sub-edit request for that category is in flight,
-    // so a second tap can't fire a duplicate request (the source of the old
-    // "click twice, second says not found" bug).
+    // id -> true while a request for that category is in flight; blocks
+    // duplicate requests from rapid double-taps.
     property var _busyIds: ({})
 
     function _findIndexById(id) {
@@ -86,9 +84,8 @@ Page {
         var info = Config.communityInfoFor(Config.managedCommunityId)
         var title = info ? info.title
                          : (Config.managedCommunityId === Config.communityId ? Config.currentCommunityName : "")
-        // Never fall back to "global": the service defaults an empty title to the
-        // Global list, which would show every Global category for a community that
-        // has none (the bug seen right after creating a platform). Show empty instead.
+        // Never fall back to "global": the service defaults an empty title to
+        // the Global category list. Show empty instead.
         if (!title || title.length === 0) {
             page.categoriesLoading = false
             categoryModel.clear()
@@ -406,11 +403,9 @@ Page {
                     Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "add"; color: Style.brand }
                     MouseArea {
                         anchors.fill: parent
-                        // Must stay ALWAYS enabled: gating on text length disabled the
-                        // button whenever the typed text was still in the input method's
-                        // uncommitted preedit buffer (not yet in .text), which is why only
-                        // the Enter key (which commits preedit) worked. Commit on press,
-                        // then read the now-flushed text.
+                        // Must stay ALWAYS enabled: gating on text length broke when the
+                        // typed text was still in the input method's uncommitted preedit
+                        // buffer (not yet in .text). Commit on press, then read the text.
                         onPressed: {
                             Qt.inputMethod.commit()
                             page.addCategory(newCategoryField.text)
@@ -555,9 +550,8 @@ Page {
                                 Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "add"; color: Style.brand }
                                 MouseArea {
                                     anchors.fill: parent
-                                    // Always enabled + commit preedit on press (see the category
-                                    // add button): gating on text length disabled the button while
-                                    // letters were still in the uncommitted input-method buffer.
+                                    // Always enabled + commit preedit on press (same reason as
+                                    // the category add button above).
                                     onPressed: {
                                         Qt.inputMethod.commit()
                                         page.addSubCategory(index, newSubField.text)

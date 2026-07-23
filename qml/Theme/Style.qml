@@ -6,12 +6,9 @@ QtObject {
     id: style
 
     // --- Theme ----------------------------------------------------------------
-    // Single light/dark switch. Main.qml binds this to the system theme
-    // (MainView.theme) so every neutral/semantic token below re-skins centrally
-    // for SuruDark, with no call site changing. Left of each `dark ? …` ternary
-    // is Ambiance (light), right is SuruDark; values are the Suru palette hexes
-    // (see docs/ubports-design-concepts/01-system-palette.md). Brand tokens stay
-    // fixed — Serey blue is a deliberate identity, not a theme role.
+    // Single light/dark switch; Main.qml binds it to the system theme so every
+    // token below re-skins for SuruDark centrally. Values are Suru palette hexes.
+    // Brand tokens stay fixed (Serey blue is identity, not a theme role).
     property bool dark: false
 
     // --- Brand (fixed across themes) ------------------------------------------
@@ -23,7 +20,7 @@ QtObject {
     readonly property color negative: dark ? "#ED3146" : "#C7162B"   // Suru Red / Light Red
     readonly property color positive: dark ? "#3EB34F" : "#0E8420"   // Suru Green / Light Green
     readonly property color focus:    dark ? "#19B6EE" : "#335280"   // Suru Blue / Light Blue (selection/neutral)
-    readonly property color danger: negative          // destructive (delete) — alias to the negative role
+    readonly property color danger: negative          // destructive (delete), alias to the negative role
     readonly property color dangerTint: dark ? "#3A1519" : "#FBEAEC"  // danger background wash
     readonly property color success: dark ? "#3EB34F" : "#52C41A"     // positive accent (keeps the app's green in light)
 
@@ -54,12 +51,9 @@ QtObject {
     readonly property real cellPadding: units.gu(2)
 
     // --- Type scale -----------------------------------------------------------
-    // Sizes are expressed in grid units (units.gu) per the Ubuntu typography guide,
-    // which defines type via named steps so text scales phone→tablet→desktop.
-    // Suru named steps: small 1.5gu · medium 1.75gu · large 2.5gu · x-large 3.5gu.
-    // On Ubuntu Touch gu(n) == dp(8n), so these render pixel-identical to the prior
-    // dp() values on every device — a units-correctness change, not a resize.
-    // fontMedium/Large/Title keep the app's finer intermediate steps.
+    // Grid-unit type scale per the Ubuntu typography guide. gu(n) == dp(8n) on
+    // Ubuntu Touch, so these match the old dp() values pixel-for-pixel;
+    // fontMedium/Large/Title are the app's own intermediate steps.
     readonly property int fontXSmall: units.gu(1.375) // ~x-small
     readonly property int fontSmall:  units.gu(1.5)   // small
     readonly property int fontRegular: units.gu(1.75) // medium
@@ -67,7 +61,7 @@ QtObject {
     readonly property int fontLarge:  units.gu(2)
     readonly property int fontTitle:  units.gu(2.75)
 
-    // Radii: Lomiri/Suru is low-radius and flat — subtle rounding, not iOS-style pills.
+    // Radii: Lomiri/Suru is low-radius and flat; subtle rounding, not iOS-style pills.
     readonly property real radius: units.gu(0.6)
     readonly property real thumbRadius: units.gu(0.8)
     readonly property real cardRadius: units.gu(0.6)
@@ -83,14 +77,14 @@ QtObject {
     readonly property real coinIconSize: units.dp(16)
     readonly property real fabSize: units.gu(7)
 
-    // Bundled Noto Sans Khmer/SC fonts don't cover each other's glyphs and Qt won't fall back between them, so pick the right face via `fontFor(text)` to avoid tofu (□).
+    // Bundled Noto Sans Khmer/SC fonts don't cover each other's glyphs and Qt won't fall back between them, so pick the right face via `fontFor(text)` to avoid tofu boxes.
     property FontLoader fontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansKhmer-Regular.ttf")
     }
     readonly property string fontFamily: fontLoader.status === FontLoader.Ready
                                          ? fontLoader.name : "Ubuntu"
 
-    // CJK face (~8 MB, so not the default) — also covers Latin, so mixed Latin/Chinese titles render from one face.
+    // CJK face (~8 MB, so not the default); also covers Latin, so mixed Latin/Chinese titles render from one face.
     property FontLoader cjkFontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansSC-Regular.otf")
     }

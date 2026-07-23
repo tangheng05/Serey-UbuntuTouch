@@ -12,25 +12,21 @@ Item {
     property bool controls: true
     property bool loop: false
 
-    // Inside this WebView a CSS pixel is a physical pixel (no devicePixelRatio),
-    // so fixed-px controls that look right on a desktop monitor render ~2.6x
-    // smaller on a phone panel — too small to tap. Scale the control bar by the
-    // same grid-unit ratio the rest of the app adapts with (gu = 8px on desktop,
-    // ~21px on the Pixel 3a); quantized to 0.25 so reloads on trivial width
-    // changes can't thrash _load().
+    // A CSS pixel here is a physical pixel (no devicePixelRatio), so fixed-px
+    // controls render too small to tap on a phone. Scale the bar by the app's
+    // grid-unit ratio, quantized to 0.25 so trivial width changes don't thrash _load().
     property real cssScale: Math.max(1, Math.round((units.gu(1) / 8) * 4) / 4)
-    // True once the <video> has a decoded frame — hosts fade in on this so the WebView's blank first frame never flashes.
+    // True once the <video> has a decoded frame; hosts fade in on this so the WebView's blank first frame never flashes.
     property bool ready: false
     property bool paused: false
     signal fullscreenToggled(bool on)
 
-    // Freeze the Chromium renderer on app background/suspend — same SIGBUS-on-resume issue and lifecycleState int trap as WebAppView.
+    // Freeze the Chromium renderer on app background/suspend; same SIGBUS-on-resume issue and lifecycleState int trap as WebAppView.
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
-    // Unfocused is not the same as put away: side by side, our window stays on
-    // screen while another app holds focus, and freezing there blanked a video
-    // the user was still watching. Freeze only once the shell has actually
-    // suspended us, or the window has stopped being shown.
+    // Unfocused is not put away: side by side our window stays on screen while
+    // another app holds focus, and freezing there blanked a playing video.
+    // Freeze only once actually suspended or no longer shown.
     readonly property bool _windowShown: Window.visibility !== Window.Hidden
                                          && Window.visibility !== Window.Minimized
     property bool appAway: Qt.application.state === Qt.ApplicationSuspended
@@ -51,10 +47,9 @@ Item {
         interval: 300
         onTriggered: if (root.appAway) wv.lifecycleState = root._lcFrozen
     }
-    // Thawing restores the renderer but not its dropped compositor frame, and a
-    // paused <video> never paints a new one — the surface stays black. Re-seeking
-    // to the current position forces a decode; the opacity nudge covers the
-    // iframe case, where the <video> lives cross-origin and is out of reach.
+    // Thawing restores the renderer but not its dropped compositor frame, so a paused
+    // <video> stays black. Re-seeking to the current position forces a decode; the
+    // opacity nudge covers the cross-origin iframe case.
     Timer {
         id: vwRepaintTimer
         interval: 150
@@ -154,11 +149,9 @@ Item {
                '</iframe></body></html>';
     }
 
-    // Chromium's own <video controls> timeline is a slider whose touch path only
-    // seeks on touchmove, so a tap on the track does nothing and only dragging
-    // the playhead works. It's in a closed shadow root and can't be patched, so
-    // we render our own bar and seek from pointerdown — one code path for mouse
-    // and touch alike.
+    // Chromium's own <video controls> timeline only seeks on touchmove (a tap does
+    // nothing) and sits in a closed shadow root that can't be patched, so we render
+    // our own bar and seek from pointerdown; one code path for mouse and touch.
     readonly property string _svgPlay: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'
     readonly property string _svgPause: '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
     readonly property string _svgFull: '<svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>'
@@ -188,12 +181,9 @@ Item {
                'function seek(x){var b=trk.getBoundingClientRect();' +
                'var p=Math.min(1,Math.max(0,(x-b.left)/b.width));' +
                'if(v.duration&&isFinite(v.duration))v.currentTime=p*v.duration;upd();poke();}' +
-               // The drag latch must be release-proof: UT's QtWebEngine can drop the
-               // pointerup after a track tap, and a stuck drag turned every later
-               // touch into a seek clamped to 0 (left) or the end (right). Belt and
-               // braces: release on buttons-up during a move, on window-level
-               // up/cancel (capture can die without the track ever seeing them),
-               // and on lostpointercapture.
+               // Drag latch must be release-proof: UT's QtWebEngine can drop the pointerup
+               // after a track tap, and a stuck drag turned every later touch into a seek.
+               // Release on buttons-up, window-level up/cancel, and lostpointercapture.
                'trk.addEventListener("pointerdown",function(e){drag=true;' +
                'try{trk.setPointerCapture(e.pointerId);}catch(_){}' +
                'seek(e.clientX);e.preventDefault();});' +

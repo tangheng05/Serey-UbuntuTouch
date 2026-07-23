@@ -11,9 +11,8 @@ import "../services/AccountService.js" as AccountService
 Page {
     id: page
 
-    // Filled from a fresh get-communities walk (loadName). The startup community
-    // cache can be stale right after creating a platform, and the old fallback to
-    // the SELECTED source name rendered "Delete Global" here.
+    // Filled from a fresh get-communities walk (loadName); the startup cache can be
+    // stale right after creating a platform (used to render "Delete Global" here).
     property string managedTitle: Config.communityInfoFor(Config.managedCommunityId)
         ? Config.communityInfoFor(Config.managedCommunityId).title : Lang.tr("this platform")
     function loadName() {
@@ -22,7 +21,7 @@ Page {
             function () { /* keep the fallback */ })
     }
 
-    // My Subscription (GET /subscription/active — resolved from the JWT, not per-community)
+    // My Subscription (GET /subscription/active, resolved from the JWT, not per-community)
     property string subscriptionText: ""
     property var subscription: null       // full mapped object from getActiveSubscription, or null
     property var latestPayment: null      // { amount, currency, date } from payment-history, or null
@@ -136,7 +135,7 @@ Page {
         }
     }
 
-    // My Subscription detail — plan, dates, days left, amount paid, status badges.
+    // My Subscription detail: plan, dates, days left, amount paid, status badges.
     Component {
         id: subscriptionPage
         Page {
@@ -172,7 +171,7 @@ Page {
                         color: Style.textPrimary
                     }
 
-                    // Status pills — trial / auto-renew / cancelling / past due.
+                    // Status pills: trial / auto-renew / cancelling / past due.
                     Row {
                         width: parent.width
                         spacing: Style.spacingS
@@ -294,10 +293,9 @@ Page {
         }
     }
 
-    // Confirm before the (soft) delete. The dialog stays open while the request
-    // runs, showing "Deleting…" with both buttons disabled — it used to close on
-    // the Delete tap, so the deletion kept running with no feedback at all (only
-    // tapping Delete again revealed the in-progress state).
+    // Confirm before the (soft) delete. The dialog stays open with buttons
+    // disabled while the request runs; it used to close on the Delete tap,
+    // leaving the deletion running with no feedback.
     Component {
         id: deleteDialog
         Popups.Dialog {
@@ -320,7 +318,7 @@ Page {
         }
     }
 
-    // Banned users state — lives on THIS page (not the pushed sub-page) since
+    // Banned users state lives on THIS page (not the pushed sub-page) since
     // JS imports can resolve to null inside dynamically created components.
     ListModel { id: bannedModel; dynamicRoles: true }
     property bool banLoading: false
@@ -367,7 +365,7 @@ Page {
             function (err) { Toast.error((err && err.message) || Lang.tr("Failed to unban user.")) })
     }
 
-    // Banned users — list, ban and unban. `community` is the TITLE string.
+    // Banned users: list, ban and unban. `community` is the TITLE string.
     Component {
         id: bannedUsersPage
         Page {
@@ -386,7 +384,7 @@ Page {
             property bool banSearchOpen: false
             property int banSearchGeneration: 0
             // Bridges a search-result tap (banSearchListView's delegate) into banField/banSearchDebounce,
-            // which live in banList's `header:` — a separate id scope that delegate can't reach directly.
+            // which live in banList's `header:`, a separate id scope that delegate can't reach directly.
             property string pendingFillUsername: ""
             ListModel { id: banSearchModel }
 
@@ -446,7 +444,7 @@ Page {
                         anchors { left: parent.left; leftMargin: Style.spacingM; right: banBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
                         height: units.gu(4)
 
-                        // A plain TextInput, not Lomiri's TextField — matches SettingsPage's
+                        // A plain TextInput, not Lomiri's TextField; matches SettingsPage's
                         // user search, which fires onTextChanged live per keystroke.
                         TextInput {
                             id: banField
@@ -483,12 +481,12 @@ Page {
                         Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "add"; color: enabled ? Style.danger : Style.textSecondary }
                     }
 
-                    // Lives inside the same header component as banField — a Timer declared
+                    // Lives inside the same header component as banField; a Timer declared
                     // outside ListView.header (a separate implicit Component) can't see it.
                     Timer { id: banSearchDebounce; interval: 250; onTriggered: banPage.doBanSearch(banField.text) }
 
-                    // Picks up a search-result tap relayed via banPage.pendingFillUsername (see banSearchListView's
-                    // delegate) — that delegate is a sibling Component and can't reach banField/banSearchDebounce directly.
+                    // Picks up a search-result tap relayed via banPage.pendingFillUsername; that
+                    // delegate is a sibling Component and can't reach banField directly.
                     Connections {
                         target: banPage
                         function onPendingFillUsernameChanged() {
@@ -613,8 +611,8 @@ Page {
                     delegate: AbstractButton {
                         width: banSearchListView.width
                         height: units.gu(6)
-                        // banField/banSearchDebounce live in banList's `header:` — a separate id scope
-                        // this delegate can't reach — so relay the pick via banPage.pendingFillUsername instead.
+                        // banField/banSearchDebounce live in banList's `header:` (a separate id scope
+                        // this delegate can't reach), so relay the pick via banPage.pendingFillUsername.
                         onClicked: { banPage.pendingFillUsername = model.username; banPage.closeBanSearch() }
 
                         Row {

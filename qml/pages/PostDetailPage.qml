@@ -146,7 +146,7 @@ Page {
         return "serey";
     }
 
-    // A post is a video if its (primary) category says so — same rule FeedPage uses to route to VideoDetailPage.
+    // A post is a video if its (primary) category says so; same rule FeedPage uses to route to VideoDetailPage.
     function isVideoPost() {
         var p = page.post;
         if (!p) return false;
@@ -373,7 +373,7 @@ Page {
                 bodyModel.append({ type: "image", content: piece.content, links: "[]" });
             } else {
                 var text = piece.content;
-                // The blocks render as RichText, which collapses literal "\n" to a space — block boundaries become <br/> tags, and a paragraph gap is a double break.
+                // The blocks render as RichText, which collapses literal "\n" to a space; block boundaries become <br/> tags, and a paragraph gap is a double break.
                 text = text.replace(/<\/p>/gi, "<br/><br/>");
                 text = text.replace(/<p[^>]*>/gi, "");
                 text = text.replace(/<div[^>]*>/gi, "");
@@ -482,10 +482,9 @@ Page {
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
-        // Keyboard reading: a plain Flickable ignores keys, so arrow/Page/Space/Home/End
-        // scroll the article here. Focus lands on the flick when the article opens
-        // (guarded so it never steals focus from the comment box); tapping the body
-        // TextArea still hands focus over for native text selection.
+        // Keyboard reading: a plain Flickable ignores keys, so scroll keys are handled
+        // here. Focus lands on the flick when the article opens (never stealing it from
+        // the comment box); tapping the body TextArea still takes focus for selection.
         activeFocusOnTab: true
         function _kbScroll(dy) {
             var maxY = Math.max(0, scroll.contentHeight - scroll.height + scroll.bottomMargin);
@@ -515,7 +514,6 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Category badge
             Row {
                 visible: page.post && page.post.categories && page.post.categories.length > 0
                 x: Style.spacingM
@@ -551,7 +549,7 @@ Page {
                         }
                     }
                 }
-                // Sub-categories (everything after the main tag), e.g. "› Running".
+                // Sub-categories (everything after the main tag), rendered as a suffix.
                 Label {
                     visible: text.length > 0
                     text: (page.post && page.post.subCategories && page.post.subCategories.length > 0)
@@ -740,15 +738,9 @@ Page {
                                 TextArea {
                                     id: bodyTxt
                                     width: parent.width
-                                    // Stray-selection guard. When the focusing press also scrolls, the
-                                    // Flickable steals the grab but TextEdit's press-and-hold word-select timer
-                                    // is NOT cancelled, so it fires 0.4-0.7s AFTER motion stops (anchored to the
-                                    // press, not scroll-end — a fixed time window from scroll-end is unreliable).
-                                    // The reliable invariant: a scroll occurred during this press. A deliberate
-                                    // long-press has no scroll in its gesture. So we flag "scrolled since focus"
-                                    // and clear any selection that appears while it's set. The idle-timer part
-                                    // re-allows selection once scrolling has been quiet, in case focus never
-                                    // dropped between a scroll and a later deliberate hold.
+                                    // Stray-selection guard: a scrolling press doesn't cancel TextEdit's
+                                    // press-and-hold word-select timer, so it can fire well after motion stops.
+                                    // Flag "scrolled since focus" and clear any selection that appears meanwhile.
                                     property real _lastScrollMs: 0
                                     property bool _scrolledSinceFocus: false
                                     readonly property int _scrollSelGuardMs: 1500
@@ -758,37 +750,35 @@ Page {
                                     // autoSize + maximumLineCount<=0 disables the TextArea's internal scroll so the outer Flickable's scroll can cancel the long-press timer natively.
                                     autoSize: true
                                     maximumLineCount: 0
-                                    // autoSize under-measures RichText (taller bold/heading lines) — grow to the true painted height.
+                                    // autoSize under-measures RichText (taller bold/heading lines); grow to the true painted height.
                                     onPaintedHeightChanged: Qt.callLater(_fitHeight)
                                     onLineCountChanged: Qt.callLater(_fitHeight)
                                     Component.onCompleted: Qt.callLater(_fitHeight)
                                     function _fitHeight() { if (height < paintedHeight) height = paintedHeight; }
                                     // Long-press selection requires the field to already be focused
                                     activeFocusOnPress: true
-                                    // Once clicked/selected, the read-only text cursor would swallow the
-                                    // reading keys. TextEdit forwards keys to its TextArea root first, so
-                                    // chain them to the flick: it accepts arrows/Page/Space/Left/Escape,
-                                    // while copy & select-all fall through untouched.
+                                    // Once focused, the read-only cursor would swallow the reading keys;
+                                    // chain them to the flick (arrows/Page/Space/Left/Escape) while copy
+                                    // and select-all fall through untouched.
                                     Keys.forwardTo: [scroll]
                                     font.pixelSize: Config.wideMode ? Style.fontMedium * 1.2 : Style.fontMedium
                                     font.family: Style.fontFor(text)
                                     color: Style.textPrimary
-                                    // Flat look — not a text field
+                                    // Flat look, not a text field
                                     StyleHints {
                                         backgroundColor: "transparent"
                                         frameSpacing: 0
                                         overlaySpacing: 0
                                     }
                                     onLinkActivated: Qt.openUrlExternally(link)
-                                    // A fresh press (focus gained) starts a new gesture — reset the flag so a
+                                    // A fresh press (focus gained) starts a new gesture; reset the flag so a
                                     // deliberate long-press with no scroll is never blocked.
                                     onActiveFocusChanged: if (activeFocus) bodyTxt._scrolledSinceFocus = false
                                     // Caret visible only while selected, gating the native Copy popover; always-on left an idle blue cursor while reading.
                                     onSelectedTextChanged: {
-                                        // Stray if the scroller is in motion, OR a scroll happened during this
-                                        // press and it's still recent (the late press-and-hold timer that the
-                                        // stolen grab never cancelled). A deliberate long-press (no scroll since
-                                        // focus, or well after the last scroll) is never cleared.
+                                        // Stray if the scroller is in motion, or a scroll happened during this
+                                        // press and is still recent (the late press-and-hold timer). A
+                                        // deliberate long-press is never cleared.
                                         if (selectedText.length > 0
                                                 && (scroll.moving || scroll.flicking
                                                     || (bodyTxt._scrolledSinceFocus
@@ -812,11 +802,9 @@ Page {
                                     onDraggingChanged: { if (scroll.dragging) bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now() }
                                 }
 
-                                // Tap-to-open links. Lomiri TextArea has no linkAt() and doesn't reliably emit
-                                // onLinkActivated for a tap inside a Flickable, so resolve the link ourselves:
-                                // map the tap to a character position (positionAt) and test it against this
-                                // block's link spans located in the displayed plain text (getText). A non-link
-                                // press falls through (mouse.accepted = false) so selection and scrolling keep working.
+                                // Tap-to-open links: Lomiri TextArea has no linkAt() and onLinkActivated is
+                                // unreliable inside a Flickable, so hit-test the tap (positionAt) against the
+                                // block's link spans. A non-link press falls through so scrolling still works.
                                 MouseArea {
                                     anchors.fill: bodyTxt
                                     propagateComposedEvents: true

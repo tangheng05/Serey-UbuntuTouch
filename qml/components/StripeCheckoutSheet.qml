@@ -6,21 +6,9 @@ import "../Session"
 import "../services/PaymentService.js" as PaymentService
 
 /*
- * In-app Stripe Checkout for buy-plan. State lives in Theme/Payments.qml:
- * openStripe(planId) creates the checkout session here; openStripeUrl(url)
- * (the WebAppView checkout.stripe.com interception path) loads the URL
- * directly. Mounted once in Main.qml.
- *
- * The hosted checkout runs in its OWN WebEngineView instead of navigating the
- * Homepage mini app away — the mini app keeps its state, and the backend's
- * fixed redirect to FRONTEND_ORIGIN/subscription/return (?success=true /
- * ?cancel=true) is caught here and turned into a native Toast + close.
- *
- * Dual-Chromium guard: this is a second Chromium next to the Homepage's
- * (two live views SIGSEGV the Pixel 3a), so (a) HomepagePage ORs
- * Payments.stripeOpen into the mini app's `suspended` binding to freeze it
- * while we're open, and (b) the view lives behind a Loader that is torn down
- * on close so the renderer process doesn't linger.
+ * In-app Stripe Checkout in its own WebEngineView; the backend's fixed
+ * /subscription/return redirect is caught here. Two live Chromiums SIGSEGV the
+ * phone, so the mini app is frozen while open and the view's Loader is torn down on close.
  */
 Item {
     id: sheet
@@ -71,10 +59,8 @@ Item {
         sheet.finished = true;
         var success = urlStr.indexOf("success=true") !== -1;
         if (success) {
-            // Activation comes from Stripe's webhook, but check-status also
-            // activates a paid-not-yet-activated session server-side — fire it
-            // once (not awaited) so the plan is live even if the webhook lags,
-            // mirroring what the web return page does.
+            // Stripe's webhook activates the plan, but check-status also activates a
+            // paid session server-side; fire it once (not awaited) in case the webhook lags.
             var m = urlStr.match(/[?&]session_id=([^&#]+)/);
             if (m) {
                 PaymentService.checkStripeStatus(Config.baseUrl, Session.token,
@@ -85,9 +71,8 @@ Item {
         if (success) {
             Toast.success(Lang.tr("Payment successful!"));
             Payments.paymentSucceeded();
-            // Same funnel as the crypto sheet's Done: plan is active, so take
-            // the buyer straight into creating their platform (unless they
-            // already own one).
+            // Same funnel as the crypto sheet's Done: take the buyer straight
+            // into creating their platform (unless they already own one).
             var owns = false;
             for (var k in Config.ownedCommunityIdSet) { owns = true; break; }
             if (!owns) Nav.createPlatform();

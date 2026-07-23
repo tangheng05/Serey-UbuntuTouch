@@ -25,7 +25,7 @@ Item {
 
     Component { id: linkItemComp; ContentItem {} }
 
-    // ── Wide mode: compact dropdown ──────────────────────────────────────────
+    // --- Wide mode: compact dropdown ---
     Item {
         visible: Config.wideMode
         anchors.fill: parent
@@ -138,7 +138,7 @@ Item {
         }
     }
 
-    // ── Narrow mode: full bottom sheet ───────────────────────────────────────
+    // --- Narrow mode: full bottom sheet ---
     Item {
         visible: !Config.wideMode
         anchors.fill: parent
@@ -183,7 +183,7 @@ Item {
                 color: Style.textPrimary
             }
 
-            // App grid host — the picker anchor-fills this plain Item.
+            // App grid host; the picker anchor-fills this plain Item.
             Item {
                 id: pickerHost
                 anchors { top: shareTitle.bottom; left: parent.left; right: parent.right; bottom: bottomRows.top; topMargin: Style.spacingS }

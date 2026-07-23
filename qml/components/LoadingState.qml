@@ -5,9 +5,9 @@ import "../Theme"
 Item {
     id: root
     property string message: ""
-    // Number of skeleton "cards" to render — 3 for a feed, 1 for a detail page.
+    // Number of skeleton "cards" to render: 3 for a feed, 1 for a detail page.
     property int count: 3
-    // "post" | "gallery" | "video" — picks the card shape to imitate.
+    // "post" | "gallery" | "video": picks the card shape to imitate.
     property string variant: "post"
     // Detail pages (PostDetailPage, GalleryDetailPage) show one full-bleed cover.
     property bool fullBleedCover: false
@@ -28,7 +28,7 @@ Item {
         spacing: 0
 
         Repeater {
-            // Gate on visibility so the pulse animations don't keep ticking when the skeleton is hidden — no work while off-screen.
+            // Gate on visibility so the pulse animations stop when the skeleton is hidden.
             model: root.visible ? root.count : 0
             delegate: Column {
                 width: root.width
@@ -61,7 +61,7 @@ Item {
                     }
                 }
 
-                // --- Title lines (post only — two uneven lines) --------------
+                // --- Title lines (post only, two uneven lines) ---------------
                 Column {
                     visible: root.variant === "post" && !root.fullBleedCover
                     x: root.inset

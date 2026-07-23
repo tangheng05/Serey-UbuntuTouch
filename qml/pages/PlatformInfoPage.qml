@@ -6,33 +6,32 @@ import "../Session"
 import "../components"
 import "../services/PlatformService.js" as PlatformService
 
-// "Edit Platform Information" — platform name, parent country, category and SEO description (community_route.js update-community-* endpoints)
+// "Edit Platform Information": platform name, parent country, category and SEO description (update-community-* endpoints)
 Page {
     id: page
 
-    // Filled from a fresh get-communities walk in loadContext. The startup
-    // community cache can be stale right after creating a platform, and the old
-    // fallback to the SELECTED source name rendered "Global" here.
+    // Filled from a fresh get-communities walk in loadContext; the startup cache
+    // can be stale right after creating a platform (used to render "Global").
     property string platformNameValue: Config.communityInfoFor(Config.managedCommunityId)
         ? Config.communityInfoFor(Config.managedCommunityId).title : ""
     // Parent is structural in the get-communities tree (no `country` field on
-    // the node) — resolved by loadContext's tree walk.
+    // the node); resolved by loadContext's tree walk.
     property string parentCountryName: ""
     property string parentCountryId: ""
     property string categoryName: ""
     property int categoryId: 0
-    property var categoryOptions: []   // [{ id, name }] — community_category taxonomy
-    property var countryOptions: []    // [{ id, name }] — serey-countries (id is the UUID update-community-country needs)
+    property var categoryOptions: []   // [{ id, name }], community_category taxonomy
+    property var countryOptions: []    // [{ id, name }], id is the UUID update-community-country needs
     property bool saving: false
 
-    // Initial values captured on load — Save only sends what actually changed.
+    // Initial values captured on load; Save only sends what actually changed.
     property string _initialName: ""
     property string _initialCountryId: ""
     property int _initialCategoryId: 0
     property string _initialSeo: ""
 
     // categoryId (from the community) and categoryOptions (from the taxonomy)
-    // arrive from two async calls in either order — sync whenever both are in.
+    // arrive from two async calls in either order; sync whenever both are in.
     function _syncCategoryName() {
         for (var i = 0; i < page.categoryOptions.length; i++) {
             if (page.categoryOptions[i].id === page.categoryId) {
@@ -64,9 +63,8 @@ Page {
             function () { /* non-fatal: picker just stays empty */ })
     }
 
-    // Prefers Config's cache (kept fresh by Config.updateCommunityFields) over ctx
-    // here — get-communities is cached server-side and can return stale values for
-    // a bit right after a save.
+    // Prefer Config's cache (kept fresh by updateCommunityFields) over ctx here;
+    // get-communities is cached server-side and can be stale right after a save.
     function loadContext() {
         PlatformService.getCommunityContext(Config.baseUrl, Config.managedCommunityId,
             function (ctx) {
@@ -86,8 +84,8 @@ Page {
     }
 
     function loadCountries() {
-        // Country table rows with uuid ids — the country_id update-community-country needs
-        // (serey-countries only returns { icon_url, country_name }, no id).
+        // Country table rows with uuid ids, the country_id update-community-country
+        // needs (serey-countries only returns { icon_url, country_name }, no id).
         PlatformService.getCountries(Config.baseUrl,
             function (list) {
                 page.countryOptions = list

@@ -17,13 +17,9 @@ Page {
     // Adapt, not scale: banner stays full-bleed, actionable content caps to a centered column on wide windows
     readonly property real maxContentWidth: units.gu(60)
 
-    // Platform identity shown at the top of the hub — for the MANAGED
-    // community (Config.managedCommunityId), not whatever happens to be
-    // selected in the picker (those can differ, e.g. picker on "Global" while
-    // you own a specific sub-community). Resolved from the cached
-    // get-communities tree (Config.communityInfoFor); only if that community
-    // truly is the one currently selected do we fall back to the picker's
-    // name/icon. loadPlatformIdentity() below refines both from the backend.
+    // Identity of the MANAGED community (Config.managedCommunityId), not the
+    // picker selection (they can differ). Resolved from the cached community
+    // tree; loadPlatformIdentity() below refines both from the backend.
     readonly property var _managedInfo: Config.communityInfoFor(Config.managedCommunityId)
     property string platformName: page._managedInfo ? page._managedInfo.title
         : (Config.managedCommunityId === Config.communityId ? Config.currentCommunityName : "")
@@ -31,9 +27,8 @@ Page {
         : (Config.managedCommunityId === Config.communityId ? Config.currentCommunityIconUrl : "")
     property int subscriberCount: 0
     property bool uploadingLogo: false
-    // No banner (or hero section not loaded yet) falls back to a brand-colored
-    // gradient rather than a blank strip. Read-only on mobile — the web CMS
-    // owns editing it (see loadHeroBanner below for where it's fetched from).
+    // Empty (or not yet loaded) falls back to a brand gradient. Read-only on
+    // mobile; the web CMS owns editing it (fetched in loadHeroBanner).
     property string platformBannerUrl: ""
 
     // Inline rename (Settings > Edit Profile pattern)
@@ -87,19 +82,16 @@ Page {
         page.loadHeroBanner()
     }
 
-    // GET /landing-page-v2/get-by-community/:id — the hero section's photo
-    // renders behind the logo (landing_page_v2_section.js). bg_image_url is a
-    // separate background-overlay field that's commonly unset, so prefer the
-    // section's actual image_url (confirmed via a live response: bg_image_url
-    // was "" while image_url held the real hero photo). Read-only display —
-    // editing the banner is left to the web CMS.
+    // GET /landing-page-v2/get-by-community/:id; the hero photo renders behind
+    // the logo. bg_image_url is a separate overlay field that's commonly unset,
+    // so prefer the section's image_url. Display only; the web CMS edits it.
     function loadHeroBanner() {
         LandingPageV2Service.getByCommunity(Config.baseUrl, Config.managedCommunityId, Session.token,
             function (sections) {
                 var hero = LandingPageV2Service.findHeroSection(sections)
                 page.platformBannerUrl = (hero && (hero.bg_image_url || hero.image_url)) || ""
             },
-            function () { /* non-fatal: no landing page v2 content yet — keep gradient */ })
+            function () { /* non-fatal: no landing page v2 content yet, keep gradient */ })
     }
 
     // POST /community/update-logo (JWT). Uploads through the same
@@ -109,9 +101,8 @@ Page {
         logoUploader.upload(fileUrl)
     }
 
-    // { id, title } for every community the user owns/manages, resolved from
-    // the cached get-communities tree (Config.communityInfoFor). Backs the
-    // "Switch Platform" picker, only shown when there's more than one.
+    // { id, title } for every community the user owns/manages, from the cached
+    // community tree. Backs the "Switch Platform" picker.
     function ownedCommunitiesList() {
         var ids = Object.keys(Config.ownedCommunityIdSet)
         var out = []
@@ -126,10 +117,9 @@ Page {
     function switchPlatform(id) {
         if (id === Config.managedCommunityId) return
         Config.overrideManagedCommunityId = id
-        // Reset display state so the previous platform's data doesn't flash
-        // while the new one's loads (platformName/platformLogoUrl/etc. were
-        // already overwritten by loadPlatformIdentity's imperative assignment,
-        // so their initial Config.communityInfoFor binding no longer applies).
+        // Reset display state so the old platform doesn't flash while the new
+        // one loads; the initial Config.communityInfoFor bindings were already
+        // broken by loadPlatformIdentity's imperative assignments.
         var info = Config.communityInfoFor(id)
         page.platformName = info ? info.title : ""
         page.platformLogoUrl = info ? info.icon : ""
@@ -140,9 +130,8 @@ Page {
     }
 
     Component.onCompleted: page.loadPlatformIdentity()
-    // Refresh the name whenever the hub reappears (e.g. back from a rename in the
-    // Platform Information page), and on first show. onCompleted covers logo/subs.
-    // Also grabs keyboard focus for the reading flick (split-view detail nav).
+    // Refresh the name whenever the hub reappears (e.g. back from a rename);
+    // onCompleted covers logo/subs. Also grabs keyboard focus for the flick.
     onVisibleChanged: if (visible) { page.loadPlatformName(); scroll.forceActiveFocus(); }
 
     PhotoUploader {
@@ -197,9 +186,8 @@ Page {
         }
     }
 
-    // Keyboard nav: settings' Nav.focusDetail targets this flick; arrows scroll,
-    // Left/Escape return to the settings list. (Focus grab is merged into the
-    // onVisibleChanged above — a Page allows only one handler per signal.)
+    // Keyboard nav: Nav.focusDetail targets this flick; arrows scroll, Left/Escape
+    // return to the settings list. Focus grab lives in onVisibleChanged above.
     property Item keyboardFocusItem: scroll
 
     Flickable {
@@ -372,7 +360,7 @@ Page {
                     onClicked: page.saveName()
                 }
 
-                // "Switch Platform" — only shown when you own/manage more than one.
+                // "Switch Platform": only shown when you own/manage more than one.
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     visible: Object.keys(Config.ownedCommunityIdSet).length > 1

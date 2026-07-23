@@ -989,10 +989,9 @@ Item {
                     }
                 }
 
-                // ── See more ─────────────────────────────────────────────
-                // Only exists while a geo-detected country is holding the list
-                // down to itself; expanding is one-way for the session, so the
-                // full list behaves exactly as it always has once shown.
+                // --- See more ---
+                // Only shown while the geo hint collapses the list; expanding is
+                // one-way for the session.
                 AbstractButton {
                     id: seeMoreBtn
                     visible: picker.detectedIndex >= 0 && !picker.showAll

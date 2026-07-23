@@ -17,13 +17,9 @@ QtObject {
         return _dbHandle;
     }
 
-    // Scoped to the signed-in account so switching accounts shows a fresh list;
-    // logged-out saves are their own bucket. That bucket must NOT be the empty
-    // string: QML LocalStorage binds an empty JS string as SQL NULL, and `x = NULL`
-    // is never true, so a logged-out `owner = ?` matched nothing — the article
-    // saved but reloaded as absent (no tick, empty list on restart). `__guest__`
-    // is unusable as a Steem username (underscores are illegal), so it can't
-    // collide with a real account.
+    // Per-account buckets; logged-out uses "__guest__", never "": QML LocalStorage
+    // binds an empty string as SQL NULL, so a guest `owner = ?` matched nothing
+    // and saves vanished on restart. "__guest__" can't be a real username.
     readonly property string guestOwner: "__guest__"
 
     function _owner() {
@@ -100,7 +96,7 @@ QtObject {
         store._cacheImages(post.permlink, post);
     }
 
-    // --- Offline image caching ---------------------------------------------
+    // --- Offline image caching ---
     function _downloaderComponent() {
         if (_dlComp === null)
             _dlComp = Qt.createComponent(Qt.resolvedUrl("../components/VideoDownloader.qml"));

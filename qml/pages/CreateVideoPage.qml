@@ -82,7 +82,7 @@ Page {
 
     function clearVideo() {
         Uploads.abort();
-        // Upload had already finished (post-upload discard) — clean up the now-orphaned file so it doesn't sit on the storage server forever.
+        // Post-upload discard: delete the now-orphaned file from the storage server.
         if (page.videoId)
             Uploads.deleteVideo(Config.storageDeleteUploadUrl, Session.token, page.videoId);
         page.videoFileUrl = "";
@@ -272,7 +272,7 @@ Page {
                 }
             }
 
-            // Title field (Lomiri underline input — bottom border, no box).
+            // Title field (Lomiri underline input - bottom border, no box).
             Item {
                 width: parent.width
                 height: Math.max(units.gu(5), titleField.contentHeight + Style.spacingM)

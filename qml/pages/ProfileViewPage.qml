@@ -252,7 +252,7 @@ Page {
                         visible: status === Image.Ready
                     }
 
-                    // Block button — top-right corner of cover
+                    // Block button, top-right corner of cover
                     AbstractButton {
                         visible: !page.isSelf && !!page.profile
                         enabled: !page.blockLoading
@@ -276,10 +276,9 @@ Page {
                                 ? Qt.rgba(Style.danger.r, Style.danger.g, Style.danger.b, 0.92)
                                 : Qt.rgba(0, 0, 0, 0.38)
                         }
-                        // Prohibition / "no entry" mark — drawn as a vector (the
-                        // Suru theme has no "block" icon; this is the same shape
-                        // PostActionSheet uses), dropping the custom PNG asset.
-                        // White so it reads on the dark/red scrim.
+                        // Prohibition mark drawn as a vector (the Suru theme has no
+                        // "block" icon; same shape PostActionSheet uses). White so it
+                        // reads on the dark/red scrim.
                         Item {
                             anchors.centerIn: parent
                             width: units.gu(2.4); height: width
@@ -517,7 +516,7 @@ Page {
                 page.loadTab(page.tab);
         }
 
-        // Prefetch ~2 screens early (see NewsPage) — atYEnd stays as fallback.
+        // Prefetch ~2 screens early (see NewsPage); atYEnd stays as fallback.
         onContentYChanged: {
             if (!page.curLoading && !page.curEnd && page.curModel.count > 0
                     && contentHeight > height

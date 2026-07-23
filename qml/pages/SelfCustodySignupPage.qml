@@ -133,7 +133,6 @@ Page {
                 asynchronous: true
             }
 
-            // Step dots (4 steps)
             Row {
                 visible: page.step < 3
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -283,7 +282,6 @@ Page {
                 }
             }
 
-            // Error
             Label {
                 width: parent.width
                 font.family: Style.fontFor(text)

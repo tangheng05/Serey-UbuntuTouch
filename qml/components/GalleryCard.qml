@@ -10,7 +10,7 @@ Item {
 
     property var post: ({})
     readonly property var p: post ? post : ({})
-    // Computed once per bind — _images() splits a string/walks the model and was previously re-run 3-4x per card inside bindings.
+    // Computed once per bind; _images() was previously re-run 3-4x per card inside bindings.
     readonly property var imgs: _images()
     // Shared, reactive follow state (see Theme/FollowStore.qml).
     readonly property bool isFollowing: FollowStore.isFollowing(p.author)
@@ -28,10 +28,9 @@ Item {
         _syncVoteBar();
     }
 
-    // ListModel.set() mutates the object the delegate already holds as `p` —
-    // the reference never changes, so onPChanged does NOT fire on an in-place
-    // row swap and the imperatively-assigned vote count/payout would keep the
-    // previous post's values (see PostCard, same fix).
+    // ListModel.set() mutates the object `p` already references, so onPChanged never
+    // fires on an in-place row swap; without these the imperatively assigned vote
+    // count/payout kept the previous post's values (see PostCard, same fix).
     readonly property int _pVotes: p.votes || 0
     readonly property string _pPayout: p.payout || ""
     readonly property string _pPermlink: p.permlink || ""
@@ -207,7 +206,7 @@ Item {
                     }
                 }
 
-                // More button — owner sees Edit/Delete, others moderation.
+                // More button: owner sees Edit/Delete, others moderation.
                 AbstractButton {
                     Layout.preferredWidth: units.gu(3.5)
                     Layout.preferredHeight: units.gu(3.5)
@@ -249,8 +248,8 @@ Item {
 
             MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
 
-            // Category tag — top-left, since top-right is the "+N" photo-count badge.
-            // categories is ListModel-wrapped here — use the mapper's scalar copy instead.
+            // Category tag, top-left (top-right is the "+N" badge). categories is
+            // ListModel-wrapped here, so use the mapper's scalar copy instead.
             Rectangle {
                 visible: (p.primaryCategory || "") !== ""
                 anchors { top: parent.top; left: parent.left; topMargin: Style.spacingS; leftMargin: Style.spacingS }
@@ -299,7 +298,7 @@ Item {
             voteType: "post"
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
-            // From the voterStr scalar — the feed ListModel mangles string arrays
+            // From the voterStr scalar; the feed ListModel mangles string arrays
             // (see PostCard's cardVoteBar).
             voters: (p.voterStr || "").split(",").filter(function (n) { return n.length > 0; })
             flaggers: root._len(p.flaggers)
@@ -331,7 +330,7 @@ Item {
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }
 
-    // Pointer/keyboard parity: right-click or MENU opens the ••• context menu;
+    // Pointer/keyboard parity: right-click or MENU opens the context menu;
     // Enter opens the post (same as a tap). See ContextActionArea.
     ContextActionArea {
         onTriggered: root.moreClicked()

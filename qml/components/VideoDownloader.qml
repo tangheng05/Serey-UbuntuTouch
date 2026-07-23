@@ -21,13 +21,13 @@ Item {
 
     SingleDownload {
         id: single
-        // autoStart (default true): download() begins immediately — with it false the transfer is created but never started, leaving the button stuck at 0%.
+        // autoStart false creates the transfer but never starts it, leaving the button stuck at 0%.
         autoStart: true
         allowMobileDownload: true
         metadata: Metadata { showInIndicator: dl.showInIndicator; title: dl.title }
 
         onProgressChanged: {
-            stall.restart();           // real progress — reset the stall watchdog
+            stall.restart();           // real progress; reset the stall watchdog
             dl.progress(progress);
         }
         onFinished: { stall.stop(); dl.finished(path); }

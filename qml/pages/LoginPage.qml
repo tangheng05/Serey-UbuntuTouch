@@ -10,9 +10,8 @@ Page {
 
     property bool busy: false
     property string errorMsg: ""
-    // What to do right after a successful login. "" (default) pops back to
-    // wherever the login-gate interrupted (e.g. voting); "feed" is a primary
-    // entry point (Settings "Log in", or the tail end of a fresh signup).
+    // After a successful login: "" (default) pops back to wherever the login-gate
+    // interrupted; "feed" goes to the feed (Settings log-in, fresh signup).
     property string afterSuccess: ""
 
     header: PageHeader {

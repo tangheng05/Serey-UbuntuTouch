@@ -8,7 +8,7 @@ Item {
     property var model: []
     property int currentIndex: 0
     signal selected(int index)
-    // Emitted when a keyboard user presses Down on the strip — the host page
+    // Emitted when a keyboard user presses Down on the strip; the host page
     // should move focus back to its content list.
     signal focusList()
 
@@ -50,10 +50,9 @@ Item {
                     opacity: 0.12
                     visible: keyTap.activeFocus
                 }
-                // Controlled component: only emit; the parent updates the property that
-                // `currentIndex` is bound to. Writing currentIndex here would break that
-                // binding, so a later programmatic change (e.g. showLatest -> feedIndex=1)
-                // would reload the data but leave the highlight stuck on the old tab.
+                // Controlled component: only emit; the parent updates the bound property.
+                // Writing currentIndex here would break the binding, leaving the
+                // highlight stuck on the old tab after a programmatic change.
                 onClicked: root.selected(index)
 
                 Label {

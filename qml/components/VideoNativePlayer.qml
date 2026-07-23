@@ -7,14 +7,14 @@ Item {
     id: root
     property string source: ""
 
-    // True only on a real user pause — media-hub reports buffering pre-roll as "paused" too, so playbackState alone can't tell them apart.
+    // True only on a real user pause; media-hub reports buffering pre-roll as "paused" too, so playbackState alone can't tell them apart.
     property bool _userPaused: false
 
-    // GStreamer decode error or watchdog timeout — caller retries via Chromium <video>
+    // GStreamer decode error or watchdog timeout; caller retries via Chromium <video>
     signal failed()
 
     onSourceChanged: {
-        // Explicit assign (not binding + autoPlay) so the file loads exactly once — both together raced a load against this handler's stop().
+        // Explicit assign (not binding + autoPlay) so the file loads exactly once; both together raced a load against this handler's stop().
         player.stop();
         root._userPaused = false;
         if (source.length > 0) {
@@ -27,7 +27,7 @@ Item {
         }
     }
 
-    // Tear down the GStreamer pipeline on deactivate/pop — else it keeps buffering
+    // Tear down the GStreamer pipeline on deactivate/pop, else it keeps buffering
     Component.onDestruction: player.stop()
 
     MediaPlayer {
@@ -41,7 +41,7 @@ Item {
         onStatusChanged: if (status === MediaPlayer.Buffered) watchdog.stop()
     }
 
-    // Stalled/unreachable-file watchdog — stops and emits failed() if nothing's playing/buffered after a timeout, instead of freezing on a spinner.
+    // Stalled/unreachable-file watchdog: emits failed() if nothing's playing/buffered after the timeout, instead of freezing on a spinner.
     Timer {
         id: watchdog
         // Generous timeout: non-faststart .mov streams buffer ~7-10s on media-hub, and the Chromium fallback can't render .mov at all.

@@ -17,7 +17,7 @@ RowLayout {
     property int flaggers: 0
     property int comments: 0
     property string payout: ""
-    // Usernames who upvoted (Mappers.js's `voters` array) — backs the hover/press-and-hold "who upvoted" popover.
+    // Usernames who upvoted (Mappers.js's `voters` array); backs the hover/press-and-hold "who upvoted" popover.
     property var voters: []
 
     property bool upvoted: false
@@ -38,9 +38,9 @@ RowLayout {
 
     spacing: Style.spacingM
 
-    // "alice, bob, carol and 4 more" style summary for the voters popover.
-    // `voters` may be a plain array or a dynamicRoles-wrapped ListModel (has
-    // `.count`/`.get(i)` instead of `.length`/`[i]`) — handle both shapes.
+    // "alice, bob, carol and 4 more" summary for the voters popover. `voters` may be
+    // a plain array or a dynamicRoles-wrapped ListModel (.count/.get(i) instead of
+    // .length/[i]); handle both shapes.
     function _votersText() {
         var v = bar.voters;
         if (!v) return "";
@@ -51,7 +51,7 @@ RowLayout {
         for (var i = 0; i < limit; i++) {
             var item = (typeof v.get === "function") ? v.get(i) : v[i];
             var name = (item && item.modelData !== undefined) ? item.modelData : item;
-            // Only accept real usernames — a ListModel-wrapped entry is a QML
+            // Only accept real usernames; a ListModel-wrapped entry is a QML
             // object that would stringify as "@QQmlDM..." garbage.
             if (typeof name === "string" && name.length > 0) shown.push("@" + name);
         }
@@ -101,7 +101,7 @@ RowLayout {
             return;
         Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
     }
-    // "Already voted" means the server already has our vote — reconcile the UI; must not be shared with flag/removeVote or a failed unvote flips to "liked".
+    // "Already voted" means the server already has our vote, so reconcile the UI; must not be shared with flag/removeVote or a failed unvote flips to "liked".
     function _failUpvote(e) {
         bar.busy = false;
         if (_isHandledAuthFailure(e))
@@ -231,7 +231,7 @@ RowLayout {
         }
     }
 
-    // Upvote / like — hollow outline heart when not voted, filled blue when voted.
+    // Upvote / like: hollow outline when not voted, filled blue when voted.
     AbstractButton {
         id: upvoteBtn
         Layout.preferredHeight: units.gu(3.5)
@@ -278,10 +278,9 @@ RowLayout {
             id: votersPopup
             visible: false
             anchors { bottom: parent.top; bottomMargin: Style.spacingXs }
-            // Centered on the button but clamped inside the bar: the upvote
-            // button sits at the screen's left edge, so a centered long list
-            // would run off-screen. x is in upvoteBtn coordinates, hence the
-            // -upvoteBtn.x offsets to express the bar's own edges.
+            // Centered on the button but clamped inside the bar (a centered long list
+            // would run off the screen's left edge). x is in upvoteBtn coordinates,
+            // hence the -upvoteBtn.x offsets for the bar's own edges.
             x: {
                 var centered = (upvoteBtn.width - width) / 2;
                 var minX = -upvoteBtn.x;

@@ -8,7 +8,7 @@ AbstractButton {
     id: root
     property var video: ({})
     readonly property var v: video ? video : ({})
-    // Off in a grid — divider is for vertical-list usage only
+    // Off in a grid; divider is for vertical-list usage only
     property bool showDivider: true
 
     signal authorClicked()
@@ -21,12 +21,9 @@ AbstractButton {
             FollowStore.load(Config.baseUrl, Session.username, v.author);
     }
 
-    // Keyboard: VideoCard IS the focus owner (an AbstractButton / FocusScope), so
-    // make it the single tab-stop — its own ring then shows. Its ContextActionArea
-    // child is set non-focusable below (its activeFocus doesn't propagate through
-    // this FocusScope the way it does inside PostCard's plain Item, which is why
-    // the ring was invisible here). Enter activates natively (-> clicked); MENU
-    // opens the ••• context menu.
+    // Keyboard: VideoCard itself (an AbstractButton / FocusScope) is the single
+    // tab-stop so its own ring shows; the ContextActionArea child is made
+    // non-focusable below. Enter activates natively, MENU opens the context menu.
     activeFocusOnTab: true
 
     onPressAndHold: root.moreClicked()
@@ -55,7 +52,7 @@ AbstractButton {
         }
         spacing: Style.spacingS
 
-        // Thumbnail — large rounded, no play overlay
+        // Thumbnail: large rounded, no play overlay
         Item {
             width: parent.width
             height: width * 0.56
@@ -67,10 +64,9 @@ AbstractButton {
                 color: Style.iconBackground
             }
 
-            // Double-buffered like PostCard's cover: the hidden loader fetches the
-            // new source while thumbImg keeps the last-good frame (dimmed), so a
-            // row-content swap (tab/community switch) never blanks to black while
-            // the phone re-downloads an evicted image.
+            // Double-buffered like PostCard's cover: the hidden loader fetches the new
+            // source while thumbImg keeps the last-good frame, so a row swap never
+            // blanks to black while the phone re-downloads an evicted image.
             Image {
                 id: thumbLoader
                 anchors.fill: parent
@@ -92,10 +88,8 @@ AbstractButton {
                 asynchronous: true
                 sourceSize.width: thumbLoader.sourceSize.width
                 visible: false
-                // Fade fully out while the loader replaces a stale frame — a dimmed
-                // ghost of the previous content read as the wrong thumbnail (see
-                // PostCard). The smooth fade is what distinguishes this from the
-                // original instant-cut-to-black bug.
+                // Fade fully out while the loader replaces a stale frame; a dimmed
+                // ghost of the previous content read as the wrong thumbnail (see PostCard).
                 readonly property bool transitioning:
                     thumbLoader.status === Image.Loading && status === Image.Ready
                 Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -117,7 +111,7 @@ AbstractButton {
             }
 
             Rectangle {
-                // categories is ListModel-wrapped here — use the mapper's scalar copy instead.
+                // categories is ListModel-wrapped here; use the mapper's scalar copy instead.
                 visible: (v.primaryCategory || "") !== ""
                 anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
                 width: vidCatLabel.width + Style.spacingM
@@ -247,19 +241,17 @@ AbstractButton {
         color: Style.divider
     }
 
-    // Pointer parity: right-click opens the ••• context menu. Keyboard focus +
-    // Enter/MENU are handled by the AbstractButton root above (single focus
-    // owner), so this must NOT be a tab-stop or it competes and hides the ring.
+    // Pointer parity: right-click opens the context menu. Keyboard is handled by
+    // the AbstractButton root (single focus owner), so this must NOT be a
+    // tab-stop or it competes and hides the ring.
     ContextActionArea {
         activeFocusOnTab: false
         onTriggered: root.moreClicked()
     }
 
-    // Keyboard-focus ring. VideoCard is an AbstractButton (a FocusScope), so it
-    // takes focus itself instead of letting its child show a ring like PostCard
-    // (a plain Item) does — draw the ring here so keyboard focus is visible and
-    // matches the blog card. root.activeFocus is true whether the button or its
-    // ContextActionArea child holds focus.
+    // Keyboard-focus ring. VideoCard is a FocusScope and takes focus itself
+    // (unlike PostCard's child-ring setup), so draw the ring here; activeFocus
+    // is true whether the button or its ContextActionArea child holds focus.
     Rectangle {
         anchors.fill: parent
         anchors.margins: units.dp(1)

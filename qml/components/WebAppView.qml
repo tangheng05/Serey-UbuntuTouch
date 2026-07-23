@@ -5,7 +5,7 @@ import QtWebEngine 1.10
 import "../Theme"
 
 // FocusScope so forceActiveFocus() on this component lands on the Chromium
-// view — the web page then receives arrow/PageDown/space keys for scrolling.
+// view; the web page then receives arrow/PageDown/space keys for scrolling.
 FocusScope {
     id: webAppView
 
@@ -26,11 +26,9 @@ FocusScope {
     // Freezing is only legal once `visible` has settled hidden, so defer it; resuming to Active is always legal.
     onSuspendedChanged: {
         if (suspended) {
-            // Active->Frozen is rejected while the page is visible. On a tab
-            // switch the parent stack hides us anyway, but when `suspended`
-            // comes from an overlay (the Stripe checkout sheet covering this
-            // tab) the view is still visible — hide it explicitly or the
-            // freeze silently fails and both Chromiums stay live.
+            // Active->Frozen is rejected while the page is visible. An overlay
+            // (Stripe sheet) leaves the view visible, so hide it explicitly or
+            // the freeze silently fails and both Chromiums stay live.
             webView.visible = false;
             freezeTimer.restart();
         } else {
@@ -40,11 +38,9 @@ FocusScope {
         }
     }
 
-    // Also freeze on app suspend — avoids a SIGBUS-on-resume. Unfocused is not
-    // the same as put away: side by side, our window stays on screen while
-    // another app holds focus, so freezing on ApplicationInactive blanked a
-    // view the user could still see. Wait for a real suspend, or for the window
-    // to stop being shown.
+    // Also freeze on app suspend (avoids a SIGBUS-on-resume). Unfocused is not put
+    // away: side by side our window stays visible, and freezing on
+    // ApplicationInactive blanked it. Wait for a real suspend or a hidden window.
     readonly property bool _windowShown: Window.visibility !== Window.Hidden
                                          && Window.visibility !== Window.Minimized
     property bool appAway: Qt.application.state === Qt.ApplicationSuspended
@@ -64,12 +60,12 @@ FocusScope {
     readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     readonly property string desktopUA: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    // Grid units, not raw pixels — a phone's native resolution can exceed a flat px threshold
+    // Grid units, not raw pixels; a phone's native resolution can exceed a flat px threshold
     readonly property bool desktopMode: webAppView.width >= Config.convergenceBreakpoint
     onDesktopModeChanged: reload()
 
     signal getUserInfoRequested()
-    // Never wire this to Session.setAuth — the web side's identity comes from its own persistent cookies and can be stale, silently switching accounts.
+    // Never wire this to Session.setAuth; the web side's identity comes from its own persistent cookies and can be stale, silently switching accounts.
     signal authTokenReceived(string token, string username)
     signal openCommunityRequested(string communityId)
     // The mini app also switches community on its own, without the bridge. The
@@ -99,9 +95,9 @@ FocusScope {
                 injectionPoint: WebEngineScript.DocumentCreation
                 worldId: WebEngineScript.MainWorld
                 runOnSubframes: true
-                // documentElement is null this early, and a throw here kills the
-                // rest of the script — that's how the viewport meta below ended up
-                // never being injected. Defer anything needing an element.
+                // documentElement is null this early, and a throw here kills the rest
+                // of the script (the viewport meta once never got injected because of
+                // this). Defer anything needing an element.
                 readonly property string preamble: "" +
                     "window.__SEREY_NATIVE__ = 'ubuntu';" +
                     (Config.debugWebApp ? "window.__SEREY_DEBUG__ = true;" : "") +
@@ -117,7 +113,7 @@ FocusScope {
                     "  }" +
                     "};"
 
-                // Our UA is an Android spoof, so the site can't sniff for us —
+                // Our UA is an Android spoof, so the site can't sniff for us;
                 // it gates its cheap-render path on this class instead.
                 readonly property string nativeMarker: "" +
                     "window.__sereyWhenDocumentReady(function() {" +
@@ -143,7 +139,7 @@ FocusScope {
                     "  (document.head || document.documentElement).appendChild(s);" +
                     "});"
 
-                // Viewport spoofing is mobile-only — in desktop mode the page uses its own real navigator/screen
+                // Viewport spoofing is mobile-only; in desktop mode the page uses its own real navigator/screen
                 readonly property string mobileSpoof: "" +
                     "Object.defineProperty(navigator, 'userAgent', { get: function() { return '" + webAppView.mobileUA + "'; }, configurable: true });" +
                     "Object.defineProperty(navigator, 'platform', { get: function() { return 'Linux armv8l'; }, configurable: true });" +
@@ -203,10 +199,9 @@ FocusScope {
                             + " (" + sourceID + ":" + lineNumber + ")");
         }
 
-        // Keep the mini app on the plan page when the site redirects to Stripe
-        // Checkout — the shell shows it in the native StripeCheckoutSheet
-        // instead. Enum names can be undefined on UT's QtWebEngine (see the
-        // lifecycleState ints above), so use the raw value: IgnoreRequest=255.
+        // Keep the mini app on the plan page; Stripe Checkout opens in the native
+        // StripeCheckoutSheet instead. Enum names can be undefined on UT's
+        // QtWebEngine, so use the raw value: IgnoreRequest=255.
         onNavigationRequested: {
             var u = request.url.toString();
             if (u.indexOf("https://checkout.stripe.com") === 0) {
@@ -230,9 +225,9 @@ FocusScope {
     // one would accept __sereyNavigate and route to the right path on the wrong host.
     property string _loadedUrl: ""
 
-    // Re-pointing `url` reloads the whole web app — a few seconds of blank
-    // spinner. It's an SPA, so once loaded we hand it the route instead and it
-    // re-renders in place. Sites without the hook fall back to a full load.
+    // Re-pointing `url` reloads the whole web app (seconds of blank spinner).
+    // It's an SPA, so once loaded we hand it the route instead and it re-renders
+    // in place; sites without the hook fall back to a full load.
     property double _navStartedAt: 0
     function _log(msg) {
         if (Config.debugWebApp) console.log("WebAppView: " + msg);
@@ -280,9 +275,8 @@ FocusScope {
     }
 
     // Accepting the call only means __sereyNavigate ran, not that the route
-    // actually changed — the site's router can cancel or reject a push and we'd
-    // never know, leaving the previous community on screen. Confirm where the
-    // page ended up, and fall back to a real load if it didn't move.
+    // changed; the site's router can silently reject a push. Confirm where the
+    // page ended up and fall back to a real load if it didn't move.
     Timer {
         id: navVerify
         interval: 1500
@@ -365,10 +359,9 @@ FocusScope {
             "      });" +
             "    }).observe({entryTypes:['longtask']});" +
             "  } catch (e) { console.log('SEREY_PROF: no longtask support'); }" +
-            // Passive scroll-jank meter: the gap between consecutive scroll
-            // events IS the stall the user feels. Costs nothing and only runs
-            // while actually scrolling, so it can stay on without skewing what
-            // it measures (a permanent rAF loop would).
+            // Passive scroll-jank meter: the gap between consecutive scroll events IS
+            // the stall the user feels. Only runs while scrolling, so it can stay on
+            // without skewing the measurement (a permanent rAF loop would).
             "  var lastEvt = 0, worstGap = 0, evts = 0, startY = 0, tmr = null;" +
             "  window.addEventListener('scroll', function(){" +
             "    var now = performance.now();" +
@@ -394,7 +387,7 @@ FocusScope {
             "    document.head.appendChild(s);" +
             "    console.log('SEREY_PROF: animations disabled');" +
             "  };" +
-            // Percentiles, not an average — jank lives in the tail.
+            // Percentiles, not an average; jank lives in the tail.
             "  window.sereyScrollTest = function(label){" +
             "    return new Promise(function(res){" +
             "      window.scrollTo(0,0);" +
@@ -439,7 +432,7 @@ FocusScope {
             "    }" +
             "    if (!hits) console.log('SEREY_PROF: no inner scrollers found');" +
             "  };" +
-            // Not auto-run normally — it'd fight the user.
+            // Not auto-run normally; it'd fight the user.
             (Config.debugScrollTest
                 ? "  setTimeout(function(){ window.sereyScrollTest('auto'); }, 6000);"
                 : "") +
@@ -523,9 +516,9 @@ FocusScope {
                 _sendResponse(id, { status: "ok", message: "Community opened" });
                 break;
             case "buyPlan":
-                // Only claim the purchase when a native session exists — the
-                // payment endpoints need the native JWT. Rejecting makes the
-                // site's Promise fail so it falls back to its web flow.
+                // Only claim the purchase when a native session exists (the payment
+                // endpoints need the native JWT). Rejecting makes the site's
+                // Promise fail so it falls back to its web flow.
                 if (!webAppView.authToken) {
                     _sendError(id, "No native session");
                 } else if (!params.subscription_plan_id) {

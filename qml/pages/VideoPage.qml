@@ -10,7 +10,7 @@ import "../services/BlockedUsers.js" as BlockedUsers
 Page {
     id: page
 
-    // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
+    // Cards need swipe actions, so a fixed-cell GridView won't work; cap + center instead
     readonly property real maxContentWidth: units.gu(60)
 
     property int offset: 0
@@ -113,11 +113,9 @@ Page {
         return page.showingCached;
     }
 
-    // Overwrite rows in place by index rather than clear() + append: clearing
-    // destroys every delegate and VideoCard's thumbnail fades back in from
-    // opacity 0, so an unchanged list visibly flashes. Reusing the row keeps its
-    // delegate; only rows whose content changed are rewritten. Same reasoning
-    // (and shape) as NewsPage._syncRows.
+    // Overwrite rows in place rather than clear() + append: clearing destroys
+    // delegates and VideoCard thumbnails fade back in, flashing an unchanged
+    // list. Same reasoning (and shape) as NewsPage._syncRows.
     function _rowDiffers(cur, next) {
         return cur.permlink !== next.permlink
             || cur.votes !== next.votes
@@ -135,11 +133,9 @@ Page {
             feedModel.remove(feedModel.count - 1);
     }
 
-    // One response drives both the list and the reel shelf. They used to be two
-    // concurrent requests to the same URL — on Global that is ~2.7s server-side
-    // each, so the cold start paid it twice to show the same videos.
-    // rawCount < 0 means "painted from cache": leave the paging counters alone so
-    // the real response still fetches page 0.
+    // One response drives both the list and the reel shelf (two concurrent
+    // requests paid the ~2.7s Global query twice). rawCount < 0 means "painted
+    // from cache": leave paging counters alone so the real response fetches page 0.
     function _applyRows(result, rawCount) {
         var hidden = HiddenPosts.loadAll();
         var blocked = BlockedUsers.loadAll();
@@ -161,7 +157,7 @@ Page {
         page.reels = out;
         if (rawCount >= 0) {
             page.offset = rawCount;
-            // Compare against what we actually asked for, not pageSize — asking
+            // Compare against what we actually asked for, not pageSize: asking
             // for 30 and getting 12 means the feed is exhausted, not that a
             // second page is waiting.
             page.endReached = rawCount < page.initialLimit;
@@ -181,7 +177,7 @@ Page {
         inflight = FeedCache.request(FeedCache.videoKey(Config.communityId),
             function (ok, err) { return VideoService.listVideos(Config.baseUrl, params, Session.token, ok, err); },
             function (result, rawCount) {
-                if (epoch !== page.reqEpoch) return;   // stale response — ignore
+                if (epoch !== page.reqEpoch) return;   // stale response, ignore
                 inflight = null;
                 page.loading = false;
                 page.refreshing = false;
@@ -228,7 +224,7 @@ Page {
             params.exclude_home = 1;   // Global feed hides the Cambodia community + children
         inflight = VideoService.listVideos(Config.baseUrl, params, Session.token,
             function (result, rawCount) {
-                if (epoch !== page.reqEpoch) return;   // stale response — ignore
+                if (epoch !== page.reqEpoch) return;   // stale response, ignore
                 inflight = null;
                 loading = false;
                 var hidden = HiddenPosts.loadAll();
@@ -250,7 +246,7 @@ Page {
             });
     }
 
-    // Post-layout atYEnd recheck — same rationale and shape as NewsPage's.
+    // Post-layout atYEnd recheck, same rationale and shape as NewsPage's.
     Timer {
         id: endRecheck
         interval: 120
@@ -277,12 +273,9 @@ Page {
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
     property Item keyboardFocusItem: list
 
-    // Same "no cursor on the first Left" problem as NewsPage, different mechanism:
-    // the cursor here is the VideoCard's own ring (the delegate root is a wrapper,
-    // so Lomiri's key-nav frame never applies), revealed only once kbEngaged flips
-    // on a real key press. Returning from the detail IS a keyboard action, so
-    // engage it up front and focus the card directly — going via the wrapper would
-    // rely on onActiveFocusChanged, which never fires if it already holds focus.
+    // Same "no cursor on first Left" problem as NewsPage: the cursor is the
+    // VideoCard's own ring, gated on kbEngaged. Engage and focus the card directly;
+    // the wrapper's onActiveFocusChanged never fires if it already holds focus.
     function focusListKeyNav() {
         if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0;
         list.kbEngaged = true;
@@ -299,11 +292,9 @@ Page {
         clip: true
         model: feedModel
         cacheBuffer: units.gu(16)
-        // The keyboard cursor visual here is the VideoCard's own ring (the
-        // delegate forwards focus to the card — see rowWrap). kbEngaged gates
-        // that forwarding so the page's programmatic auto-focus on show never
-        // paints a ring for touch users; the first real key press reveals it
-        // on the current card without moving the cursor.
+        // The keyboard cursor visual is the VideoCard's own ring (the delegate
+        // forwards focus to the card, see rowWrap). kbEngaged gates that so the
+        // page's auto-focus on show never paints a ring for touch users.
         property bool kbEngaged: false
         Keys.onPressed: {
             if (!list.kbEngaged) {
@@ -355,13 +346,9 @@ Page {
             // hands focus to this wrapper, and the ring lives on the card.
             property alias rowCard: card
 
-            // Arrow-key nav: the ListView focuses its current delegate, which here
-            // is this plain wrapper (needed for the Reels shelf), not the Lomiri
-            // ListItem — so ListItem's keyNavigationFocus frame never shows (on
-            // NewsPage the ListItem IS the delegate root and draws it). Hand the
-            // focus to the VideoCard, which draws its own ring and handles
-            // Enter (open) / MENU (context menu). Gated on kbEngaged so the
-            // page's auto-focus on show doesn't paint the ring uninvited.
+            // The ListView focuses this plain wrapper (needed for the Reels shelf),
+            // so ListItem's key-nav frame never shows; hand focus to the VideoCard,
+            // which draws its own ring. Gated on kbEngaged (see above).
             onActiveFocusChanged: if (activeFocus && list.kbEngaged) card.forceActiveFocus()
 
             Item {
@@ -480,13 +467,13 @@ Page {
                 y: rowWrap.showReelShelf ? reelsShelf.implicitHeight : 0
                 width: parent.width
                 height: card.height
-                // VideoCard draws its own bottom divider — suppress ListItem's to avoid a double hairline.
+                // VideoCard draws its own bottom divider; suppress ListItem's to avoid a double hairline.
                 divider.visible: false
                 // Dark-greys the row whose video is currently open in the detail pane (wide layout only).
                 color: (Config.wideMode && page.openPermlink !== "" && model.permlink === page.openPermlink)
                     ? Style.iconBackground : Style.surface
 
-                // Touch equivalent of the removed ••• button — opens the same Hide/Report/Block sheet.
+                // Touch equivalent of the removed overflow button; opens the same Hide/Report/Block sheet.
                 onPressAndHold: {
                     var vm = feedModel.get(index);
                     if (vm) PostActions.open(vm, "video");
@@ -564,8 +551,8 @@ Page {
                     width: parent.width
                     video: feedModel.get(index)
                     onClicked: {
-                        // Push first: swapping the detail pane transiently drops the stack to depth 0,
-                        // which would otherwise race with — and clear — this via the currentPageChanged reset below.
+                        // Push first: swapping the detail pane transiently drops the stack to
+                        // depth 0, which would race with the currentPageChanged reset below.
                         var v = feedModel.get(index);
                         // Pointer clicks don't move currentIndex, so the key-nav cursor would
                         // sit at the top when Left brings focus back from the detail.
@@ -596,7 +583,7 @@ Page {
                 page.loadMore();
         }
 
-        // Prefetch ~2 screens early (see NewsPage) — atYEnd stays as fallback.
+        // Prefetch ~2 screens early (see NewsPage); atYEnd stays as fallback.
         onContentYChanged: {
             if (!page.loading && !page.endReached
                     && contentHeight > height
@@ -623,5 +610,5 @@ Page {
         message: Lang.tr("No videos to show")
     }
 
-    // Upload lives in the global header action now (gated on the Video tab) — Lomiri uses a header action, not a Material floating button.
+    // Upload lives in the global header action now (gated on the Video tab); Lomiri uses a header action, not a Material floating button.
 }

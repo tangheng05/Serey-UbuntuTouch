@@ -88,7 +88,7 @@ Item {
     }
     // Only the visible, split stack reacts (one tab is visible at a time). If the
     // open detail runs its OWN nested master-detail (My Feed), it exposes
-    // `_ownsKeyboardNav` and handles these itself — defer so focus stays inside it.
+    // `_ownsKeyboardNav` and handles these itself; defer so focus stays inside it.
     Connections {
         target: Nav
         function onFocusMaster() {

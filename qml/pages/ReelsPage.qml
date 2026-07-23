@@ -27,12 +27,12 @@ Page {
     property string errorMsg: ""
     property int startIndex: 0
 
-    // Pending vote — set by the delegate before opening the weight dialog.
+    // Pending vote, set by the delegate before opening the weight dialog.
     property var    _voteReel:    null
     property string _voteAuthor:  ""
     property string _votePermlink: ""
 
-    // Full-description sheet — set by whichever reel's "more" was tapped
+    // Full-description sheet, set by whichever reel's "more" was tapped
     property string _descTitle: ""
     property string _descBody: ""
     property bool descSheetOpen: false
@@ -128,7 +128,7 @@ Page {
             params.community_id = Config.communityId;
         VideoService.listVideos(Config.baseUrl, params, Session.token,
             function (result) {
-                if (!page) return;          // popped mid-load — page destroyed
+                if (!page) return;          // popped mid-load, page destroyed
                 page.reels = result.filter(function (v) {
                     return v.platform === "SEREY" && (v.videoLink || "").length > 0;
                 });
@@ -146,7 +146,7 @@ Page {
             });
     }
 
-    // Model is a plain JS array — reassign (not mutate) to refresh delegates, and restore pager position; the current reel remounts.
+    // Model is a plain JS array: reassign (not mutate) to refresh delegates, and restore pager position; the current reel remounts.
     Connections {
         target: PostActions
         function onPostUpdated(author, permlink, title, body) {
@@ -318,7 +318,7 @@ Page {
                 active: current
                 sourceComponent: playerComp
                 onLoaded: item.embedUrl = modelData.videoLink
-                // Poster IS the loading state (no spinner) — cross-fade once ready
+                // Poster IS the loading state (no spinner); cross-fade once ready
                 opacity: (item && item.ready) ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 180 } }
             }
@@ -479,7 +479,7 @@ Page {
                 }
             }
 
-            // Comment/share open in the system browser — a second WebView over this live reel would trip the dual-Chromium crash.
+            // Comment/share open in the system browser; a second WebView over this live reel would trip the dual-Chromium crash.
             Rectangle {
                 id: actionRail
                 anchors { right: parent.right; rightMargin: Style.spacingS
@@ -496,7 +496,6 @@ Page {
                               horizontalCenter: parent.horizontalCenter }
                     spacing: units.gu(0.5)
 
-                    // Upvote
                     AbstractButton {
                         width: units.gu(7); height: units.gu(7)
                         enabled: !reel.busy
@@ -520,7 +519,6 @@ Page {
                         }
                     }
 
-                    // Downvote
                     AbstractButton {
                         width: units.gu(7); height: units.gu(7)
                         enabled: !reel.busy
@@ -533,7 +531,6 @@ Page {
                         }
                     }
 
-                    // Comment
                     AbstractButton {
                         width: units.gu(7); height: units.gu(7)
                         onClicked: {
@@ -559,7 +556,6 @@ Page {
                         }
                     }
 
-                    // Share
                     AbstractButton {
                         width: units.gu(7); height: units.gu(7)
                         onClicked: Share.open(
@@ -572,7 +568,6 @@ Page {
                         }
                     }
 
-                    // More (3-dot)
                     AbstractButton {
                         width: units.gu(7); height: units.gu(7)
                         onClicked: PostActions.open(modelData, "video")
@@ -621,7 +616,7 @@ Page {
         onClicked: page.pageStack.pop()
     }
 
-    // In-app comment thread (no WebView — safe to overlay the live reel player).
+    // In-app comment thread (no WebView, safe to overlay the live reel player).
     CommentsSheet { id: commentSheet }
 
     // Full-description bottom sheet, opened from a reel's "more" tap

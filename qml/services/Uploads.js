@@ -16,7 +16,7 @@ function _contentType(fileUrl) {
     return { mime: "image/jpeg", ext: "jpg" };
 }
 
-// Current in-flight request — PhotoUploader's watchdog calls abort() when XMLHttpRequest hangs without honouring its own `timeout`.
+// Current in-flight request; PhotoUploader's watchdog calls abort() when XMLHttpRequest hangs without honouring its own `timeout`.
 var _active = null;
 
 function abort() {
@@ -222,7 +222,7 @@ function _tusCreate(createUploadUrl, sessionToken, type, source, fingerprint, ge
             _clearResume();
             _pollStatus(saved, 0, gen, onOk, onErr);
         } else {
-            // Expired, gone, or the scoped token no longer valid — start over.
+            // Expired, gone, or the scoped token no longer valid; start over.
             _clearResume();
             _tusStart(createUploadUrl, sessionToken, type, source, fingerprint, gen, onOk, onErr, onProgress);
         }
@@ -298,13 +298,13 @@ function _tusPatch(session, source, offset, attempt, gen, onOk, onErr, onProgres
             var newOffset = parseInt(xhr.getResponseHeader("Upload-Offset") || String(end), 10);
             onProgress(Math.round((newOffset / source.size) * 100));
             if (newOffset >= source.size) {
-                _clearResume();   // done — never resume into a finished upload
+                _clearResume();   // done; never resume into a finished upload
                 _pollStatus(session, 0, gen, onOk, onErr);
             } else {
                 _tusPatch(session, source, newOffset, 0, gen, onOk, onErr, onProgress);
             }
         } else if (attempt < CHUNK_RETRIES && (xhr.status === 0 || xhr.status >= 500 || xhr.status === 409)) {
-            // Transient failure: ask the server where it actually is (HEAD), then resume from that offset — this is tus's whole point.
+            // Transient failure: ask the server where it actually is (HEAD), then resume from that offset. This is tus's whole point.
             _tusResume(session, source, attempt + 1, gen, onOk, onErr, onProgress);
         } else if (xhr.status === 0) {
             onErr({ message: "Network error during upload." });
@@ -367,7 +367,7 @@ function _pollStatus(session, tries, gen, onOk, onErr) {
             };
             onErr({ message: reasons[job.error] || "The server couldn't process this video." });
         } else {
-            // uploading/queued/processing (or a blip) — poll again.
+            // uploading/queued/processing (or a blip): poll again.
             _delay(STATUS_POLL_MS, function () {
                 _pollStatus(session, tries + 1, gen, onOk, onErr);
             });
@@ -376,7 +376,7 @@ function _pollStatus(session, tries, gen, onOk, onErr) {
     xhr.send();
 }
 
-// No setTimeout in QML JS libraries — the poll delay is driven by a Timer the QML page provides via _delayHook.
+// No setTimeout in QML JS libraries; the poll delay is driven by a Timer the QML page provides via _delayHook.
 var _delayHook = null;   // set by the QML page: function (ms, fn)
 function setDelayHook(fn) { _delayHook = fn; }
 function _delay(ms, fn) {

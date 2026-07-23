@@ -56,7 +56,7 @@ Page {
     // "More Videos" feed
     property var moreVideos: []
 
-    // Caption edit elsewhere — swap in a fresh object so bindings re-evaluate
+    // Caption edited elsewhere; swap in a fresh object so bindings re-evaluate
     Connections {
         target: PostActions
         function onPostUpdated(author, permlink, title, body) {
@@ -69,7 +69,7 @@ Page {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
 
-    // Remote direct media URL (empty for embeds — also the download-button gate)
+    // Remote direct media URL (empty for embeds; also the download-button gate)
     function remoteDirectUrl() {
         var v = page.video;
         if (v.platform === "SEREY") return v.videoLink || v.embedUrl || "";
@@ -176,7 +176,7 @@ Page {
 
     // Space-bar playback control: starts playback if it hasn't begun, else
     // toggles pause on whichever player is live. Cross-origin embeds (YouTube
-    // iframe) can't be driven from outside — their own controls apply.
+    // iframe) can't be driven from outside; their own controls apply.
     function togglePlayPause() {
         if (!page.playing) { page.startPlay(); return; }
         var it = webLoader.item;
@@ -186,10 +186,10 @@ Page {
         // else: cross-origin embed (YouTube) can't be controlled from outside.
     }
 
-    // Native (.mov) player failed — retry via Chromium's <video> before falling back to the system handler.
+    // Native (.mov) player failed: retry via Chromium's <video> before falling back to the system handler.
     function onNativeFailed() {
         if (page.webVideoMode) {
-            // Even Chromium failed — last resort is the system handler.
+            // Even Chromium failed; last resort is the system handler.
             var link = page.directUrl() || page.video.videoLink || page.video.embedUrl;
             if ((link || "").length > 0) Qt.openUrlExternally(link);
             return;
@@ -385,14 +385,14 @@ Page {
     function loadComments() {
         PostService.detail(Config.baseUrl, video.author, video.permlink, Session.token,
             function (result) {
-                if (!result) return;   // empty/failed detail fetch — keep current state
+                if (!result) return;   // empty/failed detail fetch, keep current state
                 var replies, serverCount, voters, me2;
                 replies = result.replies || [];
                 page.comments = replies;
-                // answer_count can be stale — trust replies.length when larger
+                // answer_count can be stale; trust replies.length when larger
                 serverCount = (result.post && result.post.comments) || 0;
                 page.commentCount = Math.max(serverCount, replies.length);
-                // Only ever set upvoted true from voters — the API's list can be incomplete, so never use it to override an already-true state.
+                // Only ever set upvoted true from voters: the API's list can be incomplete, so never use it to override an already-true state.
                 if (!VoteService.getCached(video.author, video.permlink) && !page.upvoted) {
                     voters = (result.post && result.post.voters) || [];
                     me2 = Session.username || "";
@@ -636,11 +636,9 @@ Page {
             id: contentCol
             width: scroll.width
 
-            // Player wrapper: full-width row. The stage centers within it and is
-            // capped by the available viewport height, so the title/description
-            // and upvote row stay visible without scrolling on wide windows; the
-            // leftover width becomes side padding. Phones (tall/narrow) stay
-            // full-width since the 16:9 height is well under the cap.
+            // Player wrapper: the stage centers in the full-width row, capped by
+            // viewport height so the title and vote row stay above the fold on
+            // wide windows; leftover width becomes padding. Phones stay full-width.
             Item {
                 id: stageWrap
                 width: parent.width
@@ -734,7 +732,6 @@ Page {
                 width: parent.width
                 spacing: 0
 
-            // Title
             Label {
                 width: parent.width - Style.spacingM * 2
                 x: Style.spacingM
@@ -830,21 +827,16 @@ Page {
                     }
                 }
 
-                // Follow acts on the AUTHOR, so it sits directly beside the author it
-                // follows, not in the page header (whose actions are all about this video)
-                // and not on the vote row (video actions). Anchored to the name rather than
-                // right-aligned: on a desktop-width window the trailing edge is ~1200px from
-                // the author and reads as unrelated again.
-                // Outside authorRow on purpose: the profile MouseArea spans that Row's width
-                // and would otherwise swallow the tap.
+                // Follow acts on the AUTHOR, so it sits beside the name (not the
+                // header or vote row, which are video actions). Outside authorRow on
+                // purpose: the profile MouseArea spans that Row and would swallow the tap.
                 AbstractButton {
                     id: followBtn
                     visible: (page.video.author || "") !== "" && page.video.author !== Session.username
                     anchors { left: authorRow.right; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: followInner.implicitWidth
-                    // Keeps Lomiri's gu(4) minimum touch target while the visible mark stays
-                    // light: a filled pill overpowered a row of fontSmall text and a gu(3.5)
-                    // avatar. Matches the "...more" link's weight, in brand colour.
+                    // Keeps Lomiri's gu(4) minimum touch target while the visible mark
+                    // stays light; matches the "...more" link's weight, in brand colour.
                     height: units.gu(4)
                     onClicked: page.toggleFollow()
 
@@ -879,7 +871,6 @@ Page {
                 height: units.gu(4.5)
                 spacing: Style.spacingS
 
-                // Upvote
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: upvoteInner.implicitWidth + Style.spacingM
@@ -904,7 +895,6 @@ Page {
                     }
                 }
 
-                // Downvote / flag
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: units.gu(3.5)
@@ -918,7 +908,6 @@ Page {
                     }
                 }
 
-                // Busy spinner while voting
                 ActivityIndicator {
                     visible: page.voteBusy
                     running: page.voteBusy
@@ -935,7 +924,7 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Comments header — tappable, opens comment sheet
+            // Comments header, tappable, opens the comment sheet
             AbstractButton {
                 width: parent.width
                 height: units.gu(5)
@@ -1023,7 +1012,6 @@ Page {
             NumberAnimation { id: cmtSlideAnim; target: cmtSlideT; property: "y"; from: cmtSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }
             NumberAnimation { id: cmtSlideOut; target: cmtSlideT; property: "y"; to: cmtSheetRect.height; duration: 250; easing.type: Easing.InCubic; onStopped: page.commentSheetOpen = false }
 
-            // Grabber
             Rectangle {
                 anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
                 width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
@@ -1031,7 +1019,6 @@ Page {
                 z: 2
             }
 
-            // Header
             Item {
                 id: cmtHeader
                 anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
@@ -1213,7 +1200,6 @@ Page {
             NumberAnimation { id: descSlideAnim; target: descSlideT; property: "y"; from: descSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }
             NumberAnimation { id: descSlideOut; target: descSlideT; property: "y"; to: descSheetRect.height; duration: 250; easing.type: Easing.InCubic; onStopped: page.descSheetOpen = false }
 
-            // Grabber
             Rectangle {
                 anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
                 width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
@@ -1266,7 +1252,6 @@ Page {
 
                     Item { width: 1; height: Style.spacingS }
 
-                    // Title
                     Label {
                         width: parent.width - Style.spacingM * 2
                         x: Style.spacingM

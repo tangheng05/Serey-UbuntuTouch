@@ -2,7 +2,7 @@
 .import "Http.js" as Http
 .import "Mappers.js" as M
 
-// onOk receives (posts, rawCount) — rawCount is the pre-filter server count so callers paginate against the true offset, not a filtered length.
+// onOk receives (posts, rawCount); rawCount is the pre-filter server count so callers paginate against the true offset, not a filtered length.
 function _list(baseUrl, path, params, token, onOk, onErr) {
     return Http.get(baseUrl, path, params, token, function (data) {
         var raw = data.posts || [];
@@ -15,9 +15,8 @@ function listFeedFollowing(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-feed-following", params, token, onOk, onErr);
 }
 
-// Posts from authors the user follows OR communities they subscribe to (server
-// side: `EXISTS(follows) OR EXISTS(view_community_subscribers)`). A superset of
-// listFeedFollowing — this is what My Feed uses, so subscribing to a community
+// Posts from followed authors OR subscribed communities; a superset of
+// listFeedFollowing. This is what My Feed uses, so subscribing to a community
 // actually fills it.
 function listFeedMixed(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-feed-mixed", params, token, onOk, onErr);
@@ -56,7 +55,7 @@ function listGallery(baseUrl, params, token, onOk, onErr) {
         var posts = raw.map(M.toGalleryPost).filter(function (p) {
             return p.images.length > 0;
         });
-        // Raw count, not filtered length — else offset shrinks and re-requests rows
+        // Raw count, not filtered length, else the offset shrinks and re-requests rows
         onOk(posts, raw.length);
     }, onErr);
 }
@@ -68,7 +67,7 @@ function listByAuthor(baseUrl, author, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-author", p, token, onOk, onErr);
 }
 
-// An author's gallery posts — mirrors listGallery's filtering + pagination
+// An author's gallery posts; mirrors listGallery's filtering + pagination
 function listGalleryByAuthor(baseUrl, author, params, token, onOk, onErr) {
     var p = params || {};
     p.author = author;
@@ -110,7 +109,7 @@ function createPost(baseUrl, params, token, onOk, onErr) {
     // Sending permlink makes the backend update in place instead of creating new
     if (params.permlink)
         body.permlink = params.permlink;
-    // Explicit bool so an edit can flip it either way — omitting it defaults true
+    // Explicit bool so an edit can flip it either way; omitting it defaults true
     body.post_to_blockchain = (params.postToBlockchain !== false);
     if (params.communityId)            // omit when 0/empty so we don't post a falsy id
         body.community_id = Number(params.communityId);
@@ -128,7 +127,7 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
         desc: params.desc || "",
         body: params.body || params.desc || "",
         videos: [params.videoUrl],
-        // Backend only persists a SEREY thumbnail when images.length > 1 — a single entry is dropped, so send the captured thumbnail twice.
+        // Backend only persists a SEREY thumbnail when images.length > 1 (a single entry is dropped), so send the captured thumbnail twice.
         images: params.thumbUrl ? [params.thumbUrl, params.thumbUrl] : [],
         categories: "video",
         subcategories: [],
@@ -159,24 +158,22 @@ function deletePost(baseUrl, username, permlink, token, onOk, onErr) {
 
 // --- Admin/CMS moderation (requires an owner/manager token) ----------------
 
-// DELETE /serey-web/admin-delete-post-or-comment/:id — moderator delete of
-// any post/comment by numeric row id (unlike deletePost, not limited to the
-// token's own username).
+// Moderator delete of any post/comment by numeric row id (unlike deletePost,
+// not limited to the token's own username).
 function adminDeletePost(baseUrl, id, token, onOk, onErr) {
     Http.del(baseUrl, "/serey-web/admin-delete-post-or-comment/" + id, token,
              function (data) { onOk(data || {}); }, onErr);
 }
 
-// DELETE /serey-web/admin-bulk-delete-posts — needs a JSON body (list of
-// ids), so it goes through Http.delWithBody rather than the bodiless del().
+// Needs a JSON body (list of ids), so it goes through Http.delWithBody
+// rather than the bodiless del().
 function adminBulkDeletePosts(baseUrl, ids, token, onOk, onErr) {
     Http.delWithBody(baseUrl, "/serey-web/admin-bulk-delete-posts", { ids: ids }, token,
                       function (data) { onOk(data || {}); }, onErr);
 }
 
-// GET /serey-web/search-advanced — used by BlogManagementPage to list/filter
-// a community's posts for moderation. Same paginated {posts:[...]} shape as
-// the other _list-backed feeds.
+// Used by BlogManagementPage to list/filter a community's posts for moderation.
+// Same paginated {posts:[...]} shape as the other feeds.
 function listAdvancedSearch(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/search-advanced", params, token, onOk, onErr);
 }

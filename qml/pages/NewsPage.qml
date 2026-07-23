@@ -50,7 +50,7 @@ Page {
             return;
         }
 
-        // currentCommunityName can lag a tick behind communityId here — read the source object directly.
+        // currentCommunityName can lag a tick behind communityId here - read the source object directly.
         var communityTitle = Config.selectedSubCommunity ? Config.selectedSubCommunity.name : Config.communityName;
 
         page.categoriesLoading = true;
@@ -347,7 +347,7 @@ Page {
             if (epoch !== page.reqEpoch) return;
             inflight = null;
             loading = false;
-            // Cached rows are better than an error screen — keep them on failure.
+            // Cached rows are better than an error screen - keep them on failure.
             if (!page.showingCached) page.errorMsg = err.message;
         };
 
@@ -557,7 +557,7 @@ Page {
                 page.openPermlink = p.permlink
             }
 
-            // Touch equivalent of the removed ••• button — opens the same Hide/Report/Block sheet.
+            // Touch equivalent of the removed overflow button; opens the same Hide/Report/Block sheet.
             onPressAndHold: {
                 var p = feedModel.get(index)
                 if (p) PostActions.open(p, "blog")
@@ -694,5 +694,5 @@ Page {
             : Lang.tr("No posts in %1").arg(Config.currentCommunityName)
     }
 
-    // Compose lives in the global header action now (gated on the News tab) — Lomiri uses a header action, not a Material floating button.
+    // Compose lives in the global header action now (gated on the News tab); Lomiri uses a header action, not a Material floating button.
 }

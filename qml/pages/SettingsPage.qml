@@ -75,11 +75,9 @@ Page {
     // Suppress the default header and draw our own, since Page.header didn't render the right-side search action icon reliably.
     header: Item { height: 0 }
 
-    // ---- Keyboard navigation (HIG input parity). The rows live in a Column
-    // inside a Flickable (no ListView cursor), so the page keeps its own row
-    // cursor — same pattern as PostActionSheet: candidates filtered by
-    // visibility on every move (login state / platform ownership change what
-    // exists), one reparenting ring, Enter on key RELEASE (see KeyTapArea).
+    // Keyboard navigation: the rows live in a Column inside a Flickable (no
+    // ListView cursor), so the page keeps its own row cursor, same pattern as
+    // PostActionSheet (visibility-filtered rows, one reparenting ring).
     property Item keyboardFocusItem: scroll
     property Item navCurrent: null
 
@@ -110,8 +108,8 @@ Page {
     }
 
     // Focus the row list when the tab is shown so keyboard nav works without a
-    // click; cursor appears on first key press, not on show. (Merged into the
-    // single onVisibleChanged below — a Page allows only one handler per signal.)
+    // click; the cursor appears on first key press. (Merged into the single
+    // onVisibleChanged below; a Page allows only one handler per signal.)
     function _onShownForKeyboard() {
         if (!searchField.activeFocus) {
             page.navCurrent = null;
@@ -178,7 +176,7 @@ Page {
             }
 
             // ----- Active state: back chevron + inline search field (Lomiri header
-            // search — the field expands into the header, per the HIG reference). -----
+            // search; the field expands into the header, per the HIG reference). -----
             AbstractButton {
                 id: searchBack
                 visible: page.searchActive
@@ -360,10 +358,9 @@ Page {
         activeFocusOnTab: true
         property bool _armed: false
         Keys.onPressed: {
-            // A mouse click on a row gives that AbstractButton keyboard focus, so
-            // scroll loses activeFocus (the arrow keys still bubble up here, but
-            // the ring is gated on scroll.activeFocus). Reclaim focus on the first
-            // nav key so the cursor reappears and keyboard nav resumes.
+            // A row click gives that AbstractButton keyboard focus, so scroll loses
+            // activeFocus and the ring (gated on it) hides. Reclaim focus on the
+            // first nav key so the cursor reappears and keyboard nav resumes.
             if (!scroll.activeFocus) scroll.forceActiveFocus();
             if (event.key === Qt.Key_Down)      { page._navMove(1);  event.accepted = true; }
             else if (event.key === Qt.Key_Up)   { page._navMove(-1); event.accepted = true; }
@@ -398,7 +395,7 @@ Page {
                 width: parent.width
                 height: units.gu(10)
 
-                // Signed-in: tappable profile card → ProfileViewPage
+                // Signed-in: tappable profile card -> ProfileViewPage
                 AbstractButton {
                     id: profileCardBtn
                     anchors.fill: parent
@@ -432,7 +429,6 @@ Page {
                             anchors.verticalCenter: parent.verticalCenter
                             width: units.gu(6.5); height: width
 
-                            // Brand-colour background + initial letter
                             Rectangle {
                                 anchors.fill: parent
                                 radius: Style.cardRadius
@@ -470,7 +466,6 @@ Page {
                             }
                         }
 
-                        // Name + "See your profile"
                         Column {
                             anchors.verticalCenter: parent.verticalCenter
                             width: parent.width - avatarBox.width - chevronIcon.width - Style.spacingM * 2
@@ -496,7 +491,6 @@ Page {
                             }
                         }
 
-                        // Chevron
                         Icon {
                             id: chevronIcon
                             anchors.verticalCenter: parent.verticalCenter
@@ -626,12 +620,9 @@ Page {
                     // Restore keyboard focus to the settings list when the dialog closes.
                     function _closeAndRestore() { PopupUtils.close(langDlg); Qt.callLater(function () { scroll.forceActiveFocus(); }); }
 
-                    // Zero-size focus holder: Keys on the Dialog root (or its
-                    // Buttons) didn't reliably own focus — the settings list behind
-                    // the modal kept it, so arrows moved the hidden list cursor.
-                    // This item grabs focus (deferred until the modal is mounted)
-                    // and handles all keys. Zero size keeps the Dialog's Column
-                    // layout intact.
+                    // Zero-size focus holder: Keys on the Dialog root didn't reliably
+                    // own focus (the settings list behind the modal kept it), so this
+                    // grabs focus deferred and handles all keys without breaking layout.
                     Item {
                         id: keyGrab
                         width: 0; height: 0
@@ -792,10 +783,9 @@ Page {
         }
     }
 
-    // Keyboard cursor: one ring reparented into whichever row is selected (same
-    // approach as PostActionSheet). Fallback parent is `page` (NOT the Column
-    // `col`, which disables its own layout if given an anchored child). Only
-    // visible once a key has moved the cursor, so touch users never see it.
+    // Keyboard cursor: one ring reparented into the selected row. Fallback parent
+    // is `page`, NOT the Column `col` (an anchored child disables its layout).
+    // Only visible once a key has moved the cursor, so touch users never see it.
     Rectangle {
         parent: page.navCurrent ? page.navCurrent : page
         anchors.fill: parent
@@ -815,7 +805,7 @@ Page {
         visible: running
     }
 
-    // ── Search results overlay ────────────────────────────────────────────────
+    // --- Search results overlay ---
     Rectangle {
         id: searchOverlay
         visible: page.searchOpen && (searchModel.count > 0 || page.searching)

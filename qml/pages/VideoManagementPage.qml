@@ -19,7 +19,7 @@ Page {
         ]
     }
 
-    // ── Posting permission (only_me | everyone) ───────────────────────────
+    // --- Posting permission (only_me | everyone) ---
     property string videoMode: "only_me"
     property bool permBusy: false
 

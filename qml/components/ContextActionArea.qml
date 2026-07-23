@@ -5,34 +5,16 @@ import Lomiri.Components.Popups 1.3
 import "../Theme"
 
 /*
- * Input-method parity (UBports HIG, Other design considerations >
- * Convergence & Accessibility): the context actions a touch user reaches by
- * swiping or long-pressing a list item MUST also be reachable by POINTER
- * (right-click) and KEYBOARD (the MENU key / Shift+F10), so no action is
- * touch-only.
- *
- * Two ways to wire it, depending on the card/row:
- *   - `triggered()`   — for rows that already have a single "context menu"
- *                       affordance (the ••• overflow / PostActions sheet).
- *                       Right-click / MENU just fires it.
- *   - `menuActions`   — for rows whose only context actions are swipe actions
- *                       (Remove / Share …). Set this to an ActionList and
- *                       right-click / MENU opens a Lomiri ActionSelectionPopover
- *                       listing exactly those actions (never a bare destructive
- *                       trigger — a right-click must present a menu, not delete).
- *
- * It listens for the RIGHT button only, so left-clicks, taps, and the enclosing
- * Lomiri ListItem swipe fall straight through to the row's own handlers. A thin
- * brand outline marks the row when it holds keyboard focus.
+ * Input-method parity (UBports HIG): swipe/long-press context actions must also be
+ * reachable by right-click and keyboard (MENU / Shift+F10). Wire `triggered()` for rows
+ * with an overflow menu, or set `menuActions` to show those actions in a popover menu.
  */
 Item {
     id: area
     anchors.fill: parent
 
     signal triggered()
-    // Emitted when the focused row is activated by keyboard (Enter/Return) — wire
-    // it to the row's primary "open" action so keyboard users can enter an item,
-    // matching a tap/left-click.
+    // Keyboard Enter/Return on the focused row; wire to the row's primary "open" action.
     signal activated()
     // Optional ActionList presented as a context menu (see above).
     property var menuActions: null
@@ -44,7 +26,7 @@ Item {
         var p = PopupUtils.open(menuComp, area);
         if (p && byKeyboard) p.navFirst();
     }
-    // Public: lets a visible ••• button open the same menu right-click/MENU does.
+    // Public: lets a visible overflow button open the same menu right-click/MENU does.
     function open() { area._invoke(false); }
 
     // Pointer: right-click anywhere on the row.

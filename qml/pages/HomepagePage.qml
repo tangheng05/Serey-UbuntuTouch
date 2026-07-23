@@ -7,7 +7,7 @@ import "../components"
 Page {
     id: page
 
-    // Go straight to the resolved route — `/` only redirects here anyway, and
+    // Go straight to the resolved route; `/` only redirects here anyway, and
     // that hop cost a remount plus a wait on the bridge before anything painted.
     function siteUrl() {
         return Config.homeLandingPageUrl + "/" + Config.communityId

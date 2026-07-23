@@ -474,7 +474,7 @@ Page {
                 }
             }
 
-            // Body text area — toolbar docks inside on desktop, above OSK on phone
+            // Body text area; toolbar docks inside on desktop, above OSK on phone
             Rectangle {
                 id: bodyBox
                 readonly property real toolbarH: Config.wideMode ? units.gu(5.5) : 0
@@ -486,11 +486,9 @@ Page {
                 border.width: units.dp(1.5)
                 border.color: bodyArea.activeFocus ? Style.brand : Style.divider
 
-                // Same as the title: the editor is only as tall as its text, so
-                // an empty gu(25) box was tappable on its first line alone.
-                // Declared FIRST so it sits under the editor — taps on the text
-                // (and drag-to-select) still go to it; this catches the blank
-                // area below and drops the cursor at the end.
+                // Same as the title: declared FIRST so it sits under the editor;
+                // catches taps on the blank area below the text and drops the
+                // cursor at the end.
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
@@ -546,7 +544,7 @@ Page {
                 }
             }
 
-            // Platform selector — only on the pickPlatform path; picking one loads that platform's categories.
+            // Platform selector, pickPlatform path only; picking one loads that platform's categories.
             AbstractButton {
                 width: parent.width
                 height: units.gu(6)
@@ -775,7 +773,7 @@ Page {
         }
     }
 
-    // Shared formatting-button row — reused by the phone bottom dock and the desktop inline toolbar.
+    // Shared formatting-button row, reused by the phone bottom dock and the desktop inline toolbar.
     Component {
         id: formatButtonsComp
         Row {
@@ -1062,7 +1060,7 @@ Page {
                             width: parent.width
                             visible: catRow.expanded && catRow.subs.length > 0
 
-                            // "No sub-category" — post under the main category only.
+                            // "No sub-category": post under the main category only.
                             AbstractButton {
                                 width: parent.width
                                 height: units.gu(5.5)

@@ -1,26 +1,12 @@
 .pragma library
 .import "Http.js" as Http
 
-/*
- * Create-your-platform (community) flow, gated on an active subscription plan.
- * Mirrors the web wizard (fe-serey-web social-media-owners) against the same
- * endpoints:
- *   GET  /subscription/active                      — plan gate
- *   GET  /dns/check-subdomain?subdomain=<slug>     — availability (server
- *        appends the base domain, send the slug only)
- *   GET  /country/list-countries                   — Country rows (uuid ids)
- *   GET  /community/categories                     — topical categories
- *   POST /community/create-or-update-community     — the create call
- *
- * Backend rules worth knowing (community_service.js):
- *  - needs an active subscription OR approved BuySerey status (403 otherwise);
- *  - one active community per user — the server rejects a second with a clear
- *    message, so we surface its error text rather than pre-blocking;
- *  - community_name must be letters/digits/spaces only (server regex);
- *  - `dns` is the SUBDOMAIN SLUG — the server appends ".serey.io" itself.
- */
+// Create-your-platform flow, gated on an active subscription. Key server rules:
+// `dns` is the subdomain SLUG only (server appends ".serey.io"), country ids are
+// uuid strings, name is letters/digits/spaces, one community per user (surface
+// the server's error message rather than pre-blocking).
 
-// Resolved by username from the JWT (req.token_info) — no community_id involved.
+// Resolved by username from the JWT; no community_id involved.
 function getActiveSubscription(baseUrl, token, onOk, onErr) {
     Http.get(baseUrl, "/subscription/active", {}, token, function (data) {
         var sub = (data && data.subscription) || {};
@@ -41,8 +27,8 @@ function getActiveSubscription(baseUrl, token, onOk, onErr) {
     }, onErr);
 }
 
-// Field names for the paid amount are unconfirmed (no documented schema) —
-// this tries the common candidates and falls back to "" rather than guessing wrong.
+// Paid-amount field names are unconfirmed (no documented schema); try the
+// common candidates and fall back to "" rather than guessing wrong.
 function getLatestPayment(baseUrl, token, onOk, onErr) {
     Http.get(baseUrl, "/subscription/payment-history", { page: 1, limit: 1 }, token, function (data) {
         var rows = (data && (data.payments || data.data || data.history)) || [];
@@ -55,7 +41,7 @@ function getLatestPayment(baseUrl, token, onOk, onErr) {
     }, onErr);
 }
 
-// Banned users — `community` is the community TITLE string, not the numeric id
+// Banned users. `community` is the community TITLE string, not the numeric id
 // (unlike every other community endpoint).
 function listBannedUsers(baseUrl, communityTitle, token, onOk, onErr) {
     Http.get(baseUrl, "/banning-user/list-by-community", { community: communityTitle }, token,
@@ -81,14 +67,13 @@ function banUser(baseUrl, token, communityTitle, username, reason, onOk, onErr) 
 }
 
 function unbanUser(baseUrl, token, communityTitle, username, onOk, onErr) {
-    // POST alias (added to serey-api) — Qt's QML XMLHttpRequest drops the body on
-    // DELETE, and the backend reads username/community from req.body (not
-    // req.query), so a query-string DELETE was silently ignored server-side.
+    // POST alias: Qt's QML XMLHttpRequest drops the body on DELETE, and the
+    // backend reads username/community from req.body, so DELETE was silently ignored.
     var body = { username: username, community: communityTitle };
     Http.post(baseUrl, "/banning-user/remove", body, token, onOk, onErr);
 }
 
-// Soft delete — sets deleted/deleted_at/deleted_reason on the Community row.
+// Soft delete - sets deleted/deleted_at/deleted_reason on the Community row.
 function deleteCommunity(baseUrl, token, id, onOk, onErr) {
     // POST alias (added to serey-api). Qt's QML XMLHttpRequest drops the body on
     // DELETE, so the DELETE route arrives with no id ("id is a required field").
@@ -97,20 +82,20 @@ function deleteCommunity(baseUrl, token, id, onOk, onErr) {
     Http.post(baseUrl, "/community/delete-community", { id: id }, token, onOk, onErr);
 }
 
-// onOk(isTaken) — true when the subdomain already exists.
+// onOk(isTaken): true when the subdomain already exists.
 function checkSubdomain(baseUrl, slug, onOk, onErr) {
     Http.get(baseUrl, "/dns/check-subdomain", { subdomain: slug }, null,
              function (data) { onOk(!!(data && data.is_exists)); }, onErr);
 }
 
-// onOk([{ id, name, iconUrl }]) — Country table rows; `id` is a uuid STRING
+// onOk([{ id, name, iconUrl }]) - Country table rows; `id` is a uuid STRING
 // (the create payload's country_id is a string, not a number).
 function getCountries(baseUrl, onOk, onErr) {
     Http.get(baseUrl, "/country/list-countries", {}, null, function (data) {
         var rows = (data && data.countries) || [];
         var out = [];
         for (var i = 0; i < rows.length; i++) {
-            // Cambodia is hidden for now (product decision) — omit it from every
+            // Cambodia is hidden for now (product decision) - omit it from every
             // country picker (Create Platform and Edit > Parent Country both use this).
             if ((rows[i].name || "").toLowerCase() === "cambodia") continue;
             out.push({
@@ -123,7 +108,7 @@ function getCountries(baseUrl, onOk, onErr) {
     }, onErr);
 }
 
-// onOk([{ id, name, color, iconUrl }]) — community topical categories.
+// onOk([{ id, name, color, iconUrl }]) - community topical categories.
 // `id` maps to community_category_id (a NUMBER in the create payload).
 function getCategories(baseUrl, onOk, onErr) {
     Http.get(baseUrl, "/community/categories", {}, null, function (data) {
@@ -145,8 +130,8 @@ function getCategories(baseUrl, onOk, onErr) {
  * Create the community. `form`:
  *   { name, slug, independent (bool), countryId (string|null),
  *     categoryId (number|0), iconUrl, logoUrl, footerLogoUrl }
- * Image URLs default to the site's own "/logo.png" placeholder — same default
- * the web wizard sends — because logo_url/footer_logo_url are required strings.
+ * Image URLs default to the site's own "/logo.png" placeholder - same default
+ * the web wizard sends - because logo_url/footer_logo_url are required strings.
  * onOk({ id, dns }) with the created community's id and full dns.
  */
 // ---- Manage (owner CMS basics) ---------------------------------------------
@@ -156,8 +141,8 @@ function getCategories(baseUrl, onOk, onErr) {
 /*
  * Find EVERY community in the get-communities tree whose id is in `idSet`
  * (the { id: true } map Main.qml builds from permission-by-current-user).
- * Searches nested child_communities too — owned platforms usually live at
- * level 3 under a country. onOk(list) — possibly empty; managers of several
+ * Searches nested child_communities too - owned platforms usually live at
+ * level 3 under a country. onOk(list) - possibly empty; managers of several
  * communities get them all so the manage page can offer a switcher.
  */
 function findManagedCommunities(baseUrl, idSet, onOk, onErr) {
@@ -196,7 +181,7 @@ function findManagedCommunities(baseUrl, idSet, onOk, onErr) {
 
 /*
  * Resolve a community's parent country (its top-level ancestor in the
- * get-communities tree — the parent is structural, not a field on the node)
+ * get-communities tree - the parent is structural, not a field on the node)
  * and its community_category_id. onOk({ parentCountry, categoryId }).
  */
 function getCommunityContext(baseUrl, id, onOk, onErr) {
@@ -230,7 +215,7 @@ function getCommunityContext(baseUrl, id, onOk, onErr) {
 /*
  * Whether the community has POSTER members (CommunityManager role 2; role 1 is
  * the owner). The web dashboard derives the blog-posting mode from this:
- * is_allow_post=true → "everyone"; false + posters → "custom"; false → "only me".
+ * is_allow_post=true -> "everyone"; false + posters -> "custom"; false -> "only me".
  */
 function hasPosterMembers(baseUrl, communityId, onOk, onErr) {
     Http.get(baseUrl, "/community/list-community-manager-by-community-id/" + communityId,
@@ -267,7 +252,7 @@ function updateCommunityMetaDescription(baseUrl, token, id, desc, onOk, onErr) {
  * Change the community's profile picture (icon_url). The schema requires
  * logo_url + footer_logo_url as strict strings too, so the caller passes the
  * community's current values back unchanged (default "/logo.png" when a
- * community somehow has none — the create wizard's own default).
+ * community somehow has none - the create wizard's own default).
  */
 function updateCommunityIcon(baseUrl, token, community, iconUrl, onOk, onErr) {
     Http.post(baseUrl, "/community/update-logo", {
@@ -278,7 +263,7 @@ function updateCommunityIcon(baseUrl, token, community, iconUrl, onOk, onErr) {
     }, token, onOk, onErr);
 }
 
-// is_allow_post=true → anyone may post articles; false → owner/managers only.
+// is_allow_post=true -> anyone may post articles; false -> owner/managers only.
 function updateAllowPost(baseUrl, token, id, allow, onOk, onErr) {
     Http.post(baseUrl, "/community/update-community-allow-post",
               { id: id, is_allow_post: !!allow }, token, onOk, onErr);
@@ -308,7 +293,7 @@ function createCommunity(baseUrl, token, form, onOk, onErr) {
               function (data) {
         var c = (data && data.community) || {};
         // Return the fields the caller needs to seed the in-session community
-        // cache (name/logo show + categories load) without a full re-fetch —
+        // cache (name/logo show + categories load) without a full re-fetch -
         // get-communities is server-cached and returns stale data right after a
         // create. Fall back to the submitted values when the response omits them.
         onOk({

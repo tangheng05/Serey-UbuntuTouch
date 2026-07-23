@@ -74,7 +74,7 @@ Page {
 
     ListModel { id: notifModel; dynamicRoles: true }
 
-    // Auto-retry once on 500 — the notifications endpoint is occasionally flaky.
+    // Auto-retry once on 500 - the notifications endpoint is occasionally flaky.
     Timer {
         id: retryTimer
         interval: 2000
@@ -178,7 +178,7 @@ Page {
 
     Component.onCompleted: page.reload()
 
-    // ── Content ──────────────────────────────────────────────────────────────
+    // --- Content ---
     ListView {
         id: list
         anchors { top: parent.header.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
@@ -358,7 +358,7 @@ Page {
                 page.loadPage()
         }
 
-        // Prefetch ~2 screens early (see NewsPage) — atYEnd stays as fallback.
+        // Prefetch ~2 screens early (see NewsPage) - atYEnd stays as fallback.
         onContentYChanged: {
             if (!page.loading && !page.endReached
                     && contentHeight > height

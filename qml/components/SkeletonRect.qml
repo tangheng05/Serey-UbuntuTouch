@@ -21,7 +21,7 @@ Rectangle {
         visible: skeleton.glyph !== ""
     }
 
-    // A slow, shallow breathe — calm rather than a fast flash.
+    // A slow, shallow breathe, calm rather than a fast flash.
     SequentialAnimation on opacity {
         running: skeleton.loading
         loops: Animation.Infinite

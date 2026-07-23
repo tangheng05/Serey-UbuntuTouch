@@ -69,12 +69,23 @@ RowLayout {
         }
         return !bar.busy;
     }
-    // Vote count updated optimistically, not from r.voterCount, since the async chain broadcast means the immediate response still carries the pre-vote count.
+    // Reconcile server-confirmed fields after an optimistic vote. Count isn't taken
+    // from r.voterCount: the async chain broadcast means the immediate response still
+    // carries the pre-vote count, so the optimistic +/-1 stands.
     function _apply(r) {
         bar.busy = false;
         bar.flaggers = r.flaggerCount;
         if (r.payout)
             bar.payout = r.payout;
+    }
+    // Snapshot / restore for optimistic rollback when an on-chain broadcast fails.
+    function _snapshot() {
+        return { upvoted: bar.upvoted, flagged: bar.flagged, votes: bar.votes, payout: bar.payout };
+    }
+    function _rollback(s) {
+        bar.upvoted = s.upvoted; bar.flagged = s.flagged;
+        bar.votes = s.votes; bar.payout = s.payout;
+        bar._cache();
     }
     function _cache() {
         VoteService._updateCache(bar.author, bar.permlink, bar.upvoted, bar.flagged, bar.votes, bar.payout);
@@ -95,32 +106,32 @@ RowLayout {
     function _isHandledAuthFailure(e) {
         return !!e && e.status === 401;
     }
-    function _fail(e) {
+    // Shared failure handler: undo the optimistic change, then surface the error
+    // (unless it's the globally-handled 401).
+    function _failReverting(e, snap) {
         bar.busy = false;
+        _rollback(snap);
         if (_isHandledAuthFailure(e))
             return;
         Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
     }
-    // "Already voted" means the server already has our vote, so reconcile the UI; must not be shared with flag/removeVote or a failed unvote flips to "liked".
-    function _failUpvote(e) {
-        bar.busy = false;
-        if (_isHandledAuthFailure(e))
-            return;
+    // "Already voted" means the server already has our vote, so the optimistic
+    // upvote is already correct: keep it, no rollback. Kept separate from
+    // flag/removeVote so a failed unvote can't flip the UI to "liked".
+    function _failUpvote(e, snap) {
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
-        if (msg.indexOf("already") >= 0) {
-            if (!bar.upvoted) { bar.votes = bar.votes + 1; bar.upvoted = true; bar._cache(); }
+        if (!_isHandledAuthFailure(e) && msg.indexOf("already") >= 0) {
+            bar.busy = false;
             return;
         }
-        Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
+        bar._failReverting(e, snap);
     }
 
     function doUpvote() {
         if (!_guard())
             return;
         if (bar.upvoted) {
-            bar.busy = true;
-            VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { bar.upvoted = false; bar.votes = Math.max(0, bar.votes - 1); _apply(r); bar._cache(); Toast.show(Lang.tr("Vote removed")); }, _fail);
+            bar._sendRemoveVote();
         } else if (bar.voteType === "comment" || !bar.onChain) {
             // Comments and off-chain posts: simple one-tap like, no weight popover
             bar._sendUpvote(100);
@@ -129,12 +140,32 @@ RowLayout {
         }
     }
 
+    // Optimistic un-vote: drop the vote and toast now, broadcast in the background.
+    function _sendRemoveVote() {
+        var snap = _snapshot();
+        bar.upvoted = false;
+        bar.votes = Math.max(0, bar.votes - 1);
+        bar._cache();
+        Toast.show(Lang.tr("Vote removed"));
+        bar.busy = true;
+        VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
+            function (r) { _apply(r); bar._cache(); },
+            function (e) { bar._failReverting(e, snap); });
+    }
+
+    // Optimistic upvote: count it, turn blue, and toast immediately; the chain
+    // broadcast runs in the background so the user never waits on confirmation.
     function _sendUpvote(weight) {
+        var snap = _snapshot();
+        if (!bar.upvoted) bar.votes = bar.votes + 1;
+        bar.upvoted = true;
+        bar.flagged = false;
+        bar._cache();
+        Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Upvoted %1%").arg(weight));
         bar.busy = true;
         VoteService.upvote(Config.baseUrl, author, permlink, voteType, weight, Session.token,
-            function (r) { if (!bar.upvoted) bar.votes = bar.votes + 1;   // count this vote now
-                           bar.upvoted = true; bar.flagged = false; _apply(r); bar._cache();
-                           Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Upvoted %1%").arg(weight)); }, _failUpvote);
+            function (r) { _apply(r); bar._cache(); },
+            function (e) { bar._failUpvote(e, snap); });
     }
 
     Component {
@@ -220,14 +251,27 @@ RowLayout {
     function doFlag() {
         if (!allowFlag || !_guard())
             return;
-        bar.busy = true;
+        var snap = _snapshot();
         if (bar.flagged) {
+            // Optimistic un-flag.
+            bar.flagged = false;
+            bar._cache();
+            Toast.show(Lang.tr("Vote removed"));
+            bar.busy = true;
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { bar.flagged = false; _apply(r); bar._cache(); Toast.show(Lang.tr("Vote removed")); }, _fail);
+                function (r) { _apply(r); bar._cache(); },
+                function (e) { bar._failReverting(e, snap); });
         } else {
+            // Optimistic flag; a flag clears any existing upvote.
+            if (bar.upvoted) bar.votes = Math.max(0, bar.votes - 1);
+            bar.flagged = true;
+            bar.upvoted = false;
+            bar._cache();
+            Toast.show(Lang.tr("Flagged"));
+            bar.busy = true;
             VoteService.flag(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { if (bar.upvoted) bar.votes = Math.max(0, bar.votes - 1);   // flag clears the upvote
-                               bar.flagged = true; bar.upvoted = false; _apply(r); bar._cache(); Toast.show(Lang.tr("Flagged")); }, _fail);
+                function (r) { _apply(r); bar._cache(); },
+                function (e) { bar._failReverting(e, snap); });
         }
     }
 
@@ -236,7 +280,6 @@ RowLayout {
         id: upvoteBtn
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: upRow.implicitWidth
-        enabled: !bar.busy
         onClicked: bar.doUpvote()
         Row {
             id: upRow
@@ -310,7 +353,6 @@ RowLayout {
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: downRow.implicitWidth
         visible: bar.allowFlag
-        enabled: !bar.busy
         onClicked: bar.doFlag()
         Row {
             id: downRow
@@ -373,14 +415,8 @@ RowLayout {
 
     Item { Layout.fillWidth: true }
 
-    ActivityIndicator {
-        running: bar.busy
-        visible: bar.busy
-        Layout.preferredHeight: units.gu(2.5)
-        Layout.preferredWidth: units.gu(2.5)
-    }
     CoinValue {
-        visible: !bar.busy && bar.onChain && bar.payout.length > 0 && bar.voteType !== "comment"
+        visible: bar.onChain && bar.payout.length > 0 && bar.voteType !== "comment"
         value: bar.payout
     }
 }

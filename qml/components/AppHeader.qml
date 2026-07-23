@@ -16,7 +16,7 @@ Rectangle {
     height: units.gu(6)
     color: Style.surface
 
-    // Left: community selector — a flag chip with a caret; flat by default, with a soft pill only on press for touch feedback.
+    // Left: community selector, a flag chip with a caret; flat by default, soft pill on press for touch feedback.
     AbstractButton {
         id: titleBtn
         anchors {
@@ -69,7 +69,7 @@ Rectangle {
                     color: Style.textSecondary
                     visible: !cIcon.loaded
                 }
-                // Hairline ring so a light-edged flag (e.g. the Dutch white stripe) stays crisp against the white header instead of bleeding.
+                // Hairline ring so a light-edged flag (e.g. the Dutch white stripe) doesn't bleed into the white header.
                 Rectangle {
                     anchors.fill: parent
                     radius: width / 2
@@ -79,7 +79,21 @@ Rectangle {
                 }
             }
 
-            // Real vector caret — the old "▾" glyph rendered chunky and off-baseline.
+            // Community name, shown beside the flag on wide windows only;
+            // phones keep the compact icon-only chip.
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: appHeader.wide && text !== ""
+                text: appHeader.communityName
+                font.pixelSize: Style.fontMedium
+                font.weight: Font.DemiBold
+                font.family: Style.fontFor(text)   // community names may be Khmer
+                color: Style.textPrimary
+                elide: Text.ElideRight
+                width: Math.min(implicitWidth, units.gu(24))
+            }
+
+            // Real vector caret; the old text-glyph caret rendered chunky and off-baseline.
             Icon {
                 anchors.verticalCenter: parent.verticalCenter
                 width: appHeader.wide ? units.gu(2) : units.gu(1.5); height: width
@@ -87,6 +101,8 @@ Rectangle {
                 color: Style.textSecondary
             }
         }
+
+        KeyTapArea { onActivated: titleBtn.clicked() }
     }
 
     // Center action slot uses a fixed width (not childrenRect) since a child anchored via centerIn would otherwise create a width binding loop.
@@ -112,7 +128,6 @@ Rectangle {
         height: parent.height
     }
 
-    // Bottom hairline
     Rectangle {
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: units.dp(1)

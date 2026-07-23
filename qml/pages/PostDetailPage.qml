@@ -7,6 +7,7 @@ import "../components"
 import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 import "../services/VoteService.js" as VoteService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 Page {
     id: page
@@ -14,6 +15,9 @@ Page {
     property string author: ""
     property string permlink: ""
     property string title: ""
+
+    // Adapt, not scale: caps the article to a centered column on wide windows
+    readonly property real maxContentWidth: units.gu(100)
 
     // Passed in when opened from Saved Articles, so it renders instantly offline
     property var preloadedPost: null
@@ -33,33 +37,106 @@ Page {
     // Set while replying to a specific comment rather than the post itself; cleared after posting or via the composer's Cancel.
     property var replyTarget: null
 
-    // Minimal header: just a back button, no title text
-    header: PageHeader {
-        title: ""
-        leadingActionBar.actions: [
-            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
-        ]
+    readonly property bool postReady: page.post !== null && (page.permlink || "").length > 0
+    readonly property bool isSaved: (SavedPosts.rev, SavedPosts.isSaved(page.permlink))
+    // Same URL shape the VoteBar's share button and the feed rows use.
+    readonly property string shareUrl: (page.author.length > 0 && page.permlink.length > 0)
+        ? ("https://serey.io/authors/" + page.author + "/" + page.permlink) : ""
+    // The viewer owns this post, so offer Edit/Delete instead of moderation (you can't report or block yourself).
+    readonly property bool isOwnPost: Session.isLoggedIn && page.author !== "" && page.author === Session.username
+
+    function toggleSaved() {
+        if (page.isSaved) SavedPosts.remove(page.permlink);
+        else SavedPosts.save(page.post);
     }
 
-    // Save/unsave overlay is a sibling of the header, not inside it, since right-anchored children don't lay out reliably inside Page.header on Lomiri.
-    AbstractButton {
-        id: saveBtn
-        anchors { right: parent.right; rightMargin: Style.spacingM; top: parent.top }
-        height: page.header.height
-        width: units.gu(6)
-        z: 50
-        enabled: page.post !== null && (page.permlink || "").length > 0
-        readonly property bool isSaved: (SavedPosts.rev, SavedPosts.isSaved(page.permlink))
-        onClicked: {
-            if (saveBtn.isSaved) SavedPosts.remove(page.permlink);
-            else SavedPosts.save(page.post);
+    // Same as the sheet's Hide row, plus a pop: you're looking at the post you just hid.
+    function hidePost() {
+        HiddenPosts.hide(page.permlink);
+        PostActions.hideRequested(page.author, page.permlink);
+        page.pageStack.pop();
+    }
+
+    function openEditor() {
+        var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { editPost: page.post });
+        if (ed && ed.saved) ed.saved.connect(page.load);
+    }
+
+    // Delete and Block run in the sheet and only reach us as signals; either way this
+    // page is left showing content that's gone, so unwind to the feed behind it.
+    Connections {
+        target: PostActions
+        function onPostDeleted(author, permlink) {
+            if (permlink === page.permlink) page.pageStack.pop();
         }
-        Icon {
-            anchors.centerIn: parent
-            width: units.gu(2.6); height: width
-            name: "save"
-            color: saveBtn.isSaved ? Style.brand : Style.textSecondary
-            opacity: saveBtn.enabled ? 1 : 0.35
+        function onUserBlocked(username) {
+            if (username === page.author) page.pageStack.pop();
+        }
+        function onEditRequested(post) {
+            if (post && post.permlink === page.permlink) page.openEditor();
+        }
+    }
+
+    header: Item { height: 0 }
+
+    Rectangle {
+        id: postDetailHeader
+        anchors { top: parent.top; left: parent.left; right: parent.right }
+        height: units.gu(6) + units.dp(1)
+        color: Style.surface
+        z: 10
+
+        AbstractButton {
+            id: backBtn
+            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: width
+            onClicked: page.pageStack.pop()
+            Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "back"; color: Style.textPrimary }
+        }
+
+        Label {
+            anchors { left: backBtn.right; leftMargin: Style.spacingS; right: shareHeaderBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            text: page.postReady ? (page.isVideoPost() ? Lang.tr("Video") : Lang.tr("Blog")) : ""
+            font.pixelSize: Style.fontLarge
+            font.weight: Font.Light
+            color: Style.textPrimary
+            elide: Text.ElideRight
+        }
+
+        AbstractButton {
+            id: shareHeaderBtn
+            anchors { right: moreHeaderBtn.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: units.gu(4)
+            enabled: page.shareUrl.length > 0
+            onClicked: Share.open(page.shareUrl, shareHeaderBtn)
+            Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
+        }
+
+        AbstractButton {
+            id: moreHeaderBtn
+            anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: units.gu(4)
+            enabled: page.postReady
+            onClicked: PostActions.open(page.post, "blog")
+            Column {
+                anchors.centerIn: parent
+                spacing: units.dp(3)
+                Repeater {
+                    model: 3
+                    delegate: Rectangle {
+                        width: units.dp(4); height: units.dp(4)
+                        radius: width / 2
+                        color: Style.textSecondary
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: units.dp(1)
+            color: Style.divider
         }
     }
 
@@ -67,6 +144,15 @@ Page {
         if (page.post && page.post.categories && page.post.categories.length > 0)
             return page.post.categories[0];
         return "serey";
+    }
+
+    // A post is a video if its (primary) category says so; same rule FeedPage uses to route to VideoDetailPage.
+    function isVideoPost() {
+        var p = page.post;
+        if (!p) return false;
+        if (p.primaryCategory === "video") return true;
+        var c = p.categories;
+        return !!(c && c.indexOf && c.indexOf("video") >= 0);
     }
 
     function load() {
@@ -84,6 +170,7 @@ Page {
 
                 // Sync vote bar: cache wins over API data since the feed may have recorded a vote the detail endpoint hasn't caught up with.
                 if (detailVoteBar) {
+                    detailVoteBar.voters = result.post.voters || [];
                     var cached = VoteService.getCached(page.author, page.permlink);
                     if (cached) {
                         detailVoteBar.votes = cached.votes;
@@ -283,10 +370,10 @@ Page {
                 if (piece.content === featuredSrc) continue;
                 if (seenImages[piece.content]) continue;
                 seenImages[piece.content] = true;
-                bodyModel.append({ type: "image", content: piece.content });
+                bodyModel.append({ type: "image", content: piece.content, links: "[]" });
             } else {
                 var text = piece.content;
-                // The blocks render as RichText, which collapses literal "\n" to a space — block boundaries become <br/> tags, and a paragraph gap is a double break.
+                // The blocks render as RichText, which collapses literal "\n" to a space; block boundaries become <br/> tags, and a paragraph gap is a double break.
                 text = text.replace(/<\/p>/gi, "<br/><br/>");
                 text = text.replace(/<p[^>]*>/gi, "");
                 text = text.replace(/<div[^>]*>/gi, "");
@@ -320,8 +407,22 @@ Page {
                 text = text.replace(/(?:<br\/>\s*){3,}/gi, "<br/><br/>");
                 text = text.replace(/^(?:\s|<br\/>)+/i, "");
                 text = text.replace(/(?:\s|<br\/>)+$/i, "");
+                // Lomiri TextArea has no linkAt(), so capture each anchor's href and the
+                // exact visible text it renders. The delegate hit-tests a tap position
+                // (positionAt) against these spans in the displayed plain text to open links.
+                var links = [];
+                var reA = /<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+                var am;
+                while ((am = reA.exec(text)) !== null) {
+                    var vis = am[2].replace(/<[^>]+>/g, "")       // strip inner <b>/<i> etc.
+                                   .replace(/&amp;/g, "&").replace(/&lt;/g, "<")
+                                   .replace(/&gt;/g, ">").replace(/&quot;/g, "\"")
+                                   .replace(/&#(\d+);/g, function (mm, n) { return String.fromCharCode(parseInt(n, 10)); })
+                                   .replace(/&#x([0-9a-fA-F]+);/gi, function (mm, n) { return String.fromCharCode(parseInt(n, 16)); });
+                    if (vis.length > 0) links.push({ href: am[1], text: vis });
+                }
                 if (text.length > 0)
-                    bodyModel.append({ type: "text", content: text });
+                    bodyModel.append({ type: "text", content: text, links: JSON.stringify(links) });
             }
         }
     }
@@ -362,9 +463,13 @@ Page {
         }
     }
 
+    // The scroll view owns arrow-key focus so a keyboard user can scroll the article;
+    // AdaptiveStack.focusDetail() targets this when entering from the list.
+    property Item keyboardFocusItem: scroll
+
     KeyboardAwareFlickable {
         id: scroll
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: postDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         anchors.bottomMargin: footer.visible ? footer.height + page.kbHeight : 0
         // Animate in step with the footer's own bottomMargin so the list and the docked composer move together when the keyboard shows/hides.
         Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
@@ -377,17 +482,38 @@ Page {
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
+        // Keyboard reading: a plain Flickable ignores keys, so scroll keys are handled
+        // here. Focus lands on the flick when the article opens (never stealing it from
+        // the comment box); tapping the body TextArea still takes focus for selection.
+        activeFocusOnTab: true
+        function _kbScroll(dy) {
+            var maxY = Math.max(0, scroll.contentHeight - scroll.height + scroll.bottomMargin);
+            scroll.contentY = Math.max(0, Math.min(maxY, scroll.contentY + dy));
+        }
+        Keys.onPressed: {
+            var pageStep = scroll.height * 0.9;
+            var lineStep = units.gu(6);
+            if (event.key === Qt.Key_Down)          { scroll._kbScroll(lineStep);  event.accepted = true; }
+            else if (event.key === Qt.Key_Up)       { scroll._kbScroll(-lineStep); event.accepted = true; }
+            else if (event.key === Qt.Key_PageDown) { scroll._kbScroll(pageStep);  event.accepted = true; }
+            else if (event.key === Qt.Key_PageUp)   { scroll._kbScroll(-pageStep); event.accepted = true; }
+            else if (event.key === Qt.Key_Home)     { scroll.contentY = 0; event.accepted = true; }
+            else if (event.key === Qt.Key_End)      { scroll._kbScroll(scroll.contentHeight); event.accepted = true; }
+            else if (event.key === Qt.Key_Space)    { scroll._kbScroll((event.modifiers & Qt.ShiftModifier) ? -pageStep : pageStep); event.accepted = true; }
+            // Hand focus back to the master list (the sidebar) so the reader can pick the next post.
+            else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
+        }
+        onVisibleChanged: if (visible && !composer.activeFocus) Qt.callLater(scroll.forceActiveFocus)
+        Component.onCompleted: if (visible && !composer.activeFocus) scroll.forceActiveFocus()
+
         Column {
             id: contentCol
-            // Convergence readability cap: keep the article at a comfortable
-            // measure and centered instead of stretching across a wide window.
-            width: Math.min(scroll.width, Config.readingMaxWidth)
+            width: Math.min(scroll.width, page.maxContentWidth)
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.spacingM
 
             Item { width: 1; height: Style.spacingS }
 
-            // Category badge
             Row {
                 visible: page.post && page.post.categories && page.post.categories.length > 0
                 x: Style.spacingM
@@ -405,6 +531,34 @@ Page {
                     font.weight: Font.Bold
                     color: Style.accentRed
                     anchors.verticalCenter: parent.verticalCenter
+
+                    // Opens the blog tab filtered to this category, in the post's own community.
+                    MouseArea {
+                        anchors { fill: parent; margins: -Style.spacingXs }
+                        onClicked: {
+                            var cid = page.post ? page.post.communityId : 0;
+                            var info = cid > 0 ? Config.communityInfoFor(cid) : null;
+                            var community = info ? {
+                                id: cid,
+                                name: info.title || info.name || "",
+                                icon: info.icon || "",
+                                allowPost: !!info.allowPost,
+                                videoAllowPost: !!info.videoAllowPost
+                            } : null;
+                            Nav.filterCategory(page.maincategory(), community);
+                        }
+                    }
+                }
+                // Sub-categories (everything after the main tag), rendered as a suffix.
+                Label {
+                    visible: text.length > 0
+                    text: (page.post && page.post.subCategories && page.post.subCategories.length > 0)
+                          ? ("› " + page.post.subCategories.join(" · ").toUpperCase()) : ""
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.Bold
+                    font.family: Style.fontFor(text)
+                    color: Style.textSecondary
+                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
 
@@ -412,19 +566,15 @@ Page {
                 width: parent.width - Style.spacingM * 2 - Style.wrapSafeMargin
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: page.post ? page.post.title : ""
-                textSize: Label.Large
+                font.pixelSize: Style.fontTitle
                 font.weight: Font.DemiBold
                 font.family: Style.fontFor(text)
                 color: Style.textPrimary
                 wrapMode: Text.Wrap
             }
 
-            OffChainBadge {
-                anchors.horizontalCenter: parent.horizontalCenter
-                onChain: page.post ? (page.post.postToBlockchain !== false) : true
-            }
-
             Row {
+                visible: !Config.wideMode
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width - Style.spacingM * 2
                 spacing: Style.spacingS
@@ -588,33 +738,51 @@ Page {
                                 TextArea {
                                     id: bodyTxt
                                     width: parent.width
+                                    // Stray-selection guard: a scrolling press doesn't cancel TextEdit's
+                                    // press-and-hold word-select timer, so it can fire well after motion stops.
+                                    // Flag "scrolled since focus" and clear any selection that appears meanwhile.
+                                    property real _lastScrollMs: 0
+                                    property bool _scrolledSinceFocus: false
+                                    readonly property int _scrollSelGuardMs: 1500
                                     text: model.content
                                     textFormat: TextEdit.RichText
                                     readOnly: true
                                     // autoSize + maximumLineCount<=0 disables the TextArea's internal scroll so the outer Flickable's scroll can cancel the long-press timer natively.
                                     autoSize: true
                                     maximumLineCount: 0
-                                    // autoSize under-measures RichText (taller bold/heading lines) — grow to the true painted height.
+                                    // autoSize under-measures RichText (taller bold/heading lines); grow to the true painted height.
                                     onPaintedHeightChanged: Qt.callLater(_fitHeight)
                                     onLineCountChanged: Qt.callLater(_fitHeight)
                                     Component.onCompleted: Qt.callLater(_fitHeight)
                                     function _fitHeight() { if (height < paintedHeight) height = paintedHeight; }
                                     // Long-press selection requires the field to already be focused
                                     activeFocusOnPress: true
+                                    // Once focused, the read-only cursor would swallow the reading keys;
+                                    // chain them to the flick (arrows/Page/Space/Left/Escape) while copy
+                                    // and select-all fall through untouched.
+                                    Keys.forwardTo: [scroll]
                                     font.pixelSize: Config.wideMode ? Style.fontMedium * 1.2 : Style.fontMedium
                                     font.family: Style.fontFor(text)
                                     color: Style.textPrimary
-                                    // Flat look — not a text field
+                                    // Flat look, not a text field
                                     StyleHints {
                                         backgroundColor: "transparent"
                                         frameSpacing: 0
                                         overlaySpacing: 0
                                     }
                                     onLinkActivated: Qt.openUrlExternally(link)
+                                    // A fresh press (focus gained) starts a new gesture; reset the flag so a
+                                    // deliberate long-press with no scroll is never blocked.
+                                    onActiveFocusChanged: if (activeFocus) bodyTxt._scrolledSinceFocus = false
                                     // Caret visible only while selected, gating the native Copy popover; always-on left an idle blue cursor while reading.
                                     onSelectedTextChanged: {
-                                        // Scroll momentum can grab/extend a stray selection; real selection-adjusts freeze the scroller, so this only ever clears accidental ones.
-                                        if (selectedText.length > 0 && scroll.moving) {
+                                        // Stray if the scroller is in motion, or a scroll happened during this
+                                        // press and is still recent (the late press-and-hold timer). A
+                                        // deliberate long-press is never cleared.
+                                        if (selectedText.length > 0
+                                                && (scroll.moving || scroll.flicking
+                                                    || (bodyTxt._scrolledSinceFocus
+                                                        && (Date.now() - bodyTxt._lastScrollMs) < bodyTxt._scrollSelGuardMs))) {
                                             bodyTxt.deselect();
                                             return;
                                         }
@@ -623,10 +791,50 @@ Page {
                                     onCursorVisibleChanged: if (!cursorVisible && selectedText.length > 0) cursorVisible = true
                                 }
 
-                                // Clears a stray selection grabbed just before a scroll drag crosses its threshold (never fires during a real select-drag).
+                                // Track scroll activity so the selection guard above can distinguish a stray
+                                // (scroll happened during this press) from a deliberate long-press.
                                 Connections {
                                     target: scroll
-                                    onMovementStarted: bodyTxt.deselect()
+                                    onMovementStarted: { bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now(); bodyTxt.deselect() }
+                                    onMovementEnded:   bodyTxt._lastScrollMs = Date.now()
+                                    onFlickStarted:    { bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now() }
+                                    onFlickEnded:      bodyTxt._lastScrollMs = Date.now()
+                                    onDraggingChanged: { if (scroll.dragging) bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now() }
+                                }
+
+                                // Tap-to-open links: Lomiri TextArea has no linkAt() and onLinkActivated is
+                                // unreliable inside a Flickable, so hit-test the tap (positionAt) against the
+                                // block's link spans. A non-link press falls through so scrolling still works.
+                                MouseArea {
+                                    anchors.fill: bodyTxt
+                                    propagateComposedEvents: true
+                                    property string _pendingHref: ""
+                                    function _hrefAt(x, y) {
+                                        var arr;
+                                        try { arr = JSON.parse(model.links || "[]"); } catch (e) { return ""; }
+                                        if (!arr.length) return "";
+                                        var pos = bodyTxt.positionAt(x, y);
+                                        var plain = bodyTxt.getText(0, bodyTxt.length);
+                                        for (var i = 0; i < arr.length; i++) {
+                                            var t = arr[i].text;
+                                            if (!t) continue;
+                                            var from = 0, idx;
+                                            while ((idx = plain.indexOf(t, from)) !== -1) {
+                                                if (pos >= idx && pos <= idx + t.length) return arr[i].href;
+                                                from = idx + 1;
+                                            }
+                                        }
+                                        return "";
+                                    }
+                                    onPressed: {
+                                        _pendingHref = _hrefAt(mouse.x, mouse.y);
+                                        // Only grab the press when it's on a link; otherwise let the TextArea/
+                                        // Flickable underneath handle selection and scrolling.
+                                        mouse.accepted = (_pendingHref.length > 0);
+                                    }
+                                    onClicked: {
+                                        if (_pendingHref.length > 0) Qt.openUrlExternally(_pendingHref);
+                                    }
                                 }
                             }
                         }
@@ -636,7 +844,6 @@ Page {
 
             Rectangle { width: parent.width; height: units.dp(1); color: "black" }
 
-            // --- Comments ---------------------------------------------------
             Label {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -674,18 +881,17 @@ Page {
     }
 
     LoadingState {
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: postDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: page.loading && page.post === null
         count: 1
     }
     ErrorState {
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: postDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: page.errorMsg !== "" && page.post === null
         message: page.errorMsg
         onRetry: page.load()
     }
 
-    // --- Fixed footer: votes/voters/share + comment composer ---------------
     Rectangle {
         id: footer
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -698,7 +904,8 @@ Page {
 
     Column {
         id: footerCol
-        width: parent.width
+        width: Math.min(parent.width, page.maxContentWidth)
+        anchors.horizontalCenter: parent.horizontalCenter
         spacing: units.dp(4)
 
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
@@ -713,6 +920,7 @@ Page {
             onChain: page.post ? (page.post.postToBlockchain !== false) : true
             showComments: false
             showVotersLabel: false
+            showShare: false   // Share now lives in the header action bar, not duplicated here
             onRequireLogin: page.pushLogin()
 
             // Apply cached vote state on every visibility change and on init, so the count always matches what the feed card shows.
@@ -729,7 +937,6 @@ Page {
             onVisibleChanged: if (visible) applyCache()
         }
 
-        // Replying-to banner
         Row {
             visible: page.replyTarget !== null
             width: parent.width - Style.spacingM * 2
@@ -755,7 +962,6 @@ Page {
             }
         }
 
-        // Comment input pill
         Row {
             width: parent.width - Style.spacingM * 2
             anchors.horizontalCenter: parent.horizontalCenter

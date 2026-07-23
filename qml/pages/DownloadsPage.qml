@@ -101,7 +101,7 @@ Page {
                         anchors.centerIn: parent
                         width: units.gu(2.5); height: width
                         name: action.iconName
-                        color: "black"
+                        color: Style.textPrimary
                     }
                 }
                 actions: [

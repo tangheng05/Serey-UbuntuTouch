@@ -8,8 +8,21 @@ Item {
     property var model: []
     property int currentIndex: 0
     signal selected(int index)
+    // Emitted when a keyboard user presses Down on the strip; the host page
+    // should move focus back to its content list.
+    signal focusList()
 
-    implicitHeight: units.gu(5.5)
+    // Focus the active section's key area (hosts call this from the list's
+    // Up-at-top handler so the strip is reachable without Tab-cycling).
+    function focusCurrent() { _focusTab(Math.max(0, currentIndex)) }
+    function _focusTab(i) {
+        var it = rep.itemAt(i);
+        if (it) it.keyArea.forceActiveFocus();
+    }
+
+    // Matches PageHeader's own height (Ambiance style: titleAreaHeight gu(6) + 1dp divider)
+    // so the master-pane tab strip and the detail-pane PageHeader line up in split/wide layouts.
+    implicitHeight: units.gu(6) + units.dp(1)
 
     RowLayout {
         id: row
@@ -17,13 +30,30 @@ Item {
         spacing: 0
 
         Repeater {
+            id: rep
             model: root.model
             delegate: AbstractButton {
                 id: tab
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 property bool active: index === root.currentIndex
-                onClicked: { root.currentIndex = index; root.selected(index); }
+                property alias keyArea: keyTap
+
+                // Keyboard-focus cue: a soft brand-tint pill hugging the label.
+                // (KeyTapArea's boxy ring clashed with the active underline.)
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: tabLabel.implicitWidth + units.gu(3)
+                    height: units.gu(4)
+                    radius: height / 2
+                    color: Style.brand
+                    opacity: 0.12
+                    visible: keyTap.activeFocus
+                }
+                // Controlled component: only emit; the parent updates the bound property.
+                // Writing currentIndex here would break the binding, leaving the
+                // highlight stuck on the old tab after a programmatic change.
+                onClicked: root.selected(index)
 
                 Label {
                     id: tabLabel
@@ -34,7 +64,6 @@ Item {
                     color: tab.active ? Style.brand : Style.textSecondary
                 }
 
-                // Active underline
                 Rectangle {
                     anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
                     width: tabLabel.implicitWidth + units.gu(2)
@@ -43,11 +72,19 @@ Item {
                     color: Style.brand
                     visible: tab.active
                 }
+
+                KeyTapArea {
+                    id: keyTap
+                    showRing: false
+                    onActivated: { root.selected(index); root.focusList(); }
+                    onLeftPressed: root._focusTab(index - 1)
+                    onRightPressed: root._focusTab(index + 1)
+                    onDownPressed: root.focusList()
+                }
             }
         }
     }
 
-    // Baseline hairline
     Rectangle {
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: units.dp(1)

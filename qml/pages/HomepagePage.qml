@@ -7,19 +7,32 @@ import "../components"
 Page {
     id: page
 
-    function siteUrl() { return Config.homeLandingPageUrl + "?community_id=" + Config.communityId; }
+    // Go straight to the resolved route; `/` only redirects here anyway, and
+    // that hop cost a remount plus a wait on the bridge before anything painted.
+    function siteUrl() {
+        return Config.homeLandingPageUrl + "/" + Config.communityId
+             + "?community_id=" + Config.communityId;
+    }
 
     // Zero-height header: the global AppHeader is the real top bar.
     header: Item { height: 0 }
 
-    // Map a community id requested by the web side to one of our sources.
+    // Keyboard parity on arrival (see NewsPage): hand key focus to the web view
+    // whenever this tab is shown, so the site scrolls with arrows immediately.
+    // Nav.focusMaster (Right from the nav rail) targets the same item.
+    property Item keyboardFocusItem: webApp
+    onVisibleChanged: if (visible) webApp.forceActiveFocus()
+    // Deferred: the web view's load is itself deferred, so grabbing focus straight
+    // from onCompleted lands on nothing (measured: activeFocus stayed false and the
+    // window had no focus item at all), leaving the site unscrollable until a click.
+    Component.onCompleted: if (visible) Qt.callLater(webApp.forceActiveFocus)
+
+    // Adopt a community the web side moved to, at any depth. Config.communityId
+    // then re-points siteUrl(), so a bridge-only request (a superhub card, which
+    // doesn't navigate itself) takes the web view along too.
     function applyCommunity(communityId) {
-        for (var i = 0; i < Config.sources.length; i++) {
-            if (String(Config.sources[i].id) === String(communityId)) {
-                Config.sourceIndex = i;
-                return;
-            }
-        }
+        if (String(communityId) === String(Config.communityId)) return;
+        Config.selectCommunityById(communityId);
     }
 
     WebAppView {
@@ -34,6 +47,9 @@ Page {
         communityId: String(Config.communityId)
         communityName: Config.communityName
         onOpenCommunityRequested: page.applyCommunity(communityId)
+        // Same for card taps the site handles itself. Ignoring the already-selected
+        // community is what stops our own siteUrl() hops from looping.
+        onSiteNavigated: page.applyCommunity(Config.communityIdForUrl(url))
 
         // Buy-plan: bridge calls and intercepted Stripe redirects both land in
         // the native payment flow (PaymentSheet / StripeCheckoutSheet).

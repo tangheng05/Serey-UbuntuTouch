@@ -17,6 +17,8 @@ RowLayout {
     property int flaggers: 0
     property int comments: 0
     property string payout: ""
+    // Usernames who upvoted (Mappers.js's `voters` array); backs the hover/press-and-hold "who upvoted" popover.
+    property var voters: []
 
     property bool upvoted: false
     property bool flagged: false
@@ -36,6 +38,29 @@ RowLayout {
 
     spacing: Style.spacingM
 
+    // "alice, bob, carol and 4 more" summary for the voters popover. `voters` may be
+    // a plain array or a dynamicRoles-wrapped ListModel (.count/.get(i) instead of
+    // .length/[i]); handle both shapes.
+    function _votersText() {
+        var v = bar.voters;
+        if (!v) return "";
+        var n = (typeof v.length === "number") ? v.length : (typeof v.count === "number" ? v.count : 0);
+        if (n === 0) return "";
+        var shown = [];
+        var limit = Math.min(n, 6);
+        for (var i = 0; i < limit; i++) {
+            var item = (typeof v.get === "function") ? v.get(i) : v[i];
+            var name = (item && item.modelData !== undefined) ? item.modelData : item;
+            // Only accept real usernames; a ListModel-wrapped entry is a QML
+            // object that would stringify as "@QQmlDM..." garbage.
+            if (typeof name === "string" && name.length > 0) shown.push("@" + name);
+        }
+        if (shown.length === 0) return "";
+        var text = shown.join(", ");
+        var extra = n - limit;
+        return extra > 0 ? text + " " + Lang.tr("and %1 more").arg(extra) : text;
+    }
+
     function _guard() {
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
@@ -44,12 +69,23 @@ RowLayout {
         }
         return !bar.busy;
     }
-    // Vote count updated optimistically, not from r.voterCount, since the async chain broadcast means the immediate response still carries the pre-vote count.
+    // Reconcile server-confirmed fields after an optimistic vote. Count isn't taken
+    // from r.voterCount: the async chain broadcast means the immediate response still
+    // carries the pre-vote count, so the optimistic +/-1 stands.
     function _apply(r) {
         bar.busy = false;
         bar.flaggers = r.flaggerCount;
         if (r.payout)
             bar.payout = r.payout;
+    }
+    // Snapshot / restore for optimistic rollback when an on-chain broadcast fails.
+    function _snapshot() {
+        return { upvoted: bar.upvoted, flagged: bar.flagged, votes: bar.votes, payout: bar.payout };
+    }
+    function _rollback(s) {
+        bar.upvoted = s.upvoted; bar.flagged = s.flagged;
+        bar.votes = s.votes; bar.payout = s.payout;
+        bar._cache();
     }
     function _cache() {
         VoteService._updateCache(bar.author, bar.permlink, bar.upvoted, bar.flagged, bar.votes, bar.payout);
@@ -64,28 +100,38 @@ RowLayout {
             bar.votes   = saved.votes;
         }
     }
-    function _fail(e) {
+    // A 401 is already surfaced (and the session cleared) by Http.js's global
+    // unauthorized handler in Main.qml, so re-toasting it here would double up.
+    // The server sends one for a rotated posting key, not just an expired token.
+    function _isHandledAuthFailure(e) {
+        return !!e && e.status === 401;
+    }
+    // Shared failure handler: undo the optimistic change, then surface the error
+    // (unless it's the globally-handled 401).
+    function _failReverting(e, snap) {
         bar.busy = false;
+        _rollback(snap);
+        if (_isHandledAuthFailure(e))
+            return;
         Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
     }
-    // "Already voted" means the server already has our vote — reconcile the UI; must not be shared with flag/removeVote or a failed unvote flips to "liked".
-    function _failUpvote(e) {
-        bar.busy = false;
+    // "Already voted" means the server already has our vote, so the optimistic
+    // upvote is already correct: keep it, no rollback. Kept separate from
+    // flag/removeVote so a failed unvote can't flip the UI to "liked".
+    function _failUpvote(e, snap) {
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
-        if (msg.indexOf("already") >= 0) {
-            if (!bar.upvoted) { bar.votes = bar.votes + 1; bar.upvoted = true; bar._cache(); }
+        if (!_isHandledAuthFailure(e) && msg.indexOf("already") >= 0) {
+            bar.busy = false;
             return;
         }
-        Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
+        bar._failReverting(e, snap);
     }
 
     function doUpvote() {
         if (!_guard())
             return;
         if (bar.upvoted) {
-            bar.busy = true;
-            VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { bar.upvoted = false; bar.votes = Math.max(0, bar.votes - 1); _apply(r); bar._cache(); Toast.show(Lang.tr("Vote removed")); }, _fail);
+            bar._sendRemoveVote();
         } else if (bar.voteType === "comment" || !bar.onChain) {
             // Comments and off-chain posts: simple one-tap like, no weight popover
             bar._sendUpvote(100);
@@ -94,12 +140,32 @@ RowLayout {
         }
     }
 
+    // Optimistic un-vote: drop the vote and toast now, broadcast in the background.
+    function _sendRemoveVote() {
+        var snap = _snapshot();
+        bar.upvoted = false;
+        bar.votes = Math.max(0, bar.votes - 1);
+        bar._cache();
+        Toast.show(Lang.tr("Vote removed"));
+        bar.busy = true;
+        VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
+            function (r) { _apply(r); bar._cache(); },
+            function (e) { bar._failReverting(e, snap); });
+    }
+
+    // Optimistic upvote: count it, turn blue, and toast immediately; the chain
+    // broadcast runs in the background so the user never waits on confirmation.
     function _sendUpvote(weight) {
+        var snap = _snapshot();
+        if (!bar.upvoted) bar.votes = bar.votes + 1;
+        bar.upvoted = true;
+        bar.flagged = false;
+        bar._cache();
+        Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Upvoted %1%").arg(weight));
         bar.busy = true;
         VoteService.upvote(Config.baseUrl, author, permlink, voteType, weight, Session.token,
-            function (r) { if (!bar.upvoted) bar.votes = bar.votes + 1;   // count this vote now
-                           bar.upvoted = true; bar.flagged = false; _apply(r); bar._cache();
-                           Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Upvoted %1%").arg(weight)); }, _failUpvote);
+            function (r) { _apply(r); bar._cache(); },
+            function (e) { bar._failUpvote(e, snap); });
     }
 
     Component {
@@ -185,22 +251,35 @@ RowLayout {
     function doFlag() {
         if (!allowFlag || !_guard())
             return;
-        bar.busy = true;
+        var snap = _snapshot();
         if (bar.flagged) {
+            // Optimistic un-flag.
+            bar.flagged = false;
+            bar._cache();
+            Toast.show(Lang.tr("Vote removed"));
+            bar.busy = true;
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { bar.flagged = false; _apply(r); bar._cache(); Toast.show(Lang.tr("Vote removed")); }, _fail);
+                function (r) { _apply(r); bar._cache(); },
+                function (e) { bar._failReverting(e, snap); });
         } else {
+            // Optimistic flag; a flag clears any existing upvote.
+            if (bar.upvoted) bar.votes = Math.max(0, bar.votes - 1);
+            bar.flagged = true;
+            bar.upvoted = false;
+            bar._cache();
+            Toast.show(Lang.tr("Flagged"));
+            bar.busy = true;
             VoteService.flag(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { if (bar.upvoted) bar.votes = Math.max(0, bar.votes - 1);   // flag clears the upvote
-                               bar.flagged = true; bar.upvoted = false; _apply(r); bar._cache(); Toast.show(Lang.tr("Flagged")); }, _fail);
+                function (r) { _apply(r); bar._cache(); },
+                function (e) { bar._failReverting(e, snap); });
         }
     }
 
-    // Upvote / like — hollow outline heart when not voted, filled blue when voted.
+    // Upvote / like: hollow outline when not voted, filled blue when voted.
     AbstractButton {
+        id: upvoteBtn
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: upRow.implicitWidth
-        enabled: !bar.busy
         onClicked: bar.doUpvote()
         Row {
             id: upRow
@@ -221,13 +300,59 @@ RowLayout {
                 color: bar.upvoted ? Style.brand : Style.textPrimary
             }
         }
+
+        // Mouse hover (desktop) or press-and-hold (touch) reveals who upvoted.
+        // Topmost MouseArea gets the press first; a short tap is unaccepted so
+        // it falls through to upvoteBtn's own click, only the hold is caught here.
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            propagateComposedEvents: true
+            onEntered: if (bar._votersText().length > 0) votersHoverTimer.restart()
+            onExited: { votersHoverTimer.stop(); votersPopup.visible = false }
+            onPressAndHold: (mouse) => { if (bar._votersText().length > 0) votersPopup.visible = true; }
+            onReleased: votersPopup.visible = false
+            onClicked: (mouse) => { mouse.accepted = false; }
+        }
+
+        Timer { id: votersHoverTimer; interval: 500; onTriggered: votersPopup.visible = true }
+
+        Rectangle {
+            id: votersPopup
+            visible: false
+            anchors { bottom: parent.top; bottomMargin: Style.spacingXs }
+            // Centered on the button but clamped inside the bar (a centered long list
+            // would run off the screen's left edge). x is in upvoteBtn coordinates,
+            // hence the -upvoteBtn.x offsets for the bar's own edges.
+            x: {
+                var centered = (upvoteBtn.width - width) / 2;
+                var minX = -upvoteBtn.x;
+                var maxX = bar.width - upvoteBtn.x - width;
+                return Math.max(minX, Math.min(centered, maxX));
+            }
+            width: votersLabel.width + Style.spacingM * 2
+            height: votersLabel.height + Style.spacingS * 2
+            radius: Style.cardRadius
+            color: Style.toastBg
+            z: 1000
+            Label {
+                id: votersLabel
+                anchors.centerIn: parent
+                // Wrap once the list is wider than the bar.
+                width: Math.min(implicitWidth, bar.width - Style.spacingM * 2)
+                wrapMode: Text.Wrap
+                text: bar._votersText()
+                color: "white"
+                font.pixelSize: Style.fontSmall
+                font.family: Style.fontFor(text)
+            }
+        }
     }
 
     AbstractButton {
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: downRow.implicitWidth
         visible: bar.allowFlag
-        enabled: !bar.busy
         onClicked: bar.doFlag()
         Row {
             id: downRow
@@ -251,7 +376,6 @@ RowLayout {
         color: Style.textPrimary
     }
 
-    // Comments
     AbstractButton {
         visible: bar.showComments
         Layout.preferredHeight: units.gu(3.5)
@@ -276,7 +400,6 @@ RowLayout {
         }
     }
 
-    // Share
     AbstractButton {
         visible: bar.showShare && bar.shareUrl.length > 0
         Layout.preferredHeight: units.gu(3.5)
@@ -292,15 +415,8 @@ RowLayout {
 
     Item { Layout.fillWidth: true }
 
-    // Busy indicator / payout pill
-    ActivityIndicator {
-        running: bar.busy
-        visible: bar.busy
-        Layout.preferredHeight: units.gu(2.5)
-        Layout.preferredWidth: units.gu(2.5)
-    }
     CoinValue {
-        visible: !bar.busy && bar.onChain && bar.payout.length > 0 && bar.voteType !== "comment"
+        visible: bar.onChain && bar.payout.length > 0 && bar.voteType !== "comment"
         value: bar.payout
     }
 }

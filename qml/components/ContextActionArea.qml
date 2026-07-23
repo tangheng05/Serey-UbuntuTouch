@@ -1,40 +1,126 @@
 import QtQuick 2.7
 import Lomiri.Components 1.3
+import Lomiri.Components.ListItems 1.3 as ListItems
+import Lomiri.Components.Popups 1.3
 import "../Theme"
 
 /*
- * Input-method parity (UBports HIG, Other design considerations >
- * Convergence & Accessibility): the context actions a touch user reaches by
- * swiping or long-pressing a card MUST also be reachable by POINTER
- * (right-click) and KEYBOARD (the MENU key / Shift+F10), so no action is
- * touch-only. Drop this over a card and connect `triggered()` to whatever
- * opens the card's context menu (the ••• overflow / PostActions sheet).
- *
- * It listens for RIGHT button only, so left-clicks, taps, and the enclosing
- * Lomiri ListItem swipe fall straight through to the card's own handlers.
- * A thin brand outline marks the card when it holds keyboard focus.
+ * Input-method parity (UBports HIG): swipe/long-press context actions must also be
+ * reachable by right-click and keyboard (MENU / Shift+F10). Wire `triggered()`, or set
+ * `menuActions` to show those actions in a popover menu.
  */
 Item {
     id: area
     anchors.fill: parent
 
     signal triggered()
+    // Keyboard Enter/Return on the focused row; wire to the row's primary "open" action.
+    signal activated()
+    // Optional ActionList presented as a context menu (see above).
+    property var menuActions: null
 
-    // Pointer: right-click anywhere on the card.
+    // byKeyboard: the HIG reference shows a keyboard-opened menu with its first
+    // item already highlighted, while a right-click menu highlights nothing.
+    function _invoke(byKeyboard) {
+        if (!area.menuActions) { area.triggered(); return; }
+        var p = PopupUtils.open(menuComp, area);
+        if (p && byKeyboard) p.navFirst();
+    }
+    // Public: lets a visible overflow button open the same menu right-click/MENU does.
+    function open() { area._invoke(false); }
+
+    // Pointer: right-click anywhere on the row.
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.RightButton
-        onClicked: area.triggered()
+        onClicked: area._invoke(false)
     }
 
-    // Keyboard: focus the card (Tab), then the platform "open context menu"
-    // keys — the dedicated MENU key or Shift+F10.
+    // Keyboard: focus the row (Tab), then the platform "open context menu" keys.
     activeFocusOnTab: true
     Keys.onPressed: {
         if (event.key === Qt.Key_Menu ||
             (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
-            area.triggered();
+            area._invoke(true);
             event.accepted = true;
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            area.activated();
+            event.accepted = true;
+        }
+    }
+
+    // Lomiri-native context menu, built from the row's own actions. The toolkit's
+    // ActionSelectionPopover ships no key handling at all (Popover only closes on
+    // Escape), so the arrow cursor and highlight are supplied here.
+    Component {
+        id: menuComp
+        ActionSelectionPopover {
+            id: popover
+            actions: area.menuActions
+
+            // The highlighted action, matched by object: the delegate is loaded in
+            // THIS file's scope, so it can't see the popover Repeater's `index`.
+            property var navAction: null
+            function navFirst() { var l = popover._navList(); popover.navAction = l.length ? l[0] : null; }
+            function _navList() {
+                var a = popover.actions;
+                if (!a) return [];
+                // Same shape check the toolkit's own Repeater model uses.
+                var arr = a.hasOwnProperty("actions") ? a.children : a;
+                var out = [];
+                for (var i = 0; i < arr.length; i++)
+                    if (arr[i] && arr[i].visible !== false && arr[i].enabled !== false) out.push(arr[i]);
+                return out;
+            }
+            function _navMove(d) {
+                var l = popover._navList();
+                if (l.length === 0) return;
+                var cur = l.indexOf(popover.navAction);
+                popover.navAction = (cur < 0) ? (d > 0 ? l[0] : l[l.length - 1])
+                                              : l[(cur + d + l.length) % l.length];
+            }
+
+            // Zero-size grabber: Lomiri popups never take keyboard focus themselves,
+            // so without this the arrows keep driving the list behind the menu.
+            Item {
+                id: keyGrab
+                width: 0; height: 0
+                focus: true
+                Component.onCompleted: Qt.callLater(keyGrab.forceActiveFocus)
+                Keys.onPressed: {
+                    if (event.key === Qt.Key_Down)        { popover._navMove(1);  event.accepted = true; }
+                    else if (event.key === Qt.Key_Up)     { popover._navMove(-1); event.accepted = true; }
+                    else if (event.key === Qt.Key_Escape) { popover.hide(); event.accepted = true; }
+                    else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                             || event.key === Qt.Key_Space) {
+                        if (popover.navAction) { popover.navAction.trigger(); popover.hide(); }
+                        event.accepted = true;
+                    }
+                }
+            }
+
+            // Mirrors the toolkit's default delegate, plus the keyboard highlight.
+            delegate: ListItems.Empty {
+                id: menuRow
+                onTriggered: popover.hide()
+                visible: enabled && ((action === undefined) || action.visible)
+                height: visible ? implicitHeight : 0
+
+                Label {
+                    anchors { verticalCenter: parent.verticalCenter; horizontalCenter: parent.horizontalCenter }
+                    text: menuRow.text
+                    wrapMode: Text.Wrap
+                    color: theme.palette.normal.overlayText
+                }
+                Rectangle {
+                    anchors { fill: parent; margins: units.dp(2) }
+                    radius: units.dp(4)
+                    color: "transparent"
+                    border.width: units.dp(2)
+                    border.color: Style.brand
+                    visible: popover.navAction !== null && popover.navAction === menuRow.action
+                }
+            }
         }
     }
 

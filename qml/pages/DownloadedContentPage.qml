@@ -8,12 +8,24 @@ import "../components"
 Page {
     id: page
 
-    header: Item { height: 0 }
+    header: PageHeader {
+        title: Lang.tr("Downloaded Content")
+        leadingActionBar.actions: [
+            Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
+        ]
+    }
 
     property int tabIndex: 0
     property string _pendingRemoveVideo: ""
     property string _pendingRemoveArticle: ""
-    readonly property real maxContentWidth: units.gu(60)
+    readonly property real maxContentWidth: units.gu(100)
+
+    // Keyboard nav: the active list owns arrow focus; settings' Nav.focusDetail
+    // targets this when the row is activated. Left/Escape return to the settings
+    // list; Up-at-top climbs into the Video/Articles strip.
+    property Item keyboardFocusItem: tabIndex === 0 ? videoList : articleList
+    function _focusActiveList() { (tabIndex === 0 ? videoList : articleList).forceActiveFocus(); }
+    onVisibleChanged: if (visible) _focusActiveList()
 
     Component {
         id: removeVideoDialog
@@ -51,40 +63,13 @@ Page {
         }
     }
 
-    Rectangle {
-        id: topBar
-        anchors { left: parent.left; right: parent.right; top: parent.top }
-        height: units.gu(6)
-        color: Style.navigationBg
-        z: 10
-
-        BackButton {
-            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            onClicked: page.pageStack.pop()
-        }
-
-        Label {
-            anchors.centerIn: parent
-            text: Lang.tr("Downloaded Content")
-            font.pixelSize: Style.fontMedium
-            font.weight: Font.DemiBold
-            font.family: Style.fontFor(text)
-            color: Style.textPrimary
-        }
-
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: units.dp(1)
-            color: Style.divider
-        }
-    }
-
     SectionTabs {
         id: tabs
-        anchors { top: topBar.bottom; left: parent.left; right: parent.right }
+        anchors { top: parent.header.bottom; left: parent.left; right: parent.right }
         model: [Lang.tr("Video"), Lang.tr("Articles")]
         currentIndex: page.tabIndex
-        onSelected: page.tabIndex = index
+        onSelected: { page.tabIndex = index; page._focusActiveList(); }
+        onFocusList: page._focusActiveList()
     }
 
     ListView {
@@ -95,6 +80,13 @@ Page {
         visible: page.tabIndex === 0
         model: Downloads.items
         cacheBuffer: units.gu(16)
+        // Left/Escape return to the settings list; Up at top climbs to the strip.
+        Keys.onLeftPressed: Nav.focusMaster()
+        Keys.onEscapePressed: Nav.focusMaster()
+        Keys.onUpPressed: {
+            if (videoList.atYBeginning && videoList.currentIndex <= 0) { tabs.focusCurrent(); event.accepted = true; }
+            else event.accepted = false;
+        }
 
         delegate: ListItem {
             width: videoList.width
@@ -130,7 +122,7 @@ Page {
                         anchors.centerIn: parent
                         width: units.gu(2.5); height: width
                         name: action.iconName
-                        color: "black"
+                        color: Style.textPrimary
                     }
                 }
                 actions: [
@@ -170,6 +162,13 @@ Page {
         visible: page.tabIndex === 1
         model: SavedPosts.items
         cacheBuffer: units.gu(20)
+        // Left/Escape return to the settings list; Up at top climbs to the strip.
+        Keys.onLeftPressed: Nav.focusMaster()
+        Keys.onEscapePressed: Nav.focusMaster()
+        Keys.onUpPressed: {
+            if (articleList.atYBeginning && articleList.currentIndex <= 0) { tabs.focusCurrent(); event.accepted = true; }
+            else event.accepted = false;
+        }
 
         delegate: ListItem {
             width: articleList.width
@@ -208,7 +207,7 @@ Page {
                         anchors.centerIn: parent
                         width: units.gu(2.5); height: width
                         name: action.iconName
-                        color: "black"
+                        color: Style.textPrimary
                     }
                 }
                 actions: [
@@ -218,6 +217,25 @@ Page {
                         onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
                     }
                 ]
+            }
+
+            // Pointer/keyboard parity: right-click or the MENU key opens the same
+            // Remove/Share actions the swipe exposes (see ContextActionArea).
+            ContextActionArea {
+                id: contextArea
+                onActivated: page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
+                    { author: modelData.author, permlink: modelData.permlink,
+                      title: modelData.title, preloadedPost: modelData })
+                menuActions: ActionList {
+                    Action {
+                        iconName: "delete"; text: Lang.tr("Remove")
+                        onTriggered: SavedPosts.remove(modelData.permlink)
+                    }
+                    Action {
+                        iconName: "share"; text: Lang.tr("Share")
+                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
+                    }
+                }
             }
 
             Row {
@@ -248,7 +266,7 @@ Page {
                 }
 
                 Column {
-                    width: parent.width - units.gu(10) - Style.spacingM
+                    width: parent.width - units.gu(10) - Style.spacingM - moreBtn.width - Style.spacingS
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: units.dp(3)
                     Label {
@@ -270,6 +288,32 @@ Page {
                         elide: Text.ElideRight
                     }
                 }
+
+                AbstractButton {
+                    id: moreBtn
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: units.gu(3.5); height: units.gu(3.5)
+                    onClicked: actionSheet.show([
+                        { iconName: "delete", text: Lang.tr("Remove"), danger: true,
+                          onTriggered: function () { SavedPosts.remove(modelData.permlink); } },
+                        { iconName: "share", text: Lang.tr("Share"),
+                          onTriggered: function () { Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink); } }
+                    ])
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: units.dp(3)
+                        Repeater {
+                            model: 3
+                            delegate: Rectangle {
+                                width: units.dp(4); height: units.dp(4)
+                                radius: width / 2
+                                color: Style.textSecondary
+                                anchors.horizontalCenter: parent.horizontalCenter
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -280,4 +324,6 @@ Page {
         iconName: "save"
         message: Lang.tr("No saved articles yet")
     }
+
+    ActionBottomSheet { id: actionSheet }
 }

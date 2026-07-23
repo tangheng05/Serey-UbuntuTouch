@@ -5,17 +5,8 @@ import "../Session"
 import "../services/PaymentService.js" as PaymentService
 
 /*
- * Native crypto (NOWPayments) buy-plan flow. State lives in Theme/Payments.qml
- * (Payments.openCrypto(planId) → this sheet); mounted once in Main.qml like
- * PostActionSheet/ShareSheet.
- *
- * Steps: pick a currency → create-payment → show deposit address (QR + copy)
- * with an expiry countdown while polling check-status → success / error.
- * The user pays from an external wallet; "finished" from the poll is the only
- * terminal success (the backend activates the plan inside check-status — no
- * webhook). Pure QML — no second Chromium (unlike the Stripe path). A created
- * payment is also persisted via Payments.setPendingCrypto so Main.qml's
- * background check completes it if the sheet (or app) is closed before paying.
+ * Native crypto (NOWPayments) buy-plan sheet; state in Theme/Payments.qml.
+ * Only "finished" is terminal: the backend activates the plan there, no webhook.
  */
 Item {
     id: sheet
@@ -51,8 +42,8 @@ Item {
         sheetSlideOut.start();
     }
 
-    // The recommended options (mirrors the web's smart default, usdttrc20
-    // first) — shown at the top; everything else follows alphabetically.
+    // Recommended options (mirrors the web's smart default, usdttrc20 first),
+    // shown at the top; everything else follows alphabetically.
     readonly property var preferredCurrencies: [
         "usdttrc20", "usdterc20", "usdtmatic", "usdtbsc",
         "usdc", "usdcmatic", "btc", "eth", "sol", "bnb"
@@ -73,7 +64,7 @@ Item {
 
     // Only the recommended currencies at first; "More currencies" expands to
     // everything NOWPayments offers. If none of the preferred ones are
-    // available, there's nothing sensible to collapse to — show all.
+    // available there's nothing sensible to collapse to, so show all.
     readonly property var visibleCurrencies:
         (showAllCurrencies || preferredCount === 0) ? currencies
                                                     : currencies.slice(0, preferredCount)
@@ -84,7 +75,7 @@ Item {
             function (list) {
                 sheet.busy = false;
                 sheet.currencies = sheet._sortCurrencies(list);
-                sheet.currenciesLoaded = list.length > 0;   // empty ⇒ retry next open
+                sheet.currenciesLoaded = list.length > 0;   // empty list: retry next open
             },
             function (err) {
                 sheet.busy = false;
@@ -104,17 +95,15 @@ Item {
         return known[code] || String(code).toUpperCase();
     }
 
-    // What the user actually picked — the backend reuses a still-valid pending
-    // payment for the same plan regardless of the requested currency (no cancel
-    // endpoint exists), so the response can come back in a different currency.
-    // We surface that instead of silently showing the "wrong" coin.
+    // What the user picked. The backend reuses a still-valid pending payment for the
+    // plan regardless of requested currency (no cancel endpoint), so the response can
+    // come back in a different coin; surface that instead of showing it silently.
     property string requestedCode: ""
     readonly property bool currencyMismatch: payment !== null && requestedCode !== ""
         && payment.payCurrency.toLowerCase() !== requestedCode.toLowerCase()
 
-    // Called from the currency list delegate — must live at root level, the
-    // imported PaymentService is null inside delegate handlers (see the
-    // js-import-null-in-delegates memory).
+    // Called from the currency list delegate; must live at root level because
+    // imported JS services are null inside delegate handlers.
     function selectCurrency(code) {
         if (sheet.busy) return;
         sheet.busy = true;
@@ -125,9 +114,9 @@ Item {
             function (pm) {
                 sheet.busy = false;
                 sheet.payment = pm;
-                // Remember it persistently: if the user pays after closing the
-                // sheet (or the app), Main.qml's background check still
-                // activates the plan (crypto has no webhook fallback).
+                // Persist it: if the user pays after closing the sheet (or the
+                // app), Main.qml's background check still activates the plan
+                // (crypto has no webhook fallback).
                 Payments.setPendingCrypto(pm.paymentId, Payments.planId, pm.expiresAt);
                 sheet.payStatus = "waiting";
                 sheet._startCountdown(pm.expiresAt);
@@ -168,10 +157,8 @@ Item {
         PaymentService.checkCryptoStatus(Config.baseUrl, Session.token, sheet.payment.paymentId,
             function (status) {
                 sheet.payStatus = status;
-                // Only "finished" is terminal: the backend activates the plan
-                // inside check-status when NOWPayments reports finished (no
-                // webhook reliance), so we must keep pinging through
-                // confirming/confirmed/sending until it flips.
+                // Only "finished" is terminal: the backend activates the plan inside
+                // check-status (no webhook), so keep polling until it flips.
                 if (status === "finished") {
                     pollTimer.stop(); countdownTimer.stop();
                     Payments.clearPendingCrypto();
@@ -193,8 +180,8 @@ Item {
     Timer { id: pollTimer;      interval: 10000; repeat: true; onTriggered: sheet._pollStatus() }
     Timer { id: countdownTimer; interval: 1000;  repeat: true; onTriggered: sheet._tickCountdown() }
 
-    // Backdrop. While waiting for a payment a stray tap must not dismiss the
-    // sheet (losing the address mid-payment), so step 1 ignores backdrop taps.
+    // While waiting for a payment a stray tap must not dismiss the sheet
+    // (losing the address mid-payment), so step 1 ignores backdrop taps.
     Rectangle {
         id: backdrop
         anchors.fill: parent
@@ -222,7 +209,6 @@ Item {
         NumberAnimation { id: sheetSlideOut; target: sheetTranslate; property: "y"; to: sheetRect.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: Payments.closeCrypto() }
         Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
 
-        // Grabber
         Rectangle {
             anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
             width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
@@ -305,7 +291,6 @@ Item {
                 }
             }
 
-            // Expand from the recommended few to the full NOWPayments list.
             LinkButton {
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: !sheet.busy && !sheet.showAllCurrencies
@@ -372,7 +357,6 @@ Item {
             }
             Item { width: 1; height: Style.spacingM }
 
-            // Address + copy
             AbstractButton {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -404,7 +388,6 @@ Item {
             }
             Item { width: 1; height: Style.spacingM }
 
-            // Live status + expiry countdown
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: Style.spacingS
@@ -423,15 +406,6 @@ Item {
                     font.family: Style.fontFamily
                     color: Style.textSecondary
                 }
-            }
-            Item { width: 1; height: Style.spacingM }
-
-            // Fallback: the hosted NOWPayments page in the system browser.
-            LinkButton {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: sheet.payment !== null && sheet.payment.paymentUrl.length > 0
-                label: Lang.tr("Open payment page in browser")
-                onClicked: Qt.openUrlExternally(sheet.payment.paymentUrl)
             }
             Item { width: 1; height: Style.spacingM }
 
@@ -495,7 +469,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
                 onClicked: {
-                    // The plan is active — funnel straight into creating the
+                    // Plan is active; funnel straight into creating the
                     // platform, unless the user already owns one.
                     var owns = false;
                     for (var k in Config.ownedCommunityIdSet) { owns = true; break; }

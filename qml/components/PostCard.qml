@@ -10,12 +10,8 @@ Item {
     id: root
 
     property var post: ({})
-    // Guard: the delegate may rebind `post` to undefined while the model is cleared/recycled — `p` is always a safe object to read from.
+    // Guard: the delegate may rebind `post` to undefined while the model is cleared/recycled; `p` is always a safe object to read from.
     readonly property var p: post ? post : ({})
-
-    // Shared, reactive follow state — every button for this author stays in sync.
-    readonly property bool isFollowing: FollowStore.isFollowing(p.author)
-    property bool showFollow: true
 
     signal clicked()
     signal requireLogin()
@@ -37,34 +33,40 @@ Item {
     onPChanged: {
         if (Session.isLoggedIn && p.author && p.author !== Session.username)
             FollowStore.load(Config.baseUrl, Session.username, p.author);
-
-        // Vote state checks session cache first (survives navigation), falling back to the model's voters array; set imperatively so VoteBar's own changes aren't overridden.
-        if (cardVoteBar) {
-            var cached = VoteService.getCached(p.author || "", p.permlink || "");
-            if (cached) {
-                cardVoteBar.upvoted = cached.upvoted;
-                cardVoteBar.flagged = cached.flagged;
-                cardVoteBar.votes = cached.votes;
-                if (cached.payout) cardVoteBar.payout = cached.payout;
-            } else {
-                var me = Session.username || "";
-                cardVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
-                cardVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
-                // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
-                cardVoteBar.votes = p.votes || 0;
-                cardVoteBar.payout = p.payout || "";
-            }
-        }
+        _syncVoteBar();
     }
 
-    function toggleFollow() {
-        if (!Session.isLoggedIn) {
-            Toast.error(Lang.tr("Please log in first."));
-            root.requireLogin();
-            return;
+    // ListModel.set() mutates the object `p` already references, so onPChanged never
+    // fires on an in-place row swap and the imperatively-set votes/payout would keep
+    // the previous post's values. Watching the values themselves re-runs the sync.
+    readonly property int _pVotes: p.votes || 0
+    readonly property string _pPayout: p.payout || ""
+    readonly property string _pPermlink: p.permlink || ""
+    on_PVotesChanged: _syncVoteBar()
+    on_PPayoutChanged: _syncVoteBar()
+    on_PPermlinkChanged: _syncVoteBar()
+
+    // Vote state checks session cache first (survives navigation), falling back to the model's voters array; set imperatively so VoteBar's own changes aren't overridden.
+    // Children exist by now, so a row whose values arrived before the bar was
+    // built still gets its counts.
+    Component.onCompleted: _syncVoteBar()
+
+    function _syncVoteBar() {
+        if (!cardVoteBar) return;
+        var cached = VoteService.getCached(p.author || "", p.permlink || "");
+        if (cached) {
+            cardVoteBar.upvoted = cached.upvoted;
+            cardVoteBar.flagged = cached.flagged;
+            cardVoteBar.votes = cached.votes;
+            if (cached.payout) cardVoteBar.payout = cached.payout;
+        } else {
+            var me = Session.username || "";
+            cardVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
+            cardVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
+            // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
+            cardVoteBar.votes = p.votes || 0;
+            cardVoteBar.payout = p.payout || "";
         }
-        var now = FollowStore.toggle(Config.baseUrl, p.author, Session.token);
-        Toast.show(now ? Lang.tr("Following") : Lang.tr("Unfollowed"));
     }
 
     Column {
@@ -73,7 +75,6 @@ Item {
 
         Item { width: 1; height: Style.spacingS }
 
-        // Header: avatar + author/time + Follow + more
         RowLayout {
             height: units.gu(6)
             anchors.left: parent.left
@@ -113,7 +114,7 @@ Item {
                     visible: (p.authorImage || "") !== ""
                 }
 
-                MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
+                MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
             }
 
             ColumnLayout {
@@ -128,7 +129,7 @@ Item {
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
                     elide: Text.ElideRight
-                    MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
+                    MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
                 }
                 Row {
                     spacing: Style.spacingS
@@ -138,54 +139,48 @@ Item {
                         font.pixelSize: Style.fontXSmall
                         color: Style.textSecondary
                     }
-                    OffChainBadge {
-                        anchors.verticalCenter: parent.verticalCenter
-                        onChain: p.postToBlockchain !== false
-                    }
                 }
             }
 
-            // Follow pill
             Rectangle {
-                visible: root.showFollow && (p.author || "") !== "" && p.author !== Session.username
-                Layout.preferredWidth: followLabel.width + units.gu(3)
-                Layout.preferredHeight: units.gu(3.75)
-                Layout.fillHeight: false
+                Layout.preferredWidth: dlLabel.width + Style.spacingM
+                Layout.preferredHeight: units.gu(2.6)
                 Layout.alignment: Qt.AlignVCenter
+                visible: (SavedPosts.rev, Downloads.rev, SavedPosts.isSaved(p.permlink) || Downloads.isSaved(p.permlink))
                 radius: Style.pillRadius
-                color: root.isFollowing ? Style.surface : Style.brand
-                border.width: root.isFollowing ? units.dp(1.5) : 0
-                border.color: Style.brand
+                color: Style.iconBackground
+                border.width: units.dp(1)
+                border.color: Style.textSecondary
 
                 Label {
-                    id: followLabel
+                    id: dlLabel
                     anchors.centerIn: parent
-                    text: root.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
+                    text: Lang.tr("Downloaded")
                     font.pixelSize: Style.fontXSmall
                     font.weight: Font.DemiBold
-                    color: root.isFollowing ? Style.brand : Style.textOnBrand
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: root.toggleFollow()
+                    color: Style.textSecondary
                 }
             }
 
-            // More button — owner sees Edit/Delete, others see moderation actions (the sheet branches on ownership).
             AbstractButton {
+                id: moreBtn
                 Layout.preferredWidth: units.gu(3.5)
                 Layout.preferredHeight: units.gu(3.5)
-                Layout.fillHeight: false
                 Layout.alignment: Qt.AlignVCenter
                 onClicked: root.moreClicked()
 
-                Label {
+                Column {
                     anchors.centerIn: parent
-                    text: "•••"
-                    font.pixelSize: Style.fontLarge
-                    font.weight: Font.Bold
-                    color: Style.textSecondary
+                    spacing: units.dp(3)
+                    Repeater {
+                        model: 3
+                        delegate: Rectangle {
+                            width: units.dp(4); height: units.dp(4)
+                            radius: width / 2
+                            color: Style.textSecondary
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+                    }
                 }
             }
         }
@@ -202,12 +197,11 @@ Item {
             wrapMode: Text.Wrap
             maximumLineCount: 3
             elide: Text.ElideRight
-            MouseArea { anchors.fill: parent; onClicked: root.clicked() }
+            MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
         }
 
         Item { width: 1; height: Style.spacingS }
 
-        // Cover image with category badge
         Item {
             id: cover
             visible: (p.thumbnail || "") !== ""
@@ -221,17 +215,45 @@ Item {
                 radius: Style.thumbRadius
                 color: Style.iconBackground
             }
+            // Double-buffered cover: an Image drops its old frame when `source` changes,
+            // flashing black until the new one loads (a full re-download on phone).
+            // coverLoader (hidden) fetches while coverImg keeps the last-good frame.
             Image {
-                id: coverImg
+                id: coverLoader
                 anchors.fill: parent
                 source: p.thumbnail || ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 autoTransform: true     // honour EXIF orientation
-                sourceSize.width: cover.width
+                // HIG scaling: snap the decode size to a breakpoint instead of tracking
+                // `cover.width`, which re-rasterized every visible cover on any width
+                // change (window resize, entering/leaving the split pane). Mirrors VideoCard.
+                sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
+                onStatusChanged: {
+                    if (status === Image.Ready) {
+                        coverImg.source = source;
+                    } else if (status === Image.Error || String(source).length === 0) {
+                        // Unloadable or removed cover: don't keep showing the
+                        // previous article's image under this one's title.
+                        coverImg.source = "";
+                    }
+                }
+            }
+            Image {
+                id: coverImg
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                autoTransform: true
+                sourceSize.width: coverLoader.sourceSize.width
+                visible: false
+                // Fade the stale frame fully out, not just dimmed: a ghost of the
+                // previous photo under the new title read as the wrong thumbnail.
+                readonly property bool transitioning:
+                    coverLoader.status === Image.Loading && status === Image.Ready
                 Behavior on opacity { NumberAnimation { duration: 200 } }
-                opacity: status === Image.Ready ? 1.0 : 0.0
+                opacity: status === Image.Ready ? (transitioning ? 0.0 : 1.0) : 0.0
             }
             Rectangle {
                 id: coverMask
@@ -247,26 +269,26 @@ Item {
             }
 
             Rectangle {
-                visible: !!(p.categories && p.categories.length > 0)
+                // categories is ListModel-wrapped here; use the mapper's scalar copy instead.
+                visible: (p.primaryCategory || "") !== ""
                 anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
-                width: catLabel.width + Style.spacingS
-                height: units.gu(2.5)
-                radius: units.dp(4)
+                width: catLabel.width + Style.spacingM
+                height: units.gu(3)
+                radius: Style.pillRadius
                 color: Style.accentRed
                 Label {
                     id: catLabel
                     anchors.centerIn: parent
-                    text: (p.categories && p.categories.length > 0) ? p.categories[0] : ""
-                    font.pixelSize: Style.fontXSmall
+                    text: p.primaryCategory || ""
+                    font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
                     color: Style.textOnBrand
                 }
             }
 
-            MouseArea { anchors.fill: parent; onClicked: root.clicked() }
+            MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
         }
 
-        // Excerpt (shown when there is no cover image)
         Label {
             visible: (p.thumbnail || "") === "" && (p.excerpt || "") !== ""
             width: parent.width - Style.spacingM * 2
@@ -278,13 +300,13 @@ Item {
             wrapMode: Text.Wrap
             maximumLineCount: 2
             elide: Text.ElideRight
-            MouseArea { anchors.fill: parent; onClicked: root.clicked() }
+            MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
         }
 
         // Bottom margin below the thumbnail (always visible, unlike the vote row)
         Item { width: 1; height: Style.spacingS }
 
-        // Vote/comment/share row shown narrow mode only — wide mode shows these in the detail column instead.
+        // Vote/comment/share row shown in narrow mode only; wide mode shows these in the detail column instead.
         VoteBar {
             id: cardVoteBar
             visible: !Config.wideMode
@@ -295,6 +317,10 @@ Item {
             voteType: "post"
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
+            // Rebuilt from the voterStr scalar: the feed's dynamicRoles ListModel
+            // wraps the `voters` string array into a nested model whose entries
+            // stringify as QML objects (the popover showed "@QQmlDM..." garbage).
+            voters: (p.voterStr || "").split(",").filter(function (n) { return n.length > 0; })
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0
             payout: p.payout || ""
@@ -307,7 +333,10 @@ Item {
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }
 
-    // Pointer/keyboard parity: right-click or the MENU key opens the same
-    // context actions as swipe / the ••• overflow (see ContextActionArea).
-    ContextActionArea { onTriggered: root.moreClicked() }
+    // Pointer/keyboard parity: right-click or MENU opens the overflow context
+    // menu; Enter opens the post (same as a tap). See ContextActionArea.
+    ContextActionArea {
+        onTriggered: root.moreClicked()
+        onActivated: root.clicked()
+    }
 }

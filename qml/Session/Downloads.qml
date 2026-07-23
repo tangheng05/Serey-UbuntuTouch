@@ -25,10 +25,19 @@ QtObject {
         return _dbHandle;
     }
 
-    // Scoped to the signed-in account so switching accounts shows a fresh list; logged-out downloads (owner "") are their own bucket.
+    // Per-account buckets; logged-out uses "__guest__", never "": QML LocalStorage
+    // binds an empty string as SQL NULL, so a guest `owner = ?` matched nothing
+    // and the list came back empty on restart. "__guest__" can't be a real username.
+    readonly property string guestOwner: "__guest__"
+
     function _owner() {
-        return Session.isLoggedIn ? Session.username : "";
+        return (Session.isLoggedIn && Session.username && Session.username.length > 0)
+                ? Session.username : store.guestOwner;
     }
+
+    // Rows written before the sentinel existed have owner NULL or ''; fold both onto
+    // the guest bucket so old downloads stay visible.
+    readonly property string _ownerExpr: "IFNULL(NULLIF(owner,''),'" + guestOwner + "')"
 
     function _load() {
         var out = [];
@@ -37,9 +46,15 @@ QtObject {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS downloads(permlink TEXT, local_path TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
                 // Add `owner` to tables created before per-account scoping existed; harmlessly throws (caught) once the column is present.
                 try { tx.executeSql("ALTER TABLE downloads ADD COLUMN owner TEXT DEFAULT ''"); } catch (e2) { }
-                var rs = tx.executeSql("SELECT permlink, local_path, data FROM downloads WHERE owner = ? ORDER BY saved_at DESC", [store._owner()]);
+                var rs = tx.executeSql("SELECT permlink, local_path, data FROM downloads WHERE " + store._ownerExpr + " = ? ORDER BY saved_at DESC", [store._owner()]);
+                var seen = {};
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);
+                    // A NULL owner also defeats PRIMARY KEY(permlink, owner) dedupe
+                    // (SQLite allows repeated NULLs in a PK), so older duplicate rows
+                    // can exist; newest-first ordering means the first wins.
+                    if (seen[row.permlink]) continue;
+                    seen[row.permlink] = true;
                     var vm = {};
                     try { vm = JSON.parse(row.data); } catch (e) { vm = {}; }
                     vm.permlink = row.permlink;
@@ -60,7 +75,11 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS downloads(permlink TEXT, local_path TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                tx.executeSql("INSERT OR REPLACE INTO downloads(permlink, local_path, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
+                // Explicit delete before insert: legacy rows with owner NULL (see
+                // _owner) can't be deduped by the PRIMARY KEY, so INSERT OR REPLACE
+                // piled up a new row per download instead of replacing the old one.
+                tx.executeSql("DELETE FROM downloads WHERE permlink = ? AND " + store._ownerExpr + " = ?", [vm.permlink, o]);
+                tx.executeSql("INSERT INTO downloads(permlink, local_path, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
                     [vm.permlink, localPath, Date.now(), JSON.stringify(vm), o]);
             });
         } catch (e) {
@@ -71,7 +90,7 @@ QtObject {
     function _deleteRow(permlink) {
         try {
             _db().transaction(function (tx) {
-                tx.executeSql("DELETE FROM downloads WHERE permlink = ? AND owner = ?", [permlink, store._owner()]);
+                tx.executeSql("DELETE FROM downloads WHERE permlink = ? AND " + store._ownerExpr + " = ?", [permlink, store._owner()]);
             });
         } catch (e) {
             console.log("Downloads delete error: " + e);
@@ -106,9 +125,27 @@ QtObject {
         return _comp;
     }
 
+    // Copy the view-model to a plain JS object: threaded ListModel elements fail
+    // JSON.stringify ("unregistered datatype") and their thread affinity hid the
+    // persisted row from reload (isSaved stayed false -> endless re-downloads).
+    function _toPlain(v) {
+        var keys = ["id", "author", "permlink", "title", "body", "excerpt", "thumbnail",
+                    "localThumb", "authorImage", "date", "votes", "comments", "payout",
+                    "embedUrl", "videoLink", "videoId", "platform", "dimensions",
+                    "community", "communityId", "postToBlockchain"];
+        var o = {};
+        if (v) for (var i = 0; i < keys.length; i++) {
+            var val = v[keys[i]];
+            if (val !== undefined && val !== null) o[keys[i]] = val;
+        }
+        return o;
+    }
+
     function start(video, url) {
         if (!video || !url || url.length === 0) return;
-        var permlink = video.permlink || "";
+        // Snapshot to a plain object immediately; everything downstream uses this.
+        var pv = _toPlain(video);
+        var permlink = pv.permlink || "";
         if (permlink.length === 0 || isSaved(permlink) || _active[permlink]) return;
         // Capture the account that started this download so it's filed under the requester even if the account switches mid-download.
         var startOwner = store._owner();
@@ -120,26 +157,34 @@ QtObject {
             return;
         }
 
-        var dl = comp.createObject(store, { url: url, title: video.title || "Serey video" });
+        var dl = comp.createObject(store, { url: url, title: pv.title || "Serey video" });
         if (!dl) { Toast.error("Couldn't start download."); return; }
 
         _active[permlink] = { progress: 0, downloader: dl };
         store.rev++;
 
         // Grab the poster too, so the thumbnail shows offline.
-        store._saveThumb(video, permlink);
+        store._saveThumb(pv, permlink);
 
         dl.progress.connect(function (pct) {
             if (_active[permlink]) { _active[permlink].progress = pct; store.rev++; }
         });
         dl.finished.connect(function (path) {
-            var vm = video;
+            var vm = pv;
             var t = store._pendingThumb[permlink];
-            if (t) { vm = Object.assign({}, video, { localThumb: t }); delete store._pendingThumb[permlink]; }
+            if (t) { vm = Object.assign({}, pv, { localThumb: t }); delete store._pendingThumb[permlink]; }
             store._persist(vm, path, startOwner);
+            // Update the in-memory list directly so the tick + downloaded list reflect
+            // the save right away, independent of the DB reload (which the worker-thread
+            // affinity could return empty). Persist above still records it for next launch.
+            var savedVm = Object.assign({}, vm, { permlink: permlink, localPath: path });
+            var next = [savedVm];
+            for (var i = 0; i < store.items.length; i++)
+                if (store.items[i].permlink !== permlink) next.push(store.items[i]);
+            store.items = next;
             delete _active[permlink];
             dl.destroy();
-            store._load();
+            store.rev++;
             Toast.success("Saved for offline");
         });
         dl.failed.connect(function (message) {

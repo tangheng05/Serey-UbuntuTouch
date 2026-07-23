@@ -1,6 +1,6 @@
 .pragma library
 
-// Fired on a 401 (expired/invalid JWT) — Main.qml registers this once to clear the session and prompt re-login.
+// Fired on a 401 (expired/invalid JWT). Main.qml registers this once to clear the session and prompt re-login.
 var _onUnauthorized = null;
 function setUnauthorizedHandler(fn) { _onUnauthorized = fn; }
 
@@ -100,4 +100,10 @@ function put(baseUrl, path, bodyObj, token, onOk, onErr) {
 
 function del(baseUrl, path, token, onOk, onErr) {
     return send("DELETE", baseUrl + path, token, null, onOk, onErr);
+}
+
+// Some admin endpoints (e.g. bulk delete) need a DELETE with a JSON body.
+// `del()` above sends no body, which those routes reject.
+function delWithBody(baseUrl, path, bodyObj, token, onOk, onErr) {
+    return send("DELETE", baseUrl + path, token, bodyObj || {}, onOk, onErr);
 }

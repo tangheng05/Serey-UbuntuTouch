@@ -5,17 +5,19 @@ import "../Theme"
 Item {
     id: root
     property string message: ""
-    // Number of skeleton "cards" to render — 3 for a feed, 1 for a detail page.
+    // Number of skeleton "cards" to render: 3 for a feed, 1 for a detail page.
     property int count: 3
-    // "post" | "gallery" | "video" — picks the card shape to imitate.
+    // "post" | "gallery" | "video": picks the card shape to imitate.
     property string variant: "post"
     // Detail pages (PostDetailPage, GalleryDetailPage) show one full-bleed cover.
     property bool fullBleedCover: false
 
     readonly property real inset: Style.spacingM
     readonly property real contentWidth: root.width - inset * 2
-    // Covers sit a shade lighter than the text bars so the skeleton keeps the real card's title-vs-photo hierarchy.
-    readonly property color coverTone: "#ECECEC"
+    // Covers sit a shade lighter than the text bars (Style.skeleton) so the skeleton
+    // keeps the real card's title-vs-photo hierarchy. Needs a dark variant of its
+    // own: the light value was a glowing slab against a dark surface.
+    readonly property color coverTone: Style.dark ? "#333333" : "#ECECEC"
     readonly property string photoGlyph: "image-x-generic-symbolic"
 
     // Opaque card surface so the skeleton always reads cleanly on its own.
@@ -26,7 +28,7 @@ Item {
         spacing: 0
 
         Repeater {
-            // Gate on visibility so the pulse animations don't keep ticking when the skeleton is hidden — no work while off-screen.
+            // Gate on visibility so the pulse animations stop when the skeleton is hidden.
             model: root.visible ? root.count : 0
             delegate: Column {
                 width: root.width
@@ -34,7 +36,7 @@ Item {
 
                 Item { width: 1; height: Style.spacingM }
 
-                // --- Video: thumbnail leads (inset 16:9) ---------------------
+                // Video: thumbnail leads (inset 16:9)
                 SkeletonRect {
                     visible: root.variant === "video" && !root.fullBleedCover
                     x: root.inset
@@ -45,7 +47,7 @@ Item {
                     glyph: root.photoGlyph
                 }
 
-                // --- Header: avatar + name/time (post, gallery, detail) ------
+                // Header: avatar + name/time (post, gallery, detail)
                 Row {
                     visible: root.variant !== "video" || root.fullBleedCover
                     x: root.inset
@@ -59,7 +61,7 @@ Item {
                     }
                 }
 
-                // --- Title lines (post only — two uneven lines) --------------
+                // Title lines (post only, two uneven lines)
                 Column {
                     visible: root.variant === "post" && !root.fullBleedCover
                     x: root.inset
@@ -68,7 +70,7 @@ Item {
                     SkeletonRect { width: root.contentWidth * 0.55; height: units.gu(1.9); radius: height / 2 }
                 }
 
-                // --- Post cover (inset 16:9) ---------------------------------
+                // Post cover (inset 16:9)
                 SkeletonRect {
                     visible: root.variant === "post" && !root.fullBleedCover
                     x: root.inset
@@ -79,7 +81,7 @@ Item {
                     glyph: root.photoGlyph
                 }
 
-                // --- Gallery photo (full-bleed square) -----------------------
+                // Gallery photo (full-bleed square)
                 SkeletonRect {
                     visible: root.variant === "gallery" && !root.fullBleedCover
                     width: root.width
@@ -89,7 +91,7 @@ Item {
                     glyph: root.photoGlyph
                 }
 
-                // --- Detail cover (full-bleed square) ------------------------
+                // Detail cover (full-bleed square)
                 SkeletonRect {
                     visible: root.fullBleedCover
                     width: root.width
@@ -99,7 +101,7 @@ Item {
                     glyph: root.photoGlyph
                 }
 
-                // --- Video info: avatar + two title lines (after thumbnail) --
+                // Video info: avatar + two title lines (after thumbnail)
                 Row {
                     visible: root.variant === "video" && !root.fullBleedCover
                     x: root.inset
@@ -113,7 +115,7 @@ Item {
                     }
                 }
 
-                // --- Action chips: mirrors the VoteBar's left icon+count row -
+                // Action chips: mirrors the VoteBar's left icon+count row
                 Row {
                     visible: root.variant !== "video"
                     x: root.inset

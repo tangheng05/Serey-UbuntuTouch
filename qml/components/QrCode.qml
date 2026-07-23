@@ -2,16 +2,15 @@ import QtQuick 2.7
 import "../services/QrCodeGen.js" as QrGen
 
 /*
- * QR code rendered locally on a Canvas from the vendored qrcode-generator lib
- * (services/QrCodeGen.js). Local generation is deliberate: the main use is
- * crypto payment addresses (PaymentSheet), which must not round-trip through a
- * third-party QR image service.
+ * QR code rendered locally on a Canvas via the vendored services/QrCodeGen.js.
+ * Local generation is deliberate: crypto payment addresses (PaymentSheet) must
+ * not round-trip through a third-party QR image service.
  */
 Canvas {
     id: qr
 
-    // Encode + paint off the UI thread — the synchronous paint froze a frame
-    // for seconds (see "[PERFORMANCE]: Last frame took 3305 ms" in the logs).
+    // Encode + paint off the UI thread; the synchronous paint froze a frame
+    // for seconds.
     renderStrategy: Canvas.Threaded
 
     property string text: ""

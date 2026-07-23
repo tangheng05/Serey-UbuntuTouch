@@ -57,7 +57,7 @@ Page {
         }
     }
 
-    // ── Guest mode: step 0 → 1 ──────────────────────────────────────────────
+    // --- Guest mode: step 0 -> 1 ---
     function lookupHint() {
         if (busy) return;
         errorMsg = "";
@@ -79,7 +79,7 @@ Page {
             }, fail);
     }
 
-    // ── Guest mode: step 1 → 2  (send OTP to masked email) ─────────────────
+    // --- Guest mode: step 1 -> 2 (send OTP to masked email) ---
     function sendOtpMasked() {
         if (busy) return;
         errorMsg = "";
@@ -92,7 +92,7 @@ Page {
             function () { busy = false; resendSeconds = 90; step = 2; }, fail);
     }
 
-    // ── Logged-in mode: step 0 → 1 (send OTP to typed email directly) ───────
+    // --- Logged-in mode: step 0 -> 1 (send OTP to typed email directly) ---
     function sendOtpDirect() {
         if (busy) return;
         errorMsg = "";
@@ -106,7 +106,7 @@ Page {
             function () { busy = false; resendSeconds = 90; step = 1; }, fail);
     }
 
-    // ── Shared: verify OTP length ────────────────────────────────────────────
+    // --- Shared: verify OTP length ---
     function verifyCode() {
         if (busy) return;
         errorMsg = "";
@@ -116,7 +116,7 @@ Page {
         step = loggedInMode ? 2 : 3;
     }
 
-    // ── Shared: resend ───────────────────────────────────────────────────────
+    // --- Shared: resend ---
     function resend() {
         if (busy || resendSeconds > 0) return;
         errorMsg = "";
@@ -125,7 +125,7 @@ Page {
             function () { busy = false; resendSeconds = 90; Toast.show(Lang.tr("New code sent.")); }, fail);
     }
 
-    // ── Shared: final submit ─────────────────────────────────────────────────
+    // --- Shared: final submit ---
     function submitReset() {
         if (busy) return;
         errorMsg = "";
@@ -169,7 +169,6 @@ Page {
             y: Style.spacingL
             spacing: Style.spacingM
 
-            // Logo
             Image {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: units.gu(9); height: width
@@ -178,7 +177,6 @@ Page {
                 asynchronous: true
             }
 
-            // Step dots
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: Style.spacingS
@@ -192,7 +190,6 @@ Page {
                 }
             }
 
-            // Step title
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
@@ -217,7 +214,7 @@ Page {
 
             Item { width: 1; height: Style.spacingXs }
 
-            // ── Logged-in mode step 0: direct email entry ──────────────────
+            // --- Logged-in mode step 0: direct email entry ---
             Label {
                 visible: loggedInMode && page.step === 0
                 width: parent.width
@@ -236,7 +233,7 @@ Page {
                 onAccepted: page.sendOtpDirect()
             }
 
-            // ── Guest mode step 0: username ────────────────────────────────
+            // --- Guest mode step 0: username ---
             FormField {
                 id: usernameField
                 visible: !loggedInMode && page.step === 0
@@ -246,7 +243,7 @@ Page {
                 onAccepted: page.lookupHint()
             }
 
-            // ── Guest mode step 1: masked email ────────────────────────────
+            // --- Guest mode step 1: masked email ---
             Label {
                 visible: !loggedInMode && page.step === 1
                 width: parent.width
@@ -264,7 +261,7 @@ Page {
                 onAccepted: page.sendOtpMasked()
             }
 
-            // ── Shared step: OTP ───────────────────────────────────────────
+            // --- Shared step: OTP ---
             Label {
                 visible: (loggedInMode && page.step === 1) || (!loggedInMode && page.step === 2)
                 width: parent.width
@@ -307,7 +304,7 @@ Page {
                 }
             }
 
-            // ── Shared step: new password ──────────────────────────────────
+            // --- Shared step: new password ---
             FormField {
                 id: passwordField
                 visible: (loggedInMode && page.step === 2) || (!loggedInMode && page.step === 3)
@@ -330,7 +327,6 @@ Page {
                 onAccepted: page.submitReset()
             }
 
-            // Error
             Label {
                 width: parent.width
                 font.family: Style.fontFor(text)
@@ -341,7 +337,6 @@ Page {
                 visible: text.length > 0
             }
 
-            // Primary action button
             PrimaryButton {
                 width: parent.width
                 busy: page.busy

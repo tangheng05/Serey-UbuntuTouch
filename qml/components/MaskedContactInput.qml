@@ -32,7 +32,7 @@ Rectangle {
     border.color: hidden.activeFocus ? Style.brand : Style.divider
     Behavior on border.color { ColorAnimation { duration: 120 } }
 
-    // Visible composed display: typed chars, remaining dots, then the revealed suffix and domain — sits behind the transparent input.
+    // Visible composed display: typed chars, remaining dots, then the revealed suffix and domain. Sits behind the transparent input.
     Row {
         anchors {
             left: parent.left; leftMargin: Style.spacingM

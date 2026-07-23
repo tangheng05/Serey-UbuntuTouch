@@ -18,6 +18,11 @@ Page {
         ]
     }
 
+    // Keyboard nav: focus lands on the first field when opened from settings
+    // (Tab/Enter then move through the fields); Escape returns to the settings list.
+    property Item keyboardFocusItem: currentPassField.input
+    Keys.onEscapePressed: Nav.focusMaster()
+
     readonly property bool newPasswordValid:
         AccountService.isValidPassword(newPassField.text)
     readonly property bool canSubmit:
@@ -54,7 +59,6 @@ Page {
             spacing: Style.spacingM
             topPadding: Style.spacingL
 
-            // ── Change password ──────────────────────────────────────────
             Label {
                 width: parent.width
                 text: Lang.tr("Change password")

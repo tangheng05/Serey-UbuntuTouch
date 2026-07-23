@@ -1,21 +1,9 @@
 .pragma library
 .import "Http.js" as Http
 
-/*
- * Buy-plan payments. Two methods (the app deliberately has no KHQR):
- *
- *  - NOWPayments crypto, mounted at /subscription/crypto/* (see serey-api
- *    routes/index.js — NOT /crypto-subscription/*). create-payment returns a
- *    deposit address the user pays from an external wallet; check-status is
- *    polled until NOWPayments reports the payment finished.
- *  - Stripe Checkout: create-checkout returns a hosted checkout_url; the
- *    backend fixes the redirect to FRONTEND_ORIGIN/subscription/return
- *    (?success=true&session_id=… / ?cancel=true), which StripeCheckoutSheet
- *    watches for.
- *
- * Normalisation of the API's field quirks stays here (Mappers-style); the
- * QML sheets consume clean view-models.
- */
+// Buy-plan payments: NOWPayments crypto (/subscription/crypto/*, NOT
+// /crypto-subscription/*) and Stripe Checkout (redirect fixed to
+// /subscription/return). No KHQR by design. Field normalisation stays here.
 
 // -> onOk([ "usdttrc20", "btc", ... ])  (lowercase NOWPayments currency codes)
 function getCurrencies(baseUrl, onOk, onErr) {
@@ -27,10 +15,8 @@ function getCurrencies(baseUrl, onOk, onErr) {
 }
 
 // -> onOk({ paymentId, payAddress, payAmount, payCurrency, expiresAt, paymentUrl, message })
-// `expiresAt` may be "" when the backend omits it (callers fall back to ~15 min,
-// matching the web frontend). A reused still-valid payment can come back without
-// a pay_address ("Payment still valid") — surfaced as an error so the sheet
-// shows the message instead of a blank address.
+// expiresAt may be "" (callers fall back to ~15 min). A reused still-valid payment
+// can arrive without a pay_address; surfaced as an error so the sheet shows the message.
 function createCryptoPayment(baseUrl, token, planId, payCurrency, onOk, onErr) {
     Http.post(baseUrl, "/subscription/crypto/create-payment",
               { subscription_plan_id: parseInt(planId), pay_currency: payCurrency },
@@ -64,17 +50,14 @@ function checkCryptoStatus(baseUrl, token, paymentId, onOk, onErr) {
     }, onErr);
 }
 
-// Confirm (and, server-side, ACTIVATE) a completed Stripe checkout session.
-// The backend's check-status activates the subscription when the session is
-// paid but not yet activated — the same belt-and-braces the web return page
-// provides — so the app must call this after the success redirect instead of
-// trusting the webhook alone. onOk(data) on any 2xx.
+// Confirm (and server-side ACTIVATE) a completed Stripe session. Must be called
+// after the success redirect; don't trust the webhook alone. onOk(data) on any 2xx.
 function checkStripeStatus(baseUrl, token, sessionId, onOk, onErr) {
     Http.post(baseUrl, "/subscription/stripe/check-status",
               { session_id: sessionId }, token, onOk, onErr);
 }
 
-// -> onOk("https://checkout.stripe.com/…")
+// -> onOk("https://checkout.stripe.com/...")
 function createStripeCheckout(baseUrl, token, planId, onOk, onErr) {
     Http.post(baseUrl, "/subscription/stripe/create-checkout",
               { subscription_plan_id: parseInt(planId) }, token, function (data) {

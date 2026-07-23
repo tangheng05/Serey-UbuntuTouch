@@ -30,7 +30,7 @@ Rectangle {
         anchors.fill: parent
         anchors.leftMargin: Style.spacingM
         anchors.rightMargin: root.isPasswordField ? units.gu(5) : Style.spacingM
-        // Hide the theme's own frame — the parent Rectangle is the visual.
+        // Hide the theme's own frame; the parent Rectangle is the visual.
         StyleHints {
             backgroundColor: "transparent"
             borderColor: "transparent"

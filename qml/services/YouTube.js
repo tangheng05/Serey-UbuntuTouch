@@ -1,6 +1,6 @@
 .pragma library
 
-// InnerTube clients tried in order — each returns progressive direct URLs without a PoToken in practice; fall through to the next on failure.
+// InnerTube clients tried in order; each returns progressive direct URLs without a PoToken in practice, falling through to the next on failure.
 var CLIENTS = [
     {
         name: "IOS",
@@ -56,7 +56,7 @@ function _tryClient(videoId, idx, cb) {
             try { result = _parse(JSON.parse(xhr.responseText)); } catch (e) { result = null; }
         }
         if (result) cb(result, null);
-        else _tryClient(videoId, idx + 1, cb);   // this client failed — try next
+        else _tryClient(videoId, idx + 1, cb);   // this client failed, try next
     };
 
     var client = { clientName: c.name, clientVersion: c.version, hl: "en", gl: "US" };
@@ -80,7 +80,7 @@ function _parse(data) {
     var best = null;
     for (var i = 0; i < formats.length; i++) {
         var f = formats[i];
-        if (!f.url) continue;                                   // ciphered → skip
+        if (!f.url) continue;                                   // ciphered, skip
         if ((f.mimeType || "").indexOf("video/mp4") < 0) continue;
         if (!best || (f.height || 0) > (best.height || 0)) best = f;
     }

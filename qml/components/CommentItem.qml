@@ -44,7 +44,7 @@ Item {
         var text = item.editText.trim();
         if (text.length === 0)
             return;
-        // Emit only — CommentItem is Loader-instantiated for nested replies where JS module imports resolve to null, so the host page's handler makes the server call.
+        // Emit only. CommentItem is Loader-instantiated for nested replies, where JS module imports resolve to null, so the host page's handler makes the server call.
         item.editing = false;
         item.edited(c.permlink, text, c.parentAuthor || "", c.parentPermlink || "");
     }
@@ -69,7 +69,6 @@ Item {
         }
         spacing: Style.spacingXs
 
-        // Author row: avatar + name + time on the left, ••• on the right
         Item {
             width: parent.width
             height: avatar.height
@@ -146,7 +145,6 @@ Item {
                 }
             }
 
-            // Edit / Delete dropdown
             Rectangle {
                 id: menu
                 visible: item.menuOpen
@@ -229,7 +227,6 @@ Item {
             wrapMode: Text.Wrap
         }
 
-        // Inline edit mode
         Column {
             visible: item.editing
             width: parent.width - (units.gu(3.5) + Style.spacingS)
@@ -274,7 +271,6 @@ Item {
             }
         }
 
-        // Like + reply action row
         Row {
             x: units.gu(3.5) + Style.spacingS
             spacing: Style.spacingM
@@ -283,6 +279,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 author: c.author || ""
                 permlink: c.permlink || ""
+                voters: c.voters || []
                 voteType: "comment"
                 showComments: false
                 showShare: false
@@ -329,7 +326,6 @@ Item {
             }
         }
 
-        // Replies toggle
         AbstractButton {
             visible: item.replies.length > 0
             x: units.gu(3.5) + Style.spacingS
@@ -358,7 +354,7 @@ Item {
             }
         }
 
-        // Nested replies — only indent one level deep; deeper replies stay flat
+        // Nested replies: only indent one level deep; deeper replies stay flat
         Item {
             visible: item.repliesExpanded && item.replies.length > 0
             width: parent.width
@@ -389,7 +385,7 @@ Item {
                 }
 
                 Repeater {
-                    // Only instantiate reply rows while expanded — collapsing frees them, and nested levels aren't built until expanded.
+                    // Only instantiate reply rows while expanded; collapsing frees them.
                     model: item.repliesExpanded ? item.replies : []
                     delegate: Loader {
                         id: replyLoader

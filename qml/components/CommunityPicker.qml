@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 import QtGraphicalEffects 1.0
 import "../Theme"
@@ -16,25 +17,208 @@ Item {
     // Per-source cache: undefined = not fetched, [] = empty, [...] = data
     property var cache: ({})
     property int loadingIndex: -1
-    // Map of communityId (string) → true for communities the user is subscribed to.
+
+    // cache/expandedIndex are keyed by row index, so they go stale when Config.sources
+    // is rebuilt (indices shift after platform create/delete). Drop and re-fetch.
+    property Connections _sourcesWatcher: Connections {
+        target: Config
+        function onSourcesChanged() {
+            picker.cache = ({})
+            picker.expandedIndex = -1
+            picker.loadingIndex = -1
+        }
+    }
+    // Geo hint: hoist the detected country to the top, expanded, rest behind "See more".
+    // Reorders the VIEW ONLY; state stays keyed by the real Config.sources index, carried
+    // per display row as `_realIndex`. No detection -> detectedIndex -1, normal list.
+    readonly property int detectedIndex: Config.indexForCountryCode(Config.detectedCountryCode)
+    property bool showAll: false
+    readonly property var displaySources: picker._buildDisplaySources()
+
+    function _buildDisplaySources() {
+        var out = []
+        for (var i = 0; i < Config.sources.length; i++) {
+            var row = {}
+            var s = Config.sources[i]
+            for (var k in s) row[k] = s[k]
+            row._realIndex = i          // index into Config.sources, NOT the display position
+            out.push(row)
+        }
+        var di = picker.detectedIndex
+        if (di < 0) return out          // undetected: today's list, untouched
+
+        // Global stays pinned at the top (default combined feed); the geo hint
+        // slots in BELOW it. (di is never 0: _indexForCountry skips Global.)
+        var mine = out.splice(di, 1)[0]
+        out.splice(1, 0, mine)
+        // Collapsed: Global + the user's country. The rest are one tap away.
+        return picker.showAll ? out : [out[0], mine]
+    }
+
+    // Map of communityId (string) -> true for communities the user is subscribed to.
     property var subscribedMap: ({})
     property int subscribedRev: 0
     property bool subscriptionsLoaded: false
 
     function open() {
+        picker._closing = false
+        closeGuard.stop()
         picker.visible = true
         cpBackdropFade.start()
         cpSlide.start()
         if (Session.isLoggedIn && !subscriptionsLoaded) _loadSubscriptions()
+        // Geo-detected country opens expanded: it's the one row we're confident
+        // the user wants, and collapsed it would show nothing but its own name.
+        // Only when the user hasn't already expanded something themselves.
+        if (picker.detectedIndex > 0 && picker.expandedIndex === -1)
+            picker._toggleExpand(picker.detectedIndex)
+        // Keyboard users can open this via the header pill (Enter): own the keys
+        // while open so Escape dismisses and Tab can't tunnel to the page below.
+        picker._prevFocus = Window.activeFocusItem
+        picker.forceActiveFocus()
+        // Cursor starts on the active source; the ring only shows once a key is pressed.
+        picker.navSrc = Config.sourceIndex; picker.navCat = -1; picker.navCom = -1
+        picker.navActive = false
     }
-    function close()         { picker.visible = false }
-    function closeAnimated() { cpBackdropFadeOut.start(); cpSlideOut.start() }
+    function close()         { picker._closing = false; closeGuard.stop(); picker.visible = false }
+
+    // Closing but still visible until cpSlideOut finishes. The backdrop MouseArea still
+    // hit-tests at opacity 0, so it must be disabled while the exit animation runs.
+    property bool _closing: false
+
+    function closeAnimated() {
+        if (picker._closing) return
+        picker._closing = true
+        cpBackdropFadeOut.start()
+        cpSlideOut.start()
+        closeGuard.restart()
+    }
+
+    // onStopped isn't guaranteed to fire; close anyway.
+    Timer {
+        id: closeGuard
+        interval: 400   // comfortably past cpSlideOut's 250ms
+        repeat: false
+        onTriggered: if (picker.visible) picker.close()
+    }
+
+    // Rows live in nested Repeaters (source > category > community), so the cursor is
+    // data coordinates, not Items; it survives delegate recreation. cat/com -1 = source row.
+    property int navSrc: -1
+    property int navCat: -1
+    property int navCom: -1
+    property bool navActive: false
+
+    // Selectable rows in visual order (category headers excluded). Walks displaySources,
+    // not Config.sources, so the cursor visits what's on screen; `src` stays the REAL index.
+    function _navEntries() {
+        var out = [], srcs = picker.displaySources || []
+        for (var d = 0; d < srcs.length; d++) {
+            var i = srcs[d]._realIndex
+            out.push({ src: i, cat: -1, com: -1 })
+            if (picker.expandedIndex !== i) continue
+            var cats = picker.cache[i] || []
+            for (var j = 0; j < cats.length; j++) {
+                var coms = cats[j].communities || []
+                for (var k = 0; k < coms.length; k++) out.push({ src: i, cat: j, com: k })
+            }
+        }
+        return out
+    }
+    function _navMove(delta) {
+        var e = _navEntries()
+        if (e.length === 0) return
+        var cur = -1
+        for (var i = 0; i < e.length; i++)
+            if (e[i].src === picker.navSrc && e[i].cat === picker.navCat && e[i].com === picker.navCom) { cur = i; break }
+        var n = (cur < 0) ? (delta > 0 ? 0 : e.length - 1)
+                          : Math.max(0, Math.min(e.length - 1, cur + delta))
+        picker.navSrc = e[n].src; picker.navCat = e[n].cat; picker.navCom = e[n].com
+        picker.navActive = true
+    }
+    function _navActivate() {
+        if (picker.navSrc < 0) return
+        if (picker.navCat < 0) { picker._selectSource(picker.navSrc); return }
+        var cats = picker.cache[picker.navSrc] || []
+        var coms = cats[picker.navCat] ? (cats[picker.navCat].communities || []) : []
+        if (coms[picker.navCom]) picker._selectCommunity(coms[picker.navCom])
+    }
+    // Rows call this when they become the cursor, so it never leaves the viewport.
+    function _ensureVisible(it) {
+        var y = it.mapToItem(sheetContent, 0, 0).y
+        if (y < flickable.contentY) flickable.contentY = Math.max(0, y)
+        else if (y + it.height > flickable.contentY + flickable.height)
+            flickable.contentY = y + it.height - flickable.height
+    }
+
+    // Shared by pointer and keyboard so the two paths can't drift.
+    function _selectSource(i) {
+        Config.sourceIndex = i
+        Config.selectedSubCommunity = null
+        picker.expandedIndex = -1
+        picker._chose = true
+        picker.closeAnimated()
+    }
+    function _toggleExpand(i) {
+        if (picker.expandedIndex === i) picker.expandedIndex = -1
+        else { picker.expandedIndex = i; picker._fetch(i) }
+    }
+    function _selectCommunity(m) {
+        Config.selectedSubCommunity = {
+            id: String(m.id || m._id || ""),
+            name: m.title || m.name || "",
+            icon: m.icon_url || m.logo_url || m.profile_image || "",
+            // Posting permissions for this sub-community gate the compose buttons; modelData is a raw list-by-parent-id object using the API's snake_case names.
+            allowPost: !!m.is_allow_post,
+            videoAllowPost: !!m.video_is_allow_post
+        }
+        picker._chose = true
+        picker.closeAnimated()
+    }
+
+    // Whatever held keyboard focus before the picker opened; restored on close.
+    property var _prevFocus: null
+    // True when a platform was actually chosen (vs. cancel/Escape). Focus then belongs
+    // in the reloaded feed, not back on the pill, whose KeyTapArea has no arrow nav.
+    property bool _chose: false
+    onVisibleChanged: {
+        if (visible) return
+        var prev = _prevFocus, chose = _chose
+        _prevFocus = null; _chose = false
+        // Deferred: a synchronous grab while this sheet is still tearing down lands
+        // nowhere, leaving the keyboard dead until a click.
+        Qt.callLater(function () {
+            if (chose) { Nav.focusContent(); return }
+            try { if (prev && prev.visible) prev.forceActiveFocus() } catch (e) { /* item destroyed since */ }
+        })
+    }
+    Keys.onPressed: {
+        if (event.key === Qt.Key_Escape) { picker.closeAnimated(); event.accepted = true }
+        else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) event.accepted = true
+        else if (event.key === Qt.Key_Down)  { picker._navMove(1);  event.accepted = true }
+        else if (event.key === Qt.Key_Up)    { picker._navMove(-1); event.accepted = true }
+        // Right opens a country's sub-communities (Global, index 0, has none).
+        else if (event.key === Qt.Key_Right) {
+            if (picker.navCat < 0 && picker.navSrc > 0) { picker._toggleExpand(picker.navSrc); picker.navActive = true }
+            event.accepted = true
+        }
+        // Left steps back up to the parent row, then collapses it.
+        else if (event.key === Qt.Key_Left) {
+            if (picker.navCat >= 0) { picker.navCat = -1; picker.navCom = -1 }
+            else if (picker.expandedIndex === picker.navSrc) picker.expandedIndex = -1
+            picker.navActive = true
+            event.accepted = true
+        }
+        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+            picker._navActivate(); event.accepted = true
+        }
+    }
 
     function _loadSubscriptions() {
         picker.subscriptionsLoaded = true  // mark before call so retries don't stack
         SubscriberService.fetchSubscribed(Config.baseUrl, Session.token,
             function (map) { picker.subscribedMap = map; picker.subscribedRev++ },
-            function () { /* silent — picker still works without subscription data */ })
+            function () { /* silent; picker still works without subscription data */ })
     }
 
     function _toggleSubscribe(commId, currentlySubscribed) {
@@ -45,7 +229,7 @@ Item {
             for (var k in picker.subscribedMap) m[k] = true
             if (add) m[id] = true
             else delete m[id]
-            return m   // new object → QML detects the change and re-evaluates bindings
+            return m   // new object so QML detects the change and re-evaluates bindings
         }
 
         if (currentlySubscribed) {
@@ -189,7 +373,7 @@ Item {
             }
 
         } else {
-            // Netherlands / US: step 1 — get communities for this source
+            // Netherlands / US: step 1, get communities for this source
             var xhrP = new XMLHttpRequest()
             xhrP.open("GET", Config.baseUrl + "/community/list-by-parent-id/" + apiId)
             xhrP.setRequestHeader("Accept", "application/json")
@@ -204,7 +388,7 @@ Item {
 
                 if (sourceComms.length === 0) { _store(srcIndex, []); return }
 
-                // Step 2 — fetch categories to try to group them
+                // Step 2: fetch categories to try to group them
                 var xhrC = new XMLHttpRequest()
                 xhrC.open("GET", Config.baseUrl + "/community/categories/list?limit=100")
                 xhrC.setRequestHeader("Accept", "application/json")
@@ -216,7 +400,7 @@ Item {
                         var arr = _parseCategoryList(JSON.parse(xhrC.responseText))
                         cats = _applyCategories(sourceComms, arr)
                     } catch (e) { }
-                    // Remove uncategorised group (empty name) — only show properly categorised communities.
+                    // Remove the uncategorised group (empty name); only show categorised communities.
                     cats = cats.filter(function(c) { return c.name.length > 0 })
                     // Fallback: if nothing matched any category, show flat without header
                     if (cats.length === 0) cats = [{ name: "", icon: "", color: "", communities: sourceComms }]
@@ -228,26 +412,28 @@ Item {
         }
     }
 
-    // ── Backdrop ─────────────────────────────────────────────────────────────
     Rectangle {
         id: cpBackdrop
         anchors.fill: parent
         color: Qt.rgba(0, 0, 0, 0.4)
         opacity: 0
-        MouseArea { anchors.fill: parent; onClicked: picker.closeAnimated() }
+        // enabled gate: see picker._closing
+        MouseArea {
+            anchors.fill: parent
+            enabled: !picker._closing
+            onClicked: picker.closeAnimated()
+        }
     }
     NumberAnimation { id: cpBackdropFade;    target: cpBackdrop; property: "opacity"; from: 0; to: 1;  duration: 200 }
     NumberAnimation { id: cpBackdropFadeOut; target: cpBackdrop; property: "opacity"; to: 0;            duration: 200 }
 
-    // ── Sheet ─────────────────────────────────────────────────────────────────
-    // Full-width sheet on phone, centered width-capped card on desktop
     Rectangle {
         id: sheet
         readonly property bool wide: Config.wideMode
+        // Centered + explicit width handles both cases (full-width on phone, capped
+        // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
         anchors {
-            left: sheet.wide ? undefined : parent.left
-            right: sheet.wide ? undefined : parent.right
-            horizontalCenter: sheet.wide ? parent.horizontalCenter : undefined
+            horizontalCenter: parent.horizontalCenter
             bottom: parent.bottom
             bottomMargin: sheet.wide ? units.gu(4) : 0
         }
@@ -261,14 +447,12 @@ Item {
         NumberAnimation { id: cpSlide;    target: cpTranslate; property: "y"; from: sheet.height + units.gu(4); to: 0;              duration: 300; easing.type: Easing.OutCubic }
         NumberAnimation { id: cpSlideOut; target: cpTranslate; property: "y"; to: sheet.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: picker.close() }
 
-        // Grabber
         Rectangle {
             anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
             width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
             color: Style.lightGray
         }
 
-        // Scrollable content
         Flickable {
             id: flickable
             anchors { fill: parent; topMargin: units.gu(1) }
@@ -280,7 +464,6 @@ Item {
                 id: sheetContent
                 width: flickable.width
 
-                // ── Header ───────────────────────────────────────────────
                 Item { width: 1; height: Style.spacingL }
                 Row {
                     width: parent.width - Style.spacingM * 2
@@ -301,26 +484,30 @@ Item {
                 }
                 Item { width: 1; height: Style.spacingM }
 
-                // ── Source rows ──────────────────────────────────────────
                 Repeater {
-                    model: Config.sources
+                    // Display order, which may differ from Config.sources when a
+                    // country is geo-detected; srcIndex carries the real index.
+                    model: picker.displaySources
 
                     delegate: Column {
                         id: sourceCol
                         width: sheetContent.width
                         // Global (index 0) applies no community filter and is shown as a plain selectable row with no chevron (no sub-communities).
                         visible: true
-                        property int srcIndex: index
-                        property bool isExpanded: picker.expandedIndex === index
-                        property var cats: picker.cache[index] || []
+                        property int srcIndex: modelData._realIndex
+                        property bool isExpanded: picker.expandedIndex === sourceCol.srcIndex
+                        property var cats: picker.cache[sourceCol.srcIndex] || []
 
-                        // Parent row
                         Item {
                             id: sourceRow
                             width: parent.width
                             height: units.gu(7)
-                            // Chevron touch target width — used to split the two hit areas.
+                            // Chevron touch target width, used to split the two hit areas.
                             readonly property int chevronW: sourceCol.srcIndex !== 0 ? units.gu(7) : 0
+
+                            readonly property bool isCursor: picker.navActive
+                                && picker.navSrc === sourceCol.srcIndex && picker.navCat < 0
+                            onIsCursorChanged: if (isCursor) picker._ensureVisible(sourceRow)
 
                             Rectangle {
                                 anchors.fill: parent
@@ -331,12 +518,11 @@ Item {
                                 anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
                                 spacing: Style.spacingM
 
-                                // Flag / icon
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: units.gu(5); height: width; radius: width / 2
                                     color: Style.iconBackground
-                                    border.width: Config.sourceIndex === index && !Config.selectedSubCommunity ? units.dp(2) : 0
+                                    border.width: Config.sourceIndex === sourceCol.srcIndex && !Config.selectedSubCommunity ? units.dp(2) : 0
                                     border.color: Style.brand
 
                                     CircleImage {
@@ -348,12 +534,11 @@ Item {
                                         anchors.centerIn: parent
                                         width: units.gu(2.5); height: width
                                         name: "language-chooser"
-                                        color: Config.sourceIndex === index ? Style.brand : Style.textSecondary
+                                        color: Config.sourceIndex === sourceCol.srcIndex ? Style.brand : Style.textSecondary
                                         visible: !srcIcon.loaded
                                     }
                                 }
 
-                                // Name
                                 Label {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: parent.width - units.gu(5) - sourceRow.chevronW - Style.spacingM * 2
@@ -375,38 +560,36 @@ Item {
                                 visible: sourceCol.srcIndex !== 0
                             }
 
-                            // Left zone (flag + name) → select this source and close
+                            // Left zone (flag + name): select this source and close
                             MouseArea {
                                 anchors {
                                     left: parent.left; top: parent.top; bottom: parent.bottom
                                     right: parent.right; rightMargin: sourceRow.chevronW
                                 }
-                                onClicked: {
-                                    Config.sourceIndex = sourceCol.srcIndex
-                                    Config.selectedSubCommunity = null
-                                    picker.expandedIndex = -1
-                                    picker.closeAnimated()
-                                }
+                                onClicked: picker._selectSource(sourceCol.srcIndex)
                             }
 
-                            // Right zone (chevron) → toggle dropdown (NL/US only)
+                            // Right zone (chevron): toggle dropdown (NL/US only)
                             MouseArea {
                                 anchors {
                                     right: parent.right; top: parent.top; bottom: parent.bottom
                                 }
                                 width: sourceRow.chevronW
                                 visible: sourceCol.srcIndex !== 0
-                                onClicked: {
-                                    if (picker.expandedIndex === sourceCol.srcIndex) {
-                                        picker.expandedIndex = -1
-                                    } else {
-                                        picker.expandedIndex = sourceCol.srcIndex
-                                        picker._fetch(sourceCol.srcIndex)
-                                    }
-                                }
+                                onClicked: picker._toggleExpand(sourceCol.srcIndex)
                             }
 
-                            // Bottom divider
+                            // Keyboard cursor ring (pointer users never see it).
+                            Rectangle {
+                                anchors { fill: parent; margins: units.dp(2) }
+                                radius: units.dp(6)
+                                color: "transparent"
+                                border.width: units.dp(2)
+                                border.color: Style.brand
+                                visible: sourceRow.isCursor
+                                z: 5
+                            }
+
                             Rectangle {
                                 anchors.bottom: parent.bottom
                                 width: parent.width; height: units.dp(1)
@@ -414,7 +597,6 @@ Item {
                             }
                         }
 
-                        // Loading indicator
                         Item {
                             visible: sourceCol.isExpanded && picker.loadingIndex === sourceCol.srcIndex
                             width: parent.width; height: units.gu(5)
@@ -424,12 +606,10 @@ Item {
                             }
                         }
 
-                        // Sub-communities grouped by category
                         Column {
                             visible: sourceCol.isExpanded && picker.loadingIndex !== sourceCol.srcIndex
                             width: parent.width
 
-                            // Empty state
                             Item {
                                 visible: sourceCol.cats.length === 0 && picker.cache[sourceCol.srcIndex] !== undefined
                                 width: parent.width; height: units.gu(5)
@@ -445,10 +625,12 @@ Item {
                                 model: sourceCol.cats
 
                                 delegate: Column {
+                                    id: catCol
                                     width: sheetContent.width
                                     property var catData: modelData
+                                    // Captured for the keyboard cursor: the inner community Repeater shadows `index`.
+                                    property int catIndex: index
 
-                                    // Category header pill (hidden when no category name)
                                     Item {
                                         width: parent.width
                                         height: catData.name.length > 0 ? units.gu(5) : 0
@@ -462,32 +644,23 @@ Item {
                                             }
                                             spacing: 0
 
-                                            // Pill background
                                             Rectangle {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 height: units.gu(3.2)
                                                 width: pillContent.width + units.gu(2)
                                                 radius: Style.pillRadius
-                                                color: {
-                                                    var hex = (catData.color && catData.color.length === 7) ? catData.color : "#17A77E"
-                                                    return Qt.rgba(
-                                                        parseInt(hex.slice(1,3), 16) / 255,
-                                                        parseInt(hex.slice(3,5), 16) / 255,
-                                                        parseInt(hex.slice(5,7), 16) / 255,
-                                                        0.15)
-                                                }
+                                                color: Qt.rgba(
+                                                    Style.brand.r, Style.brand.g, Style.brand.b, 0.15)
 
                                                 Row {
                                                     id: pillContent
                                                     anchors.centerIn: parent
                                                     spacing: units.gu(0.5)
 
-                                                    // Category icon — backend image if available, fallback icon otherwise
                                                     Item {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: units.gu(2); height: width
 
-                                                        // Backend icon with color tint
                                                         Image {
                                                             id: catIconImg
                                                             anchors.fill: parent
@@ -499,17 +672,14 @@ Item {
                                                         ColorOverlay {
                                                             anchors.fill: catIconImg
                                                             source: catIconImg
-                                                            color: (catData.color && catData.color.length > 0)
-                                                                   ? catData.color : "#17A77E"
+                                                            color: Style.brand
                                                             visible: catIconImg.status === Image.Ready
                                                         }
 
-                                                        // Fallback when no backend icon
                                                         Icon {
                                                             anchors.fill: parent
                                                             name: "view-grid-symbolic"
-                                                            color: (catData.color && catData.color.length > 0)
-                                                                   ? catData.color : "#17A77E"
+                                                            color: Style.brand
                                                             visible: catIconImg.status !== Image.Ready
                                                         }
                                                     }
@@ -521,21 +691,19 @@ Item {
                                                         font.weight: Font.Bold
                                                         font.family: Style.fontFor(text)
                                                         font.letterSpacing: units.dp(0.6)
-                                                        color: catData.color.length > 0 ? catData.color : Style.brand
+                                                        color: Style.brand
                                                     }
                                                 }
                                             }
                                         }
                                     }
 
-                                    // Community rows
                                     Repeater {
                                         model: catData.communities
 
                                         delegate: Column {
                                             width: sheetContent.width
 
-                                            // ── Main platform card ─────────────────────────
                                             Item {
                                             id: commBtn
                                             width: sheetContent.width
@@ -547,13 +715,17 @@ Item {
                                             property bool isSelected: Config.selectedSubCommunity
                                                                       && Config.selectedSubCommunity.id === commBtn.commId
                                             property bool subscribed: picker.subscribedRev >= 0 && !!picker.subscribedMap[commBtn.commId]
+                                            readonly property bool isCursor: picker.navActive
+                                                && picker.navSrc === sourceCol.srcIndex
+                                                && picker.navCat === catCol.catIndex
+                                                && picker.navCom === index
+                                            onIsCursorChanged: if (isCursor) picker._ensureVisible(commBtn)
                                             // A superhub is a platform that itself contains child platforms.
                                             property bool isSuperhub: !!(modelData.is_superhub)
                                             property var hubChildren: commBtn.isSuperhub
                                                                       ? (Config.superhubChildrenById[commBtn.commId] || [])
                                                                       : []
 
-                                            // Card
                                             Rectangle {
                                                 anchors {
                                                     fill: parent
@@ -570,17 +742,18 @@ Item {
                                                 // Navigate on card tap (behind the row so Subscribe button wins)
                                                 MouseArea {
                                                     anchors.fill: parent
-                                                    onClicked: {
-                                                        Config.selectedSubCommunity = {
-                                                            id: commBtn.commId,
-                                                            name: commBtn.commName,
-                                                            icon: commBtn.commIcon,
-                                                            // Posting permissions for this sub-community gate the compose buttons; modelData is a raw list-by-parent-id object using the API's snake_case names.
-                                                            allowPost: !!modelData.is_allow_post,
-                                                            videoAllowPost: !!modelData.video_is_allow_post
-                                                        }
-                                                        picker.closeAnimated()
-                                                    }
+                                                    onClicked: picker._selectCommunity(modelData)
+                                                }
+
+                                                // Keyboard cursor ring (pointer users never see it).
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    radius: Style.cardRadius
+                                                    color: "transparent"
+                                                    border.width: units.dp(2)
+                                                    border.color: Style.brand
+                                                    visible: commBtn.isCursor
+                                                    z: 5
                                                 }
 
                                                 Row {
@@ -591,7 +764,6 @@ Item {
                                                     }
                                                     spacing: Style.spacingM
 
-                                                    // Community icon
                                                     Rectangle {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: units.gu(5.5); height: width; radius: width / 2
@@ -604,7 +776,6 @@ Item {
                                                         }
                                                     }
 
-                                                    // Name
                                                     Label {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: parent.width - units.gu(5.5) - subBtn.width
@@ -618,7 +789,7 @@ Item {
                                                         elide: Text.ElideRight
                                                     }
 
-                                                    // HUB badge — marks a superhub platform
+                                                    // HUB badge: marks a superhub platform
                                                     Rectangle {
                                                         id: hubBadge
                                                         visible: commBtn.isSuperhub
@@ -639,7 +810,7 @@ Item {
                                                         }
                                                     }
 
-                                                    // Subscribe button — defined last so it renders on top of the navigate MouseArea
+                                                    // Subscribe button: defined last so it renders on top of the navigate MouseArea
                                                     Rectangle {
                                                         id: subBtn
                                                         anchors.verticalCenter: parent.verticalCenter
@@ -669,7 +840,7 @@ Item {
                                             }
                                             }
 
-                                            // ── Superhub children (indented, with a connector line) ──
+                                            // Superhub children: indented, with a connector line.
                                             Repeater {
                                                 model: commBtn.hubChildren
 
@@ -700,7 +871,6 @@ Item {
                                                         color: Style.divider
                                                     }
 
-                                                    // Child card (indented)
                                                     Rectangle {
                                                         anchors {
                                                             fill: parent
@@ -789,6 +959,45 @@ Item {
                             }
                         }
                     }
+                }
+
+                // See more: shown only while the geo hint collapses the list;
+                // expanding is one-way for the session.
+                AbstractButton {
+                    id: seeMoreBtn
+                    visible: picker.detectedIndex >= 0 && !picker.showAll
+                    width: sheetContent.width
+                    height: visible ? units.gu(6) : 0
+                    onClicked: picker.showAll = true
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: seeMoreBtn.pressed ? Style.pressed : "transparent"
+                    }
+                    Rectangle {
+                        anchors { top: parent.top; left: parent.left; right: parent.right }
+                        height: units.dp(1)
+                        color: Style.divider
+                    }
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: Style.spacingS
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Lang.tr("See more")
+                            font.pixelSize: Style.fontRegular
+                            font.weight: Font.DemiBold
+                            font.family: Style.fontFor(text)
+                            color: Style.brand
+                        }
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(2); height: width
+                            name: "go-down"
+                            color: Style.brand
+                        }
+                    }
+                    KeyTapArea { onActivated: seeMoreBtn.clicked() }
                 }
 
                 Item { width: 1; height: Style.spacingL }

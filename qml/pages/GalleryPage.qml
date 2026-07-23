@@ -10,7 +10,7 @@ import "../services/BlockedUsers.js" as BlockedUsers
 Page {
     id: page
 
-    // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
+    // Cards need swipe actions, so a fixed-cell GridView won't work; cap + center instead
     readonly property real maxContentWidth: units.gu(60)
 
     property int offset: 0
@@ -95,7 +95,7 @@ Page {
                         galleryModel.append(result[i]);
                 page.offset = rawCount;
                 page.endReached = rawCount < Config.pageSize;
-                // Image-only filtering can leave a page thin — keep paging to a screenful
+                // Image-only filtering can leave a page thin; keep paging to a screenful
                 if (!page.endReached && galleryModel.count < Config.pageSize) page.loadMore();
             },
             function (err) {
@@ -115,7 +115,7 @@ Page {
             params.community_id = Config.communityId;
         inflight = PostService.listGallery(Config.baseUrl, params, Session.token,
             function (result, rawCount) {
-                if (epoch !== page.reqEpoch) return;   // stale response — ignore
+                if (epoch !== page.reqEpoch) return;   // stale response, ignore
                 inflight = null;
                 loading = false;
                 var hidden = HiddenPosts.loadAll();
@@ -169,11 +169,15 @@ Page {
             leadingActions: ListItemActions {
                 actions: [
                     Action {
-                        iconName: "close"
+                        iconName: "view-off"
                         text: Lang.tr("Hide")
                         onTriggered: {
                             var vm = galleryModel.get(index);
-                            if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                            if (vm) {
+                                // Persist so it stays hidden across restarts (matches the overflow-menu Hide).
+                                HiddenPosts.hide(vm.permlink || "");
+                                PostActions.hideRequested(vm.author, vm.permlink);
+                            }
                         }
                     }
                 ]
@@ -222,6 +226,14 @@ Page {
             if (atYEnd && !page.loading && !page.endReached)
                 page.loadMore();
         }
+
+        // Prefetch ~2 screens early (see NewsPage); atYEnd stays as fallback.
+        onContentYChanged: {
+            if (!page.loading && !page.endReached
+                    && contentHeight > height
+                    && contentY + height >= contentHeight - height * 2)
+                page.loadMore();
+        }
     }
 
     LoadingState {
@@ -242,7 +254,6 @@ Page {
         message: Lang.tr("No gallery posts in %1").arg(Config.communityName)
     }
 
-    // Floating compose button
     AbstractButton {
         visible: Session.isLoggedIn
         anchors {

@@ -5,49 +5,58 @@ import Lomiri.Components 1.3
 QtObject {
     id: style
 
-    // --- Brand ----------------------------------------------------------------
+    // Single light/dark switch; Main.qml binds it to the system theme so every
+    // token below re-skins for SuruDark centrally. Values are Suru palette hexes.
+    // Brand tokens stay fixed (Serey blue is identity, not a theme role).
+    property bool dark: false
+
+    // --- Brand (fixed across themes) ------------------------------------------
     readonly property color brand: "#0083FA"        // primary blue
     readonly property color brandDark: "#0067C8"
     readonly property color accentRed: "#D30020"     // category badge / downvote
-    readonly property color danger: "#C7162B"        // destructive (delete)
-    readonly property color dangerTint: "#FBEAEC"     // danger background wash
-    readonly property color success: "#52C41A"       // satisfied rule / positive
 
-    // --- Text -----------------------------------------------------------------
-    readonly property color textPrimary: "#262626"
-    readonly property color textTitle: "#373737"
-    readonly property color textSecondary: "#5F5F5F"
-    readonly property color textOnBrand: "#FFFFFF"
+    // --- Semantic state roles (mirror theme.palette normal.positive/negative/focus)
+    readonly property color negative: dark ? "#ED3146" : "#C7162B"   // Suru Red / Light Red
+    readonly property color positive: dark ? "#3EB34F" : "#0E8420"   // Suru Green / Light Green
+    readonly property color focus:    dark ? "#19B6EE" : "#335280"   // Suru Blue / Light Blue (selection/neutral)
+    readonly property color danger: negative          // destructive (delete), alias to the negative role
+    readonly property color dangerTint: dark ? "#3A1519" : "#FBEAEC"  // danger background wash
+    readonly property color success: dark ? "#3EB34F" : "#52C41A"     // positive accent (keeps the app's green in light)
 
-    // --- Surfaces -------------------------------------------------------------
-    readonly property color surface: "#FFFFFF"
-    readonly property color card: "#FFFFFF"
-    readonly property color navigationBg: "#FFFFFF"
-    readonly property color divider: "#E4E4E4"        // neutral Suru hairline
-    readonly property color iconBackground: "#F3F3F3" // pills, chips, avatar bg
-    readonly property color pressed: "#F0F0F0"
-    readonly property color dotInactive: "#CECECE"
-    readonly property color lightGray: "#D3D3D3"      // image placeholder
-    readonly property color skeleton: "#E0E0E0"       // shimmer base
-    readonly property color toastBg: "#323232"
-    readonly property color videoStage: "#000000"
+    readonly property color textPrimary: dark ? "#F7F7F7" : "#262626"    // Porcelain / near-Jet
+    readonly property color textTitle:   dark ? "#FFFFFF" : "#373737"
+    readonly property color textSecondary: dark ? "#ABABAB" : "#5F5F5F"  // Ash / Slate
+    readonly property color textOnBrand: "#FFFFFF"                        // on the blue button (fixed)
 
-    // --- Spacing (grid units) -------------------------------------------------
+    readonly property color surface: dark ? "#111111" : "#FFFFFF"        // Jet / White
+    readonly property color card:    dark ? "#1B1B1B" : "#FFFFFF"
+    readonly property color navigationBg: dark ? "#161616" : "#FFFFFF"
+    readonly property color divider: dark ? "#2E2E2E" : "#E4E4E4"        // neutral Suru hairline
+    readonly property color iconBackground: dark ? "#262626" : "#F3F3F3" // pills, chips, avatar bg
+    readonly property color pressed: dark ? "#2A2A2A" : "#F0F0F0"
+    readonly property color dotInactive: dark ? "#4D4D4D" : "#CECECE"
+    readonly property color lightGray: dark ? "#3B3B3B" : "#D3D3D3"      // image placeholder
+    readonly property color skeleton: dark ? "#2A2A2A" : "#E0E0E0"       // shimmer base
+    readonly property color toastBg: "#323232"                           // dark chip (both themes)
+    readonly property color videoStage: "#000000"                        // video stage (both themes)
+
     readonly property real spacingXs: units.gu(0.5)
     readonly property real spacingS: units.gu(1)
     readonly property real spacingM: units.gu(2)
     readonly property real spacingL: units.gu(3)
     readonly property real cellPadding: units.gu(2)
 
-    // --- Type scale (device px) ----------------------------------------------
-    readonly property int fontXSmall: units.dp(11)
-    readonly property int fontSmall: units.dp(12)
-    readonly property int fontRegular: units.dp(14)
-    readonly property int fontMedium: units.dp(15)
-    readonly property int fontLarge: units.dp(16)
-    readonly property int fontTitle: units.dp(22)
+    // Grid-unit type scale per the Ubuntu typography guide. gu(n) == dp(8n) on
+    // Ubuntu Touch, so these match the old dp() values pixel-for-pixel;
+    // fontMedium/Large/Title are the app's own intermediate steps.
+    readonly property int fontXSmall: units.gu(1.375) // ~x-small
+    readonly property int fontSmall:  units.gu(1.5)   // small
+    readonly property int fontRegular: units.gu(1.75) // medium
+    readonly property int fontMedium: units.gu(1.875)
+    readonly property int fontLarge:  units.gu(2)
+    readonly property int fontTitle:  units.gu(2.75)
 
-    // Radii: Lomiri/Suru is low-radius and flat — subtle rounding, not iOS-style pills.
+    // Radii: Lomiri/Suru is low-radius and flat; subtle rounding, not iOS-style pills.
     readonly property real radius: units.gu(0.6)
     readonly property real thumbRadius: units.gu(0.8)
     readonly property real cardRadius: units.gu(0.6)
@@ -56,21 +65,20 @@ QtObject {
     readonly property real fabRadius: units.gu(0.6)
     readonly property real durationBadgeRadius: units.dp(3)
 
-    // --- Sizes ----------------------------------------------------------------
     readonly property real thumbSize: units.gu(13)   // compact list thumbnail
     readonly property real avatarSize: units.gu(4)
     readonly property real avatarSmall: units.gu(3)
     readonly property real coinIconSize: units.dp(16)
     readonly property real fabSize: units.gu(7)
 
-    // Bundled Noto Sans Khmer/SC fonts don't cover each other's glyphs and Qt won't fall back between them, so pick the right face via `fontFor(text)` to avoid tofu (□).
+    // Bundled Noto Sans Khmer/SC fonts don't cover each other's glyphs and Qt won't fall back between them, so pick the right face via `fontFor(text)` to avoid tofu boxes.
     property FontLoader fontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansKhmer-Regular.ttf")
     }
     readonly property string fontFamily: fontLoader.status === FontLoader.Ready
                                          ? fontLoader.name : "Ubuntu"
 
-    // CJK face (~8 MB, so not the default) — also covers Latin, so mixed Latin/Chinese titles render from one face.
+    // CJK face (~8 MB, so not the default); also covers Latin, so mixed Latin/Chinese titles render from one face.
     property FontLoader cjkFontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansSC-Regular.otf")
     }

@@ -11,6 +11,7 @@ import "../services/CommentService.js" as CommentService
 import "../services/FollowService.js" as FollowService
 import "../services/YouTube.js" as YouTube
 import "../services/VoteService.js" as VoteService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 Page {
     id: page
@@ -25,7 +26,6 @@ Page {
     property bool isFollowing: false
     property bool descSheetOpen: false
 
-    // Vote state
     property int  voteCount:  0
     property bool upvoted:    false
     property bool flagged:    false
@@ -33,6 +33,14 @@ Page {
     property string payout:   ""
     // Off-chain videos skip the vote-weight popover/award (see doUpvote)
     readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
+
+    // Download state, shared by the header action and the in-content download button.
+    readonly property string dlPermlink: (page.video && page.video.permlink) || ""
+    readonly property var dlActive: (Downloads.rev, Downloads.activeFor(page.dlPermlink))
+    readonly property bool dlSaved: (Downloads.rev, Downloads.isSaved(page.dlPermlink))
+    readonly property bool dlBusy: !!page.dlActive || page.ytExtracting
+    readonly property int dlPct: page.dlActive ? Math.round(page.dlActive.progress || 0) : 0
+    readonly property bool canDownload: page.remoteDirectUrl().length > 0 || page.isYouTube()
     property bool commentSheetOpen: false
     // YouTube stream extraction is in flight, resolving a direct URL before the download daemon can fetch it; drives the download button's spinner.
     property bool ytExtracting: false
@@ -44,10 +52,9 @@ Page {
     // On-screen-keyboard height; the comment composer rides above it.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
-    // "More Videos" feed
     property var moreVideos: []
 
-    // Caption edit elsewhere — swap in a fresh object so bindings re-evaluate
+    // Caption edited elsewhere; swap in a fresh object so bindings re-evaluate
     Connections {
         target: PostActions
         function onPostUpdated(author, permlink, title, body) {
@@ -60,7 +67,7 @@ Page {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
 
-    // Remote direct media URL (empty for embeds — also the download-button gate)
+    // Remote direct media URL (empty for embeds; also the download-button gate)
     function remoteDirectUrl() {
         var v = page.video;
         if (v.platform === "SEREY") return v.videoLink || v.embedUrl || "";
@@ -99,6 +106,14 @@ Page {
                 console.log("YouTube extract failed: " + (errMsg || "unknown"));
             }
         });
+    }
+
+    // Shared by the header action and the in-content download button.
+    function doDownloadToggle() {
+        if (page.dlBusy) return;
+        if (page.dlSaved) PopupUtils.open(removeDialog);
+        else if (page.remoteDirectUrl().length > 0) Downloads.start(page.video, page.remoteDirectUrl());
+        else if (page.isYouTube()) page.downloadYouTube();
     }
 
     // Saved offline copy if one exists, else the remote file; startPlay()'s extension routing still applies since the local path keeps its extension.
@@ -157,10 +172,22 @@ Page {
         webLoader.parent = on ? fsHost : stage;
     }
 
-    // Native (.mov) player failed — retry via Chromium's <video> before falling back to the system handler.
+    // Space-bar playback control: starts playback if it hasn't begun, else
+    // toggles pause on whichever player is live. Cross-origin embeds (YouTube
+    // iframe) can't be driven from outside; their own controls apply.
+    function togglePlayPause() {
+        if (!page.playing) { page.startPlay(); return; }
+        var it = webLoader.item;
+        if (!it) return;
+        if (page.nativeMode || page.webVideoMode)
+            it.togglePause();
+        // else: cross-origin embed (YouTube) can't be controlled from outside.
+    }
+
+    // Native (.mov) player failed: retry via Chromium's <video> before falling back to the system handler.
     function onNativeFailed() {
         if (page.webVideoMode) {
-            // Even Chromium failed — last resort is the system handler.
+            // Even Chromium failed; last resort is the system handler.
             var link = page.directUrl() || page.video.videoLink || page.video.embedUrl;
             if ((link || "").length > 0) Qt.openUrlExternally(link);
             return;
@@ -291,13 +318,59 @@ Page {
         }
     }
 
-    header: Rectangle {
-        height: units.gu(6)
-        color: Style.surface
+    header: Item { height: 0 }
 
-        BackButton {
+    Rectangle {
+        id: videoDetailHeader
+        anchors { top: parent.top; left: parent.left; right: parent.right }
+        height: units.gu(6) + units.dp(1)
+        color: Style.surface
+        z: 10
+
+        AbstractButton {
+            id: videoBackBtn
             anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: width
             onClicked: page.pageStack.pop()
+            Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "back"; color: Style.textPrimary }
+        }
+
+        Label {
+            anchors { left: videoBackBtn.right; leftMargin: Style.spacingS; right: videoShareHeaderBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            text: Lang.tr("Video")
+            font.pixelSize: Style.fontLarge
+            font.weight: Font.Light
+            color: Style.textPrimary
+            elide: Text.ElideRight
+        }
+
+        AbstractButton {
+            id: videoShareHeaderBtn
+            anchors { right: videoMoreHeaderBtn.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: units.gu(4)
+            enabled: !!(page.video && page.video.author && page.video.permlink)
+            onClicked: Share.open("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink, videoShareHeaderBtn)
+            Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
+        }
+
+        AbstractButton {
+            id: videoMoreHeaderBtn
+            anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            width: units.gu(4); height: units.gu(4)
+            onClicked: PostActions.open(page.video, "video")
+            Column {
+                anchors.centerIn: parent
+                spacing: units.dp(3)
+                Repeater {
+                    model: 3
+                    delegate: Rectangle {
+                        width: units.dp(4); height: units.dp(4)
+                        radius: width / 2
+                        color: Style.textSecondary
+                        anchors.horizontalCenter: parent.horizontalCenter
+                    }
+                }
+            }
         }
 
         Rectangle {
@@ -310,14 +383,14 @@ Page {
     function loadComments() {
         PostService.detail(Config.baseUrl, video.author, video.permlink, Session.token,
             function (result) {
-                if (!result) return;   // empty/failed detail fetch — keep current state
+                if (!result) return;   // empty/failed detail fetch, keep current state
                 var replies, serverCount, voters, me2;
                 replies = result.replies || [];
                 page.comments = replies;
-                // answer_count can be stale — trust replies.length when larger
+                // answer_count can be stale; trust replies.length when larger
                 serverCount = (result.post && result.post.comments) || 0;
                 page.commentCount = Math.max(serverCount, replies.length);
-                // Only ever set upvoted true from voters — the API's list can be incomplete, so never use it to override an already-true state.
+                // Only ever set upvoted true from voters: the API's list can be incomplete, so never use it to override an already-true state.
                 if (!VoteService.getCached(video.author, video.permlink) && !page.upvoted) {
                     voters = (result.post && result.post.voters) || [];
                     me2 = Session.username || "";
@@ -439,14 +512,12 @@ Page {
     }
 
     function _initVideoState() {
-        // Check follow status
         page.isFollowing = false;
         if (Session.isLoggedIn && video.author && video.author !== Session.username) {
             FollowService.status(Config.baseUrl, Session.username, video.author,
                 function (following) { page.isFollowing = following; },
                 function (err) { /* keep false */ });
         }
-        // Init vote state
         var cached = VoteService.getCached(page.video.author || "", page.video.permlink || "")
         var me, saved
         if (cached) {
@@ -514,28 +585,72 @@ Page {
         }
     }
 
+    // The scroll view owns arrow-key focus so a keyboard user can scroll the page;
+    // AdaptiveStack.focusDetail() targets this when entering from the video list.
+    property Item keyboardFocusItem: scroll
+
     Flickable {
         id: scroll
-        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: videoDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
+        // Keyboard parity with PostDetailPage's reading keys, plus video-specific
+        // Space/Enter = play-pause (a video page's Space belongs to the player,
+        // not page-scrolling; PageDown/PageUp still scroll).
+        activeFocusOnTab: true
+        function _kbScroll(dy) {
+            var maxY = Math.max(0, scroll.contentHeight - scroll.height);
+            scroll.contentY = Math.max(0, Math.min(maxY, scroll.contentY + dy));
+        }
+        Keys.onPressed: {
+            var pageStep = scroll.height * 0.9;
+            var lineStep = units.gu(6);
+            if (event.key === Qt.Key_Down)          { scroll._kbScroll(lineStep);  event.accepted = true; }
+            else if (event.key === Qt.Key_Up)       { scroll._kbScroll(-lineStep); event.accepted = true; }
+            else if (event.key === Qt.Key_PageDown) { scroll._kbScroll(pageStep);  event.accepted = true; }
+            else if (event.key === Qt.Key_PageUp)   { scroll._kbScroll(-pageStep); event.accepted = true; }
+            else if (event.key === Qt.Key_Home)     { scroll.contentY = 0; event.accepted = true; }
+            else if (event.key === Qt.Key_End)      { scroll._kbScroll(scroll.contentHeight); event.accepted = true; }
+            else if (event.key === Qt.Key_Space
+                  || event.key === Qt.Key_Return
+                  || event.key === Qt.Key_Enter)    { page.togglePlayPause(); event.accepted = true; }
+            // Escape leaves fullscreen first; otherwise Left/Escape hand focus
+            // back to the master list so the viewer can pick the next video.
+            else if (event.key === Qt.Key_Escape && page.isFullscreen) { page.setFullscreen(false); event.accepted = true; }
+            else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
+        }
+        // Focus lands on the flick when the video opens (guarded so it never
+        // steals focus from the comment composer).
+        onVisibleChanged: if (visible && !composer.activeFocus) Qt.callLater(scroll.forceActiveFocus)
+        Component.onCompleted: if (visible && !composer.activeFocus) scroll.forceActiveFocus()
+
         Column {
             id: contentCol
-            // Convergence readability cap: centered, comfortable measure on wide windows.
-            width: Math.min(scroll.width, Config.readingMaxWidth)
-            anchors.horizontalCenter: parent.horizontalCenter
+            width: scroll.width
 
-            // Player / thumbnail (full-bleed within the capped column)
-            Rectangle {
-                id: stage
+            // Player wrapper: the stage centers in the full-width row, capped by
+            // viewport height so the title and vote row stay above the fold on
+            // wide windows; leftover width becomes padding. Phones stay full-width.
+            Item {
+                id: stageWrap
                 width: parent.width
-                height: width * 9 / 16
-                color: Style.videoStage
-                clip: true
+                height: stage.height
+
+                Rectangle {
+                    id: stage
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    // Height-cap keeps the title/description + upvote row above
+                    // the fold; then give back 50% of the side padding (Lomiri
+                    // prescribes no fixed media size). Stays 16:9.
+                    readonly property real _capW: Math.min(stageWrap.width, scroll.height * 0.5 * 16 / 9)
+                    width: _capW + (stageWrap.width - _capW) * 0.5
+                    height: width * 9 / 16
+                    color: Style.videoStage
+                    clip: true
 
                 Image {
                     anchors.fill: parent
@@ -597,11 +712,11 @@ Page {
                         }
                     }
                 }
+                }
             }
 
             Item { width: 1; height: Style.spacingM }
 
-            // Full-width meta block (title/author/action-row/comments header)
             Item {
                 id: metaBlock
                 width: parent.width
@@ -612,7 +727,6 @@ Page {
                 width: parent.width
                 spacing: 0
 
-            // Title
             Label {
                 width: parent.width - Style.spacingM * 2
                 x: Style.spacingM
@@ -624,14 +738,8 @@ Page {
                 wrapMode: Text.Wrap
             }
 
-            OffChainBadge {
-                x: Style.spacingM
-                onChain: page.onChain
-            }
-
             Item { width: 1; height: Style.spacingS }
 
-            // Author row: avatar + @name + date + "...more"
             Item {
                 width: parent.width
                 height: units.gu(5)
@@ -678,12 +786,6 @@ Page {
                         font.weight: Font.DemiBold
                         color: Style.textPrimary
                     }
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "·  " + Style.formatTimeAgo(page.video.date || "")
-                        font.pixelSize: Style.fontSmall
-                        color: Style.textSecondary
-                    }
                 }
 
                 // Hugs the row's actual rendered content, not the full width up to moreBtn, else the dead space in between wrongly opens the profile on tap.
@@ -691,6 +793,16 @@ Page {
                     anchors { left: authorRow.left; top: parent.top; bottom: parent.bottom }
                     width: authorRow.width
                     onClicked: page.openProfile()
+                }
+
+                // Metadata sits with "...more" on the trailing edge, leaving the leading
+                // side for identity: avatar + name + Follow.
+                Label {
+                    id: dateLabel
+                    anchors { right: moreBtn.left; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    text: Style.formatTimeAgo(page.video.date || "")
+                    font.pixelSize: Style.fontSmall
+                    color: Style.textSecondary
                 }
 
                 AbstractButton {
@@ -708,18 +820,51 @@ Page {
                         color: Style.textSecondary
                     }
                 }
+
+                // Follow acts on the AUTHOR, so it sits beside the name (not the
+                // header or vote row, which are video actions). Outside authorRow on
+                // purpose: the profile MouseArea spans that Row and would swallow the tap.
+                AbstractButton {
+                    id: followBtn
+                    visible: (page.video.author || "") !== "" && page.video.author !== Session.username
+                    anchors { left: authorRow.right; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    width: followInner.implicitWidth
+                    // Keeps Lomiri's gu(4) minimum touch target while the visible mark
+                    // stays light; matches the "...more" link's weight, in brand colour.
+                    height: units.gu(4)
+                    onClicked: page.toggleFollow()
+
+                    Row {
+                        id: followInner
+                        anchors.centerIn: parent
+                        spacing: Style.spacingXs
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(1.8); height: width
+                            name: "contact"
+                            color: page.isFollowing ? Style.textSecondary : Style.brand
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: page.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            color: page.isFollowing ? Style.textSecondary : Style.brand
+                        }
+                    }
+                }
             }
 
             Item { width: 1; height: Style.spacingS }
 
-            // Single action row: Upvote | Downvote | Follow | ··· | Share | Download
+            // Vote row: actions on the VIDEO itself. Share/Download live in the page
+            // header's action slots; Follow sits on the author row above.
             RowLayout {
                 x: Style.spacingM
                 width: parent.width - Style.spacingM * 2
                 height: units.gu(4.5)
                 spacing: Style.spacingS
 
-                // Upvote
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: upvoteInner.implicitWidth + Style.spacingM
@@ -744,7 +889,6 @@ Page {
                     }
                 }
 
-                // Downvote / flag
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: units.gu(3.5)
@@ -758,7 +902,6 @@ Page {
                     }
                 }
 
-                // Busy spinner while voting
                 ActivityIndicator {
                     visible: page.voteBusy
                     running: page.voteBusy
@@ -767,112 +910,6 @@ Page {
                 }
 
                 Item { Layout.fillWidth: true }
-
-                // Follow — pill with icon + Follow/Following text
-                AbstractButton {
-                    visible: (page.video.author || "") !== "" && page.video.author !== Session.username
-                    Layout.preferredHeight: units.gu(4.5)
-                    Layout.preferredWidth: followInner.implicitWidth + Style.spacingM * 2
-                    onClicked: page.toggleFollow()
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Style.pillRadius
-                        color: page.isFollowing ? Style.surface : Style.brand
-                        border.width: page.isFollowing ? units.dp(1.5) : 0
-                        border.color: Style.brand
-                    }
-                    Row {
-                        id: followInner
-                        anchors.centerIn: parent
-                        spacing: Style.spacingXs
-                        Icon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: units.gu(2); height: width
-                            name: "contact"
-                            color: page.isFollowing ? Style.brand : Style.textOnBrand
-                        }
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: page.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
-                            font.pixelSize: Style.fontSmall
-                            font.weight: Font.DemiBold
-                            color: page.isFollowing ? Style.brand : Style.textOnBrand
-                        }
-                    }
-                }
-
-                // Share — icon only with border
-                AbstractButton {
-                    visible: (page.video.author || "").length > 0 && (page.video.permlink || "").length > 0
-                    Layout.preferredHeight: units.gu(4.5)
-                    Layout.preferredWidth: units.gu(4.5)
-                    onClicked: Share.open("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink)
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Style.pillRadius
-                        color: "transparent"
-                        border.width: units.dp(1.5)
-                        border.color: Style.divider
-                    }
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: "share"
-                        color: Style.textPrimary
-                    }
-                }
-
-                // Download — icon with border
-                AbstractButton {
-                    id: dlBtn
-                    visible: page.remoteDirectUrl().length > 0 || page.isYouTube()
-                    readonly property string _pl: (page.video && page.video.permlink) || ""
-                    readonly property var _active: (Downloads.rev, Downloads.activeFor(_pl))
-                    readonly property bool _saved: (Downloads.rev, Downloads.isSaved(_pl))
-                    readonly property bool _busy: !!_active || page.ytExtracting
-                    readonly property int _pct: _active ? Math.round(_active.progress || 0) : 0
-                    Layout.preferredHeight: units.gu(4.5)
-                    Layout.preferredWidth: _busy ? dlBusyRow.implicitWidth + Style.spacingM : units.gu(4.5)
-                    onClicked: {
-                        if (_busy) return;
-                        if (_saved) PopupUtils.open(removeDialog);
-                        else if (page.remoteDirectUrl().length > 0) Downloads.start(page.video, page.remoteDirectUrl());
-                        else if (page.isYouTube()) page.downloadYouTube();
-                    }
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Style.pillRadius
-                        color: dlBtn._saved ? Style.brand : "transparent"
-                        border.width: dlBtn._saved ? 0 : units.dp(1.5)
-                        border.color: Style.divider
-                    }
-                    Row {
-                        id: dlBusyRow
-                        anchors.centerIn: parent
-                        spacing: Style.spacingXs
-                        visible: dlBtn._busy
-                        ActivityIndicator {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: units.gu(2.5); height: width
-                            running: dlBtn._busy
-                        }
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: !!dlBtn._active
-                            text: dlBtn._pct + "%"
-                            font.pixelSize: Style.fontSmall
-                            font.weight: Font.DemiBold
-                            color: Style.textPrimary
-                        }
-                    }
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: dlBtn._saved ? "tick" : "save"
-                        color: dlBtn._saved ? Style.textOnBrand : Style.textPrimary
-                        visible: !dlBtn._busy
-                    }
-                }
             }
 
             Item { width: 1; height: Style.spacingM }
@@ -881,7 +918,7 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Comments header — tappable, opens comment sheet
+            // Comments header, tappable, opens the comment sheet
             AbstractButton {
                 width: parent.width
                 height: units.gu(5)
@@ -926,101 +963,6 @@ Page {
             } // metaCol
             } // metaBlock
 
-            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
-
-            Item { width: 1; height: Style.spacingM }
-
-            // More Videos
-            Label {
-                x: Style.spacingM
-                text: Lang.tr("More Videos")
-                font.pixelSize: Style.fontMedium
-                font.weight: Font.DemiBold
-                color: Style.textPrimary
-            }
-
-            Item { width: 1; height: Style.spacingS }
-
-            // Adapt, not scale: more columns as width allows, instead of one giant full-width card stretched to fill a wide window.
-            Item {
-                id: moreVideosGrid
-                width: contentCol.width
-                readonly property int columns: Math.max(1, Math.floor(width / units.gu(50)))
-                readonly property real cardWidth: (width - Style.spacingM * (columns - 1)) / columns
-                height: moreVideosGridLayout.height
-
-                Grid {
-                    id: moreVideosGridLayout
-                    width: parent.width
-                    columns: moreVideosGrid.columns
-                    spacing: Style.spacingM
-
-                    Repeater {
-                        model: page.moreVideos
-                        // Swipe actions only in the single-column (phone) layout;
-                        // tablet/desktop keep the plain multi-column grid card.
-                        delegate: Item {
-                            id: mvItem
-                            width: moreVideosGrid.cardWidth
-                            height: mvCard.height
-
-                            ListItem {
-                                id: mvListItem
-                                visible: moreVideosGrid.columns === 1
-                                width: parent.width
-                                height: mvCard.height
-                                divider.visible: false
-
-                                leadingActions: ListItemActions {
-                                    delegate: Rectangle {
-                                        width: units.gu(7); height: parent ? parent.height : units.gu(6)
-                                        color: Style.danger
-                                        Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: action.iconName; color: "white" }
-                                    }
-                                    actions: [
-                                        Action {
-                                            iconName: "close"
-                                            text: Lang.tr("Hide")
-                                            onTriggered: {
-                                                if (modelData) PostActions.hideRequested(modelData.author, modelData.permlink);
-                                            }
-                                        }
-                                    ]
-                                }
-                                trailingActions: ListItemActions {
-                                    delegate: Item {
-                                        width: units.gu(7); height: parent ? parent.height : units.gu(6)
-                                        Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: action.iconName; color: "black" }
-                                    }
-                                    actions: [
-                                        Action {
-                                            iconName: "share"
-                                            text: Lang.tr("Share")
-                                            onTriggered: {
-                                                if (modelData) Share.open("https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink);
-                                            }
-                                        }
-                                    ]
-                                }
-                            }
-
-                            VideoCard {
-                                id: mvCard
-                                parent: moreVideosGrid.columns === 1 ? mvListItem : mvItem
-                                width: mvItem.width
-                                showDivider: false
-                                video: modelData
-                                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
-                                    { video: modelData })
-                                onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
-                                    { username: modelData.author })
-                                onMoreClicked: PostActions.open(modelData, "video")
-                            }
-                        }
-                    }
-                }
-            }
-
             Item { width: 1; height: Style.spacingL }
         }
     }
@@ -1034,7 +976,6 @@ Page {
         Rectangle { anchors.fill: parent; color: "black" }
     }
 
-    // --- Comment bottom sheet ------------------------------------------------
     Item {
         id: cmtSheet
         anchors.fill: parent
@@ -1064,7 +1005,6 @@ Page {
             NumberAnimation { id: cmtSlideAnim; target: cmtSlideT; property: "y"; from: cmtSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }
             NumberAnimation { id: cmtSlideOut; target: cmtSlideT; property: "y"; to: cmtSheetRect.height; duration: 250; easing.type: Easing.InCubic; onStopped: page.commentSheetOpen = false }
 
-            // Grabber
             Rectangle {
                 anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
                 width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
@@ -1072,7 +1012,6 @@ Page {
                 z: 2
             }
 
-            // Header
             Item {
                 id: cmtHeader
                 anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
@@ -1101,7 +1040,6 @@ Page {
                 height: units.dp(1); color: Style.divider
             }
 
-            // Comment list
             Flickable {
                 id: cmtScroll
                 anchors { top: cmtDivider.bottom; left: parent.left; right: parent.right; bottom: cmtFooter.top }
@@ -1138,7 +1076,6 @@ Page {
                 }
             }
 
-            // Comment input footer inside sheet
             Column {
                 id: cmtFooter
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -1148,7 +1085,6 @@ Page {
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-                // Replying-to banner
                 Row {
                     visible: page.replyTarget !== null
                     width: parent.width - Style.spacingM * 2
@@ -1224,7 +1160,6 @@ Page {
         }
     }
 
-    // --- Description bottom sheet -------------------------------------------
     Item {
         id: descSheet
         anchors.fill: parent
@@ -1254,14 +1189,12 @@ Page {
             NumberAnimation { id: descSlideAnim; target: descSlideT; property: "y"; from: descSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }
             NumberAnimation { id: descSlideOut; target: descSlideT; property: "y"; to: descSheetRect.height; duration: 250; easing.type: Easing.InCubic; onStopped: page.descSheetOpen = false }
 
-            // Grabber
             Rectangle {
                 anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
                 width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
                 color: Style.lightGray
             }
 
-            // Header: "Description" + close
             Item {
                 id: descHeader
                 anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
@@ -1307,7 +1240,6 @@ Page {
 
                     Item { width: 1; height: Style.spacingS }
 
-                    // Title
                     Label {
                         width: parent.width - Style.spacingM * 2
                         x: Style.spacingM
@@ -1319,7 +1251,6 @@ Page {
                         wrapMode: Text.Wrap
                     }
 
-                    // Stats row: Likes | Comments | Date
                     Row {
                         x: Style.spacingM
                         width: parent.width - Style.spacingM * 2

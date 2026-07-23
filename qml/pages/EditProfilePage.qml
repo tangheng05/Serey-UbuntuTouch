@@ -28,6 +28,11 @@ Page {
         ]
     }
 
+    // Keyboard nav: focus lands on the first field when opened from settings
+    // (Tab then moves through the fields); Escape returns to the settings list.
+    property Item keyboardFocusItem: firstField.input
+    Keys.onEscapePressed: Nav.focusMaster()
+
     Component.onCompleted: {
         if (initial) {
             firstField.text = initial.firstName || "";
@@ -137,7 +142,6 @@ Page {
                 }
                 Rectangle { id: coverMask; anchors.fill: parent; radius: Style.cardRadius; visible: false }
 
-                // "Edit cover" chip
                 Rectangle {
                     anchors { right: parent.right; bottom: parent.bottom; margins: Style.spacingS }
                     height: units.gu(3.4); width: coverHint.width + Style.spacingM; radius: Style.pillRadius
@@ -159,7 +163,7 @@ Page {
                         }
                     }
                 }
-                Rectangle {                 // uploading overlay
+                Rectangle {
                     anchors.fill: parent
                     radius: Style.cardRadius
                     color: Qt.rgba(0, 0, 0, 0.35)
@@ -195,7 +199,6 @@ Page {
                     visible: page.avatarUrl.length > 0
                 }
 
-                // Camera badge
                 Rectangle {
                     anchors { right: parent.right; bottom: parent.bottom }
                     width: units.gu(3.6); height: width
@@ -210,7 +213,6 @@ Page {
                     }
                 }
 
-                // Dim + spinner while uploading
                 Rectangle {
                     anchors.fill: parent
                     radius: width / 2
@@ -221,7 +223,7 @@ Page {
             }
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: Lang.tr("Tap photo to change")
+                text: Config.wideMode ? Lang.tr("Click photo to change") : Lang.tr("Tap photo to change")
                 font.pixelSize: Style.fontSmall
                 font.family: Style.fontFor(text)
                 color: Style.textSecondary

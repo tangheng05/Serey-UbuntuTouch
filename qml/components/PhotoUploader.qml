@@ -9,7 +9,7 @@ Item {
     width: 0; height: 0
 
     property int maxDimension: 1600    // longest side after downscale (px)
-    property int timeoutMs: 60000      // hard ceiling — QML XHR ignores `timeout`
+    property int timeoutMs: 60000      // hard ceiling; QML XHR ignores its own `timeout`
     property bool uploading: false
 
     signal uploaded(string url)
@@ -42,7 +42,7 @@ Item {
         var gen = root._gen;
         var w = resizer.implicitWidth;
         var h = resizer.implicitHeight;
-        if (w <= 0 || h <= 0) {            // couldn't measure — send original
+        if (w <= 0 || h <= 0) {            // couldn't measure; send original
             root._uploadFile(String(resizer.source), gen);
             return;
         }
@@ -52,7 +52,7 @@ Item {
         var dir = src.substring(0, src.lastIndexOf("/")).replace(/^file:\/\//, "");
         var outLocal = dir + "/serey_up_" + Date.now() + ".jpg";
         resizer.grabToImage(function (result) {
-            if (gen !== root._gen)            // superseded or timed out — drop it
+            if (gen !== root._gen)            // superseded or timed out; drop it
                 return;
             if (result && result.saveToFile(outLocal))
                 root._uploadFile("file://" + outLocal, gen);
@@ -61,7 +61,7 @@ Item {
         }, Qt.size(w, h));
     }
 
-    // QML XMLHttpRequest does not honour its own `timeout`, so this is the only reliable ceiling — abort and report a timeout.
+    // QML XMLHttpRequest does not honour its own `timeout`, so this watchdog is the only reliable ceiling: abort and report a timeout.
     Timer {
         id: watchdog
         interval: root.timeoutMs

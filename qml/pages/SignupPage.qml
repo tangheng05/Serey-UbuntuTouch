@@ -30,7 +30,7 @@ Page {
     }
 
     function goBack() {
-        if (page.step === 3) { Nav.home(); return; }  // account already created
+        if (page.step === 3) { Nav.goToFeed(); return; }  // account already created
         if (page.step > 0) { page.errorMsg = ""; page.step -= 1; }
         else page.pageStack.pop();
     }
@@ -133,7 +133,6 @@ Page {
             y: Style.spacingL
             spacing: Style.spacingM
 
-            // Logo hero
             Image {
                 visible: page.step < 3
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -143,7 +142,6 @@ Page {
                 asynchronous: true
             }
 
-            // Step indicator dots (3 steps)
             Row {
                 visible: page.step < 3
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -308,7 +306,7 @@ Page {
                     if (page.step === 0) page.checkUsername();
                     else if (page.step === 1) page.sendOtp();
                     else if (page.step === 2) page.createAccount();
-                    else Nav.home();
+                    else Nav.goToFeed();
                 }
             }
         }

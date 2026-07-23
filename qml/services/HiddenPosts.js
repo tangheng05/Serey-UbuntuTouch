@@ -3,6 +3,11 @@
 
 var _db = null
 
+// Feeds call loadAll() on every response (several times per cold start), and it
+// does a full table scan. Only hide() changes the set, so memoise the map and
+// invalidate there.
+var _cache = null
+
 function _open() {
     if (!_db) {
         _db = LS.LocalStorage.openDatabaseSync("SereyhiddenPosts", "1.0", "Hidden posts", 1000000)
@@ -18,6 +23,7 @@ function hide(permlink) {
     _open().transaction(function (tx) {
         tx.executeSql("INSERT OR IGNORE INTO hidden VALUES (?)", [permlink])
     })
+    _cache = null
 }
 
 function isHidden(permlink) {
@@ -31,11 +37,13 @@ function isHidden(permlink) {
 
 // Returns a JS object { permlink: true } for fast lookup
 function loadAll() {
+    if (_cache) return _cache
     var map = {}
     _open().readTransaction(function (tx) {
         var rs = tx.executeSql("SELECT permlink FROM hidden")
         for (var i = 0; i < rs.rows.length; i++)
             map[rs.rows.item(i).permlink] = true
     })
+    _cache = map
     return map
 }

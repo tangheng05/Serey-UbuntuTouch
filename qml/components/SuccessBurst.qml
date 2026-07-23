@@ -11,7 +11,6 @@ Item {
     width: units.gu(18)
     height: units.gu(18)
 
-    // Expanding ring
     Rectangle {
         id: ring
         anchors.centerIn: parent
@@ -23,7 +22,6 @@ Item {
         opacity: 0
     }
 
-    // Confetti
     Repeater {
         model: 12
         delegate: Item {
@@ -52,7 +50,6 @@ Item {
         }
     }
 
-    // Check badge
     Rectangle {
         id: badge
         anchors.centerIn: parent

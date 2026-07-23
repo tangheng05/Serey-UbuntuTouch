@@ -15,14 +15,45 @@ QtObject {
     function known(author) { return rev >= 0 && _map.hasOwnProperty(author); }
 
     function _resetIfViewerChanged(viewer) {
-        if (_viewer !== viewer) { _map = ({}); _busy = ({}); _viewer = viewer; rev++; }
+        // Drop the queue too: those entries carry the previous viewer and would
+        // flush a logged-out (or wrong-account) query after the switch.
+        if (_viewer !== viewer) { _map = ({}); _busy = ({}); _queue = []; _viewer = viewer; rev++; }
+    }
+
+    // The first feed's ~10 cards each query /follow/status at once, competing
+    // with the thumbnails the user is waiting for. Hold that first burst so
+    // images get the connection; once flushed, `_warm` sends queries directly.
+    property bool _warm: false
+    property var _queue: []
+    property Timer _burstTimer: Timer {
+        interval: 1200
+        repeat: false
+        onTriggered: {
+            store._warm = true;
+            var q = store._queue;
+            store._queue = [];
+            for (var i = 0; i < q.length; i++)
+                store._send(q[i].baseUrl, q[i].viewer, q[i].author);
+        }
     }
 
     // Query a user's follow state once (no-op if already known or in flight).
     function load(baseUrl, viewer, author) {
         _resetIfViewerChanged(viewer);
         if (!author || _map.hasOwnProperty(author) || _busy[author]) return;
+        if (!_warm) {
+            // Mark busy now so the same author queued twice (ListView recycling)
+            // can't be sent twice on flush.
+            _busy[author] = true;
+            _queue.push({ baseUrl: baseUrl, viewer: viewer, author: author });
+            _burstTimer.restart();
+            return;
+        }
         _busy[author] = true;
+        _send(baseUrl, viewer, author);
+    }
+
+    function _send(baseUrl, viewer, author) {
         FollowService.status(baseUrl, viewer, author,
             function (f) { delete store._busy[author]; store._map[author] = f; store.rev++; },
             function () { delete store._busy[author]; });
@@ -30,7 +61,7 @@ QtObject {
 
     function set(author, val) { _map[author] = !!val; rev++; }
 
-    // Optimistically flip now, confirm with the server, revert on failure — returns the optimistic state so the caller can toast.
+    // Flip optimistically, confirm with the server, revert on failure. Returns the optimistic state so the caller can toast.
     function toggle(baseUrl, author, token) {
         var was = !!_map[author];
         _map[author] = !was; rev++;
@@ -40,5 +71,5 @@ QtObject {
         return !was;
     }
 
-    function reset() { _map = ({}); _busy = ({}); _viewer = ""; rev++; }
+    function reset() { _map = ({}); _busy = ({}); _queue = []; _viewer = ""; rev++; }
 }

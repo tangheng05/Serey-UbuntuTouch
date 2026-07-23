@@ -5,7 +5,7 @@ function toInt(v) {
     return isNaN(n) ? 0 : n;
 }
 
-// Default true (on-chain) — only an explicit false/"false"/0 means DB-only
+// Default true (on-chain); only an explicit false/"false"/0 means DB-only
 function onChainFlag(raw) {
     return raw.post_to_blockchain !== false
         && raw.post_to_blockchain !== "false"
@@ -33,15 +33,17 @@ function parseList(val) {
     return out;
 }
 
+var _entities = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">" };
+
+// Called once per row per page, on the UI thread, against the full article body.
+// The four entity rules were four separate full-string passes; one alternation
+// does the same work in a single scan. Three passes now: tags, entities, spaces.
 function stripHtml(html, max) {
     if (!html)
         return "";
     var text = String(html)
         .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
+        .replace(/&nbsp;|&amp;|&lt;|&gt;/g, function (e) { return _entities[e]; })
         .replace(/\s+/g, " ")
         .trim();
     if (max && text.length > max)
@@ -68,7 +70,7 @@ function firstImage(raw) {
     return m ? fixThumb(m[1]) : "";
 }
 
-// Normalise a voters/flaggers list to plain usernames — the API sends either ["alice"] or [{voter:"alice"}] depending on endpoint.
+// Normalise a voters/flaggers list to plain usernames; the API sends either ["alice"] or [{voter:"alice"}] depending on endpoint.
 function voterNames(arr) {
     if (!arr || !Array.isArray(arr))
         return [];
@@ -85,6 +87,11 @@ function voterNames(arr) {
 
 function toPost(raw) {
     raw = raw || {};
+    // Each of these was recomputed per field below (categories parsed 4x, each
+    // voter list walked twice) for every row of every page. Same values, built once.
+    var cats = parseList(raw.categories);
+    var voters = voterNames(raw.voters);
+    var flaggers = voterNames(raw.flaggers);
     return {
         id: raw.id,
         author: raw.author || "",
@@ -98,14 +105,20 @@ function toPost(raw) {
         votes: toInt(raw.voter_count),
         comments: toInt(raw.answer_count),
         payout: raw.serey_value || "",
-        categories: parseList(raw.categories),
+        categories: cats,
         // Scalar copy of the first category since a dynamicRoles ListModel wraps the `categories` array (losing [] indexing); edit-prefill reads this.
-        primaryCategory: parseList(raw.categories)[0] || "",
-        voters: voterNames(raw.voters),
-        voterStr: "," + voterNames(raw.voters).join(",") + ",",
-        flaggers: voterNames(raw.flaggers),
-        flaggerStr: "," + voterNames(raw.flaggers).join(",") + ",",
+        primaryCategory: cats[0] || "",
+        // The post's tag list is [mainCategory, ...subcategories]; everything after
+        // the first is a sub-category. Scalar copy of the first for the same
+        // ListModel-wrapping reason as primaryCategory.
+        subCategories: cats.slice(1),
+        primarySubCategory: cats[1] || "",
+        voters: voters,
+        voterStr: "," + voters.join(",") + ",",
+        flaggers: flaggers,
+        flaggerStr: "," + flaggers.join(",") + ",",
         community: raw.community_title || "",
+        communityId: toInt(raw.community_id),
         checkmark: raw.checkmark_icon || "",
         postToBlockchain: onChainFlag(raw)
     };
@@ -122,7 +135,7 @@ function toGalleryPost(raw) {
         authorImage: raw.author_image_url || "",
         date: raw.publish_date || "",
         images: imgs,
-        // A dynamicRoles ListModel wraps `images` and loses the bare URL strings — the feed card reads this scalar instead.
+        // A dynamicRoles ListModel wraps `images` and loses the bare URL strings; the feed card reads this scalar instead.
         imagesStr: imgs.join("\n"),
         caption: raw.title || "",
         votes: toInt(raw.voter_count),
@@ -131,6 +144,8 @@ function toGalleryPost(raw) {
         payout: raw.serey_value || "",
         voters: voterNames(raw.voters),
         voterStr: "," + voterNames(raw.voters).join(",") + ",",
+        categories: parseList(raw.categories),
+        primaryCategory: parseList(raw.categories)[0] || "",
         // Post's own community title, so editing keeps it in place.
         community: raw.community_title || "",
         checkmark: raw.checkmark_icon || "",
@@ -185,6 +200,8 @@ function toVideo(raw) {
         videoId: raw.video_id || "",
         platform: raw.platform_type || "",
         dimensions: raw.dimensions || "16:9",
+        categories: parseList(raw.categories),
+        primaryCategory: parseList(raw.categories)[0] || "",
         community: raw.community_title || "",
         communityId: toInt(raw.community_id),
         postToBlockchain: onChainFlag(raw)
@@ -200,7 +217,7 @@ function toCommunity(raw) {
         icon: raw.icon_url || raw.logo_url || "",
         country: raw.country || "",
         level: toInt(raw.level),
-        // is_allow_post=true means anyone may post, false means owner/managers only — drives whether the compose buttons are shown for this community.
+        // is_allow_post=true means anyone may post, false means owner/managers only; drives whether the compose buttons are shown for this community.
         allowPost: !!raw.is_allow_post,
         // video_is_allow_post gates the Video upload FAB independently of the blog flag (true = anyone, false = owner/managers only).
         videoAllowPost: !!raw.video_is_allow_post,
@@ -211,7 +228,7 @@ function toCommunity(raw) {
 
 function toUser(username, raw) {
     raw = raw || {};
-    // `full_name` is an object { first_name, last_name } (the DB `name` column) — flatten it, falling back to the blockchain account `name` string.
+    // `full_name` is an object { first_name, last_name } (the DB `name` column); flatten it, falling back to the blockchain account `name` string.
     var fn = "", ln = "";
     if (raw.full_name && typeof raw.full_name === "object") {
         fn = raw.full_name.first_name || "";

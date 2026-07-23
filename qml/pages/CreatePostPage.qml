@@ -12,6 +12,8 @@ Page {
 
     property bool submitting: false
     property string selectedCategory: ""
+    // Optional sub-category under the selected main category, sent in `subcategories`.
+    property string selectedSubCategory: ""
     property bool catSheetOpen: false
     // On-screen-keyboard height; the formatting toolbar rides above it so B/I/U stay reachable while typing.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
@@ -24,31 +26,100 @@ Page {
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
+    // Entry points not tied to a source (My Feed compose) set pickPlatform:
+    // the platform is chosen here and categories load once one is picked.
+    property bool pickPlatform: false
+    property var targetPlatform: null       // {id, title, icon} from Config.communityById
+    property bool platformSheetOpen: false
+    // Set by the compose flow's community-picker step to post into a specific
+    // (sub-)community regardless of the browsed one. Checked after targetPlatform.
+    property var targetCommunity: null
+    readonly property int postCommunityId: page.targetPlatform ? Number(page.targetPlatform.id)
+                                           : (page.targetCommunity ? Number(page.targetCommunity.id) : Config.communityId)
+    // The two differ off the platform path: categories are keyed by the selected
+    // sub-community, the post itself by its top-level source. Keep both as they were.
+    readonly property string catCommunityName: page.targetPlatform ? page.targetPlatform.title
+                                               : (page.targetCommunity ? page.targetCommunity.name : Config.currentCommunityName)
+    readonly property string postCommunityName: page.targetPlatform ? page.targetPlatform.title
+                                                : (page.targetCommunity ? page.targetCommunity.name : Config.communityName)
+
+    // Real platforms the user may post in. Countries/superhubs are containers,
+    // and the exclude_home subtree is hidden from the Global feed server-side,
+    // so posts there would never surface.
+    readonly property var platformOptions: {
+        var out = [];
+        for (var k in Config.communityById) {
+            var c = Config.communityById[k];
+            if (!c || !c.dns || c.childCount > 0) continue;
+            if (Config.topLevelCommunityIds[String(c.id)]) continue;
+            if (Config.hiddenCommunityIds[String(c.id)]) continue;
+            if (!c.allowPost && !Config.ownedCommunityIdSet[c.id]) continue;
+            out.push(c);
+        }
+        out.sort(function (a, b) { return (a.title || "").localeCompare(b.title || ""); });
+        return out;
+    }
+
     // When set, this page edits an existing post (sends its permlink to update in place) instead of creating a new one.
     property var editPost: null
     readonly property bool isEdit: !!editPost
-    signal saved()
+
+    // isNew = true for a freshly published post (false for an in-place edit), so
+    // the feed can jump to Latest only when there's actually a new post to show.
+    signal saved(bool isNew)
 
     // Categories are per-community, loaded from the backend for the currently-selected source rather than hardcoded.
     property var categories: []
+    // Map of main-category name -> array of its sub-category names, so the picker
+    // can offer sub-categories (posts send them in `subcategories`).
+    property var subcatsByCat: ({})
     property bool categoriesLoading: false
     property int catEpoch: 0
+
+    // Sub-categories for whichever main category is currently selected.
+    function subsForSelected() {
+        var s = page.subcatsByCat[page.selectedCategory];
+        return (s && s.length) ? s : [];
+    }
 
     function loadCategories() {
         var epoch = ++page.catEpoch;
         var prev = page.selectedCategory;
+        // Nothing to fetch until a platform is picked; categories are per-community.
+        if (page.pickPlatform && !page.targetPlatform) {
+            page.categoriesLoading = false;
+            page.categories = [];
+            page.subcatsByCat = ({});
+            return;
+        }
         page.categoriesLoading = true;
-        CategoryService.listByCommunity(Config.baseUrl, Config.currentCommunityName, Session.token,
-            function (names) {
+        // catCommunityName/postCommunityId already resolve targetPlatform (My Feed
+        // compose) > targetCommunity (source-scoped compose picker) > Config fallback.
+        CategoryService.listByCommunity(Config.baseUrl, page.catCommunityName, page.postCommunityId, Session.token,
+            function (names, raw) {
                 if (epoch !== page.catEpoch) return;   // stale community switch
                 page.categoriesLoading = false;
                 page.categories = names;
-                if (names.indexOf(prev) < 0) page.selectedCategory = "";
+                // Build the main -> [sub names] map from the raw records.
+                var map = {};
+                for (var i = 0; i < (raw ? raw.length : 0); i++) {
+                    var subsRaw = raw[i].sub_categories || raw[i].sub || [];
+                    if (!Array.isArray(subsRaw)) subsRaw = [];
+                    var subs = [];
+                    for (var j = 0; j < subsRaw.length; j++) {
+                        var nm = (subsRaw[j] && (typeof subsRaw[j] === "string" ? subsRaw[j] : subsRaw[j].name) || "").trim();
+                        if (nm.length > 0) subs.push(nm);
+                    }
+                    map[raw[i].name || ""] = subs;
+                }
+                page.subcatsByCat = map;
+                if (names.indexOf(prev) < 0) { page.selectedCategory = ""; page.selectedSubCategory = ""; }
             },
             function () {
                 if (epoch !== page.catEpoch) return;
                 page.categoriesLoading = false;
                 page.categories = [];
+                page.subcatsByCat = ({});
             });
     }
 
@@ -68,15 +139,23 @@ Page {
             page.coverImageUrl = page.editPost.thumbnail || "";
             // primaryCategory is a scalar since the categories array is wrapped by the feed ListModel and loses [] indexing.
             page.selectedCategory = page.editPost.primaryCategory || "";
+            // Best-effort sub-category prefill (field name varies across sources).
+            var eSub = page.editPost.subCategory || page.editPost.subcategory || "";
+            if (!eSub) {
+                var eSubs = page.editPost.subCategories || page.editPost.subcategories;
+                if (eSubs && eSubs.length) eSub = (typeof eSubs[0] === "string") ? eSubs[0] : (eSubs[0] && eSubs[0].name) || "";
+            }
+            page.selectedSubCategory = eSub || "";
             // Prefill the toggle from the saved post (default on if absent).
             page.postToBlockchain = (page.editPost.postToBlockchain !== false);
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
-    // The community can't change while this page is up, but react anyway so the list is always correct for the active source.
+    // React to source changes so the category list stays correct, unless a
+    // specific target community was chosen via the compose picker step.
     Connections {
         target: Config
-        function onCommunityIdChanged() { page.loadCategories() }
+        function onCommunityIdChanged() { if (!page.targetCommunity) page.loadCategories() }
     }
 
     header: Item { height: 0 }
@@ -114,6 +193,7 @@ Page {
             width: postPillLabel.implicitWidth + Style.spacingM * 2
             height: units.gu(4)
             enabled: !page.submitting && titleField.text.trim().length > 0 && bodyArea.getText(0, bodyArea.length).trim().length > 0
+                     && (!page.pickPlatform || !!page.targetPlatform)
             onClicked: page.publish()
 
             Rectangle {
@@ -138,7 +218,7 @@ Page {
         }
     }
 
-    // Where the next picked image goes: the cover slot, or inline into the article body at the cursor — one shared picker/uploader serves both.
+    // Where the next picked image goes: cover slot or inline body; one shared picker/uploader serves both.
     property string imageTarget: "cover"
 
     function pickCoverImage() {
@@ -178,10 +258,9 @@ Page {
         onFailed: Toast.error(message)
     }
 
-    // Qt's RichText TextEdit re-serializes formatting as style-based spans
-    // (e.g. <span style="font-weight:600">) rather than the simple <b>/<i>/<s>
-    // tags the rest of the app's HTML renderers whitelist — collapse them back
-    // so bold/italic/strikethrough survive display elsewhere (feed, detail page).
+    // Qt's RichText TextEdit re-serializes formatting as style spans, not the
+    // simple <b>/<i>/<s> tags our HTML renderers whitelist; collapse them back
+    // so formatting survives display elsewhere.
     function _richHtmlToSimple(html) {
         var t = html || "";
         var bodyMatch = t.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -201,6 +280,10 @@ Page {
             Toast.error(Lang.tr("Please log in first."));
             return;
         }
+        if (page.pickPlatform && !page.targetPlatform) {
+            Toast.error(Lang.tr("Select a platform first"));
+            return;
+        }
         var body = page._richHtmlToSimple(bodyArea.text).trim();
         // Swap "[image N]" placeholders back into real <img> tags; unknown numbers are left as typed.
         var imgs = page.bodyImages || [];
@@ -208,7 +291,6 @@ Page {
             var u = imgs[parseInt(n, 10) - 1];
             return u ? '<img src="' + u + '" style="max-width:100%;height:auto;" />' : m;
         });
-        // Prepend cover image to body if one was uploaded
         if (page.coverImageUrl.length > 0) {
             body = '<img src="' + page.coverImageUrl + '" style="max-width:100%;height:auto;" />\n' + body;
         }
@@ -217,10 +299,11 @@ Page {
             title: titleField.text.trim(),
             body: body,
             // On edit, keep the post in its own community (resolve by its title) rather than the currently-selected source.
-            communityId: page.isEdit ? 0 : Config.communityId,
+            communityId: page.isEdit ? 0 : page.postCommunityId,
             communityName: page.isEdit ? (page.editPost.community || Config.communityName)
-                                       : Config.communityName,
+                                       : page.postCommunityName,
             categories: page.selectedCategory || "general",
+            subcategories: page.selectedSubCategory.length > 0 ? [page.selectedSubCategory] : [],
             postToBlockchain: page.postToBlockchain,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
             // Also send in `images` (json_meta.image) since the web derives the card thumbnail from that field, not from the body <img>.
@@ -229,7 +312,7 @@ Page {
         function (data) {
             page.submitting = false;
             Toast.success(page.isEdit ? Lang.tr("Post updated!") : Lang.tr("Post published!"));
-            page.saved();
+            page.saved(!page.isEdit);
             page.pageStack.pop();
         },
         function (err) {
@@ -240,9 +323,8 @@ Page {
         });
     }
 
-    // Applies real formatting to the selection (rich text, not literal tags) —
-    // requires a selection since a plain TextEdit has no "current format" state
-    // to toggle for future-typed characters.
+    // Applies formatting to the selection; a selection is required since a plain
+    // TextEdit has no "current format" state to toggle for future typing.
     function wrapSelection(tagOpen, tagClose) {
         var start = bodyArea.selectionStart;
         var end = bodyArea.selectionEnd;
@@ -332,7 +414,6 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Title field — outlined rounded box with inline character counter
             Rectangle {
                 width: parent.width
                 height: titleField.height + Style.spacingM * 2 + counterLabel.height + Style.spacingXs
@@ -340,6 +421,18 @@ Page {
                 color: "transparent"
                 border.width: units.dp(1.5)
                 border.color: titleField.activeFocus ? Style.brand : Style.divider
+
+                // Declared FIRST so it sits under the input: catches taps in the
+                // box's dead space (the one-line input is pinned to the top) and
+                // focuses the field.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        titleField.forceActiveFocus();
+                        titleField.cursorPosition = titleField.length;
+                        Qt.inputMethod.show();
+                    }
+                }
 
                 TextInput {
                     id: titleField
@@ -379,7 +472,7 @@ Page {
                 }
             }
 
-            // Body text area — toolbar docks inside on desktop, above OSK on phone
+            // Body text area; toolbar docks inside on desktop, above OSK on phone
             Rectangle {
                 id: bodyBox
                 readonly property real toolbarH: Config.wideMode ? units.gu(5.5) : 0
@@ -390,6 +483,18 @@ Page {
                 clip: true
                 border.width: units.dp(1.5)
                 border.color: bodyArea.activeFocus ? Style.brand : Style.divider
+
+                // Same as the title: declared FIRST so it sits under the editor;
+                // catches taps on the blank area below the text and drops the
+                // cursor at the end.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        bodyArea.forceActiveFocus();
+                        bodyArea.cursorPosition = bodyArea.length;
+                        Qt.inputMethod.show();
+                    }
+                }
 
                 TextEdit {
                     id: bodyArea
@@ -437,6 +542,52 @@ Page {
                 }
             }
 
+            // Platform selector, pickPlatform path only; picking one loads that platform's categories.
+            AbstractButton {
+                width: parent.width
+                height: units.gu(6)
+                visible: page.pickPlatform
+                onClicked: page.platformSheetOpen = true
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Style.cardRadius
+                    color: "transparent"
+                    border.width: units.dp(1.5)
+                    border.color: Style.divider
+                }
+
+                Row {
+                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingS
+
+                    CircleImage {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(3.5); height: width
+                        visible: !!page.targetPlatform
+                        source: page.targetPlatform ? (page.targetPlatform.icon || "") : ""
+                        decode: units.gu(4)
+                    }
+                    Label {
+                        width: parent.width - platChevron.width - Style.spacingS
+                               - (page.targetPlatform ? units.gu(3.5) + Style.spacingS : 0)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.targetPlatform ? page.targetPlatform.title : Lang.tr("Select platform")
+                        elide: Text.ElideRight
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFor(text)
+                        color: page.targetPlatform ? Style.textPrimary : Style.textSecondary
+                    }
+                    Icon {
+                        id: platChevron
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2); height: width
+                        name: "next"
+                        color: Style.textSecondary
+                    }
+                }
+            }
+
             // Category selector hidden for communities that haven't defined any categories yet (publish() falls back to "general").
             AbstractButton {
                 width: parent.width
@@ -459,7 +610,9 @@ Page {
                         width: parent.width - catChevron.width
                         anchors.verticalCenter: parent.verticalCenter
                         text: page.selectedCategory.length > 0
-                            ? page.selectedCategory
+                            ? (page.selectedSubCategory.length > 0
+                               ? (page.selectedCategory + "  ›  " + page.selectedSubCategory)
+                               : page.selectedCategory)
                             : Lang.tr("Select category")
                         font.pixelSize: Style.fontRegular
                         font.family: Style.fontFor(text)
@@ -475,7 +628,6 @@ Page {
                 }
             }
 
-            // Post to blockchain toggle
             Rectangle {
                 width: parent.width
                 height: chainRow.implicitHeight + Style.spacingM * 2
@@ -507,7 +659,7 @@ Page {
                         Label {
                             width: parent.width
                             text: page.postToBlockchain
-                                ? Lang.tr("Can earn votes and rewards.")
+                                ? Lang.tr("Permanent, tamper proof storage on the blockchain. Proves authorship and earns SRY rewards")
                                 : Lang.tr("Serey only, no votes or rewards.")
                             font.pixelSize: Style.fontXSmall
                             font.family: Style.fontFor(text)
@@ -525,7 +677,6 @@ Page {
                 }
             }
 
-            // Cover image area
             Rectangle {
                 width: parent.width
                 height: units.gu(20)
@@ -533,7 +684,6 @@ Page {
                 color: Style.iconBackground
                 clip: true
 
-                // Show uploaded image preview
                 Image {
                     anchors.fill: parent
                     source: page.coverImageUrl
@@ -543,7 +693,6 @@ Page {
                     visible: page.coverImageUrl.length > 0
                 }
 
-                // Remove button (top-right, shown when image is set)
                 AbstractButton {
                     visible: page.coverImageUrl.length > 0
                     anchors {
@@ -567,7 +716,6 @@ Page {
                     }
                 }
 
-                // Upload spinner overlay
                 Rectangle {
                     anchors.fill: parent
                     color: Qt.rgba(1, 1, 1, 0.7)
@@ -579,7 +727,6 @@ Page {
                     }
                 }
 
-                // Empty state: + button + label (shown when no image set and not uploading)
                 Column {
                     anchors.centerIn: parent
                     spacing: Style.spacingS
@@ -618,7 +765,7 @@ Page {
         }
     }
 
-    // Shared formatting-button row — reused by the phone bottom dock and the desktop inline toolbar.
+    // Shared formatting-button row, reused by the phone bottom dock and the desktop inline toolbar.
     Component {
         id: formatButtonsComp
         Row {
@@ -714,7 +861,6 @@ Page {
         }
     }
 
-    // Loading overlay
     Rectangle {
         anchors.fill: parent
         color: Qt.rgba(1, 1, 1, 0.7)
@@ -746,10 +892,10 @@ Page {
             id: catSheetRect
             // Full-width sheet on phone, centered width-capped card on desktop
             readonly property bool wide: Config.wideMode
+            // Centered + explicit width handles both cases (full-width on phone, capped
+            // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
             anchors {
-                left: catSheetRect.wide ? undefined : parent.left
-                right: catSheetRect.wide ? undefined : parent.right
-                horizontalCenter: catSheetRect.wide ? parent.horizontalCenter : undefined
+                horizontalCenter: parent.horizontalCenter
                 bottom: parent.bottom
                 bottomMargin: catSheetRect.wide ? units.gu(4) : 0
             }
@@ -791,6 +937,21 @@ Page {
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
+                // Scrollable list: caps the sheet height so a category with many
+                // sub-categories scrolls instead of overflowing off the top.
+                Flickable {
+                    id: catListFlick
+                    width: parent.width
+                    height: Math.min(catListCol.height, catSheet.height * 0.65)
+                    contentHeight: catListCol.height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: catListCol
+                        width: parent.width
+                        spacing: 0
+
                 // Loading / empty state while categories fetch for this community.
                 Item {
                     width: parent.width
@@ -813,45 +974,296 @@ Page {
                 Repeater {
                     model: page.categories
 
-                    delegate: AbstractButton {
+                    // Main category + (when expanded via the arrow) its sub-categories.
+                    delegate: Column {
+                        id: catRow
                         width: catSheetCol.width
-                        height: units.gu(6)
-                        onClicked: {
-                            page.selectedCategory = modelData;
-                            catSheet.closeAnimated();
+                        readonly property string catName: modelData
+                        readonly property var subs: {
+                            var s = page.subcatsByCat[catName]
+                            return (s && s.length) ? s : []
+                        }
+                        readonly property bool isSelected: page.selectedCategory === catName
+                        // Sub list is revealed only by tapping the arrow; a fresh row starts
+                        // expanded when it's the already-selected category with a sub chosen.
+                        property bool expanded: catRow.isSelected && page.selectedSubCategory.length > 0
+
+                        // Main row: tapping the row body picks the MAIN category and closes.
+                        // Only the arrow (separate tap target on the right) expands the subs.
+                        Item {
+                            width: parent.width
+                            height: units.gu(6)
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    page.selectedCategory = catRow.catName
+                                    page.selectedSubCategory = ""
+                                    catSheet.closeAnimated()
+                                }
+                            }
+                            Row {
+                                anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                spacing: Style.spacingM
+                                Label {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - checkIcon.width - (catRow.subs.length > 0 ? subCount.width + Style.spacingM : 0)
+                                    text: catRow.catName.charAt(0).toUpperCase() + catRow.catName.slice(1)
+                                    elide: Text.ElideRight
+                                    font.pixelSize: Style.fontRegular
+                                    color: catRow.isSelected ? Style.brand : Style.textPrimary
+                                    font.weight: catRow.isSelected ? Font.DemiBold : Font.Normal
+                                }
+                                Label {
+                                    id: subCount
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: catRow.subs.length > 0
+                                    text: catRow.subs.length + ""
+                                    font.pixelSize: Style.fontSmall
+                                    color: Style.textSecondary
+                                }
+                                Icon {
+                                    id: checkIcon
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2.5); height: width
+                                    name: catRow.subs.length > 0 ? (catRow.expanded ? "go-down" : "go-next") : "tick"
+                                    color: catRow.subs.length > 0 ? Style.textSecondary : Style.brand
+                                    visible: (catRow.isSelected && page.selectedSubCategory.length === 0) || catRow.subs.length > 0
+                                }
+                            }
+                            // Arrow hit area (on top of the row's MouseArea, right side):
+                            // expands/collapses the sub list without selecting or closing.
+                            MouseArea {
+                                visible: catRow.subs.length > 0
+                                enabled: visible
+                                anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+                                width: units.gu(7)
+                                onClicked: catRow.expanded = !catRow.expanded
+                            }
+                            Rectangle {
+                                anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                height: units.dp(1); color: Style.divider
+                            }
                         }
 
-                        Row {
-                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
-                            spacing: Style.spacingM
+                        // Sub-category rows (indented), shown only when expanded via the arrow.
+                        Column {
+                            width: parent.width
+                            visible: catRow.expanded && catRow.subs.length > 0
 
-                            Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width - checkIcon.width
-                                text: modelData.charAt(0).toUpperCase() + modelData.slice(1)
-                                font.pixelSize: Style.fontRegular
-                                color: page.selectedCategory === modelData ? Style.brand : Style.textPrimary
-                                font.weight: page.selectedCategory === modelData ? Font.DemiBold : Font.Normal
+                            // "No sub-category": post under the main category only.
+                            AbstractButton {
+                                width: parent.width
+                                height: units.gu(5.5)
+                                onClicked: {
+                                    page.selectedCategory = catRow.catName
+                                    page.selectedSubCategory = ""
+                                    catSheet.closeAnimated()
+                                }
+                                Label {
+                                    anchors { left: parent.left; leftMargin: Style.spacingM + units.gu(3); verticalCenter: parent.verticalCenter }
+                                    text: Lang.tr("No sub-category")
+                                    font.pixelSize: Style.fontSmall
+                                    font.italic: true
+                                    color: page.selectedSubCategory === "" ? Style.brand : Style.textSecondary
+                                }
+                                Icon {
+                                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                                    width: units.gu(2.2); height: width; name: "tick"; color: Style.brand
+                                    visible: page.selectedSubCategory === ""
+                                }
                             }
 
-                            Icon {
-                                id: checkIcon
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: units.gu(2.5); height: width
-                                name: "tick"
-                                color: Style.brand
-                                visible: page.selectedCategory === modelData
+                            Repeater {
+                                model: catRow.subs
+                                delegate: AbstractButton {
+                                    width: catRow.width
+                                    height: units.gu(5.5)
+                                    readonly property string subName: modelData
+                                    onClicked: {
+                                        page.selectedCategory = catRow.catName
+                                        page.selectedSubCategory = subName
+                                        catSheet.closeAnimated()
+                                    }
+                                    Label {
+                                        anchors { left: parent.left; leftMargin: Style.spacingM + units.gu(3); right: subTick.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                                        text: subName.charAt(0).toUpperCase() + subName.slice(1)
+                                        elide: Text.ElideRight
+                                        font.pixelSize: Style.fontRegular
+                                        color: page.selectedSubCategory === subName ? Style.brand : Style.textPrimary
+                                        font.weight: page.selectedSubCategory === subName ? Font.DemiBold : Font.Normal
+                                    }
+                                    Icon {
+                                        id: subTick
+                                        anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                                        width: units.gu(2.2); height: width; name: "tick"; color: Style.brand
+                                        visible: page.selectedSubCategory === subName
+                                    }
+                                }
                             }
-                        }
-
-                        Rectangle {
-                            anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
-                            height: units.dp(1); color: Style.divider
+                            Rectangle {
+                                width: parent.width; height: units.dp(1); color: Style.divider
+                            }
                         }
                     }
                 }
 
-                Item { width: 1; height: Style.spacingM }
+                        Item { width: 1; height: Style.spacingM }
+                    }   // catListCol
+                }       // catListFlick
+            }
+        }
+    }
+
+    // --- Platform picker bottom sheet (pickPlatform path only) ----------------
+    Item {
+        id: platSheet
+        anchors.fill: parent
+        visible: page.platformSheetOpen
+        z: 210
+        onVisibleChanged: if (visible) { platBdFade.start(); platSlideAnim.start(); }
+        function closeAnimated() { platBdFadeOut.start(); platSlideOut.start(); }
+
+        Rectangle {
+            id: platBd
+            anchors.fill: parent
+            color: Qt.rgba(0, 0, 0, 0.4)
+            opacity: 0
+            MouseArea { anchors.fill: parent; onClicked: platSheet.closeAnimated() }
+        }
+        NumberAnimation { id: platBdFade; target: platBd; property: "opacity"; from: 0; to: 1; duration: 200 }
+        NumberAnimation { id: platBdFadeOut; target: platBd; property: "opacity"; to: 0; duration: 200 }
+
+        Rectangle {
+            id: platSheetRect
+            readonly property bool wide: Config.wideMode
+            anchors {
+                horizontalCenter: parent.horizontalCenter
+                bottom: parent.bottom
+                bottomMargin: platSheetRect.wide ? units.gu(4) : 0
+            }
+            width: platSheetRect.wide ? Math.min(parent.width - units.gu(4), Config.sheetMaxWidth) : parent.width
+            height: platSheetCol.height + units.gu(4)
+            radius: units.gu(1)
+            color: Style.surface
+            transform: Translate { id: platSlideT; y: 0 }
+            NumberAnimation { id: platSlideAnim; target: platSlideT; property: "y"; from: platSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }
+            NumberAnimation { id: platSlideOut; target: platSlideT; property: "y"; to: platSheetRect.height; duration: 250; easing.type: Easing.InCubic; onStopped: page.platformSheetOpen = false }
+
+            Rectangle {
+                anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
+                width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
+                color: Style.lightGray
+            }
+
+            Column {
+                id: platSheetCol
+                anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
+                spacing: 0
+
+                Item {
+                    width: parent.width; height: units.gu(5)
+                    Label {
+                        anchors.centerIn: parent
+                        text: Lang.tr("Select platform")
+                        font.pixelSize: Style.fontMedium
+                        font.weight: Font.DemiBold
+                        color: Style.textPrimary
+                    }
+                    AbstractButton {
+                        anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                        width: units.gu(3.5); height: units.gu(3.5)
+                        onClicked: platSheet.closeAnimated()
+                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "close"; color: Style.textPrimary }
+                    }
+                }
+
+                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+                Flickable {
+                    width: parent.width
+                    height: Math.min(platListCol.height, platSheet.height * 0.65)
+                    contentHeight: platListCol.height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: platListCol
+                        width: parent.width
+                        spacing: 0
+
+                        // The tree is fetched at startup; empty means nothing postable was found.
+                        Item {
+                            width: parent.width
+                            height: units.gu(8)
+                            visible: page.platformOptions.length === 0
+                            Label {
+                                anchors.centerIn: parent
+                                text: Lang.tr("No platforms you can post in")
+                                font.pixelSize: Style.fontSmall
+                                color: Style.textSecondary
+                            }
+                        }
+
+                        Repeater {
+                            model: page.platformOptions
+
+                            delegate: AbstractButton {
+                                width: platSheetCol.width
+                                height: units.gu(6.5)
+                                readonly property bool isSelected: page.targetPlatform
+                                                                   && String(page.targetPlatform.id) === String(modelData.id)
+                                onClicked: {
+                                    page.targetPlatform = modelData;
+                                    page.selectedCategory = "";
+                                    page.selectedSubCategory = "";
+                                    page.loadCategories();
+                                    platSheet.closeAnimated();
+                                }
+
+                                Row {
+                                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                    spacing: Style.spacingM
+
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: units.gu(4.5); height: width; radius: width / 2
+                                        color: Style.iconBackground
+                                        CircleImage {
+                                            anchors { fill: parent; margins: units.dp(2) }
+                                            source: modelData.icon || ""
+                                            decode: units.gu(5)
+                                        }
+                                    }
+                                    Label {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - units.gu(4.5) - platTick.width - Style.spacingM * 2
+                                        text: modelData.title
+                                        elide: Text.ElideRight
+                                        font.pixelSize: Style.fontRegular
+                                        font.family: Style.fontFor(text)
+                                        color: isSelected ? Style.brand : Style.textPrimary
+                                        font.weight: isSelected ? Font.DemiBold : Font.Normal
+                                    }
+                                    Icon {
+                                        id: platTick
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: units.gu(2.2); height: width
+                                        name: "tick"; color: Style.brand
+                                        visible: isSelected
+                                    }
+                                }
+
+                                Rectangle {
+                                    anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                    height: units.dp(1); color: Style.divider
+                                }
+                            }
+                        }
+
+                        Item { width: 1; height: Style.spacingM }
+                    }
+                }
             }
         }
     }

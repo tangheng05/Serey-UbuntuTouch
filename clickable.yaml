@@ -1,7 +1,7 @@
 clickable_minimum_required: 8.8.0
 
 # Ubuntu Touch 24.04-1.x QML application with one compiled plugin
-# (Serey.FileUtils — streaming file reads for large video uploads), so the
+# (Serey.FileUtils, streaming file reads for large video uploads), so the
 # package is built per-architecture with the cmake builder.
 # Clickable picks the matching Docker image and AppArmor policy from this framework.
 framework: ubuntu-touch-24.04-1.x

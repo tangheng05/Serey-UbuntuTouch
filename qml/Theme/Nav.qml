@@ -7,9 +7,39 @@ QtObject {
     // Tab index to switch to (0 = Homepage); Main listens and also clears the stack the auth flow was pushed onto.
     signal goToTab(int tab)
 
-    // Buy-plan → create-platform funnel: emitted by the payment sheets after a
+    // Buy-plan -> create-platform funnel: emitted by the payment sheets after a
     // successful purchase; Main switches to Settings and pushes the wizard.
     signal createPlatform()
+
+    // Master-detail keyboard focus (split windows): a detail page (e.g. an article)
+    // emits focusMaster() to hand arrow-key focus back to the list; a list emits
+    // focusDetail() to move into the open detail. The active, split AdaptiveStack acts.
+    signal focusMaster()
+    signal focusDetail()
+
+    // Focus the tab navigation itself (side rail / bottom bar), emitted by a
+    // list's Left key (step out of content) and by the F6 shortcut; Main acts.
+    signal focusNav()
+
+    // Focus the active tab's content (the feed). Emitted after the community picker
+    // changes source: the reloaded feed is where the user wants to be, and unlike
+    // focusMaster this works on every tab, split or not. Main acts.
+    signal focusContent()
+
+    // Tapped a post's category badge: jump to the blog tab, filtered, in the post's own community.
+    // Main applies the switch + tab jump; NewsPage consumes pendingCategory.
+    signal filterCategory(string category, var community)
+    property string pendingCategory: ""
+
+    // Re-fetch get-communities and rebuild Config.sources, emitted after
+    // creating or deleting a platform so the picker updates without a
+    // restart. Main acts (it owns the fetch + icon mapping).
+    signal refreshCommunities()
+
+    // Emitted right after a login/signup completes at a primary entry point
+    // (not a login-gate interruption): land on My Feed instead of Homepage.
+    // Session-only; a relaunch always shows the normal Homepage.
+    signal goToFeed()
 
     function home() { goToTab(0); }
 }

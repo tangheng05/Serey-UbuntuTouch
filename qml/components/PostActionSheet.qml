@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
@@ -7,6 +8,7 @@ import "../services/AccountService.js" as AccountService
 import "../services/ReportService.js" as ReportService
 import "../services/HiddenPosts.js" as HiddenPosts
 import "../services/BlockedUsers.js" as BlockedUsers
+import "../services/YouTube.js" as YouTube
 
 Item {
     id: sheet
@@ -33,20 +35,102 @@ Item {
     // Lift the sheet above the OSK (the edit-caption step has text inputs).
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
-    onStepChanged: if (step !== 4) Qt.inputMethod.hide()
+    // ---- Keyboard navigation (UBports HIG input parity): Up/Down or Tab move a
+    // highlight over the current step's actions, Enter/Space activates, Escape backs
+    // out/closes. The highlight only appears after a key press, so touch is unchanged.
+    property var navRows: []
+    property int navIndex: -1
+    readonly property Item navCurrent: (navIndex >= 0 && navIndex < navRows.length) ? navRows[navIndex] : null
+    // Whatever held keyboard focus before the sheet opened (e.g. the focused card); restored on close.
+    property var _prevFocus: null
+
+    function _rebuildNav() {
+        if (!visible) { navRows = []; navIndex = -1; return; }
+        var rows = [];
+        if (step === 0) {
+            var candidates = [saveOfflineBtn, saveVideoBtn, editPostBtn, editCaptionBtn, deletePostBtn,
+                              hidePostBtn, reportPostBtn, blockUserBtn];
+            for (var i = 0; i < candidates.length; i++)
+                if (candidates[i].visible) rows.push(candidates[i]);
+        } else if (step === 1) {
+            for (var j = 0; j < reportRepeater.count; j++) {
+                var it = reportRepeater.itemAt(j);
+                if (it) rows.push(it);
+            }
+        } else if (step === 2) {
+            rows = [deleteConfirmBtn, deleteCancelBtn];
+        } else if (step === 3) {
+            rows = [blockConfirmBtn, blockCancelBtn];
+        }
+        navRows = rows;
+        navIndex = -1;
+    }
+
+    function _navMove(delta) {
+        if (navRows.length === 0) return;
+        navIndex = (navIndex < 0)
+            ? (delta > 0 ? 0 : navRows.length - 1)
+            : (navIndex + delta + navRows.length) % navRows.length;
+    }
+
+    Keys.onPressed: {
+        var busy = (step === 1 && reporting) || (step === 2 && deleting)
+                || (step === 3 && blocking) || (step === 4 && savingCaption);
+        if (event.key === Qt.Key_Escape) {
+            if (!busy) { if (step === 0) closeSheet(); else step = 0; }
+            event.accepted = true;
+        } else if (step === 4) {
+            // Text-entry step: trap Tab between the two fields so focus can't
+            // tunnel to the covered page; every other key belongs to the fields.
+            if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+                if (captionTitleField.activeFocus) captionDescField.forceActiveFocus();
+                else captionTitleField.forceActiveFocus();
+                event.accepted = true;
+            }
+        } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
+            _navMove(1); event.accepted = true;
+        } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Backtab) {
+            _navMove(-1); event.accepted = true;
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+            if (navCurrent && navCurrent.visible && navCurrent.enabled) navCurrent.clicked();
+            event.accepted = true;
+        }
+    }
+
+    onStepChanged: {
+        if (step !== 4) {
+            Qt.inputMethod.hide();
+            // Reclaim key events from the caption fields when leaving the edit step.
+            if (visible) sheet.forceActiveFocus();
+        }
+        Qt.callLater(_rebuildNav);
+    }
+
+    // Report reasons arrive async; refresh the arrow-key row list when they land.
+    onReportTypesChanged: if (step === 1) Qt.callLater(_rebuildNav)
 
     onVisibleChanged: {
         if (!visible) {
             step = 0;
             selectedReportTypeId = "";
-            // Clear in-flight busy flags so a sheet dismissed mid-request doesn't reopen stuck on "Blocking…"/disabled rows.
+            // Clear in-flight busy flags so a sheet dismissed mid-request doesn't reopen stuck on "Blocking..."/disabled rows.
             reporting = false;
             blocking = false;
+            navRows = []; navIndex = -1;
+            // Hand keyboard focus back so the card's focus ring / arrow keys keep working.
+            if (_prevFocus) {
+                try { if (_prevFocus.visible) _prevFocus.forceActiveFocus(); } catch (e) { /* item destroyed since */ }
+                _prevFocus = null;
+            }
         } else {
+            step = PostActions.startStep;
             backdropFade.start();
             sheetSlide.start();
             // Guard on !reportTypesLoading too, so reopening before the first fetch resolves doesn't fire a duplicate concurrent request.
             if (!reportTypesLoaded && !reportTypesLoading) _loadReportTypes();
+            _prevFocus = Window.activeFocusItem;
+            sheet.forceActiveFocus();
+            Qt.callLater(_rebuildNav);
         }
     }
 
@@ -60,7 +144,7 @@ Item {
                 sheet.reportTypesLoaded = sheet.reportTypes.length > 0;
             },
             function (err) {
-                // Leave reportTypesLoaded false so reopening the sheet retries — there is no hardcoded fallback, the backend owns the ids.
+                // Leave reportTypesLoaded false so reopening the sheet retries; no hardcoded fallback, the backend owns the ids.
                 sheet.reportTypesLoading = false;
                 sheet.reportTypesLoaded = false;
                 Toast.error((err && err.message) ? err.message
@@ -171,6 +255,61 @@ Item {
             });
     }
 
+    // ---- Video offline download, mirroring VideoDetailPage's routing: direct-file
+    // videos download as-is, YouTube clips resolve a direct URL via InnerTube first.
+    function _isDirectFile(u) {
+        return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
+    }
+    function _videoRemoteUrl(v) {
+        if (!v) return "";
+        if (v.platform === "SEREY") return v.videoLink || v.embedUrl || "";
+        if (_isDirectFile(v.videoLink)) return v.videoLink;
+        if (_isDirectFile(v.embedUrl)) return v.embedUrl;
+        return "";
+    }
+    function _videoYoutubeId(v) {
+        if (!v) return "";
+        if (v.platform === "YOUTUBE" && (v.videoId || "").length === 11) return v.videoId;
+        var s = (v.embedUrl || "") + " " + (v.videoLink || "");
+        var m = s.match(/(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+        return m ? m[1] : "";
+    }
+    function _videoIsYouTube(v) {
+        return v && v.platform === "YOUTUBE" && _videoYoutubeId(v).length > 0;
+    }
+    function _videoCanDownload(v) {
+        return _videoRemoteUrl(v).length > 0 || _videoIsYouTube(v);
+    }
+    function doVideoDownloadToggle() {
+        var p = PostActions.post;
+        if (!p || saveVideoBtn._busy) return;
+        var pl = p.permlink || "";
+        if (pl.length === 0) return;
+        if (saveVideoBtn._saved) { Downloads.remove(pl); sheet.closeSheet(); return; }
+        var direct = sheet._videoRemoteUrl(p);
+        if (direct.length > 0) {
+            Downloads.start(p, direct);
+            Toast.show(Lang.tr("Downloading video…"));
+            sheet.closeSheet();
+            return;
+        }
+        if (sheet._videoIsYouTube(p)) {
+            var id = sheet._videoYoutubeId(p);
+            saveVideoBtn._extracting = true;
+            Toast.show(Lang.tr("Preparing download…"));
+            YouTube.extract(id, function (result, errMsg) {
+                saveVideoBtn._extracting = false;
+                if (result && result.url) {
+                    Downloads.start(p, result.url);
+                    Toast.show(Lang.tr("Downloading video…"));
+                } else {
+                    Toast.error(Lang.tr("This YouTube video can't be downloaded."));
+                }
+                sheet.closeSheet();
+            });
+        }
+    }
+
     // Delete the viewer's own post, then ask feed pages to prune the row.
     function doDelete() {
         var p = PostActions.post;
@@ -189,7 +328,6 @@ Item {
             });
     }
 
-    // Backdrop
     Rectangle {
         id: backdrop
         anchors.fill: parent
@@ -204,14 +342,14 @@ Item {
     Rectangle {
         id: sheetRect
         readonly property bool wide: Config.wideMode
+        // Centered + explicit width handles both cases (full-width on phone, capped
+        // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
         anchors {
-            left: sheetRect.wide ? undefined : parent.left
-            right: sheetRect.wide ? undefined : parent.right
-            horizontalCenter: sheetRect.wide ? parent.horizontalCenter : undefined
+            horizontalCenter: parent.horizontalCenter
             bottom: parent.bottom
             bottomMargin: sheet.kbHeight + (sheetRect.wide ? units.gu(4) : 0)
         }
-        width: sheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(45)) : parent.width
+        width: sheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(60)) : parent.width
         height: (sheet.step === 0 ? mainCol.height
                  : sheet.step === 1 ? reportCol.height
                  : sheet.step === 2 ? deleteCol.height
@@ -226,7 +364,6 @@ Item {
 
         Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
 
-        // Grabber
         Rectangle {
             anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
             width: units.gu(4.5)
@@ -287,7 +424,8 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: units.gu(4.5); height: width; radius: width / 2
                         color: Style.iconBackground
-                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "save"
+                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width
+                               name: saveOfflineBtn._saved ? "tick" : "save"
                                color: saveOfflineBtn._saved ? Style.brand : Style.textPrimary }
                     }
                     Column {
@@ -302,8 +440,62 @@ Item {
                 }
             }
 
-            // ----- Owner actions (your own post): Edit (blog/gallery only — no video editor) / Delete -----
+            // Save video for offline playback (SEREY/direct-file or YouTube via InnerTube).
+            // Toggles to "Remove download" when already saved; spinner while in flight.
             AbstractButton {
+                id: saveVideoBtn
+                width: parent.width; height: units.gu(8)
+                readonly property string _pl: PostActions.post ? (PostActions.post.permlink || "") : ""
+                visible: PostActions.kind === "video" && _pl.length > 0
+                         && sheet._videoCanDownload(PostActions.post)
+                readonly property bool _saved: (Downloads.rev, Downloads.isSaved(saveVideoBtn._pl))
+                readonly property var _active: (Downloads.rev, Downloads.activeFor(saveVideoBtn._pl))
+                property bool _extracting: false
+                readonly property bool _busy: !!saveVideoBtn._active || saveVideoBtn._extracting
+                onClicked: sheet.doVideoDownloadToggle()
+                Row {
+                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingM
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(4.5); height: width; radius: width / 2
+                        color: Style.iconBackground
+                        Icon {
+                            anchors.centerIn: parent; width: units.gu(2.2); height: width
+                            visible: !saveVideoBtn._busy
+                            name: saveVideoBtn._saved ? "tick" : "save"
+                            color: saveVideoBtn._saved ? Style.brand : Style.textPrimary
+                        }
+                        ActivityIndicator {
+                            anchors.centerIn: parent; width: units.gu(2.2); height: width
+                            visible: saveVideoBtn._busy; running: saveVideoBtn._busy
+                        }
+                    }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
+                        Label { text: saveVideoBtn._busy ? Lang.tr("Downloading…")
+                                      : (saveVideoBtn._saved ? Lang.tr("Remove download") : Lang.tr("Save video offline"))
+                                font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
+                        Label { text: saveVideoBtn._saved ? Lang.tr("Available offline")
+                                      : Lang.tr("Watch this video without a connection")
+                                font.pixelSize: Style.fontSmall; color: Style.textSecondary }
+                    }
+                }
+            }
+
+            // Separates utility actions (Save) from owner/moderation actions below.
+            Rectangle {
+                width: parent.width - Style.spacingM * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: units.dp(2)
+                color: Style.lightGray
+                visible: saveOfflineBtn.visible || saveVideoBtn.visible
+            }
+            Item { width: 1; height: Style.spacingS; visible: saveOfflineBtn.visible || saveVideoBtn.visible }
+
+            // ----- Owner actions (your own post): Edit (blog/gallery only, no video editor) / Delete -----
+            AbstractButton {
+                id: editPostBtn
                 width: parent.width; height: units.gu(8)
                 visible: sheet.canEdit
                 onClicked: {
@@ -328,8 +520,9 @@ Item {
                 }
             }
 
-            // Edit caption (own video — title/description only; the media itself can't be re-uploaded).
+            // Edit caption (own video, title/description only; the media itself can't be re-uploaded).
             AbstractButton {
+                id: editCaptionBtn
                 width: parent.width; height: units.gu(8)
                 visible: sheet.isOwn && PostActions.kind === "video"
                 onClicked: {
@@ -355,8 +548,8 @@ Item {
                 }
             }
 
-            // Delete → confirm step
             AbstractButton {
+                id: deletePostBtn
                 width: parent.width; height: units.gu(8)
                 visible: sheet.isOwn
                 onClicked: sheet.step = 2
@@ -377,8 +570,8 @@ Item {
                 }
             }
 
-            // Hide
             AbstractButton {
+                id: hidePostBtn
                 width: parent.width; height: units.gu(8)
                 visible: !sheet.isOwn
                 onClicked: {
@@ -406,8 +599,8 @@ Item {
                 }
             }
 
-            // Report → go to step 1
             AbstractButton {
+                id: reportPostBtn
                 width: parent.width; height: units.gu(8)
                 visible: !sheet.isOwn
                 onClicked: sheet.step = 1
@@ -428,8 +621,8 @@ Item {
                 }
             }
 
-            // Block → confirm step
             AbstractButton {
+                id: blockUserBtn
                 width: parent.width; height: units.gu(8)
                 visible: !sheet.isOwn
                 onClicked: sheet.step = 3
@@ -440,7 +633,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: units.gu(4.5); height: width; radius: width / 2
                         color: Style.iconBackground
-                        // No "block" icon in the Suru theme — draw it (circle + diagonal bar)
+                        // No "block" icon in the Suru theme, so draw one (circle + diagonal bar)
                         Item {
                             anchors.centerIn: parent
                             width: units.gu(2.2); height: width
@@ -477,7 +670,6 @@ Item {
             spacing: 0
             visible: sheet.step === 1
 
-            // Header: back + title
             Item {
                 width: parent.width; height: units.gu(5)
 
@@ -524,7 +716,7 @@ Item {
                 ActivityIndicator { anchors.centerIn: parent; running: parent.visible }
             }
 
-            // Empty / failed state — reopening the sheet retries the fetch.
+            // Empty / failed state; reopening the sheet retries the fetch.
             Label {
                 visible: !sheet.reportTypesLoading && sheet.reportTypes.length === 0
                 width: reportCol.width - Style.spacingM * 2
@@ -537,6 +729,7 @@ Item {
             }
 
             Repeater {
+                id: reportRepeater
                 model: sheet.reportTypes
 
                 delegate: AbstractButton {
@@ -609,6 +802,7 @@ Item {
             Item { width: 1; height: Style.spacingL }
 
             AbstractButton {
+                id: blockConfirmBtn
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
@@ -629,6 +823,7 @@ Item {
             Item { width: 1; height: Style.spacingS }
 
             AbstractButton {
+                id: blockCancelBtn
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
@@ -678,8 +873,8 @@ Item {
             }
             Item { width: 1; height: Style.spacingL }
 
-            // Confirm delete (danger)
             AbstractButton {
+                id: deleteConfirmBtn
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
@@ -702,8 +897,8 @@ Item {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Cancel → back to main menu
             AbstractButton {
+                id: deleteCancelBtn
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
@@ -735,7 +930,6 @@ Item {
             spacing: 0
             visible: sheet.step === 4
 
-            // Header: back + title
             Item {
                 width: parent.width; height: units.gu(5)
 
@@ -797,7 +991,6 @@ Item {
 
             Item { width: 1; height: Style.spacingL }
 
-            // Save
             AbstractButton {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -820,6 +1013,21 @@ Item {
             }
 
             Item { width: 1; height: Style.spacingM }
+        }
+
+        // Keyboard-highlight ring: one Rectangle reparented into whichever row is
+        // arrow-key selected (same brand ring as the card focus ring, so keyboard
+        // users see one consistent affordance). Touch/pointer users never see it.
+        Rectangle {
+            parent: sheet.navCurrent ? sheet.navCurrent : sheetRect
+            anchors.fill: parent
+            anchors.margins: units.dp(3)
+            radius: units.dp(10)
+            color: "transparent"
+            border.width: units.dp(2)
+            border.color: Style.brand
+            visible: sheet.navCurrent !== null
+            z: 10
         }
     }
 }

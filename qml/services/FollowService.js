@@ -1,7 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-// ListView recycling re-asks for follow state per card — cache per author for the session and coalesce concurrent first-time requests via `_pending`.
+// ListView recycling re-asks for follow state per card, so cache per author for the session and coalesce concurrent first-time requests via `_pending`.
 var _cache = {};            // author -> bool
 var _pending = {};          // author -> [ {onOk, onErr}, ... ]
 var _cacheViewer = null;
@@ -28,6 +28,23 @@ function status(baseUrl, viewerUsername, author, onOk, onErr) {
             var waiters = _pending[author] || []; delete _pending[author];
             for (var i = 0; i < waiters.length; i++) if (waiters[i].onErr) waiters[i].onErr(err);
         });
+}
+
+// Returns { username: true } for everyone the user follows (not paginated).
+// My Feed needs this: there is NO following-filtered video endpoint, so videos
+// are filtered against this set client-side.
+function listAllFollowings(baseUrl, token, onOk, onErr) {
+    return Http.get(baseUrl, "/follow/list-all-followings", {}, token,
+        function (data) {
+            var list = (data && data.followings) || [];
+            if (!Array.isArray(list)) list = [];
+            var map = {};
+            for (var i = 0; i < list.length; i++) {
+                var u = list[i] && (list[i].username || list[i].following);
+                if (u) map[u] = true;
+            }
+            onOk(map);
+        }, onErr);
 }
 
 function toggle(baseUrl, author, isCurrentlyFollowing, token, onOk, onErr) {

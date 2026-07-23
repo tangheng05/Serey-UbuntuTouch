@@ -10,6 +10,9 @@ Page {
 
     property bool busy: false
     property string errorMsg: ""
+    // After a successful login: "" (default) pops back to wherever the login-gate
+    // interrupted; "feed" goes to the feed (Settings log-in, fresh signup).
+    property string afterSuccess: ""
 
     header: PageHeader {
         title: Lang.tr("Log in")
@@ -35,7 +38,8 @@ Page {
                 AccountService.profile(Config.baseUrl, usernameField.text, auth.token,
                     function (user) { Session.avatarUrl = user.profileUrl; },
                     function (err) { /* keep letter-fallback avatar */ });
-                page.pageStack.pop();
+                if (page.afterSuccess === "feed") Nav.goToFeed();
+                else page.pageStack.pop();
             },
             function (err) {
                 busy = false;
@@ -57,7 +61,6 @@ Page {
             // Gaps use explicit Item spacers below, not uniform spacing
             spacing: 0
 
-            // Logo hero
             Image {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: units.gu(9); height: width

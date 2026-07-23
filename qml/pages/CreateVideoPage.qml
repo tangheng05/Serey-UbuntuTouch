@@ -82,7 +82,7 @@ Page {
 
     function clearVideo() {
         Uploads.abort();
-        // Upload had already finished (post-upload discard) — clean up the now-orphaned file so it doesn't sit on the storage server forever.
+        // Post-upload discard: delete the now-orphaned file from the storage server.
         if (page.videoId)
             Uploads.deleteVideo(Config.storageDeleteUploadUrl, Session.token, page.videoId);
         page.videoFileUrl = "";
@@ -253,7 +253,6 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Community gate notice.
             Rectangle {
                 width: parent.width
                 visible: !page.hasCommunity
@@ -272,10 +271,24 @@ Page {
                 }
             }
 
-            // Title field (Lomiri underline input — bottom border, no box).
+            // Title field (Lomiri underline input - bottom border, no box).
             Item {
                 width: parent.width
                 height: Math.max(units.gu(5), titleField.contentHeight + Style.spacingM)
+
+                // The editor is only as tall as its text, so the box's padding
+                // was dead space and the keyboard only opened on the text line
+                // itself. Declared FIRST so it sits under the editor: taps on
+                // the text still reach it, this catches the surrounding gap
+                // (same fix as CreatePostPage).
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        titleField.forceActiveFocus();
+                        titleField.cursorPosition = titleField.length;
+                        Qt.inputMethod.show();
+                    }
+                }
 
                 TextEdit {
                     id: titleField
@@ -305,6 +318,17 @@ Page {
                 width: parent.width
                 height: Math.max(units.gu(10), descField.contentHeight + Style.spacingM)
 
+                // Same dead-space fix as the title field above: catch taps on
+                // the empty area below the one-line editor.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        descField.forceActiveFocus();
+                        descField.cursorPosition = descField.length;
+                        Qt.inputMethod.show();
+                    }
+                }
+
                 TextEdit {
                     id: descField
                     anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: Style.spacingS }
@@ -328,7 +352,6 @@ Page {
                 }
             }
 
-            // Post to blockchain toggle
             Row {
                 width: parent.width
                 spacing: Style.spacingM
@@ -348,7 +371,7 @@ Page {
                     Label {
                         width: parent.width
                         text: page.postToBlockchain
-                            ? Lang.tr("Can earn votes and rewards.")
+                            ? Lang.tr("Permanent, tamper proof storage on the blockchain. Proves authorship and earns SRY rewards")
                             : Lang.tr("Serey only, no votes or rewards.")
                         font.pixelSize: Style.fontXSmall
                         font.family: Style.fontFor(text)
@@ -374,7 +397,6 @@ Page {
                 color: Style.textPrimary
             }
 
-            // Empty state: pick a video.
             AbstractButton {
                 width: parent.width
                 height: units.gu(16)
@@ -411,7 +433,6 @@ Page {
                 }
             }
 
-            // Picked state: thumbnail preview + status.
             Rectangle {
                 width: parent.width
                 height: units.gu(20)
@@ -428,7 +449,6 @@ Page {
                     asynchronous: true
                 }
 
-                // Center status: spinner while uploading / capturing, check when done.
                 Column {
                     anchors.centerIn: parent
                     spacing: Style.spacingXs
@@ -458,7 +478,6 @@ Page {
                     }
                 }
 
-                // Remove button.
                 AbstractButton {
                     anchors { top: parent.top; right: parent.right; topMargin: units.dp(6); rightMargin: units.dp(6) }
                     width: units.gu(3); height: width
@@ -473,7 +492,6 @@ Page {
         }
     }
 
-    // Submit overlay.
     Rectangle {
         anchors.fill: parent
         color: Qt.rgba(1, 1, 1, 0.7)

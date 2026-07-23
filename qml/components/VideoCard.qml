@@ -2,16 +2,39 @@ import QtQuick 2.7
 import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import "../Theme"
+import "../Session"
 
 AbstractButton {
     id: root
     property var video: ({})
     readonly property var v: video ? video : ({})
-    // Off in a grid — divider is for vertical-list usage only
+    // Off in a grid; divider is for vertical-list usage only
     property bool showDivider: true
 
     signal authorClicked()
     signal moreClicked()
+
+    // Primes the shared follow-state store so a swiped-open Follow action (VideoPage's
+    // trailing ListItemActions) can render its already-following color immediately.
+    onVChanged: {
+        if (Session.isLoggedIn && v.author && v.author !== Session.username)
+            FollowStore.load(Config.baseUrl, Session.username, v.author);
+    }
+
+    // Keyboard: VideoCard itself (an AbstractButton / FocusScope) is the single
+    // tab-stop so its own ring shows; the ContextActionArea child is made
+    // non-focusable below. Enter activates natively, MENU opens the context menu.
+    activeFocusOnTab: true
+
+    onPressAndHold: root.moreClicked()
+
+    Keys.onPressed: {
+        if (event.key === Qt.Key_Menu ||
+            (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+            root.moreClicked();
+            event.accepted = true;
+        }
+    }
 
     width: parent ? parent.width : units.gu(40)
     implicitHeight: column.height + Style.spacingM + Style.spacingS + (showDivider ? units.dp(1) : 0)
@@ -29,7 +52,7 @@ AbstractButton {
         }
         spacing: Style.spacingS
 
-        // Thumbnail — large rounded, no play overlay
+        // Thumbnail: large rounded, no play overlay
         Item {
             width: parent.width
             height: width * 0.56
@@ -41,8 +64,11 @@ AbstractButton {
                 color: Style.iconBackground
             }
 
+            // Double-buffered like PostCard's cover: the hidden loader fetches the new
+            // source while thumbImg keeps the last-good frame, so a row swap never
+            // blanks to black while the phone re-downloads an evicted image.
             Image {
-                id: thumbImg
+                id: thumbLoader
                 anchors.fill: parent
                 source: v.localThumb || v.thumbnail || ""
                 fillMode: Image.PreserveAspectCrop
@@ -50,8 +76,24 @@ AbstractButton {
                 // HIG scaling: snap the decode size to a breakpoint instead of `width * N` so the image isn't re-rasterized on every width change.
                 sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
+                onStatusChanged: {
+                    if (status === Image.Ready) thumbImg.source = source;
+                    else if (status === Image.Error || String(source).length === 0) thumbImg.source = "";
+                }
+            }
+            Image {
+                id: thumbImg
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                sourceSize.width: thumbLoader.sourceSize.width
+                visible: false
+                // Fade fully out while the loader replaces a stale frame; a dimmed
+                // ghost of the previous content read as the wrong thumbnail (see PostCard).
+                readonly property bool transitioning:
+                    thumbLoader.status === Image.Loading && status === Image.Ready
                 Behavior on opacity { NumberAnimation { duration: 200 } }
-                opacity: status === Image.Ready ? 1.0 : 0.0
+                opacity: status === Image.Ready ? (transitioning ? 0.0 : 1.0) : 0.0
             }
 
             Rectangle {
@@ -67,9 +109,26 @@ AbstractButton {
                 maskSource: thumbMask
                 opacity: thumbImg.opacity
             }
+
+            Rectangle {
+                // categories is ListModel-wrapped here; use the mapper's scalar copy instead.
+                visible: (v.primaryCategory || "") !== ""
+                anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
+                width: vidCatLabel.width + Style.spacingM
+                height: units.gu(3)
+                radius: Style.pillRadius
+                color: Style.accentRed
+                Label {
+                    id: vidCatLabel
+                    anchors.centerIn: parent
+                    text: v.primaryCategory || ""
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.DemiBold
+                    color: Style.textOnBrand
+                }
+            }
         }
 
-        // Info: avatar + title/author + "•••" button
         Row {
             width: parent.width
             spacing: Style.spacingS
@@ -100,11 +159,12 @@ AbstractButton {
                     visible: (v.authorImage || "") !== ""
                 }
 
-                MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
+                MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
             }
 
             Column {
                 width: parent.width - units.gu(4.5) - Style.spacingS - moreBtn.width - Style.spacingS
+                    - (downloadedIcon.visible ? downloadedIcon.width + Style.spacingS : 0)
                 spacing: units.dp(2)
 
                 Label {
@@ -125,8 +185,26 @@ AbstractButton {
                     color: Style.textSecondary
                     elide: Text.ElideRight
                 }
-                OffChainBadge {
-                    onChain: v.postToBlockchain !== false
+            }
+
+            Rectangle {
+                id: downloadedIcon
+                anchors.top: parent.top
+                width: dlLabel.width + Style.spacingM
+                height: units.gu(2.6)
+                visible: (SavedPosts.rev, Downloads.rev, SavedPosts.isSaved(v.permlink) || Downloads.isSaved(v.permlink))
+                radius: Style.pillRadius
+                color: Style.iconBackground
+                border.width: units.dp(1)
+                border.color: Style.textSecondary
+
+                Label {
+                    id: dlLabel
+                    anchors.centerIn: parent
+                    text: Lang.tr("Downloaded")
+                    font.pixelSize: Style.fontXSmall
+                    font.weight: Font.DemiBold
+                    color: Style.textSecondary
                 }
             }
 
@@ -153,7 +231,6 @@ AbstractButton {
         }
     }
 
-    // Divider between cards
     Rectangle {
         visible: root.showDivider
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -161,7 +238,25 @@ AbstractButton {
         color: Style.divider
     }
 
-    // Pointer/keyboard parity: right-click or the MENU key opens the same
-    // context actions as swipe / the ••• overflow (see ContextActionArea).
-    ContextActionArea { onTriggered: root.moreClicked() }
+    // Pointer parity: right-click opens the context menu. Keyboard is handled by
+    // the AbstractButton root (single focus owner), so this must NOT be a
+    // tab-stop or it competes and hides the ring.
+    ContextActionArea {
+        activeFocusOnTab: false
+        onTriggered: root.moreClicked()
+    }
+
+    // Keyboard-focus ring. VideoCard is a FocusScope and takes focus itself
+    // (unlike PostCard's child-ring setup), so draw the ring here; activeFocus
+    // is true whether the button or its ContextActionArea child holds focus.
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: units.dp(1)
+        color: "transparent"
+        visible: root.activeFocus
+        border.width: units.dp(2)
+        border.color: Style.brand
+        radius: units.gu(0.5)
+        z: 100
+    }
 }

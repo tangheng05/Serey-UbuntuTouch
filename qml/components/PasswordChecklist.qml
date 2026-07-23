@@ -27,7 +27,7 @@ Flow {
         delegate: Row {
             spacing: Style.spacingXs
             Label {
-                text: modelData.ok ? "✓" : "○"   // ✓ : ○
+                text: modelData.ok ? "✓" : "○"
                 textSize: Label.Small
                 font.family: Style.fontFor(text)
                 color: root.password.length === 0 ? Style.textSecondary

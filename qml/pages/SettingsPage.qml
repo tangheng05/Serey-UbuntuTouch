@@ -13,15 +13,8 @@ Page {
     property var profile: null
     property bool loading: false
     property string errorMsg: ""
+    // Caps content to a centered column on tablet/desktop; phone gets the full width
     readonly property real maxContentWidth: units.gu(60)
-
-    // Whether the signed-in user already owns/manages a community — flips the
-    // "Create your platform" row into "Manage platform". Re-evaluates whenever
-    // Main.qml (or the create wizard) reassigns the set.
-    readonly property bool hasPlatform: {
-        for (var k in Config.ownedCommunityIdSet) return true;
-        return false;
-    }
 
     property bool searching: false
     property bool searchOpen: false
@@ -82,127 +75,180 @@ Page {
     // Suppress the default header and draw our own, since Page.header didn't render the right-side search action icon reliably.
     header: Item { height: 0 }
 
+    // Keyboard navigation: the rows live in a Column inside a Flickable (no
+    // ListView cursor), so the page keeps its own row cursor, same pattern as
+    // PostActionSheet (visibility-filtered rows, one reparenting ring).
+    property Item keyboardFocusItem: scroll
+    property Item navCurrent: null
+
+    function _navRows() {
+        var c = [profileCardBtn, loginBtn, signupBtn, languageRow,
+                 createPlatformRow, managePlatformRow, editProfileRow,
+                 passwordRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+        var rows = [];
+        for (var i = 0; i < c.length; i++)
+            if (c[i].visible) rows.push(c[i]);
+        return rows;
+    }
+    function _navMove(d) {
+        var rows = _navRows();
+        if (rows.length === 0) return;
+        var i = rows.indexOf(page.navCurrent);
+        i = (i < 0) ? (d > 0 ? 0 : rows.length - 1)
+                    : Math.max(0, Math.min(rows.length - 1, i + d));
+        page.navCurrent = rows[i];
+        page._ensureRowVisible(page.navCurrent);
+    }
+    // Keep the cursor row inside the Flickable viewport.
+    function _ensureRowVisible(it) {
+        var y = it.mapToItem(col, 0, 0).y;
+        if (y < scroll.contentY) scroll.contentY = Math.max(0, y);
+        else if (y + it.height > scroll.contentY + scroll.height)
+            scroll.contentY = y + it.height - scroll.height;
+    }
+
+    // Focus the row list when the tab is shown so keyboard nav works without a
+    // click; the cursor appears on first key press. (Merged into the single
+    // onVisibleChanged below; a Page allows only one handler per signal.)
+    function _onShownForKeyboard() {
+        if (!searchField.activeFocus) {
+            page.navCurrent = null;
+            scroll.forceActiveFocus();
+        }
+    }
+
     Rectangle {
         id: settingsHeader
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: units.gu(6)
+        // Matches PageHeader's own height (Ambiance style: titleAreaHeight gu(6) + 1dp divider)
+        // so this row lines up with a pushed detail page's PageHeader (e.g. Edit profile) in split/wide layouts.
+        height: units.gu(6) + units.dp(1)
         color: Style.surface
         z: 50
 
-        // ----- Default state: title + search action -----
-        Label {
-            visible: !page.searchActive
-            anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            text: Lang.tr("Settings")
-            font.pixelSize: Style.fontTitle
-            font.family: Style.fontFor(text)
-            color: Style.textPrimary
-        }
-        AbstractButton {
-            visible: !page.searchActive
-            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: width
-            onClicked: { page.searchActive = true; searchField.forceActiveFocus(); }
-            Icon {
-                anchors.centerIn: parent
-                width: units.gu(2.6); height: width
-                name: "find"
+        // Centered column that caps at maxContentWidth; on phone widths this
+        // just equals settingsHeader's full width, so the layout is unchanged.
+        Item {
+            id: headerContent
+            anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+            width: Math.min(parent.width, page.maxContentWidth)
+
+            // ----- Default state: title + search action -----
+            Label {
+                visible: !page.searchActive
+                anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                text: Lang.tr("Settings")
+                font.pixelSize: Style.fontTitle
+                font.family: Style.fontFor(text)
                 color: Style.textPrimary
             }
-        }
-        AbstractButton {
-            id: notifButton
-            visible: !page.searchActive && Session.isLoggedIn
-            anchors { right: parent.right; rightMargin: Style.spacingM + units.gu(4); verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: width
-            onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
-            Icon {
-                anchors.centerIn: parent
-                width: units.gu(2.6); height: width
-                name: "notification"
-                color: Style.textPrimary
+            AbstractButton {
+                visible: !page.searchActive
+                anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                width: units.gu(4); height: width
+                onClicked: { page.searchActive = true; searchField.forceActiveFocus(); }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.6); height: width
+                    name: "find"
+                    color: Style.textPrimary
+                }
+            }
+            AbstractButton {
+                id: notifButton
+                visible: !page.searchActive && Session.isLoggedIn
+                anchors { right: parent.right; rightMargin: Style.spacingM + units.gu(4); verticalCenter: parent.verticalCenter }
+                width: units.gu(4); height: width
+                onClicked: page.pageStack.push(Qt.resolvedUrl("NotificationsPage.qml"))
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.6); height: width
+                    name: "notification"
+                    color: Style.textPrimary
+                }
+                Rectangle {
+                    visible: NotificationState.unread > 0
+                    anchors { top: parent.top; right: parent.right; topMargin: units.gu(0.6); rightMargin: units.gu(0.6) }
+                    width: units.gu(1.4); height: width
+                    radius: width / 2
+                    color: Style.danger
+                }
+            }
+
+            // ----- Active state: back chevron + inline search field (Lomiri header
+            // search; the field expands into the header, per the HIG reference). -----
+            AbstractButton {
+                id: searchBack
+                visible: page.searchActive
+                anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                width: units.gu(4); height: width
+                onClicked: {
+                    page.searchActive = false;
+                    searchField.text = "";
+                    searchField.focus = false;
+                    searchModel.clear();
+                    page.searchOpen = false;
+                }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.4); height: width
+                    name: "back"
+                    color: Style.textPrimary
+                }
             }
             Rectangle {
-                visible: NotificationState.unread > 0
-                anchors { top: parent.top; right: parent.right; topMargin: units.gu(0.6); rightMargin: units.gu(0.6) }
-                width: units.gu(1.4); height: width
-                radius: width / 2
-                color: Style.danger
-            }
-        }
+                visible: page.searchActive
+                anchors { left: searchBack.right; leftMargin: Style.spacingXs; right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                height: units.gu(4.5)
+                radius: Style.cardRadius
+                color: Style.iconBackground
 
-        // ----- Active state: back chevron + inline search field (Lomiri header-search pattern) -----
-        AbstractButton {
-            id: searchBack
-            visible: page.searchActive
-            anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: width
-            onClicked: {
-                page.searchActive = false;
-                searchField.text = "";
-                searchField.focus = false;
-                searchModel.clear();
-                page.searchOpen = false;
-            }
-            Icon {
-                anchors.centerIn: parent
-                width: units.gu(2.4); height: width
-                name: "back"
-                color: Style.textPrimary
-            }
-        }
-        Rectangle {
-            visible: page.searchActive
-            anchors { left: searchBack.right; leftMargin: Style.spacingXs; right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            height: units.gu(4.5)
-            radius: Style.cardRadius
-            color: Style.iconBackground
+                Row {
+                    anchors { fill: parent; leftMargin: units.gu(1.5); rightMargin: units.gu(1) }
+                    spacing: units.gu(1)
 
-            Row {
-                anchors { fill: parent; leftMargin: units.gu(1.5); rightMargin: units.gu(1) }
-                spacing: units.gu(1)
-
-                Icon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "find"
-                    width: units.gu(2); height: width
-                    color: Style.textSecondary
-                }
-                Item {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - units.gu(2) - units.gu(1)
-                    height: units.gu(3)
-
-                    TextInput {
-                        id: searchField
-                        anchors.fill: parent
-                        verticalAlignment: TextInput.AlignVCenter
-                        font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFor(text)
-                        color: Style.textPrimary
-                        clip: true
-                        inputMethodHints: Qt.ImhNoPredictiveText
-                        onTextChanged: {
-                            if (searchField.text.trim().length < 2) {
-                                page.searchOpen = false
-                                searchModel.clear()
-                            }
-                            searchDebounce.restart()
-                        }
-                        Keys.onReturnPressed: {
-                            searchDebounce.stop()
-                            page.doSearch(searchField.text.trim())
-                            searchField.focus = false
-                        }
-                    }
-                    Label {
-                        anchors.fill: parent
-                        verticalAlignment: Text.AlignVCenter
-                        text: Lang.tr("Search users...")
-                        font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFor(text)
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "find"
+                        width: units.gu(2); height: width
                         color: Style.textSecondary
-                        visible: searchField.text.length === 0
+                    }
+                    Item {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - units.gu(2) - units.gu(1)
+                        height: units.gu(3)
+
+                        TextInput {
+                            id: searchField
+                            anchors.fill: parent
+                            verticalAlignment: TextInput.AlignVCenter
+                            font.pixelSize: Style.fontRegular
+                            font.family: Style.fontFor(text)
+                            color: Style.textPrimary
+                            clip: true
+                            inputMethodHints: Qt.ImhNoPredictiveText
+                            onTextChanged: {
+                                if (searchField.text.trim().length < 2) {
+                                    page.searchOpen = false
+                                    searchModel.clear()
+                                }
+                                searchDebounce.restart()
+                            }
+                            Keys.onReturnPressed: {
+                                searchDebounce.stop()
+                                page.doSearch(searchField.text.trim())
+                                searchField.focus = false
+                            }
+                        }
+                        Label {
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            text: Lang.tr("Search users...")
+                            font.pixelSize: Style.fontRegular
+                            font.family: Style.fontFor(text)
+                            color: Style.textSecondary
+                            visible: searchField.text.length === 0
+                        }
                     }
                 }
             }
@@ -248,10 +294,20 @@ Page {
         page.profile = null;
     }
 
-    Component.onCompleted: refreshProfile()
+    Component.onCompleted: {
+        refreshProfile();
+        var rows = [profileCardBtn, loginBtn, signupBtn, languageRow,
+                    createPlatformRow, managePlatformRow, editProfileRow,
+                    passwordRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+        for (var i = 0; i < rows.length; i++) {
+            rows[i].pressedChanged.connect((function (row) {
+                return function () { if (row.pressed) page.navCurrent = null; };
+            })(rows[i]));
+        }
+    }
 
     // Following someone happens on another tab, so the in-memory follower count would otherwise stay stale until this tab is revisited.
-    onVisibleChanged: if (visible) refreshProfile()
+    onVisibleChanged: if (visible) { refreshProfile(); _onShownForKeyboard(); }
 
     Connections {
         target: Session
@@ -262,8 +318,10 @@ Page {
     Connections {
         target: page.pageStack
         function onDepthChanged() {
-            if (page.pageStack && page.pageStack.depth === 1)
+            if (page.pageStack && page.pageStack.depth === 1) {
                 page.refreshProfile();
+                Qt.callLater(function () { if (!searchField.activeFocus) scroll.forceActiveFocus(); });
+            }
         }
     }
 
@@ -295,17 +353,50 @@ Page {
         contentHeight: col.height
         clip: true
 
+        // Arrow cursor over the settings rows; Enter activates on release so
+        // the pushed sub-page / dialog doesn't inherit the tail of the press.
+        activeFocusOnTab: true
+        property bool _armed: false
+        Keys.onPressed: {
+            // A row click gives that AbstractButton keyboard focus, so scroll loses
+            // activeFocus and the ring (gated on it) hides. Reclaim focus on the
+            // first nav key so the cursor reappears and keyboard nav resumes.
+            if (!scroll.activeFocus) scroll.forceActiveFocus();
+            if (event.key === Qt.Key_Down)      { page._navMove(1);  event.accepted = true; }
+            else if (event.key === Qt.Key_Up)   { page._navMove(-1); event.accepted = true; }
+            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                scroll._armed = true; event.accepted = true;
+            }
+            else if (event.key === Qt.Key_Left) { Nav.focusNav();    event.accepted = true; }
+            else if (event.key === Qt.Key_Right){ Nav.focusDetail(); event.accepted = true; }
+        }
+        Keys.onReleased: {
+            if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)
+                && scroll._armed) {
+                scroll._armed = false;
+                if (page.navCurrent) {
+                    page.navCurrent.clicked();
+                    // If the row pushed a detail page (split mode), move focus into
+                    // it. No-op for dialog/external rows (nothing was pushed) and
+                    // for narrow mode (the pushed page auto-focuses itself).
+                    Qt.callLater(function () { Nav.focusDetail(); });
+                }
+                event.accepted = true;
+            }
+        }
+
         Column {
             id: col
-            width: parent.width
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(parent.width, page.maxContentWidth)
 
-            // ===== Profile card row (signed-in) / Welcome row (signed-out) =====
             Item {
                 width: parent.width
                 height: units.gu(10)
 
-                // Signed-in: tappable profile card → ProfileViewPage
+                // Signed-in: tappable profile card -> ProfileViewPage
                 AbstractButton {
+                    id: profileCardBtn
                     anchors.fill: parent
                     visible: Session.isLoggedIn
                     onClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
@@ -331,13 +422,11 @@ Page {
                         }
                         spacing: Style.spacingM
 
-                        // Avatar: rounded square with initial or photo
                         Item {
                             id: avatarBox
                             anchors.verticalCenter: parent.verticalCenter
                             width: units.gu(6.5); height: width
 
-                            // Brand-colour background + initial letter
                             Rectangle {
                                 anchors.fill: parent
                                 radius: Style.cardRadius
@@ -375,7 +464,6 @@ Page {
                             }
                         }
 
-                        // Name + "See your profile"
                         Column {
                             anchors.verticalCenter: parent.verticalCenter
                             width: parent.width - avatarBox.width - chevronIcon.width - Style.spacingM * 2
@@ -401,7 +489,6 @@ Page {
                             }
                         }
 
-                        // Chevron
                         Icon {
                             id: chevronIcon
                             anchors.verticalCenter: parent.verticalCenter
@@ -447,8 +534,9 @@ Page {
                         Row {
                             spacing: Style.spacingS
                             AbstractButton {
+                                id: loginBtn
                                 width: loginLbl.width; height: loginLbl.height
-                                onClicked: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
+                                onClicked: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"), { afterSuccess: "feed" })
                                 Label {
                                     id: loginLbl
                                     text: Lang.tr("Log in")
@@ -463,6 +551,7 @@ Page {
                                 color: Style.textSecondary
                             }
                             AbstractButton {
+                                id: signupBtn
                                 width: signupLbl.width; height: signupLbl.height
                                 onClicked: page.pageStack.push(Qt.resolvedUrl("CreateAccountPage.qml"))
                                 Label {
@@ -480,7 +569,6 @@ Page {
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-            // ===== Preferences (dev-only, hidden in production) ===========
             SettingsSectionHeader { text: Lang.tr("Preferences"); visible: Config.showDevOptions }
 
             SettingsRow {
@@ -506,8 +594,8 @@ Page {
                 }
             }
 
-            // ===== Language ===============================================
             SettingsRow {
+                id: languageRow
                 iconName: "language-chooser"
                 label: Lang.tr("Language")
                 valueText: Session.language === "nl" ? "Dutch" : "English"
@@ -520,99 +608,162 @@ Page {
                 Dialog {
                     id: langDlg
                     title: Lang.tr("Language")
+
+                    // Keyboard nav: Up/Down move the selection, Enter activates,
+                    // Escape cancels. The ring adapts colour so it stays visible
+                    // even on the brand-blue active-language button.
+                    property int selIndex: Session.language === "nl" ? 1 : 0
+                    // Restore keyboard focus to the settings list when the dialog closes.
+                    function _closeAndRestore() { PopupUtils.close(langDlg); Qt.callLater(function () { scroll.forceActiveFocus(); }); }
+
+                    // Zero-size focus holder: Keys on the Dialog root didn't reliably
+                    // own focus (the settings list behind the modal kept it), so this
+                    // grabs focus deferred and handles all keys without breaking layout.
+                    Item {
+                        id: keyGrab
+                        width: 0; height: 0
+                        focus: true
+                        Component.onCompleted: Qt.callLater(keyGrab.forceActiveFocus)
+                        Keys.onPressed: {
+                            if (event.key === Qt.Key_Down)      { langDlg.selIndex = Math.min(2, langDlg.selIndex + 1); event.accepted = true; }
+                            else if (event.key === Qt.Key_Up)   { langDlg.selIndex = Math.max(0, langDlg.selIndex - 1); event.accepted = true; }
+                            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                if (langDlg.selIndex === 0) enBtn.clicked();
+                                else if (langDlg.selIndex === 1) nlBtn.clicked();
+                                else cancelBtn.clicked();
+                                event.accepted = true;
+                            }
+                            else if (event.key === Qt.Key_Escape) { langDlg._closeAndRestore(); event.accepted = true; }
+                        }
+                    }
+
                     Button {
+                        id: enBtn
                         text: "English"
                         color: Session.language === "en" ? Style.brand : Style.iconBackground
                         onClicked: {
-                            PopupUtils.close(langDlg)
+                            langDlg._closeAndRestore()
                             if (Session.language !== "en") {
                                 Session.setLanguage("en")
                                 Toast.show(Lang.tr("Language") + ": English")
                             }
                         }
+                        Rectangle {
+                            anchors.fill: parent; anchors.margins: units.dp(1)
+                            radius: units.gu(1); color: "transparent"
+                            border.width: units.dp(2)
+                            border.color: Session.language === "en" ? Style.textOnBrand : Style.brand
+                            visible: keyGrab.activeFocus && langDlg.selIndex === 0
+                        }
                     }
                     Button {
+                        id: nlBtn
                         text: "Dutch"
                         color: Session.language === "nl" ? Style.brand : Style.iconBackground
                         onClicked: {
-                            PopupUtils.close(langDlg)
+                            langDlg._closeAndRestore()
                             if (Session.language !== "nl") {
                                 Session.setLanguage("nl")
                                 Toast.show(Lang.tr("Language") + ": Dutch")
                             }
                         }
+                        Rectangle {
+                            anchors.fill: parent; anchors.margins: units.dp(1)
+                            radius: units.gu(1); color: "transparent"
+                            border.width: units.dp(2)
+                            border.color: Session.language === "nl" ? Style.textOnBrand : Style.brand
+                            visible: keyGrab.activeFocus && langDlg.selIndex === 1
+                        }
                     }
                     Button {
+                        id: cancelBtn
                         text: Lang.tr("Cancel")
-                        onClicked: PopupUtils.close(langDlg)
+                        onClicked: langDlg._closeAndRestore()
+                        Rectangle {
+                            anchors.fill: parent; anchors.margins: units.dp(1)
+                            radius: units.gu(1); color: "transparent"
+                            border.width: units.dp(2)
+                            border.color: Style.brand
+                            visible: keyGrab.activeFocus && langDlg.selIndex === 2
+                        }
                     }
                 }
             }
 
-            // ===== Account ================================================
-            SettingsSectionHeader { text: Lang.tr("Account"); visible: Session.isLoggedIn }
+            // One platform per user: creators see "Create", owners/managers see the CMS hub instead.
+            SettingsSectionHeader { text: Lang.tr("Your Platform"); visible: Session.isLoggedIn }
             SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "edit"
-                label: Lang.tr("Edit profile")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("EditProfilePage.qml"), { initial: page.profile })
-            }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "system-lock-screen"
-                label: Lang.tr("Password & Security")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
-            }
-            SettingsRow {
-                visible: Session.isLoggedIn
-                iconName: "system-shutdown"
-                label: Lang.tr("Blocked Users")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
-            }
-            // One platform per user: creators see "Create", owners/managers see
-            // the CMS row instead (ownedCommunityIdSet is synced in Main.qml at
-            // startup/login and refreshed by the create wizard on success).
-            SettingsRow {
-                visible: Session.isLoggedIn && !page.hasPlatform
+                id: createPlatformRow
+                visible: Session.isLoggedIn && !Config.hasAnyOwnedCommunity
                 iconName: "add"
                 label: Lang.tr("Create your platform")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("CreatePlatformPage.qml"))
             }
             SettingsRow {
-                visible: Session.isLoggedIn && page.hasPlatform
+                id: managePlatformRow
+                visible: Session.isLoggedIn && Config.hasAnyOwnedCommunity
                 iconName: "settings"
-                label: Lang.tr("Manage platform")
+                label: Lang.tr("Manage your platform")
                 showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("ManagePlatformPage.qml"))
+                onClicked: page.pageStack.push(Qt.resolvedUrl("PlatformAdminPage.qml"))
+            }
+
+            SettingsSectionHeader { text: Lang.tr("Account"); visible: Session.isLoggedIn }
+            SettingsRow {
+                id: editProfileRow
+                visible: Session.isLoggedIn
+                showDivider: false
+                iconName: "edit"
+                label: Lang.tr("Edit profile")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("EditProfilePage.qml"), { initial: page.profile })
+            }
+            SettingsRow {
+                id: passwordRow
+                visible: Session.isLoggedIn
+                showDivider: false
+                iconName: "system-lock-screen"
+                label: Lang.tr("Password & Security")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
+            }
+            SettingsRow {
+                id: blockedRow
+                visible: Session.isLoggedIn
+                showDivider: false
+                iconName: "system-shutdown"
+                label: Lang.tr("Blocked Users")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("BlockedUsersPage.qml"))
             }
             // Not gated on isLoggedIn: downloads/saved articles work signed out too.
             SettingsRow {
+                id: downloadsRow
                 iconName: "save"
                 label: Lang.tr("Downloaded Content")
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadedContentPage.qml"))
             }
-            // ===== About ==================================================
+
             SettingsSectionHeader { text: Lang.tr("About") }
 
             SettingsRow {
+                showDivider: false
                 iconName: "info"
                 label: Lang.tr("Version")
                 valueText: Config.appVersion
             }
             SettingsRow {
+                id: websiteRow
                 iconName: "external-link"
                 label: Lang.tr("Serey website")
                 showChevron: true
                 onClicked: Qt.openUrlExternally("https://serey.io")
             }
 
-            // ===== Log out (bottom of the page) ============================
             SettingsRow {
+                id: logoutRow
                 visible: Session.isLoggedIn
                 iconName: "system-log-out"
                 label: Lang.tr("Log out")
@@ -624,6 +775,21 @@ Page {
         }
     }
 
+    // Keyboard cursor: one ring reparented into the selected row. Fallback parent
+    // is `page`, NOT the Column `col` (an anchored child disables its layout).
+    // Only visible once a key has moved the cursor, so touch users never see it.
+    Rectangle {
+        parent: page.navCurrent ? page.navCurrent : page
+        anchors.fill: parent
+        anchors.margins: units.dp(2)
+        radius: units.dp(6)
+        color: "transparent"
+        border.width: units.dp(2)
+        border.color: Style.brand
+        visible: page.navCurrent !== null && scroll.activeFocus
+        z: 10
+    }
+
     ActivityIndicator {
         anchors.centerIn: parent
         // isLoggedIn guard: logout must never leave this spinning (see refreshProfile).
@@ -631,7 +797,6 @@ Page {
         visible: running
     }
 
-    // ── Search results overlay ────────────────────────────────────────────────
     Rectangle {
         id: searchOverlay
         visible: page.searchOpen && (searchModel.count > 0 || page.searching)

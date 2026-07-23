@@ -2,18 +2,9 @@ pragma Singleton
 import QtQuick 2.7
 import QtQuick.LocalStorage 2.0
 
-/*
- * App-wide buy-plan payment state. Same state-vs-renderer split as
- * Toast/PostActions/Share: the mini app (via the WebAppView `buyPlan` bridge
- * or the checkout.stripe.com navigation intercept) calls open*(); the
- * renderers — PaymentSheet (native crypto flow) and StripeCheckoutSheet
- * (in-app Stripe checkout WebView) — are mounted once in Main.qml.
- *
- * `stripeOpen` matters beyond visibility: HomepagePage ORs it into the mini
- * app's `suspended` binding so the Homepage Chromium is frozen while the
- * checkout WebEngineView is alive (two live Chromium views SIGSEGV the
- * Pixel 3a — see dual-Chromium memory). The crypto sheet is pure QML.
- */
+// Buy-plan payment state; renderers (PaymentSheet, StripeCheckoutSheet) mount
+// once in Main.qml, opened via the mini app's buyPlan bridge or Stripe intercept.
+// stripeOpen also suspends the Homepage WebView (two live Chromiums SIGSEGV).
 QtObject {
     id: payments
 
@@ -48,12 +39,9 @@ QtObject {
     function closeCrypto() { cryptoOpen = false; }
     function closeStripe() { stripeOpen = false; stripeUrl = ""; }
 
-    // ---- Pending crypto payment, persisted across app restarts ------------
-    // Crypto activation only happens when OUR client pings check-status (no
-    // webhook reliance), so a payment made after the user closed the sheet or
-    // the app would never activate unless we remember it and keep checking.
-    // Main.qml runs the background check (a singleton QtObject can't own a
-    // Timer); null = nothing pending. { paymentId, planId, expiresAt }.
+    // Pending crypto payment, persisted across restarts: activation only happens
+    // when our client polls check-status (no webhook), so remember it and keep
+    // checking. Main.qml runs the poll. null = none. { paymentId, planId, expiresAt }.
     property var pendingCrypto: null
 
     function _db() {

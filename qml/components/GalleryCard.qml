@@ -10,7 +10,7 @@ Item {
 
     property var post: ({})
     readonly property var p: post ? post : ({})
-    // Computed once per bind — _images() splits a string/walks the model and was previously re-run 3-4x per card inside bindings.
+    // Computed once per bind; _images() was previously re-run 3-4x per card inside bindings.
     readonly property var imgs: _images()
     // Shared, reactive follow state (see Theme/FollowStore.qml).
     readonly property bool isFollowing: FollowStore.isFollowing(p.author)
@@ -25,22 +25,36 @@ Item {
     onPChanged: {
         if (Session.isLoggedIn && p.author && p.author !== Session.username)
             FollowStore.load(Config.baseUrl, Session.username, p.author);
+        _syncVoteBar();
+    }
 
-        if (galVoteBar) {
-            var cached = VoteService.getCached(p.author || "", p.permlink || "");
-            if (cached) {
-                galVoteBar.upvoted = cached.upvoted;
-                galVoteBar.flagged = cached.flagged;
-                galVoteBar.votes = cached.votes;
-                if (cached.payout) galVoteBar.payout = cached.payout;
-            } else {
-                var me = Session.username || "";
-                galVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
-                galVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
-                // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
-                galVoteBar.votes = p.votes || 0;
-                galVoteBar.payout = p.payout || "";
-            }
+    // ListModel.set() mutates the object `p` already references, so onPChanged never
+    // fires on an in-place row swap; without these the imperatively assigned vote
+    // count/payout kept the previous post's values (see PostCard, same fix).
+    readonly property int _pVotes: p.votes || 0
+    readonly property string _pPayout: p.payout || ""
+    readonly property string _pPermlink: p.permlink || ""
+    on_PVotesChanged: _syncVoteBar()
+    on_PPayoutChanged: _syncVoteBar()
+    on_PPermlinkChanged: _syncVoteBar()
+
+    Component.onCompleted: _syncVoteBar()
+
+    function _syncVoteBar() {
+        if (!galVoteBar) return;
+        var cached = VoteService.getCached(p.author || "", p.permlink || "");
+        if (cached) {
+            galVoteBar.upvoted = cached.upvoted;
+            galVoteBar.flagged = cached.flagged;
+            galVoteBar.votes = cached.votes;
+            if (cached.payout) galVoteBar.payout = cached.payout;
+        } else {
+            var me = Session.username || "";
+            galVoteBar.upvoted = me.length > 0 && (p.voterStr || "").indexOf("," + me + ",") >= 0;
+            galVoteBar.flagged = me.length > 0 && (p.flaggerStr || "").indexOf("," + me + ",") >= 0;
+            // Re-assert count/payout imperatively since a prior cached assignment breaks the QML binding on this pooled delegate when recycled.
+            galVoteBar.votes = p.votes || 0;
+            galVoteBar.payout = p.payout || "";
         }
     }
 
@@ -80,7 +94,6 @@ Item {
 
         Item { width: 1; height: Style.spacingS }
 
-        // Header: avatar + author + time
         Item {
             width: parent.width
             height: units.gu(6)
@@ -120,7 +133,7 @@ Item {
                         visible: (p.authorImage || "") !== ""
                     }
 
-                    MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
+                    MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
                 }
 
                 ColumnLayout {
@@ -135,7 +148,7 @@ Item {
                         font.weight: Font.DemiBold
                         color: Style.textPrimary
                         elide: Text.ElideRight
-                        MouseArea { anchors.fill: parent; onClicked: root.authorClicked() }
+                        MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
                     }
                     Label {
                         text: Style.formatTimeAgo(p.date || "")
@@ -144,7 +157,6 @@ Item {
                     }
                 }
 
-                // Follow pill
                 Rectangle {
                     visible: root.showFollow && (p.author || "") !== "" && p.author !== Session.username
                     Layout.preferredWidth: galFollowLabel.width + units.gu(3)
@@ -171,7 +183,27 @@ Item {
                     }
                 }
 
-                // More button — owner sees Edit/Delete, others moderation.
+                Rectangle {
+                    Layout.preferredWidth: dlLabel.width + Style.spacingM
+                    Layout.preferredHeight: units.gu(2.6)
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: (SavedPosts.rev, Downloads.rev, SavedPosts.isSaved(p.permlink) || Downloads.isSaved(p.permlink))
+                    radius: Style.pillRadius
+                    color: Style.iconBackground
+                    border.width: units.dp(1)
+                    border.color: Style.textSecondary
+
+                    Label {
+                        id: dlLabel
+                        anchors.centerIn: parent
+                        text: Lang.tr("Downloaded")
+                        font.pixelSize: Style.fontXSmall
+                        font.weight: Font.DemiBold
+                        color: Style.textSecondary
+                    }
+                }
+
+                // More button: owner sees Edit/Delete, others moderation.
                 AbstractButton {
                     Layout.preferredWidth: units.gu(3.5)
                     Layout.preferredHeight: units.gu(3.5)
@@ -211,9 +243,27 @@ Item {
                 opacity: status === Image.Ready ? 1.0 : 0.0
             }
 
-            MouseArea { anchors.fill: parent; onClicked: root.clicked() }
+            MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
 
-            // "+N" badge when the post has multiple photos.
+            // Category tag, top-left (top-right is the "+N" badge). categories is
+            // ListModel-wrapped here, so use the mapper's scalar copy instead.
+            Rectangle {
+                visible: (p.primaryCategory || "") !== ""
+                anchors { top: parent.top; left: parent.left; topMargin: Style.spacingS; leftMargin: Style.spacingS }
+                width: galCatLabel.width + Style.spacingM
+                height: units.gu(3)
+                radius: Style.pillRadius
+                color: Style.accentRed
+                Label {
+                    id: galCatLabel
+                    anchors.centerIn: parent
+                    text: p.primaryCategory || ""
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.DemiBold
+                    color: Style.textOnBrand
+                }
+            }
+
             Rectangle {
                 visible: root.imgs.length > 1
                 anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
@@ -234,7 +284,6 @@ Item {
 
         Item { width: 1; height: Style.spacingS }
 
-        // Action row (live voting)
         VoteBar {
             id: galVoteBar
             width: parent.width - Style.spacingM * 2
@@ -244,6 +293,9 @@ Item {
             voteType: "post"
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
+            // From the voterStr scalar; the feed ListModel mangles string arrays
+            // (see PostCard's cardVoteBar).
+            voters: (p.voterStr || "").split(",").filter(function (n) { return n.length > 0; })
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0
             payout: p.payout || ""
@@ -273,7 +325,10 @@ Item {
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }
 
-    // Pointer/keyboard parity: right-click or the MENU key opens the same
-    // context actions as swipe / the ••• overflow (see ContextActionArea).
-    ContextActionArea { onTriggered: root.moreClicked() }
+    // Pointer/keyboard parity: right-click or MENU opens the context menu;
+    // Enter opens the post (same as a tap). See ContextActionArea.
+    ContextActionArea {
+        onTriggered: root.moreClicked()
+        onActivated: root.clicked()
+    }
 }

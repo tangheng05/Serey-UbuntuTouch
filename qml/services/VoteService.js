@@ -7,7 +7,7 @@ var _cache = {};
 function _key(author, permlink) { return author + "/" + permlink; }
 
 function getCached(author, permlink) {
-    // Optimistic local comments have an empty permlink; they'd all collapse to the key "author/" and bleed vote state into each other — skip the cache.
+    // Optimistic local comments have an empty permlink; they'd all collapse to the key "author/" and bleed vote state into each other, so skip the cache.
     if (!permlink) return null;
     return _cache[_key(author, permlink)] || null;
 }

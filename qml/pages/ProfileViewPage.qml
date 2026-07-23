@@ -15,7 +15,9 @@ Page {
     property string username: ""
     property var profile: null
     property bool profileLoading: false
-    readonly property real maxContentWidth: units.gu(60)
+    // Wider reading column on desktop/tablet so the profile doesn't sit as a thin
+    // strip in the detail panel; phones stay full-width (parent.width wins the min).
+    readonly property real maxContentWidth: Config.wideMode ? units.gu(72) : units.gu(60)
 
     // `st` is mutated in place, so `rev` is bumped to make `cur*` bindings re-evaluate
     property int tab: 0          // 0 posts, 1 gallery, 2 video
@@ -227,7 +229,6 @@ Page {
                 id: headerCol
                 width: parent.width
 
-                // --- Cover banner ----------------------------------------
                 Item {
                     width: parent.width
                     height: units.gu(20)
@@ -250,7 +251,6 @@ Page {
                         visible: status === Image.Ready
                     }
 
-                    // Block button — top-right corner of cover
                     AbstractButton {
                         visible: !page.isSelf && !!page.profile
                         enabled: !page.blockLoading
@@ -264,28 +264,40 @@ Page {
                         z: 10
                         onClicked: PopupUtils.open(blockDialog)
 
-                        // Subtle disc behind the mark
+                        // Scrim disc so the control stays legible over any cover
+                        // photo and in both themes: dark by default, solid red
+                        // once the user is blocked.
                         Rectangle {
                             anchors.fill: parent
                             radius: width / 2
                             color: page.isBlocked
-                                ? Qt.rgba(Style.danger.r, Style.danger.g, Style.danger.b, 0.16)
-                                : "transparent"
+                                ? Qt.rgba(Style.danger.r, Style.danger.g, Style.danger.b, 0.92)
+                                : Qt.rgba(0, 0, 0, 0.38)
                         }
-                        // Prohibition / "no entry" badge.
-                        Image {
+                        // Prohibition mark drawn as a vector (the Suru theme has no
+                        // "block" icon; same shape PostActionSheet uses). White so it
+                        // reads on the dark/red scrim.
+                        Item {
                             anchors.centerIn: parent
-                            width: units.gu(3); height: width
-                            source: Qt.resolvedUrl("../../assets/prohibition.png")
-                            sourceSize.width: width * 2
-                            sourceSize.height: height * 2
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
+                            width: units.gu(2.4); height: width
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: width / 2
+                                color: "transparent"
+                                border.width: units.dp(2)
+                                border.color: "white"
+                            }
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: parent.width * 0.7; height: units.dp(2)
+                                color: "white"
+                                rotation: 45
+                            }
                         }
                     }
                 }
 
-                // --- Avatar (overlaps the cover) -------------------------
+                // Avatar overlaps the cover (negative y)
                 Item {
                     width: parent.width
                     height: units.gu(6)            // reserves the avatar's lower half
@@ -327,7 +339,6 @@ Page {
 
                 Item { width: 1; height: Style.spacingS }
 
-                // --- Name / @username / bio ------------------------------
                 Label {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
@@ -371,7 +382,6 @@ Page {
 
                 Item { width: 1; height: Style.spacingM }
 
-                // --- Stats skeleton (while loading) ----------------------
                 Row {
                     width: Math.min(parent.width, units.gu(45))
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -400,7 +410,6 @@ Page {
                     }
                 }
 
-                // --- Stats -----------------------------------------------
                 Row {
                     width: Math.min(parent.width, units.gu(45))
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -435,7 +444,6 @@ Page {
 
                 Item { width: 1; height: Style.spacingM }
 
-                // --- Follow button skeleton ------------------------------
                 Rectangle {
                     visible: !page.isSelf && !page.profile && page.profileLoading
                     width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
@@ -449,7 +457,6 @@ Page {
                     }
                 }
 
-                // --- Follow button (hidden on own profile or while loading) ---
                 PrimaryButton {
                     visible: !page.isSelf && !!page.profile
                     width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
@@ -460,7 +467,6 @@ Page {
 
                 Item { width: 1; height: Style.spacingM }
 
-                // --- Content tabs ----------------------------------------
                 SectionTabs {
                     width: parent.width
                     model: [Lang.tr("Posts"), Lang.tr("Gallery"), Lang.tr("Video")]
@@ -501,15 +507,22 @@ Page {
             if (atYEnd && !page.curLoading && !page.curEnd && page.curModel.count > 0)
                 page.loadTab(page.tab);
         }
+
+        // Prefetch ~2 screens early (see NewsPage); atYEnd stays as fallback.
+        onContentYChanged: {
+            if (!page.curLoading && !page.curEnd && page.curModel.count > 0
+                    && contentHeight > height
+                    && contentY + height >= contentHeight - height * 2)
+                page.loadTab(page.tab);
+        }
     }
 
-    // --- Card components, picked per tab by the delegate Loader --------------
+    // Card components, picked per tab by the delegate Loader
     Component {
         id: cPost
         PostCard {
             width: parent ? parent.width : list.width
             post: rowData
-            showFollow: false       // the big Follow button already covers this user
             onClicked: page.openPost(rowData)
             onMoreClicked: PostActions.open(rowData, "blog")
             onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))

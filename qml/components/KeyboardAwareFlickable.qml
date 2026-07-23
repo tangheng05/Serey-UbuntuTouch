@@ -5,7 +5,7 @@ import Lomiri.Components 1.3
 Flickable {
     id: flick
 
-    // True only when the focused input lives inside this flickable — a docked composer is focused but outside the scroll, handled by lifting the bar itself.
+    // True only when the focused input lives inside this flickable; a docked composer is focused but outside the scroll, handled by lifting the bar itself.
     property var activeFocusTarget: Window.activeFocusItem
     readonly property bool focusInside: !!activeFocusTarget && _contains(activeFocusTarget)
 
@@ -24,7 +24,7 @@ Flickable {
     function _ensureFocusedVisible() {
         if (!Qt.inputMethod.visible || !flick.contentItem || !flick.focusInside)
             return;
-        // Never fight an active manual scroll — that's what caused the flicker.
+        // Never fight an active manual scroll; that's what caused the flicker.
         if (flick.dragging || flick.flicking)
             return;
         var item = Window.activeFocusItem;

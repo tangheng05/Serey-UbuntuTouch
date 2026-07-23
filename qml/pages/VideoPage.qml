@@ -10,7 +10,7 @@ import "../services/BlockedUsers.js" as BlockedUsers
 Page {
     id: page
 
-    // Cards need swipe actions, so a fixed-cell GridView won't work — cap + center instead
+    // Cards need swipe actions, so a fixed-cell GridView won't work; cap + center instead
     readonly property real maxContentWidth: units.gu(60)
 
     property int offset: 0
@@ -20,10 +20,16 @@ Page {
     // Request generation bumped on reload() so a late response from a previous community can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
-    property var reelsInflight: null
     property var reels: []
+    // True while the rows on screen came from FeedCache rather than the network.
+    property bool showingCached: false
+    // The first page is fetched at this depth so the reel shelf (<=12 rows) and
+    // the list can share one response. Deeper pages go back to Config.pageSize.
+    readonly property int initialLimit: 30
     readonly property bool hasReels: reels && reels.length > 0
     readonly property int reelsInsertIndex: feedModel.count > 1 ? 1 : 0
+    // Tracks which row's detail is open in the split-pane (wide) layout so the master list can highlight it.
+    property string openPermlink: ""
 
     // Zero-height header keeps the Page off Lomiri's deprecated Page.head path; the global AppHeader is the real top bar.
     header: Item { height: 0 }
@@ -34,6 +40,15 @@ Page {
     Connections {
         target: Config
         function onCommunityIdChanged() { page.reload(); }
+    }
+
+    // Clears the highlighted row once the detail pane's back button returns here (split/wide layout).
+    Connections {
+        target: page.pageStack
+        ignoreUnknownSignals: true
+        function onCurrentPageChanged() {
+            if (page.pageStack.currentPage === page) page.openPermlink = "";
+        }
     }
 
     Connections {
@@ -72,17 +87,117 @@ Page {
     function reload() {
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
-        if (reelsInflight) { reelsInflight.abort(); reelsInflight = null; }
         offset = 0;
         endReached = false;
         loading = false;
         // Also clear refreshing so a reload that interrupts an in-flight pull-to-refresh can't leave it stuck true (disabling refresh).
         refreshing = false;
         errorMsg = "";
-        reels = [];
-        feedModel.clear();
-        loadReels();
-        loadMore();
+        page.showingCached = false;
+        // Only wipe when there's nothing cached to put in its place, or the list
+        // flashes empty between communities.
+        if (!_paintCached()) { reels = []; feedModel.clear(); }
+        // In-place sync keeps the scroll offset, so reset it explicitly (see NewsPage).
+        list.positionViewAtBeginning();
+        _fetchInitial(false);
+    }
+
+    // Paint the last-seen rows for this community so a relaunch (or switching
+    // back to a community already visited) shows videos at once instead of the
+    // skeleton, which is bound to `count === 0`.
+    function _paintCached() {
+        var cached = FeedCache.peek(FeedCache.videoKey(Config.communityId));
+        if (!cached) return false;
+        _applyRows(cached, -1);
+        page.showingCached = feedModel.count > 0;
+        return page.showingCached;
+    }
+
+    // Overwrite rows in place rather than clear() + append: clearing destroys
+    // delegates and VideoCard thumbnails fade back in, flashing an unchanged
+    // list. Same reasoning (and shape) as NewsPage._syncRows.
+    function _rowDiffers(cur, next) {
+        return cur.permlink !== next.permlink
+            || cur.votes !== next.votes
+            || cur.comments !== next.comments;
+    }
+
+    function _syncRows(rows) {
+        var n = Math.min(rows.length, feedModel.count);
+        for (var i = 0; i < n; i++)
+            if (_rowDiffers(feedModel.get(i), rows[i]))
+                feedModel.set(i, rows[i]);
+        for (var j = feedModel.count; j < rows.length; j++)
+            feedModel.append(rows[j]);
+        while (feedModel.count > rows.length)
+            feedModel.remove(feedModel.count - 1);
+    }
+
+    // One response drives both the list and the reel shelf (two concurrent
+    // requests paid the ~2.7s Global query twice). rawCount < 0 means "painted
+    // from cache": leave paging counters alone so the real response fetches page 0.
+    function _applyRows(result, rawCount) {
+        var hidden = HiddenPosts.loadAll();
+        var blocked = BlockedUsers.loadAll();
+        var rows = [];
+        var out = [];
+        var seen = {};
+        for (var i = 0; i < result.length; i++) {
+            var v = result[i];
+            if (hidden[v.permlink || ""] || blocked[v.author || ""]) continue;
+            rows.push(v);
+            // Reel shelf: Serey-hosted and playable only, deduped, capped at 12.
+            if (out.length < 12 && v.platform === "SEREY" && (v.videoLink || "").length > 0
+                    && !seen[v.permlink || ""]) {
+                seen[v.permlink || ""] = true;
+                out.push(v);
+            }
+        }
+        _syncRows(rows);
+        page.reels = out;
+        if (rawCount >= 0) {
+            page.offset = rawCount;
+            // Compare against what we actually asked for, not pageSize: asking
+            // for 30 and getting 12 means the feed is exhausted, not that a
+            // second page is waiting.
+            page.endReached = rawCount < page.initialLimit;
+        }
+    }
+
+    function _fetchInitial(isRefresh) {
+        var epoch = page.reqEpoch;
+        if (!isRefresh) { page.loading = true; page.errorMsg = ""; }
+        var params = { limit: page.initialLimit, offset: 0 };
+        if (Config.communityId > 0)
+            params.community_id = Config.communityId;
+        else
+            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
+        // Through FeedCache: stores the rows, and attaches to Main.qml's startup
+        // prefetch rather than firing the same 2.7s request again.
+        inflight = FeedCache.request(FeedCache.videoKey(Config.communityId),
+            function (ok, err) { return VideoService.listVideos(Config.baseUrl, params, Session.token, ok, err); },
+            function (result, rawCount) {
+                if (epoch !== page.reqEpoch) return;   // stale response, ignore
+                inflight = null;
+                page.loading = false;
+                page.refreshing = false;
+                page.showingCached = false;
+                page._applyRows(result, rawCount);
+                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
+                // Deferred atYEnd recheck: the user can reach the end while this
+                // request was in flight (trigger fired into the loading guard);
+                // checked on a timer because atYEnd is stale until relayout (see NewsPage).
+                endRecheck.restart();
+            },
+            function (err) {
+                if (epoch !== page.reqEpoch) return;
+                inflight = null;
+                page.loading = false;
+                page.refreshing = false;
+                // Keep cached rows on failure; only an empty list becomes an error
+                // (it used to fall through to EmptyState's "No videos" instead).
+                if (feedModel.count === 0) page.errorMsg = err.message;
+            });
     }
 
     // Pull-to-refresh re-fetches page one but keeps current rows until new ones arrive (no skeleton flash, just the pull spinner).
@@ -92,81 +207,24 @@ Page {
         page.refreshing = true;
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
-        if (reelsInflight) { reelsInflight.abort(); reelsInflight = null; }
-        loadReels();
-        var epoch = page.reqEpoch;
-        var params = { limit: Config.pageSize, offset: 0 };
-        if (Config.communityId > 0)
-            params.community_id = Config.communityId;
-        inflight = VideoService.listVideos(Config.baseUrl, params, Session.token,
-            function (result, rawCount) {
-                if (epoch !== page.reqEpoch) return;
-                inflight = null;
-                page.refreshing = false;
-                page.loading = false;
-                feedModel.clear();
-                var hidden = HiddenPosts.loadAll();
-                var blocked = BlockedUsers.loadAll();
-                for (var i = 0; i < result.length; i++)
-                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
-                        feedModel.append(result[i]);
-                page.offset = rawCount;
-                page.endReached = rawCount < Config.pageSize;
-                // Keep paging if filtering left less than a screenful
-                if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
-            },
-            function (err) {
-                if (epoch !== page.reqEpoch) return;
-                inflight = null;
-                page.refreshing = false;
-                // Must also clear loading — an aborted in-flight loadMore's own callback early-returns and would leave the skeleton stuck otherwise.
-                page.loading = false;
-            });
-    }
-
-    function loadReels() {
-        var epoch = page.reqEpoch;
-        var params = { limit: 30, offset: 0 };
-        if (Config.communityId > 0)
-            params.community_id = Config.communityId;
-        reelsInflight = VideoService.listVideos(Config.baseUrl, params, Session.token,
-            function (result) {
-                if (epoch !== page.reqEpoch) return;
-                reelsInflight = null;
-                var hidden = HiddenPosts.loadAll();
-                var blocked = BlockedUsers.loadAll();
-                var out = [];
-                var seen = {};
-                for (var i = 0; i < result.length; i++) {
-                    var v = result[i];
-                    if (v.platform !== "SEREY") continue;
-                    if (!(v.videoLink || "").length) continue;
-                    if (hidden[v.permlink || ""] || blocked[v.author || ""]) continue;
-                    if (seen[v.permlink || ""]) continue;
-                    seen[v.permlink || ""] = true;
-                    out.push(v);
-                    if (out.length >= 12) break;
-                }
-                page.reels = out;
-            },
-            function (err) {
-                if (epoch !== page.reqEpoch) return;
-                reelsInflight = null;
-                page.reels = [];
-            });
+        _fetchInitial(true);
     }
 
     function loadMore() {
         if (loading || endReached) return;
+        // Page 0 is the shared list+reels fetch; only deeper pages come through here.
+        if (page.offset === 0) { _fetchInitial(false); return; }
         loading = true;
         errorMsg = "";
         var epoch = page.reqEpoch;
         var params = { limit: Config.pageSize, offset: page.offset };
         if (Config.communityId > 0)
             params.community_id = Config.communityId;
+        else
+            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
         inflight = VideoService.listVideos(Config.baseUrl, params, Session.token,
             function (result, rawCount) {
-                if (epoch !== page.reqEpoch) return;   // stale response — ignore
+                if (epoch !== page.reqEpoch) return;   // stale response, ignore
                 inflight = null;
                 loading = false;
                 var hidden = HiddenPosts.loadAll();
@@ -178,6 +236,7 @@ Page {
                 if (rawCount < Config.pageSize) page.endReached = true;
                 // Keep paging if this page was filtered below a screenful (see refresh()).
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
+                endRecheck.restart();   // user may sit at the end already (see _fetchInitial)
             },
             function (err) {
                 if (epoch !== page.reqEpoch) return;
@@ -187,9 +246,43 @@ Page {
             });
     }
 
+    // Post-layout atYEnd recheck, same rationale and shape as NewsPage's.
+    Timer {
+        id: endRecheck
+        interval: 120
+        repeat: false
+        onTriggered: if (!page.loading && !page.endReached && page.errorMsg === "" && list.atYEnd)
+                         page.loadMore()
+    }
+
     Component.onCompleted: {
-        loadReels();
-        loadMore();
+        _paintCached();
+        _fetchInitial(false);
+        if (visible) list.forceActiveFocus();
+    }
+    // Keyboard parity on arrival: the list takes arrow-key focus whenever this
+    // page is (re)shown, so keyboard nav works before the first click/tap.
+    onVisibleChanged: if (visible) {
+        list.kbEngaged = false;
+        // Clear any card that kept scope focus from a previous keyboard session,
+        // else its ring reappears uninvited when the tab regains focus.
+        if (list.currentItem) list.currentItem.focus = false;
+        list.forceActiveFocus();
+    }
+
+    // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
+    property Item keyboardFocusItem: list
+
+    // Same "no cursor on first Left" problem as NewsPage: the cursor is the
+    // VideoCard's own ring, gated on kbEngaged. Engage and focus the card directly;
+    // the wrapper's onActiveFocusChanged never fires if it already holds focus.
+    function focusListKeyNav() {
+        if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0;
+        list.kbEngaged = true;
+        var w = list.currentItem;
+        if (!w) { list.forceActiveFocus(); return; }
+        if (w.rowCard) w.rowCard.forceActiveFocus();
+        else w.forceActiveFocus();
     }
 
     ListView {
@@ -199,6 +292,21 @@ Page {
         clip: true
         model: feedModel
         cacheBuffer: units.gu(16)
+        // The keyboard cursor visual is the VideoCard's own ring (the delegate
+        // forwards focus to the card, see rowWrap). kbEngaged gates that so the
+        // page's auto-focus on show never paints a ring for touch users.
+        property bool kbEngaged: false
+        Keys.onPressed: {
+            if (!list.kbEngaged) {
+                list.kbEngaged = true;
+                if (list.currentItem) list.currentItem.forceActiveFocus();
+                if (event.key === Qt.Key_Down) { event.accepted = true; return; }
+            }
+        }
+        // Right arrow steps into the open detail's pane (split windows).
+        Keys.onRightPressed: Nav.focusDetail()
+        // Left steps out of the content to the tab nav (rail / bottom bar).
+        Keys.onLeftPressed: Nav.focusNav()
 
         PullToRefresh {
             refreshing: page.refreshing
@@ -234,6 +342,14 @@ Page {
             width: list.width
             readonly property bool showReelShelf: page.hasReels && index === page.reelsInsertIndex
             height: (showReelShelf ? reelsShelf.implicitHeight : 0) + videoRow.height
+            // Lets focusListKeyNav() reach the real focus owner: the ListView only
+            // hands focus to this wrapper, and the ring lives on the card.
+            property alias rowCard: card
+
+            // The ListView focuses this plain wrapper (needed for the Reels shelf),
+            // so ListItem's key-nav frame never shows; hand focus to the VideoCard,
+            // which draws its own ring. Gated on kbEngaged (see above).
+            onActiveFocusChanged: if (activeFocus && list.kbEngaged) card.forceActiveFocus()
 
             Item {
                 id: reelsShelf
@@ -351,8 +467,17 @@ Page {
                 y: rowWrap.showReelShelf ? reelsShelf.implicitHeight : 0
                 width: parent.width
                 height: card.height
-                // VideoCard draws its own bottom divider — suppress ListItem's to avoid a double hairline.
+                // VideoCard draws its own bottom divider; suppress ListItem's to avoid a double hairline.
                 divider.visible: false
+                // Dark-greys the row whose video is currently open in the detail pane (wide layout only).
+                color: (Config.wideMode && page.openPermlink !== "" && model.permlink === page.openPermlink)
+                    ? Style.iconBackground : Style.surface
+
+                // Touch equivalent of the removed overflow button; opens the same Hide/Report/Block sheet.
+                onPressAndHold: {
+                    var vm = feedModel.get(index);
+                    if (vm) PostActions.open(vm, "video");
+                }
 
                 // HIG polarity: LEADING = negative (red), TRAILING = positive.
                 leadingActions: ListItemActions {
@@ -369,11 +494,16 @@ Page {
                     }
                     actions: [
                         Action {
-                            iconName: "close"
+                            iconName: "view-off"
                             text: Lang.tr("Hide")
                             onTriggered: {
                                 var vm = feedModel.get(index);
-                                if (vm) PostActions.hideRequested(vm.author, vm.permlink);
+                                if (vm) {
+                                    // Persist to the local hidden-posts store so it stays hidden across
+                                    // restarts, matching the overflow-menu Hide (PostActionSheet).
+                                    HiddenPosts.hide(vm.permlink || "");
+                                    PostActions.hideRequested(vm.author, vm.permlink);
+                                }
                             }
                         }
                     ]
@@ -382,14 +512,29 @@ Page {
                     delegate: Item {
                         width: units.gu(7)
                         height: parent ? parent.height : units.gu(6)
+                        // Reflects already-following on the "contact"/Follow action; every other action keeps the neutral color.
+                        readonly property bool isFollowAction: action.iconName === "contact"
+                        readonly property var _rowVideo: isFollowAction ? feedModel.get(index) : null
                         Icon {
                             anchors.centerIn: parent
                             width: units.gu(2.5); height: width
                             name: action.iconName
-                            color: "black"
+                            color: (parent.isFollowAction && parent._rowVideo && FollowStore.isFollowing(parent._rowVideo.author))
+                                ? Style.brand : Style.textPrimary
                         }
                     }
                     actions: [
+                        Action {
+                            iconName: "contact"
+                            text: Lang.tr("Follow")
+                            onTriggered: {
+                                var vm = feedModel.get(index);
+                                if (!vm || !vm.author || vm.author === Session.username) return;
+                                if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
+                                var now = FollowStore.toggle(Config.baseUrl, vm.author, Session.token);
+                                Toast.show(now ? Lang.tr("Following") : Lang.tr("Unfollowed"));
+                            }
+                        },
                         Action {
                             iconName: "share"
                             text: Lang.tr("Share")
@@ -405,8 +550,16 @@ Page {
                     id: card
                     width: parent.width
                     video: feedModel.get(index)
-                    onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
-                        { video: feedModel.get(index) })
+                    onClicked: {
+                        // Push first: swapping the detail pane transiently drops the stack to
+                        // depth 0, which would race with the currentPageChanged reset below.
+                        var v = feedModel.get(index);
+                        // Pointer clicks don't move currentIndex, so the key-nav cursor would
+                        // sit at the top when Left brings focus back from the detail.
+                        list.currentIndex = index;
+                        page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v });
+                        page.openPermlink = v ? v.permlink : "";
+                    }
                     onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                         { username: feedModel.get(index).author })
                     onMoreClicked: PostActions.open(feedModel.get(index), "video")
@@ -429,6 +582,14 @@ Page {
             if (atYEnd && !page.loading && !page.endReached)
                 page.loadMore();
         }
+
+        // Prefetch ~2 screens early (see NewsPage); atYEnd stays as fallback.
+        onContentYChanged: {
+            if (!page.loading && !page.endReached
+                    && contentHeight > height
+                    && contentY + height >= contentHeight - height * 2)
+                page.loadMore();
+        }
     }
 
     LoadingState {
@@ -449,5 +610,5 @@ Page {
         message: Lang.tr("No videos to show")
     }
 
-    // Upload lives in the global header action now (gated on the Video tab) — Lomiri uses a header action, not a Material floating button.
+    // Upload lives in the global header action now (gated on the Video tab); Lomiri uses a header action, not a Material floating button.
 }

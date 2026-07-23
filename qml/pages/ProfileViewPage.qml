@@ -229,7 +229,6 @@ Page {
                 id: headerCol
                 width: parent.width
 
-                // --- Cover banner ----------------------------------------
                 Item {
                     width: parent.width
                     height: units.gu(20)
@@ -252,7 +251,6 @@ Page {
                         visible: status === Image.Ready
                     }
 
-                    // Block button, top-right corner of cover
                     AbstractButton {
                         visible: !page.isSelf && !!page.profile
                         enabled: !page.blockLoading
@@ -299,7 +297,7 @@ Page {
                     }
                 }
 
-                // --- Avatar (overlaps the cover) -------------------------
+                // Avatar overlaps the cover (negative y)
                 Item {
                     width: parent.width
                     height: units.gu(6)            // reserves the avatar's lower half
@@ -341,7 +339,6 @@ Page {
 
                 Item { width: 1; height: Style.spacingS }
 
-                // --- Name / @username / bio ------------------------------
                 Label {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
@@ -385,7 +382,6 @@ Page {
 
                 Item { width: 1; height: Style.spacingM }
 
-                // --- Stats skeleton (while loading) ----------------------
                 Row {
                     width: Math.min(parent.width, units.gu(45))
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -414,7 +410,6 @@ Page {
                     }
                 }
 
-                // --- Stats -----------------------------------------------
                 Row {
                     width: Math.min(parent.width, units.gu(45))
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -449,7 +444,6 @@ Page {
 
                 Item { width: 1; height: Style.spacingM }
 
-                // --- Follow button skeleton ------------------------------
                 Rectangle {
                     visible: !page.isSelf && !page.profile && page.profileLoading
                     width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
@@ -463,7 +457,6 @@ Page {
                     }
                 }
 
-                // --- Follow button (hidden on own profile or while loading) ---
                 PrimaryButton {
                     visible: !page.isSelf && !!page.profile
                     width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
@@ -474,7 +467,6 @@ Page {
 
                 Item { width: 1; height: Style.spacingM }
 
-                // --- Content tabs ----------------------------------------
                 SectionTabs {
                     width: parent.width
                     model: [Lang.tr("Posts"), Lang.tr("Gallery"), Lang.tr("Video")]
@@ -525,7 +517,7 @@ Page {
         }
     }
 
-    // --- Card components, picked per tab by the delegate Loader --------------
+    // Card components, picked per tab by the delegate Loader
     Component {
         id: cPost
         PostCard {

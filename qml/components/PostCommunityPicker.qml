@@ -366,7 +366,6 @@ Item {
                                     anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
                                     spacing: Style.spacingM
 
-                                    // Radio indicator
                                     Rectangle {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: units.gu(2.4); height: width; radius: width / 2

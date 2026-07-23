@@ -6,8 +6,8 @@ import "../Theme"
 
 /*
  * Input-method parity (UBports HIG): swipe/long-press context actions must also be
- * reachable by right-click and keyboard (MENU / Shift+F10). Wire `triggered()` for rows
- * with an overflow menu, or set `menuActions` to show those actions in a popover menu.
+ * reachable by right-click and keyboard (MENU / Shift+F10). Wire `triggered()`, or set
+ * `menuActions` to show those actions in a popover menu.
  */
 Item {
     id: area

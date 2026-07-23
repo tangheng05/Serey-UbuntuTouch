@@ -222,12 +222,10 @@ Page {
         return out;
     }
 
-    // Sync the model in place instead of clear() + append: clear() destroys
-    // delegates, so PostCard thumbnails fade back in from nothing on every
-    // Trending/Latest toggle. Reused rows don't flash.
-    // True when a row needs rewriting: a different article, or the same one with
-    // stale counts or content. Content matters because an edit keeps the permlink
-    // and counters; comparing only those left the old title/body on the card.
+    // Sync in place, not clear()+append: clear() destroys delegates, so
+    // PostCard thumbnails re-fade on every Trending/Latest toggle.
+    // Row differs on a different article, or same one with stale counts/content:
+    // an edit keeps permlink+counters, so comparing only those left stale body.
     function _rowDiffers(cur, next) {
         return cur.permlink !== next.permlink
             || cur.votes !== next.votes

@@ -328,7 +328,6 @@ Item {
             });
     }
 
-    // Backdrop
     Rectangle {
         id: backdrop
         anchors.fill: parent
@@ -365,7 +364,6 @@ Item {
 
         Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
 
-        // Grabber
         Rectangle {
             anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
             width: units.gu(4.5)
@@ -550,7 +548,6 @@ Item {
                 }
             }
 
-            // Delete: goes to confirm step
             AbstractButton {
                 id: deletePostBtn
                 width: parent.width; height: units.gu(8)
@@ -573,7 +570,6 @@ Item {
                 }
             }
 
-            // Hide
             AbstractButton {
                 id: hidePostBtn
                 width: parent.width; height: units.gu(8)
@@ -603,7 +599,6 @@ Item {
                 }
             }
 
-            // Report: goes to step 1
             AbstractButton {
                 id: reportPostBtn
                 width: parent.width; height: units.gu(8)
@@ -626,7 +621,6 @@ Item {
                 }
             }
 
-            // Block: goes to confirm step
             AbstractButton {
                 id: blockUserBtn
                 width: parent.width; height: units.gu(8)
@@ -676,7 +670,6 @@ Item {
             spacing: 0
             visible: sheet.step === 1
 
-            // Header: back + title
             Item {
                 width: parent.width; height: units.gu(5)
 
@@ -880,7 +873,6 @@ Item {
             }
             Item { width: 1; height: Style.spacingL }
 
-            // Confirm delete (danger)
             AbstractButton {
                 id: deleteConfirmBtn
                 width: parent.width - Style.spacingM * 2
@@ -905,7 +897,6 @@ Item {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Cancel: back to main menu
             AbstractButton {
                 id: deleteCancelBtn
                 width: parent.width - Style.spacingM * 2
@@ -939,7 +930,6 @@ Item {
             spacing: 0
             visible: sheet.step === 4
 
-            // Header: back + title
             Item {
                 width: parent.width; height: units.gu(5)
 
@@ -1001,7 +991,6 @@ Item {
 
             Item { width: 1; height: Style.spacingL }
 
-            // Save
             AbstractButton {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter

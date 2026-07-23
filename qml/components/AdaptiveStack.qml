@@ -10,7 +10,6 @@ import "../Theme"
 Item {
     id: root
 
-    // --- Public API --------------------------------------------------------
     property bool singleColumnUntilPushed: false
     // Never enter master-detail: the root fills the tab and every push covers it
     // full-screen. Used by Homepage, where the web app itself is the panel.
@@ -105,7 +104,6 @@ Item {
         }
     }
 
-    // --- Leading (master) panel --------------------------------------------
     Item {
         id: listPane
         anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
@@ -140,7 +138,6 @@ Item {
         }
     }
 
-    // --- Detail panel ------------------------------------------------------
     Item {
         id: detailPane
         anchors { top: parent.top; bottom: parent.bottom; right: parent.right }

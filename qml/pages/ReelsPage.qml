@@ -359,7 +359,6 @@ Page {
                 }
             }
 
-            // Bottom gradient + caption.
             Rectangle {
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                 height: units.gu(14)

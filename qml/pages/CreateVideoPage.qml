@@ -253,7 +253,6 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Community gate notice.
             Rectangle {
                 width: parent.width
                 visible: !page.hasCommunity
@@ -353,7 +352,6 @@ Page {
                 }
             }
 
-            // Post to blockchain toggle
             Row {
                 width: parent.width
                 spacing: Style.spacingM
@@ -399,7 +397,6 @@ Page {
                 color: Style.textPrimary
             }
 
-            // Empty state: pick a video.
             AbstractButton {
                 width: parent.width
                 height: units.gu(16)
@@ -436,7 +433,6 @@ Page {
                 }
             }
 
-            // Picked state: thumbnail preview + status.
             Rectangle {
                 width: parent.width
                 height: units.gu(20)
@@ -453,7 +449,6 @@ Page {
                     asynchronous: true
                 }
 
-                // Center status: spinner while uploading / capturing, check when done.
                 Column {
                     anchors.centerIn: parent
                     spacing: Style.spacingXs
@@ -483,7 +478,6 @@ Page {
                     }
                 }
 
-                // Remove button.
                 AbstractButton {
                     anchors { top: parent.top; right: parent.right; topMargin: units.dp(6); rightMargin: units.dp(6) }
                     width: units.gu(3); height: width
@@ -498,7 +492,6 @@ Page {
         }
     }
 
-    // Submit overlay.
     Rectangle {
         anchors.fill: parent
         color: Qt.rgba(1, 1, 1, 0.7)

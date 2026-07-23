@@ -254,7 +254,6 @@ Page {
         message: Lang.tr("No gallery posts in %1").arg(Config.communityName)
     }
 
-    // Floating compose button
     AbstractButton {
         visible: Session.isLoggedIn
         anchors {

@@ -5,9 +5,8 @@ import "../Session"
 import "../services/PaymentService.js" as PaymentService
 
 /*
- * Native crypto (NOWPayments) buy-plan sheet; state in Theme/Payments.qml, mounted
- * once in Main.qml. Flow: pick currency, create payment, show deposit address, poll
- * check-status. Only "finished" is terminal: the backend activates the plan there, no webhook.
+ * Native crypto (NOWPayments) buy-plan sheet; state in Theme/Payments.qml.
+ * Only "finished" is terminal: the backend activates the plan there, no webhook.
  */
 Item {
     id: sheet
@@ -181,8 +180,8 @@ Item {
     Timer { id: pollTimer;      interval: 10000; repeat: true; onTriggered: sheet._pollStatus() }
     Timer { id: countdownTimer; interval: 1000;  repeat: true; onTriggered: sheet._tickCountdown() }
 
-    // Backdrop. While waiting for a payment a stray tap must not dismiss the
-    // sheet (losing the address mid-payment), so step 1 ignores backdrop taps.
+    // While waiting for a payment a stray tap must not dismiss the sheet
+    // (losing the address mid-payment), so step 1 ignores backdrop taps.
     Rectangle {
         id: backdrop
         anchors.fill: parent
@@ -210,7 +209,6 @@ Item {
         NumberAnimation { id: sheetSlideOut; target: sheetTranslate; property: "y"; to: sheetRect.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: Payments.closeCrypto() }
         Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
 
-        // Grabber
         Rectangle {
             anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
             width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
@@ -293,7 +291,6 @@ Item {
                 }
             }
 
-            // Expand from the recommended few to the full NOWPayments list.
             LinkButton {
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: !sheet.busy && !sheet.showAllCurrencies
@@ -360,7 +357,6 @@ Item {
             }
             Item { width: 1; height: Style.spacingM }
 
-            // Address + copy
             AbstractButton {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -392,7 +388,6 @@ Item {
             }
             Item { width: 1; height: Style.spacingM }
 
-            // Live status + expiry countdown
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: Style.spacingS

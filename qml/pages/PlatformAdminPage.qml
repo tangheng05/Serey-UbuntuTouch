@@ -219,7 +219,6 @@ Page {
             spacing: Style.spacingL
             bottomPadding: Style.spacingL
 
-            // ===== Platform identity: banner + logo + name/switch/subscribers =====
             // Own Column (tight spacing) so the outer Style.spacingL section-gap
             // doesn't land between the logo and the name below it.
             Column {
@@ -413,7 +412,6 @@ Page {
                 color: Style.textSecondary
             }
 
-            // ===== Top cards: Platform Information / Platform Setting =======
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: Math.min(parent.width, page.maxContentWidth) - Style.spacingL * 2
@@ -483,7 +481,6 @@ Page {
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-            // ===== Manage Navigation Bar: Blog + Video only ==================
             SettingsSectionHeader {
                 text: Lang.tr("Manage Navigation Bar")
                 anchors.horizontalCenter: parent.horizontalCenter

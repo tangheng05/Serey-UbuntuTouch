@@ -41,7 +41,7 @@ Item {
             function () { sheet.loading = false; });
     }
 
-    // --- comment tree helpers (same as VideoDetailPage) --------------------
+    // comment tree helpers (same as VideoDetailPage)
     function _appendReply(list, parentPermlink, reply) {
         var out = [];
         for (var i = 0; i < list.length; i++) {
@@ -129,7 +129,6 @@ Item {
             });
     }
 
-    // --- Backdrop ----------------------------------------------------------
     Rectangle {
         id: backdrop
         anchors.fill: parent
@@ -141,7 +140,6 @@ Item {
             onStopped: sheet.visible = false }
     }
 
-    // --- Panel -------------------------------------------------------------
     Rectangle {
         id: panel
         // Anchored above the keyboard; height clamps so it never runs off the top when the OSK is up.
@@ -159,7 +157,6 @@ Item {
 
         MouseArea { anchors.fill: parent /* swallow taps so backdrop doesn't close */ }
 
-        // Header
         Rectangle {
             id: cHeader
             anchors { left: parent.left; right: parent.right; top: parent.top }
@@ -212,13 +209,11 @@ Item {
             color: Style.textSecondary
         }
 
-        // Composer
         Column {
             id: composerBar
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             spacing: 0
 
-            // "Replying to" chip
             Rectangle {
                 width: parent.width
                 height: visible ? units.gu(4) : 0

@@ -202,7 +202,6 @@ Page {
             id: contentCol
             width: scroll.width
 
-            // Post header: avatar + author + time (Instagram-style row above the image)
             AbstractButton {
                 width: parent.width
                 height: units.gu(6)
@@ -254,7 +253,6 @@ Page {
                 }
             }
 
-            // Full-width swipeable image carousel
             Item {
                 id: cover
                 width: parent.width
@@ -281,7 +279,6 @@ Page {
                     }
                 }
 
-                // Page dots
                 Row {
                     visible: page.imgs.length > 1
                     anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: Style.spacingS }
@@ -300,7 +297,6 @@ Page {
 
             Item { width: 1; height: Style.spacingM }
 
-            // Caption
             Label {
                 visible: page.post && (page.post.caption || "") !== ""
                 width: parent.width - Style.spacingM * 2 - Style.wrapSafeMargin
@@ -395,7 +391,6 @@ Page {
             onRequireLogin: page.pushLogin()
         }
 
-        // Replying-to banner
         Row {
             visible: page.replyTarget !== null
             width: parent.width - Style.spacingM * 2
@@ -421,7 +416,6 @@ Page {
             }
         }
 
-        // Comment input pill
         Row {
             width: parent.width - Style.spacingM * 2
             anchors.horizontalCenter: parent.horizontalCenter

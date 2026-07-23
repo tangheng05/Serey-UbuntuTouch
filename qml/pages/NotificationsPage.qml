@@ -178,7 +178,6 @@ Page {
 
     Component.onCompleted: page.reload()
 
-    // --- Content ---
     ListView {
         id: list
         anchors { top: parent.header.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
@@ -352,7 +351,6 @@ Page {
             }
         }
 
-        // Load more on scroll to bottom
         onAtYEndChanged: {
             if (atYEnd && !page.loading && !page.endReached)
                 page.loadPage()
@@ -366,7 +364,6 @@ Page {
                 page.loadPage();
         }
 
-        // Empty state
         Label {
             anchors.centerIn: parent
             visible: notifModel.count === 0 && !page.loading && page.errorMsg === ""
@@ -376,7 +373,6 @@ Page {
             color: Style.textSecondary
         }
 
-        // Error state
         Column {
             anchors.centerIn: parent
             visible: page.errorMsg.length > 0 && notifModel.count === 0
@@ -400,7 +396,6 @@ Page {
             }
         }
 
-        // Footer spinner
         footer: Item {
             width: list.width
             height: page.loading ? units.gu(6) : 0
@@ -412,7 +407,6 @@ Page {
         }
     }
 
-    // Overlay spinner while marking all as read
     Item {
         anchors { top: parent.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         visible: page.markingAllRead

@@ -334,7 +334,6 @@ RowLayout {
         color: Style.textPrimary
     }
 
-    // Comments
     AbstractButton {
         visible: bar.showComments
         Layout.preferredHeight: units.gu(3.5)
@@ -359,7 +358,6 @@ RowLayout {
         }
     }
 
-    // Share
     AbstractButton {
         visible: bar.showShare && bar.shareUrl.length > 0
         Layout.preferredHeight: units.gu(3.5)
@@ -375,7 +373,6 @@ RowLayout {
 
     Item { Layout.fillWidth: true }
 
-    // Busy indicator / payout pill
     ActivityIndicator {
         running: bar.busy
         visible: bar.busy

@@ -171,7 +171,6 @@ Page {
                         color: Style.textPrimary
                     }
 
-                    // Status pills: trial / auto-renew / cancelling / past due.
                     Row {
                         width: parent.width
                         spacing: Style.spacingS

@@ -128,7 +128,6 @@ Rectangle {
         height: parent.height
     }
 
-    // Bottom hairline
     Rectangle {
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: units.dp(1)

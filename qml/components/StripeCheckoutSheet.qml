@@ -83,7 +83,6 @@ Item {
 
     Rectangle { anchors.fill: parent; color: Style.surface }
 
-    // Header: title + close
     Item {
         id: header
         anchors { top: parent.top; left: parent.left; right: parent.right }

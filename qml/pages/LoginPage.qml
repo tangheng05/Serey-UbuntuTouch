@@ -61,7 +61,6 @@ Page {
             // Gaps use explicit Item spacers below, not uniform spacing
             spacing: 0
 
-            // Logo hero
             Image {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: units.gu(9); height: width

@@ -96,7 +96,6 @@ QtObject {
         store._cacheImages(post.permlink, post);
     }
 
-    // --- Offline image caching ---
     function _downloaderComponent() {
         if (_dlComp === null)
             _dlComp = Qt.createComponent(Qt.resolvedUrl("../components/VideoDownloader.qml"));

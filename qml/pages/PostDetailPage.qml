@@ -844,7 +844,6 @@ Page {
 
             Rectangle { width: parent.width; height: units.dp(1); color: "black" }
 
-            // --- Comments ---------------------------------------------------
             Label {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -893,7 +892,6 @@ Page {
         onRetry: page.load()
     }
 
-    // --- Fixed footer: votes/voters/share + comment composer ---------------
     Rectangle {
         id: footer
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -939,7 +937,6 @@ Page {
             onVisibleChanged: if (visible) applyCache()
         }
 
-        // Replying-to banner
         Row {
             visible: page.replyTarget !== null
             width: parent.width - Style.spacingM * 2
@@ -965,7 +962,6 @@ Page {
             }
         }
 
-        // Comment input pill
         Row {
             width: parent.width - Style.spacingM * 2
             anchors.horizontalCenter: parent.horizontalCenter

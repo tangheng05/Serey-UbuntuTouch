@@ -169,7 +169,6 @@ Page {
             y: Style.spacingL
             spacing: Style.spacingM
 
-            // Logo
             Image {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: units.gu(9); height: width
@@ -178,7 +177,6 @@ Page {
                 asynchronous: true
             }
 
-            // Step dots
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: Style.spacingS
@@ -192,7 +190,6 @@ Page {
                 }
             }
 
-            // Step title
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
@@ -330,7 +327,6 @@ Page {
                 onAccepted: page.submitReset()
             }
 
-            // Error
             Label {
                 width: parent.width
                 font.family: Style.fontFor(text)
@@ -341,7 +337,6 @@ Page {
                 visible: text.length > 0
             }
 
-            // Primary action button
             PrimaryButton {
                 width: parent.width
                 busy: page.busy

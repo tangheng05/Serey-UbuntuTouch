@@ -5,7 +5,6 @@ import Lomiri.Components 1.3
 QtObject {
     id: style
 
-    // --- Theme ----------------------------------------------------------------
     // Single light/dark switch; Main.qml binds it to the system theme so every
     // token below re-skins for SuruDark centrally. Values are Suru palette hexes.
     // Brand tokens stay fixed (Serey blue is identity, not a theme role).
@@ -24,13 +23,11 @@ QtObject {
     readonly property color dangerTint: dark ? "#3A1519" : "#FBEAEC"  // danger background wash
     readonly property color success: dark ? "#3EB34F" : "#52C41A"     // positive accent (keeps the app's green in light)
 
-    // --- Text -----------------------------------------------------------------
     readonly property color textPrimary: dark ? "#F7F7F7" : "#262626"    // Porcelain / near-Jet
     readonly property color textTitle:   dark ? "#FFFFFF" : "#373737"
     readonly property color textSecondary: dark ? "#ABABAB" : "#5F5F5F"  // Ash / Slate
     readonly property color textOnBrand: "#FFFFFF"                        // on the blue button (fixed)
 
-    // --- Surfaces -------------------------------------------------------------
     readonly property color surface: dark ? "#111111" : "#FFFFFF"        // Jet / White
     readonly property color card:    dark ? "#1B1B1B" : "#FFFFFF"
     readonly property color navigationBg: dark ? "#161616" : "#FFFFFF"
@@ -43,14 +40,12 @@ QtObject {
     readonly property color toastBg: "#323232"                           // dark chip (both themes)
     readonly property color videoStage: "#000000"                        // video stage (both themes)
 
-    // --- Spacing (grid units) -------------------------------------------------
     readonly property real spacingXs: units.gu(0.5)
     readonly property real spacingS: units.gu(1)
     readonly property real spacingM: units.gu(2)
     readonly property real spacingL: units.gu(3)
     readonly property real cellPadding: units.gu(2)
 
-    // --- Type scale -----------------------------------------------------------
     // Grid-unit type scale per the Ubuntu typography guide. gu(n) == dp(8n) on
     // Ubuntu Touch, so these match the old dp() values pixel-for-pixel;
     // fontMedium/Large/Title are the app's own intermediate steps.
@@ -70,7 +65,6 @@ QtObject {
     readonly property real fabRadius: units.gu(0.6)
     readonly property real durationBadgeRadius: units.dp(3)
 
-    // --- Sizes ----------------------------------------------------------------
     readonly property real thumbSize: units.gu(13)   // compact list thumbnail
     readonly property real avatarSize: units.gu(4)
     readonly property real avatarSmall: units.gu(3)

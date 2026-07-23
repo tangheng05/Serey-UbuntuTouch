@@ -64,7 +64,6 @@ Page {
             })
     }
 
-    // --- Category management ---
     // Sub-categories are kept as a JSON string per row (subsJson) so the
     // dynamicRoles ListModel doesn't wrap them as a nested QQmlListModel.
     ListModel { id: categoryModel; dynamicRoles: true }
@@ -384,7 +383,6 @@ Page {
 
             SettingsSectionHeader { text: Lang.tr("Categories") }
 
-            // Add-category row
             Item {
                 width: parent.width
                 height: units.gu(6.5)
@@ -434,7 +432,6 @@ Page {
                         try { return JSON.parse(model.subsJson || "[]") } catch (e) { return [] }
                     }
 
-                    // Header row: expand toggle + name (+ sub count) + delete
                     Item {
                         width: parent.width
                         height: units.gu(6)
@@ -489,7 +486,6 @@ Page {
                         }
                     }
 
-                    // Expanded area: sub-category chips + add-sub row
                     Column {
                         width: parent.width
                         visible: model.expanded
@@ -531,7 +527,6 @@ Page {
                             }
                         }
 
-                        // Add-sub-category input
                         Item {
                             width: parent.width - Style.spacingM * 2 - units.gu(3)
                             x: Style.spacingM + units.gu(3)

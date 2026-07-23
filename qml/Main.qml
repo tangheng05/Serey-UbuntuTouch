@@ -435,7 +435,6 @@ MainView {
         }
     }
 
-    // --- Global header (community pill + logo) ----------------------------
     AppHeader {
         id: appHeader
         anchors { left: root.wideMode ? sideNavBar.right : parent.left; right: parent.right; top: parent.top }
@@ -752,7 +751,6 @@ MainView {
         }
     }
 
-    // --- Overlays (bottom sheets + toasts) ---------------------------------
     CommunityPicker { id: communityPicker }
     PostCommunityPicker { id: postCommunityPicker }
     PostActionSheet { }

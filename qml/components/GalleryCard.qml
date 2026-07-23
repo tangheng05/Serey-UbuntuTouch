@@ -94,7 +94,6 @@ Item {
 
         Item { width: 1; height: Style.spacingS }
 
-        // Header: avatar + author + time
         Item {
             width: parent.width
             height: units.gu(6)
@@ -158,7 +157,6 @@ Item {
                     }
                 }
 
-                // Follow pill
                 Rectangle {
                     visible: root.showFollow && (p.author || "") !== "" && p.author !== Session.username
                     Layout.preferredWidth: galFollowLabel.width + units.gu(3)
@@ -185,7 +183,6 @@ Item {
                     }
                 }
 
-                // Downloaded-for-offline indicator.
                 Rectangle {
                     Layout.preferredWidth: dlLabel.width + Style.spacingM
                     Layout.preferredHeight: units.gu(2.6)
@@ -267,7 +264,6 @@ Item {
                 }
             }
 
-            // "+N" badge when the post has multiple photos.
             Rectangle {
                 visible: root.imgs.length > 1
                 anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
@@ -288,7 +284,6 @@ Item {
 
         Item { width: 1; height: Style.spacingS }
 
-        // Action row (live voting)
         VoteBar {
             id: galVoteBar
             width: parent.width - Style.spacingM * 2

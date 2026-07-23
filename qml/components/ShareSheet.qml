@@ -30,7 +30,6 @@ Item {
         visible: Config.wideMode
         anchors.fill: parent
 
-        // Dismiss on outside click
         MouseArea {
             anchors.fill: parent
             onClicked: Share.close()
@@ -165,7 +164,6 @@ Item {
             NumberAnimation { id: slideIn; target: panelTranslate; property: "y"; from: panel.height + units.gu(4); to: 0; duration: 300; easing.type: Easing.OutCubic }
             NumberAnimation { id: slideOut; target: panelTranslate; property: "y"; to: panel.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: Share.close() }
 
-            // Grabber
             Rectangle {
                 anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
                 width: units.gu(4.5)
@@ -213,7 +211,6 @@ Item {
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-                // Copy link
                 AbstractButton {
                     width: parent.width; height: units.gu(7)
                     onClicked: {
@@ -241,7 +238,6 @@ Item {
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-                // Open in browser
                 AbstractButton {
                     width: parent.width; height: units.gu(7)
                     onClicked: {

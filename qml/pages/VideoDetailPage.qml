@@ -26,7 +26,6 @@ Page {
     property bool isFollowing: false
     property bool descSheetOpen: false
 
-    // Vote state
     property int  voteCount:  0
     property bool upvoted:    false
     property bool flagged:    false
@@ -53,7 +52,6 @@ Page {
     // On-screen-keyboard height; the comment composer rides above it.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
-    // "More Videos" feed
     property var moreVideos: []
 
     // Caption edited elsewhere; swap in a fresh object so bindings re-evaluate
@@ -514,14 +512,12 @@ Page {
     }
 
     function _initVideoState() {
-        // Check follow status
         page.isFollowing = false;
         if (Session.isLoggedIn && video.author && video.author !== Session.username) {
             FollowService.status(Config.baseUrl, Session.username, video.author,
                 function (following) { page.isFollowing = following; },
                 function (err) { /* keep false */ });
         }
-        // Init vote state
         var cached = VoteService.getCached(page.video.author || "", page.video.permlink || "")
         var me, saved
         if (cached) {
@@ -721,7 +717,6 @@ Page {
 
             Item { width: 1; height: Style.spacingM }
 
-            // Full-width meta block (title/author/action-row/comments header)
             Item {
                 id: metaBlock
                 width: parent.width
@@ -745,7 +740,6 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Author row: avatar + @name + date + "...more"
             Item {
                 width: parent.width
                 height: units.gu(5)
@@ -982,7 +976,6 @@ Page {
         Rectangle { anchors.fill: parent; color: "black" }
     }
 
-    // --- Comment bottom sheet ------------------------------------------------
     Item {
         id: cmtSheet
         anchors.fill: parent
@@ -1047,7 +1040,6 @@ Page {
                 height: units.dp(1); color: Style.divider
             }
 
-            // Comment list
             Flickable {
                 id: cmtScroll
                 anchors { top: cmtDivider.bottom; left: parent.left; right: parent.right; bottom: cmtFooter.top }
@@ -1084,7 +1076,6 @@ Page {
                 }
             }
 
-            // Comment input footer inside sheet
             Column {
                 id: cmtFooter
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -1094,7 +1085,6 @@ Page {
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-                // Replying-to banner
                 Row {
                     visible: page.replyTarget !== null
                     width: parent.width - Style.spacingM * 2
@@ -1170,7 +1160,6 @@ Page {
         }
     }
 
-    // --- Description bottom sheet -------------------------------------------
     Item {
         id: descSheet
         anchors.fill: parent
@@ -1206,7 +1195,6 @@ Page {
                 color: Style.lightGray
             }
 
-            // Header: "Description" + close
             Item {
                 id: descHeader
                 anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
@@ -1263,7 +1251,6 @@ Page {
                         wrapMode: Text.Wrap
                     }
 
-                    // Stats row: Likes | Comments | Date
                     Row {
                         x: Style.spacingM
                         width: parent.width - Style.spacingM * 2

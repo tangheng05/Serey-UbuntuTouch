@@ -31,7 +31,6 @@ Page {
 
     header: Item { height: 0 }
 
-    // Custom header
     Rectangle {
         id: hdr
         anchors { left: parent.left; right: parent.right; top: parent.top }
@@ -193,7 +192,6 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Caption field, outlined rounded box
             Rectangle {
                 width: parent.width
                 height: Math.max(units.gu(12), captionField.contentHeight + Style.spacingM * 2)
@@ -221,7 +219,6 @@ Page {
                 }
             }
 
-            // Photos header
             Label {
                 text: Lang.tr("Photos (%1/%2)").arg(page.imageUrls.length).arg(page.maxImages)
                 font.pixelSize: Style.fontSmall
@@ -229,7 +226,6 @@ Page {
                 color: Style.textPrimary
             }
 
-            // Image grid
             Flow {
                 width: parent.width
                 spacing: Style.spacingS
@@ -272,7 +268,6 @@ Page {
                     }
                 }
 
-                // Add photo button / upload spinner
                 Item {
                     visible: page.imageUrls.length < page.maxImages
                     width: (parent.width - Style.spacingS * 2) / 3
@@ -335,7 +330,6 @@ Page {
         }
     }
 
-    // Loading overlay
     Rectangle {
         anchors.fill: parent
         color: Qt.rgba(1, 1, 1, 0.7)

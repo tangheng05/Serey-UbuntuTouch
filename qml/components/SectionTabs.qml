@@ -64,7 +64,6 @@ Item {
                     color: tab.active ? Style.brand : Style.textSecondary
                 }
 
-                // Active underline
                 Rectangle {
                     anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom }
                     width: tabLabel.implicitWidth + units.gu(2)
@@ -86,7 +85,6 @@ Item {
         }
     }
 
-    // Baseline hairline
     Rectangle {
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: units.dp(1)

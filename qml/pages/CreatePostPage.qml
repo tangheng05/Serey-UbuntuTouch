@@ -291,7 +291,6 @@ Page {
             var u = imgs[parseInt(n, 10) - 1];
             return u ? '<img src="' + u + '" style="max-width:100%;height:auto;" />' : m;
         });
-        // Prepend cover image to body if one was uploaded
         if (page.coverImageUrl.length > 0) {
             body = '<img src="' + page.coverImageUrl + '" style="max-width:100%;height:auto;" />\n' + body;
         }
@@ -415,7 +414,6 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Title field, outlined rounded box with inline character counter
             Rectangle {
                 width: parent.width
                 height: titleField.height + Style.spacingM * 2 + counterLabel.height + Style.spacingXs
@@ -630,7 +628,6 @@ Page {
                 }
             }
 
-            // Post to blockchain toggle
             Rectangle {
                 width: parent.width
                 height: chainRow.implicitHeight + Style.spacingM * 2
@@ -680,7 +677,6 @@ Page {
                 }
             }
 
-            // Cover image area
             Rectangle {
                 width: parent.width
                 height: units.gu(20)
@@ -688,7 +684,6 @@ Page {
                 color: Style.iconBackground
                 clip: true
 
-                // Show uploaded image preview
                 Image {
                     anchors.fill: parent
                     source: page.coverImageUrl
@@ -698,7 +693,6 @@ Page {
                     visible: page.coverImageUrl.length > 0
                 }
 
-                // Remove button (top-right, shown when image is set)
                 AbstractButton {
                     visible: page.coverImageUrl.length > 0
                     anchors {
@@ -722,7 +716,6 @@ Page {
                     }
                 }
 
-                // Upload spinner overlay
                 Rectangle {
                     anchors.fill: parent
                     color: Qt.rgba(1, 1, 1, 0.7)
@@ -734,7 +727,6 @@ Page {
                     }
                 }
 
-                // Empty state: + button + label (shown when no image set and not uploading)
                 Column {
                     anchors.centerIn: parent
                     spacing: Style.spacingS
@@ -869,7 +861,6 @@ Page {
         }
     }
 
-    // Loading overlay
     Rectangle {
         anchors.fill: parent
         color: Qt.rgba(1, 1, 1, 0.7)

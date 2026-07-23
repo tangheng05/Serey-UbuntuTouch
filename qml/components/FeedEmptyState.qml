@@ -105,7 +105,6 @@ Item {
                 visible: running
             }
 
-            // --- Suggested communities ---------------------------------------
             Column {
                 width: parent.width
                 spacing: 0

@@ -28,11 +28,9 @@ Item {
             picker.loadingIndex = -1
         }
     }
-    /*
-     * Geo hint: hoist the detected country to the top, expanded, rest behind "See more".
-     * Reorders the VIEW ONLY; all state stays keyed by the real Config.sources index,
-     * carried per display row as `_realIndex`. No detection -> detectedIndex -1, normal list.
-     */
+    // Geo hint: hoist the detected country to the top, expanded, rest behind "See more".
+    // Reorders the VIEW ONLY; state stays keyed by the real Config.sources index, carried
+    // per display row as `_realIndex`. No detection -> detectedIndex -1, normal list.
     readonly property int detectedIndex: Config.indexForCountryCode(Config.detectedCountryCode)
     property bool showAll: false
     readonly property var displaySources: picker._buildDisplaySources()
@@ -104,7 +102,6 @@ Item {
         onTriggered: if (picker.visible) picker.close()
     }
 
-    // --- Keyboard cursor ---
     // Rows live in nested Repeaters (source > category > community), so the cursor is
     // data coordinates, not Items; it survives delegate recreation. cat/com -1 = source row.
     property int navSrc: -1
@@ -415,7 +412,6 @@ Item {
         }
     }
 
-    // --- Backdrop ---
     Rectangle {
         id: cpBackdrop
         anchors.fill: parent
@@ -431,8 +427,6 @@ Item {
     NumberAnimation { id: cpBackdropFade;    target: cpBackdrop; property: "opacity"; from: 0; to: 1;  duration: 200 }
     NumberAnimation { id: cpBackdropFadeOut; target: cpBackdrop; property: "opacity"; to: 0;            duration: 200 }
 
-    // --- Sheet ---
-    // Full-width sheet on phone, centered width-capped card on desktop
     Rectangle {
         id: sheet
         readonly property bool wide: Config.wideMode
@@ -453,14 +447,12 @@ Item {
         NumberAnimation { id: cpSlide;    target: cpTranslate; property: "y"; from: sheet.height + units.gu(4); to: 0;              duration: 300; easing.type: Easing.OutCubic }
         NumberAnimation { id: cpSlideOut; target: cpTranslate; property: "y"; to: sheet.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: picker.close() }
 
-        // Grabber
         Rectangle {
             anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
             width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
             color: Style.lightGray
         }
 
-        // Scrollable content
         Flickable {
             id: flickable
             anchors { fill: parent; topMargin: units.gu(1) }
@@ -472,7 +464,6 @@ Item {
                 id: sheetContent
                 width: flickable.width
 
-                // --- Header ---
                 Item { width: 1; height: Style.spacingL }
                 Row {
                     width: parent.width - Style.spacingM * 2
@@ -493,7 +484,6 @@ Item {
                 }
                 Item { width: 1; height: Style.spacingM }
 
-                // --- Source rows ---
                 Repeater {
                     // Display order, which may differ from Config.sources when a
                     // country is geo-detected; srcIndex carries the real index.
@@ -508,7 +498,6 @@ Item {
                         property bool isExpanded: picker.expandedIndex === sourceCol.srcIndex
                         property var cats: picker.cache[sourceCol.srcIndex] || []
 
-                        // Parent row
                         Item {
                             id: sourceRow
                             width: parent.width
@@ -529,7 +518,6 @@ Item {
                                 anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
                                 spacing: Style.spacingM
 
-                                // Flag / icon
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: units.gu(5); height: width; radius: width / 2
@@ -551,7 +539,6 @@ Item {
                                     }
                                 }
 
-                                // Name
                                 Label {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: parent.width - units.gu(5) - sourceRow.chevronW - Style.spacingM * 2
@@ -603,7 +590,6 @@ Item {
                                 z: 5
                             }
 
-                            // Bottom divider
                             Rectangle {
                                 anchors.bottom: parent.bottom
                                 width: parent.width; height: units.dp(1)
@@ -611,7 +597,6 @@ Item {
                             }
                         }
 
-                        // Loading indicator
                         Item {
                             visible: sourceCol.isExpanded && picker.loadingIndex === sourceCol.srcIndex
                             width: parent.width; height: units.gu(5)
@@ -621,12 +606,10 @@ Item {
                             }
                         }
 
-                        // Sub-communities grouped by category
                         Column {
                             visible: sourceCol.isExpanded && picker.loadingIndex !== sourceCol.srcIndex
                             width: parent.width
 
-                            // Empty state
                             Item {
                                 visible: sourceCol.cats.length === 0 && picker.cache[sourceCol.srcIndex] !== undefined
                                 width: parent.width; height: units.gu(5)
@@ -648,7 +631,6 @@ Item {
                                     // Captured for the keyboard cursor: the inner community Repeater shadows `index`.
                                     property int catIndex: index
 
-                                    // Category header pill (hidden when no category name)
                                     Item {
                                         width: parent.width
                                         height: catData.name.length > 0 ? units.gu(5) : 0
@@ -662,7 +644,6 @@ Item {
                                             }
                                             spacing: 0
 
-                                            // Pill background
                                             Rectangle {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 height: units.gu(3.2)
@@ -676,12 +657,10 @@ Item {
                                                     anchors.centerIn: parent
                                                     spacing: units.gu(0.5)
 
-                                                    // Category icon: backend image if available, fallback icon otherwise
                                                     Item {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: units.gu(2); height: width
 
-                                                        // Backend icon with color tint
                                                         Image {
                                                             id: catIconImg
                                                             anchors.fill: parent
@@ -697,7 +676,6 @@ Item {
                                                             visible: catIconImg.status === Image.Ready
                                                         }
 
-                                                        // Fallback when no backend icon
                                                         Icon {
                                                             anchors.fill: parent
                                                             name: "view-grid-symbolic"
@@ -720,14 +698,12 @@ Item {
                                         }
                                     }
 
-                                    // Community rows
                                     Repeater {
                                         model: catData.communities
 
                                         delegate: Column {
                                             width: sheetContent.width
 
-                                            // --- Main platform card ---
                                             Item {
                                             id: commBtn
                                             width: sheetContent.width
@@ -750,7 +726,6 @@ Item {
                                                                       ? (Config.superhubChildrenById[commBtn.commId] || [])
                                                                       : []
 
-                                            // Card
                                             Rectangle {
                                                 anchors {
                                                     fill: parent
@@ -789,7 +764,6 @@ Item {
                                                     }
                                                     spacing: Style.spacingM
 
-                                                    // Community icon
                                                     Rectangle {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: units.gu(5.5); height: width; radius: width / 2
@@ -802,7 +776,6 @@ Item {
                                                         }
                                                     }
 
-                                                    // Name
                                                     Label {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: parent.width - units.gu(5.5) - subBtn.width
@@ -867,7 +840,7 @@ Item {
                                             }
                                             }
 
-                                            // --- Superhub children (indented, with a connector line) ---
+                                            // Superhub children: indented, with a connector line.
                                             Repeater {
                                                 model: commBtn.hubChildren
 
@@ -898,7 +871,6 @@ Item {
                                                         color: Style.divider
                                                     }
 
-                                                    // Child card (indented)
                                                     Rectangle {
                                                         anchors {
                                                             fill: parent
@@ -989,9 +961,8 @@ Item {
                     }
                 }
 
-                // --- See more ---
-                // Only shown while the geo hint collapses the list; expanding is
-                // one-way for the session.
+                // See more: shown only while the geo hint collapses the list;
+                // expanding is one-way for the session.
                 AbstractButton {
                     id: seeMoreBtn
                     visible: picker.detectedIndex >= 0 && !picker.showAll

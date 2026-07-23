@@ -103,7 +103,6 @@ Page {
             height: units.gu(9)
             readonly property int btnWidth: units.gu(11)
 
-            // Tap row
             MouseArea {
                 id: rowPress
                 anchors.fill: parent
@@ -111,14 +110,12 @@ Page {
                                { username: model.username })
             }
 
-            // Row press highlight
             Rectangle {
                 anchors.fill: parent
                 color: rowPress.pressed ? Style.pressed : "transparent"
                 z: 1
             }
 
-            // Avatar
             Item {
                 id: rowAvatar
                 anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
@@ -146,7 +143,6 @@ Page {
                 }
             }
 
-            // Username + @handle
             Column {
                 anchors {
                     left: rowAvatar.right; leftMargin: Style.spacingM
@@ -174,7 +170,6 @@ Page {
                 }
             }
 
-            // Unblock button
             Item {
                 anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                 width: btnWidth; height: units.gu(4.5)

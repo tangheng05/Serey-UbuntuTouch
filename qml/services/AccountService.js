@@ -115,7 +115,6 @@ function setProfilePicture(baseUrl, token, imageUrl, onOk, onErr) {
     Http.post(baseUrl, "/user-profile-picture/add", { image_url: imageUrl }, token, onOk, onErr);
 }
 
-// Same as setProfilePicture, for the cover photo
 function setCoverPhoto(baseUrl, token, imageUrl, onOk, onErr) {
     Http.post(baseUrl, "/user-cover-photo/add", { image_url: imageUrl }, token, onOk, onErr);
 }
@@ -127,7 +126,6 @@ function searchUser(baseUrl, token, query, onOk, onErr) {
     }, onErr);
 }
 
-// Change password while authenticated (POST /accounts/change-password, Bearer).
 function changePassword(baseUrl, token, currentPassword, newPassword, onOk, onErr) {
     Http.post(baseUrl, "/accounts/change-password",
               { current_password: currentPassword, new_password: newPassword },

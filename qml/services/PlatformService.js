@@ -1,10 +1,9 @@
 .pragma library
 .import "Http.js" as Http
 
-// Create-your-platform flow, gated on an active subscription. Key server rules:
-// `dns` is the subdomain SLUG only (server appends ".serey.io"), country ids are
-// uuid strings, name is letters/digits/spaces, one community per user (surface
-// the server's error message rather than pre-blocking).
+// Create-your-platform flow, gated on an active subscription. Server rules:
+// dns is the subdomain SLUG only (server appends ".serey.io"), country ids are
+// uuid strings, name is letters/digits/spaces, one community per user.
 
 // Resolved by username from the JWT; no community_id involved.
 function getActiveSubscription(baseUrl, token, onOk, onErr) {
@@ -127,23 +126,18 @@ function getCategories(baseUrl, onOk, onErr) {
 }
 
 /*
- * Create the community. `form`:
- *   { name, slug, independent (bool), countryId (string|null),
- *     categoryId (number|0), iconUrl, logoUrl, footerLogoUrl }
- * Image URLs default to the site's own "/logo.png" placeholder - same default
- * the web wizard sends - because logo_url/footer_logo_url are required strings.
- * onOk({ id, dns }) with the created community's id and full dns.
+ * createCommunity `form`: { name, slug, independent, countryId, categoryId,
+ * iconUrl, logoUrl, footerLogoUrl }. Image URLs default to "/logo.png" (the web
+ * wizard's default) since logo_url/footer_logo_url are required strings.
  */
 // ---- Manage (owner CMS basics) ---------------------------------------------
 // The server authorizes every mutation by CommunityManager membership, so the
 // app only needs to find WHICH community the user manages and show its state.
 
 /*
- * Find EVERY community in the get-communities tree whose id is in `idSet`
- * (the { id: true } map Main.qml builds from permission-by-current-user).
- * Searches nested child_communities too - owned platforms usually live at
- * level 3 under a country. onOk(list) - possibly empty; managers of several
- * communities get them all so the manage page can offer a switcher.
+ * Find every community in the get-communities tree whose id is in `idSet`.
+ * Searches nested child_communities (owned platforms usually live at level 3
+ * under a country). onOk(list), possibly empty; may return several to switch between.
  */
 function findManagedCommunities(baseUrl, idSet, onOk, onErr) {
     Http.get(baseUrl, "/general/get-communities", {}, "", function (data) {
@@ -180,9 +174,8 @@ function findManagedCommunities(baseUrl, idSet, onOk, onErr) {
 }
 
 /*
- * Resolve a community's parent country (its top-level ancestor in the
- * get-communities tree - the parent is structural, not a field on the node)
- * and its community_category_id. onOk({ parentCountry, categoryId }).
+ * Resolve a community's parent country (its top-level ancestor in the tree,
+ * not a field on the node) and its community_category_id.
  */
 function getCommunityContext(baseUrl, id, onOk, onErr) {
     Http.get(baseUrl, "/general/get-communities", {}, "", function (data) {
@@ -213,9 +206,9 @@ function getCommunityContext(baseUrl, id, onOk, onErr) {
 }
 
 /*
- * Whether the community has POSTER members (CommunityManager role 2; role 1 is
- * the owner). The web dashboard derives the blog-posting mode from this:
- * is_allow_post=true -> "everyone"; false + posters -> "custom"; false -> "only me".
+ * Whether the community has POSTER members (CommunityManager role 2, role 1 =
+ * owner). Blog-posting mode: is_allow_post=true -> everyone; false + posters ->
+ * custom; false -> only me.
  */
 function hasPosterMembers(baseUrl, communityId, onOk, onErr) {
     Http.get(baseUrl, "/community/list-community-manager-by-community-id/" + communityId,
@@ -249,10 +242,9 @@ function updateCommunityMetaDescription(baseUrl, token, id, desc, onOk, onErr) {
 }
 
 /*
- * Change the community's profile picture (icon_url). The schema requires
- * logo_url + footer_logo_url as strict strings too, so the caller passes the
- * community's current values back unchanged (default "/logo.png" when a
- * community somehow has none - the create wizard's own default).
+ * Change the community icon (icon_url). Schema also requires logo_url +
+ * footer_logo_url as strict strings, so the caller passes current values back
+ * unchanged (default "/logo.png" when a community has none).
  */
 function updateCommunityIcon(baseUrl, token, community, iconUrl, onOk, onErr) {
     Http.post(baseUrl, "/community/update-logo", {
@@ -292,10 +284,8 @@ function createCommunity(baseUrl, token, form, onOk, onErr) {
     Http.post(baseUrl, "/community/create-or-update-community", body, token,
               function (data) {
         var c = (data && data.community) || {};
-        // Return the fields the caller needs to seed the in-session community
-        // cache (name/logo show + categories load) without a full re-fetch -
-        // get-communities is server-cached and returns stale data right after a
-        // create. Fall back to the submitted values when the response omits them.
+        // Seed the in-session cache without a re-fetch; get-communities is
+        // server-cached and returns stale data right after a create.
         onOk({
             id: c.id || 0,
             dns: c.dns || "",

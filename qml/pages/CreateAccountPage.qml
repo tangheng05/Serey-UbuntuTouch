@@ -72,7 +72,6 @@ Page {
                 wrapMode: Text.WordWrap
             }
 
-            // Divider with "or"
             Row {
                 width: parent.width
                 spacing: Style.spacingS

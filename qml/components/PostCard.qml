@@ -75,7 +75,6 @@ Item {
 
         Item { width: 1; height: Style.spacingS }
 
-        // Header: avatar + author/time + more
         RowLayout {
             height: units.gu(6)
             anchors.left: parent.left
@@ -143,7 +142,6 @@ Item {
                 }
             }
 
-            // Downloaded-for-offline indicator.
             Rectangle {
                 Layout.preferredWidth: dlLabel.width + Style.spacingM
                 Layout.preferredHeight: units.gu(2.6)
@@ -204,7 +202,6 @@ Item {
 
         Item { width: 1; height: Style.spacingS }
 
-        // Cover image with category badge
         Item {
             id: cover
             visible: (p.thumbnail || "") !== ""
@@ -292,7 +289,6 @@ Item {
             MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
         }
 
-        // Excerpt (shown when there is no cover image)
         Label {
             visible: (p.thumbnail || "") === "" && (p.excerpt || "") !== ""
             width: parent.width - Style.spacingM * 2

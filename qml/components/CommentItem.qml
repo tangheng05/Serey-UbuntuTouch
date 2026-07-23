@@ -69,7 +69,6 @@ Item {
         }
         spacing: Style.spacingXs
 
-        // Author row: avatar + name + time on the left, overflow button on the right
         Item {
             width: parent.width
             height: avatar.height
@@ -146,7 +145,6 @@ Item {
                 }
             }
 
-            // Edit / Delete dropdown
             Rectangle {
                 id: menu
                 visible: item.menuOpen
@@ -229,7 +227,6 @@ Item {
             wrapMode: Text.Wrap
         }
 
-        // Inline edit mode
         Column {
             visible: item.editing
             width: parent.width - (units.gu(3.5) + Style.spacingS)
@@ -274,7 +271,6 @@ Item {
             }
         }
 
-        // Like + reply action row
         Row {
             x: units.gu(3.5) + Style.spacingS
             spacing: Style.spacingM
@@ -330,7 +326,6 @@ Item {
             }
         }
 
-        // Replies toggle
         AbstractButton {
             visible: item.replies.length > 0
             x: units.gu(3.5) + Style.spacingS

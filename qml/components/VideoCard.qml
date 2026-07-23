@@ -129,7 +129,6 @@ AbstractButton {
             }
         }
 
-        // Info: avatar + title/author
         Row {
             width: parent.width
             spacing: Style.spacingS
@@ -188,7 +187,6 @@ AbstractButton {
                 }
             }
 
-            // Downloaded-for-offline indicator.
             Rectangle {
                 id: downloadedIcon
                 anchors.top: parent.top
@@ -233,7 +231,6 @@ AbstractButton {
         }
     }
 
-    // Divider between cards
     Rectangle {
         visible: root.showDivider
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }

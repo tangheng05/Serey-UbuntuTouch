@@ -40,7 +40,6 @@ function createOrUpdate(baseUrl, token, params, onOk, onErr) {
     Http.post(baseUrl, "/category/create-or-update", body, token, onOk, onErr);
 }
 
-// POST /category/delete (JWT)
 function remove(baseUrl, token, id, onOk, onErr) {
     Http.post(baseUrl, "/category/delete", { id: id }, token, onOk, onErr);
 }

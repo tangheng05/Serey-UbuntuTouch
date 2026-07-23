@@ -390,7 +390,6 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(parent.width, page.maxContentWidth)
 
-            // ===== Profile card row (signed-in) / Welcome row (signed-out) =====
             Item {
                 width: parent.width
                 height: units.gu(10)
@@ -423,7 +422,6 @@ Page {
                         }
                         spacing: Style.spacingM
 
-                        // Avatar: rounded square with initial or photo
                         Item {
                             id: avatarBox
                             anchors.verticalCenter: parent.verticalCenter
@@ -571,7 +569,6 @@ Page {
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-            // ===== Preferences (dev-only, hidden in production) ===========
             SettingsSectionHeader { text: Lang.tr("Preferences"); visible: Config.showDevOptions }
 
             SettingsRow {
@@ -597,7 +594,6 @@ Page {
                 }
             }
 
-            // ===== Language ===============================================
             SettingsRow {
                 id: languageRow
                 iconName: "language-chooser"
@@ -694,7 +690,6 @@ Page {
                 }
             }
 
-            // ===== Your Platform ==========================================
             // One platform per user: creators see "Create", owners/managers see the CMS hub instead.
             SettingsSectionHeader { text: Lang.tr("Your Platform"); visible: Session.isLoggedIn }
             SettingsRow {
@@ -714,7 +709,6 @@ Page {
                 onClicked: page.pageStack.push(Qt.resolvedUrl("PlatformAdminPage.qml"))
             }
 
-            // ===== Account ================================================
             SettingsSectionHeader { text: Lang.tr("Account"); visible: Session.isLoggedIn }
             SettingsRow {
                 id: editProfileRow
@@ -752,7 +746,6 @@ Page {
                 onClicked: page.pageStack.push(Qt.resolvedUrl("DownloadedContentPage.qml"))
             }
 
-            // ===== About ==================================================
             SettingsSectionHeader { text: Lang.tr("About") }
 
             SettingsRow {
@@ -769,7 +762,6 @@ Page {
                 onClicked: Qt.openUrlExternally("https://serey.io")
             }
 
-            // ===== Log out (bottom of the page) ============================
             SettingsRow {
                 id: logoutRow
                 visible: Session.isLoggedIn
@@ -805,7 +797,6 @@ Page {
         visible: running
     }
 
-    // --- Search results overlay ---
     Rectangle {
         id: searchOverlay
         visible: page.searchOpen && (searchModel.count > 0 || page.searching)

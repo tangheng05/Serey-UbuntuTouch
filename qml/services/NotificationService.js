@@ -24,3 +24,10 @@ function markAllRead(baseUrl, token, onOk, onErr) {
 function markOneRead(baseUrl, token, id, onOk, onErr) {
     Http.put(baseUrl, "/notification/update-read-by-id/" + id, {}, token, onOk, onErr)
 }
+
+// resolves a notification id to its full record
+function getById(baseUrl, token, id, onOk, onErr) {
+    Http.get(baseUrl, "/notification/get-by-id/" + id, {}, token, function (data) {
+        onOk((data && data.notification) || null)
+    }, onErr)
+}

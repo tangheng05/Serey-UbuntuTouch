@@ -11,6 +11,8 @@ QtObject {
     property string avatarUrl: ""
     property bool pushEnabled: true
     property string language: "en"   // "en" or "nl"
+    // epoch ms of last push-token registration
+    property double lastPushRegisterAt: 0
 
     readonly property bool isLoggedIn: token.length > 0
 
@@ -40,6 +42,7 @@ QtObject {
                     else if (row.k === "username") session.username = row.v;
                     else if (row.k === "pushEnabled") session.pushEnabled = (row.v !== "false");
                     else if (row.k === "language") session.language = row.v;
+                    else if (row.k === "lastPushRegisterAt") session.lastPushRegisterAt = Number(row.v) || 0;
                 }
             });
         } catch (e) {
@@ -105,6 +108,16 @@ QtObject {
                 tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('pushEnabled', ?)", [enabled ? "true" : "false"]);
             });
         } catch (e) { console.warn("Session save pushEnabled error: " + e); }
+    }
+
+    function setLastPushRegisterAt(ts) {
+        lastPushRegisterAt = ts;
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
+                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('lastPushRegisterAt', ?)", [String(ts)]);
+            });
+        } catch (e) { console.warn("Session save lastPushRegisterAt error: " + e); }
     }
 
     function setLanguage(lang) {

@@ -99,6 +99,68 @@ MainView {
             function () { /* no hint; Global stays selected, picker keeps its order */ });
 
         _prefetchFeeds();
+        root._checkLaunchUrl();
+    }
+
+    // cold start via a push-notification tap
+    function _checkLaunchUrl() {
+        var args = Qt.application.arguments || [];
+        for (var i = 0; i < args.length; i++) {
+            if (String(args[i]).indexOf("notif=") !== -1) {
+                root._handleIncomingUrl(args[i]);
+                break;
+            }
+        }
+    }
+
+    function _extractNotifId(url) {
+        var m = String(url || "").match(/[?&#]notif=([^&]+)/);
+        return m ? decodeURIComponent(m[1]) : "";
+    }
+
+    function _handleIncomingUrl(url) {
+        var id = root._extractNotifId(url);
+        if (id) root._openNotification(id);
+    }
+
+    // resolves a tapped notification and navigates there
+    function _openNotification(notifId) {
+        if (!Session.isLoggedIn) return;
+        NotificationService.getById(Config.baseUrl, Session.token, notifId,
+            function (n) {
+                if (!n) return;
+                root.currentTab = 0;
+                root._ensureTab(0);
+                if (n.type === "FOLLOW") {
+                    homeStack.push(Qt.resolvedUrl("pages/ProfileViewPage.qml"), { username: n.actor });
+                    return;
+                }
+                var info = n.information || {};
+                var postAuthor = info.post_author || "";
+                var postPermlink = info.post_permlink || "";
+                var scrollPermlink = info.commented_on_permlink || "";
+                if (!postAuthor || !postPermlink) return;
+                PostService.detail(Config.baseUrl, postAuthor, postPermlink, Session.token,
+                    function (result) {
+                        var cats = (result.post && result.post.categories) || [];
+                        var isGallery = false;
+                        for (var c = 0; c < cats.length; c++) {
+                            if (cats[c].toLowerCase() === "gallery") { isGallery = true; break; }
+                        }
+                        if (isGallery) {
+                            homeStack.push(Qt.resolvedUrl("pages/GalleryDetailPage.qml"),
+                                { author: postAuthor, permlink: postPermlink });
+                        } else {
+                            homeStack.push(Qt.resolvedUrl("pages/PostDetailPage.qml"),
+                                { author: postAuthor, permlink: postPermlink, scrollToCommentPermlink: scrollPermlink });
+                        }
+                    },
+                    function (err) {
+                        homeStack.push(Qt.resolvedUrl("pages/PostDetailPage.qml"),
+                            { author: postAuthor, permlink: postPermlink });
+                    });
+            },
+            function (err) { /* silent — notification may be gone/read elsewhere */ });
     }
 
     // Open on the user's own country instead of Global. Needs both the geo hint
@@ -216,6 +278,7 @@ MainView {
         onTriggered: {
             root.startupSettled = true;
             _initNotifications();
+            _maybeReRegisterPush();
             // The avatar isn't persisted with the session; refetch it.
             if (Session.isLoggedIn) {
                 AccountService.profile(Config.baseUrl, Session.username, Session.token,
@@ -279,8 +342,18 @@ MainView {
 
     function _registerPushToken(pt) {
         NotificationService.registerPushToken(Config.baseUrl, Session.token, pt,
-            function () { /* fire-and-forget */ },
+            function () { Session.setLastPushRegisterAt(Date.now()); },
             function ()  { /* silent; retried on next app launch */ })
+    }
+
+    // re-send daily — catches a silently expired/rotated token
+    readonly property int pushReRegisterIntervalMs: 24 * 60 * 60 * 1000
+    function _maybeReRegisterPush() {
+        if (!Session.isLoggedIn || !root.pushClient) return;
+        var t = root.pushClient.token;
+        if (!t) return;
+        if (Date.now() - Session.lastPushRegisterAt < root.pushReRegisterIntervalMs) return;
+        root._registerPushToken(t);
     }
 
     function _initNotifications() {
@@ -306,18 +379,24 @@ MainView {
                 if (Session.isLoggedIn) root._registerPushToken(t)
             })
 
+            // already shown by the OS — just clear, don't re-alert
             root.pushClient.notificationsChanged.connect(function () {
                 var notifs = root.pushClient.notifications
                 if (notifs.length > 0) {
-                    var msg = notifs.length === 1
-                        ? Lang.tr("You have 1 new notification")
-                        : Lang.tr("You have %1 new notifications").arg(notifs.length)
-                    root._showNotif(msg)
                     NotificationState.unread = -1
                     root.pushClient.clearAll()
                 }
             })
         } catch (e) { console.warn("Push: PushClient failed to create:", e) }
+    }
+
+    // re-check push token on foreground
+    Connections {
+        target: Qt.application
+        onStateChanged: {
+            if (Qt.application.state === Qt.ApplicationActive && root.startupSettled)
+                root._maybeReRegisterPush();
+        }
     }
 
     // Poll every 30 s while logged in; the first poll waits for startupSettled.

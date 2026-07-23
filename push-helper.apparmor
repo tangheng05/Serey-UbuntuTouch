@@ -1,6 +1,7 @@
 {
     "policy_version": "@APPARMOR_POLICY@",
     "policy_groups": [
-        "push-notification-client"
+        "push-notification-client",
+        "networking"
     ]
 }

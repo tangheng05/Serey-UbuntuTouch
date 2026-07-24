@@ -18,8 +18,6 @@ Page {
         title: Lang.tr("Log in")
     }
 
-    Component.onCompleted: usernameField.input.forceActiveFocus()
-
     function submit() {
         if (busy) return;
         errorMsg = "";

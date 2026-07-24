@@ -33,12 +33,11 @@ Page {
 
     function fail(err) { busy = false; page.errorMsg = err.message; }
 
-    Component.onCompleted: usernameField.input.forceActiveFocus()
-
+    // Focus later steps' first field, but not the username (focus hides its placeholder).
     onStepChanged: {
-        if (step === 0) usernameField.input.forceActiveFocus();
-        else if (step === 1) emailField.input.forceActiveFocus();
+        if (step === 1) emailField.input.forceActiveFocus();
         else if (step === 2) otpField.input.forceActiveFocus();
+        else Qt.inputMethod.hide();
     }
 
     // Re-send the OTP once the countdown reaches zero.

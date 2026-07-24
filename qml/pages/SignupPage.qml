@@ -35,16 +35,13 @@ Page {
         else page.pageStack.pop();
     }
 
-    Component.onCompleted: usernameField.input.forceActiveFocus()
-
     function fail(err) { busy = false; page.errorMsg = err.message; }
 
-    // Focus the active step's first field as it appears.
+    // Focus later steps' first field, but not the username (focus hides its placeholder).
     onStepChanged: {
-        if (step === 0) usernameField.input.forceActiveFocus();
-        else if (step === 1) emailField.input.forceActiveFocus();
+        if (step === 1) emailField.input.forceActiveFocus();
         else if (step === 2) otpField.input.forceActiveFocus();
-        else Qt.inputMethod.hide();   // success screen: dismiss keyboard
+        else Qt.inputMethod.hide();
     }
 
     // step 0 -> 1: validate format, then confirm the username is free.

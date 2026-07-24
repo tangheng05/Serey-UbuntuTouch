@@ -101,6 +101,21 @@ Page {
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
             }
+
+            SecondaryButton {
+                width: parent.width
+                text: Lang.tr("Anonymous")
+                onClicked: page.pageStack.push(Qt.resolvedUrl("AnonymousSignupPage.qml"))
+            }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: Lang.tr("No email. Pay a one-time fee in Monero, sign in with a private key.")
+                font.pixelSize: Style.fontXSmall
+                font.family: Style.fontFor(text)
+                color: Style.textSecondary
+                wrapMode: Text.WordWrap
+            }
         }
     }
 }

@@ -24,6 +24,8 @@ Item {
     property var childCache: ({})
     property string expandedId: ""
     property string childLoadingId: ""
+    // Superhub row expanded within the open country (its children are the third level).
+    property string expandedHubId: ""
     // Flat id -> entry lookup across both `items` and every fetched child list, so
     // _confirm() can resolve a selection made at either level.
     property var _byId: ({})
@@ -61,6 +63,7 @@ Item {
         picker.selectedId = Config.selectedSubCommunity ? String(Config.selectedSubCommunity.id) : "";
         picker.childCache = ({});
         picker.expandedId = "";
+        picker.expandedHubId = "";
         picker._byId = ({});
         picker._fetch();
     }
@@ -76,7 +79,8 @@ Item {
                 icon: m.icon_url || m.logo_url || m.profile_image || "",
                 allowPost: !!m.is_allow_post,
                 videoAllowPost: !!m.video_is_allow_post,
-                isParent: false
+                isParent: false,
+                isSuperhub: !!m.is_superhub
             };
             out.push(entry);
             picker._byId[entry.id] = entry;
@@ -206,9 +210,31 @@ Item {
 
     // Expands/collapses a top-level country row, lazily loading its children.
     function _toggleExpand(id) {
+        picker.expandedHubId = "";
         if (picker.expandedId === id) { picker.expandedId = ""; return; }
         picker.expandedId = id;
         picker._loadChildren(id);
+    }
+
+    // Expands/collapses a superhub child row. Its communities come from the same
+    // get-communities tree the browse picker uses; register them so _confirm() resolves.
+    function _toggleHub(hubId) {
+        if (picker.expandedHubId === hubId) { picker.expandedHubId = ""; return; }
+        picker.expandedHubId = hubId;
+        var kids = Config.superhubChildrenById[hubId] || [];
+        for (var i = 0; i < kids.length; i++) {
+            var k = kids[i];
+            var id = String(k.id || k._id || "");
+            if (!id) continue;
+            picker._byId[id] = {
+                id: id,
+                name: k.title || k.name || "",
+                icon: k.icon || k.icon_url || k.logo_url || "",
+                allowPost: !!k.allowPost,
+                videoAllowPost: !!k.videoAllowPost,
+                isParent: false
+            };
+        }
     }
 
     // If the pre-selected sub-community belongs to a top-level country row, expand
@@ -251,7 +277,11 @@ Item {
         anchors.fill: parent
         color: Qt.rgba(0, 0, 0, 0.4)
         opacity: 0
-        MouseArea { anchors.fill: parent; onClicked: picker.closeAnimated() }
+        MouseArea {
+            anchors.fill: parent
+            onClicked: picker.closeAnimated()
+            onWheel: wheel.accepted = true   // don't let scroll fall through to the page below
+        }
     }
     NumberAnimation { id: pcpBackdropFade;    target: pcpBackdrop; property: "opacity"; from: 0; to: 1; duration: 200 }
     NumberAnimation { id: pcpBackdropFadeOut; target: pcpBackdrop; property: "opacity"; to: 0;           duration: 200 }
@@ -265,7 +295,7 @@ Item {
             bottomMargin: sheet.wide ? units.gu(4) : 0
         }
         width: sheet.wide ? Math.min(parent.width - units.gu(4), units.gu(50)) : parent.width
-        height: Math.min(sheetContent.height + units.gu(4), picker.height * 0.82)
+        height: Math.min(sheetContent.height + footerBar.height + units.gu(1), picker.height * 0.82)
         radius: units.gu(1)
         color: Style.surface
         clip: true
@@ -276,7 +306,7 @@ Item {
 
         Flickable {
             id: flickable
-            anchors.fill: parent
+            anchors { top: parent.top; left: parent.left; right: parent.right; bottom: footerBar.top }
             contentWidth: width
             contentHeight: sheetContent.height
             clip: true
@@ -444,60 +474,183 @@ Item {
                             }
                         }
 
-                        // Indented child rows (this country's own communities).
+                        // Second level (this country's communities). A superhub row
+                        // expands again to reveal its own communities (third level).
                         Repeater {
                             model: rowCol.isExpanded && picker.childLoadingId !== modelData.id ? rowCol.children : []
 
-                            delegate: AbstractButton {
-                                id: childRow
+                            delegate: Column {
+                                id: childCol
                                 width: rowCol.width
-                                height: units.gu(6.5)
-                                readonly property bool isSelected: picker.selectedId === modelData.id
-                                onClicked: picker.selectedId = modelData.id
+                                readonly property bool isHub: !!modelData.isSuperhub
+                                readonly property bool hubExpanded: picker.expandedHubId === modelData.id
+                                readonly property var hubKids: childCol.isHub ? (Config.superhubChildrenById[String(modelData.id)] || []) : []
+                                // Only offer to expand a hub that actually has communities.
+                                readonly property bool hubExpandable: childCol.isHub && childCol.hubKids.length > 0
 
-                                Row {
-                                    anchors { fill: parent; leftMargin: Style.spacingM + units.gu(3.2); rightMargin: Style.spacingM }
-                                    spacing: Style.spacingM
+                                Item {
+                                    id: childRow
+                                    width: parent.width
+                                    height: units.gu(6.5)
+                                    readonly property bool isSelected: picker.selectedId === modelData.id
+                                    readonly property int chevronW: childCol.hubExpandable ? units.gu(6) : 0
 
-                                    Rectangle {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: units.gu(2.2); height: width; radius: width / 2
-                                        color: "transparent"
-                                        border.width: units.dp(1.5)
-                                        border.color: childRow.isSelected ? Style.brand : Style.divider
-                                        Rectangle {
+                                    // Left zone selects this community.
+                                    AbstractButton {
+                                        anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: childRow.chevronW }
+                                        onClicked: picker.selectedId = modelData.id
+
+                                        Row {
+                                            anchors { fill: parent; leftMargin: Style.spacingM + units.gu(3.2); rightMargin: Style.spacingM }
+                                            spacing: Style.spacingM
+
+                                            Rectangle {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: units.gu(2.2); height: width; radius: width / 2
+                                                color: "transparent"
+                                                border.width: units.dp(1.5)
+                                                border.color: childRow.isSelected ? Style.brand : Style.divider
+                                                Rectangle {
+                                                    anchors.centerIn: parent
+                                                    width: parent.width - units.dp(6); height: width; radius: width / 2
+                                                    color: Style.brand
+                                                    visible: childRow.isSelected
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: units.gu(3.8); height: width; radius: width / 2
+                                                color: Style.iconBackground
+                                                CircleImage {
+                                                    anchors { fill: parent; margins: units.dp(2) }
+                                                    source: modelData.icon
+                                                }
+                                            }
+
+                                            Label {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: parent.width - units.gu(2.2) - units.gu(3.8) - Style.spacingM * 2
+                                                       - (childCol.isHub ? hubBadge.width + Style.spacingM : 0)
+                                                text: modelData.name
+                                                font.pixelSize: Style.fontSmall
+                                                font.weight: childRow.isSelected ? Font.DemiBold : Font.Normal
+                                                font.family: Style.fontFor(text)
+                                                color: childRow.isSelected ? Style.brand : Style.textPrimary
+                                                elide: Text.ElideRight
+                                            }
+
+                                            // HUB badge: marks a superhub (matches the browse picker).
+                                            Rectangle {
+                                                id: hubBadge
+                                                visible: childCol.isHub
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: hubLbl.width + units.gu(1.6)
+                                                height: units.gu(2.4)
+                                                radius: Style.pillRadius
+                                                color: "#FCE7F3"
+                                                Label {
+                                                    id: hubLbl
+                                                    anchors.centerIn: parent
+                                                    text: "HUB"
+                                                    font.pixelSize: Style.fontXSmall
+                                                    font.weight: Font.Bold
+                                                    font.family: Style.fontFamily
+                                                    font.letterSpacing: units.dp(0.5)
+                                                    color: "#DB2777"
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Right zone: expand a hub that has communities.
+                                    AbstractButton {
+                                        visible: childCol.hubExpandable
+                                        anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
+                                        width: childRow.chevronW
+                                        onClicked: picker._toggleHub(String(modelData.id))
+                                        Icon {
                                             anchors.centerIn: parent
-                                            width: parent.width - units.dp(6); height: width; radius: width / 2
-                                            color: Style.brand
-                                            visible: childRow.isSelected
+                                            width: units.gu(2); height: width
+                                            name: childCol.hubExpanded ? "go-up" : "go-down"
+                                            color: childCol.hubExpanded ? Style.brand : Style.textSecondary
                                         }
                                     }
 
                                     Rectangle {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: units.gu(3.8); height: width; radius: width / 2
-                                        color: Style.iconBackground
-                                        CircleImage {
-                                            anchors { fill: parent; margins: units.dp(2) }
-                                            source: modelData.icon
-                                        }
-                                    }
-
-                                    Label {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - units.gu(2.2) - units.gu(3.8) - Style.spacingM * 2
-                                        text: modelData.name
-                                        font.pixelSize: Style.fontSmall
-                                        font.weight: childRow.isSelected ? Font.DemiBold : Font.Normal
-                                        font.family: Style.fontFor(text)
-                                        color: childRow.isSelected ? Style.brand : Style.textPrimary
-                                        elide: Text.ElideRight
+                                        anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM + units.gu(3.2); rightMargin: Style.spacingM }
+                                        height: units.dp(1); color: Style.divider
                                     }
                                 }
 
-                                Rectangle {
-                                    anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM + units.gu(3.2); rightMargin: Style.spacingM }
-                                    height: units.dp(1); color: Style.divider
+                                Item {
+                                    visible: childCol.hubExpanded && childCol.hubKids.length === 0
+                                    width: parent.width; height: units.gu(5)
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: Lang.tr("No communities found")
+                                        font.pixelSize: Style.fontSmall
+                                        color: Style.textSecondary
+                                    }
+                                }
+
+                                // Third level: the superhub's own communities.
+                                Repeater {
+                                    model: childCol.hubExpanded ? childCol.hubKids : []
+
+                                    delegate: AbstractButton {
+                                        id: gcRow
+                                        width: childCol.width
+                                        height: units.gu(6)
+                                        readonly property string gcId: String(modelData.id || modelData._id || "")
+                                        readonly property bool isSelected: picker.selectedId === gcRow.gcId
+                                        onClicked: picker.selectedId = gcRow.gcId
+
+                                        Row {
+                                            anchors { fill: parent; leftMargin: Style.spacingM + units.gu(6.4); rightMargin: Style.spacingM }
+                                            spacing: Style.spacingM
+
+                                            Rectangle {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: units.gu(2.2); height: width; radius: width / 2
+                                                color: "transparent"
+                                                border.width: units.dp(1.5)
+                                                border.color: gcRow.isSelected ? Style.brand : Style.divider
+                                                Rectangle {
+                                                    anchors.centerIn: parent
+                                                    width: parent.width - units.dp(6); height: width; radius: width / 2
+                                                    color: Style.brand
+                                                    visible: gcRow.isSelected
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: units.gu(3.4); height: width; radius: width / 2
+                                                color: Style.iconBackground
+                                                CircleImage {
+                                                    anchors { fill: parent; margins: units.dp(2) }
+                                                    source: modelData.icon || modelData.icon_url || modelData.logo_url || ""
+                                                }
+                                            }
+
+                                            Label {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: parent.width - units.gu(2.2) - units.gu(3.4) - Style.spacingM * 2
+                                                text: modelData.title || modelData.name || ""
+                                                font.pixelSize: Style.fontSmall
+                                                font.weight: gcRow.isSelected ? Font.DemiBold : Font.Normal
+                                                font.family: Style.fontFor(text)
+                                                color: gcRow.isSelected ? Style.brand : Style.textPrimary
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM + units.gu(6.4); rightMargin: Style.spacingM }
+                                            height: units.dp(1); color: Style.divider
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -505,29 +658,44 @@ Item {
                 }
 
                 Item { width: 1; height: Style.spacingM }
+            }
+        }
 
-                AbstractButton {
-                    width: parent.width - Style.spacingM * 2
-                    x: Style.spacingM
-                    height: units.gu(5.5)
-                    enabled: picker.selectedId.length > 0
-                    onClicked: picker._confirm()
+        // Pinned so a long community list never buries the action.
+        Rectangle {
+            id: footerBar
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: continueBtn.height + Style.spacingM * 2
+            color: Style.surface
 
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Style.cardRadius
-                        color: parent.enabled ? Style.brand : Style.iconBackground
-                    }
-                    Label {
-                        anchors.centerIn: parent
-                        text: Lang.tr("Continue")
-                        font.pixelSize: Style.fontMedium
-                        font.weight: Font.DemiBold
-                        color: parent.enabled ? Style.textOnBrand : Style.textSecondary
-                    }
+            // Swallow taps/scroll on the bar so nothing leaks to the page below.
+            MouseArea { anchors.fill: parent; onWheel: wheel.accepted = true }
+
+            Rectangle {
+                anchors { top: parent.top; left: parent.left; right: parent.right }
+                height: units.dp(1); color: Style.divider
+            }
+
+            AbstractButton {
+                id: continueBtn
+                anchors { verticalCenter: parent.verticalCenter; horizontalCenter: parent.horizontalCenter }
+                width: parent.width - Style.spacingM * 2
+                height: units.gu(5.5)
+                enabled: picker.selectedId.length > 0
+                onClicked: picker._confirm()
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Style.cardRadius
+                    color: parent.enabled ? Style.brand : Style.iconBackground
                 }
-
-                Item { width: 1; height: Style.spacingL }
+                Label {
+                    anchors.centerIn: parent
+                    text: Lang.tr("Continue")
+                    font.pixelSize: Style.fontMedium
+                    font.weight: Font.DemiBold
+                    color: parent.enabled ? Style.textOnBrand : Style.textSecondary
+                }
             }
         }
     }

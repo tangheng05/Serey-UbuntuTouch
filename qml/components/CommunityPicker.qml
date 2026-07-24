@@ -422,6 +422,7 @@ Item {
             anchors.fill: parent
             enabled: !picker._closing
             onClicked: picker.closeAnimated()
+            onWheel: wheel.accepted = true   // don't let scroll fall through to the page below
         }
     }
     NumberAnimation { id: cpBackdropFade;    target: cpBackdrop; property: "opacity"; from: 0; to: 1;  duration: 200 }

@@ -97,6 +97,44 @@ function createSelfCustodyAccount(baseUrl, username, email, otp, keys, onOk, onE
     }, null, onOk, onErr);
 }
 
+// Paid, email-less signup. XMR only. Envelope is {status,message,data}; a reused
+// "Payment still valid" response nests the payload one level deeper.
+function createAnonymousPayment(baseUrl, username, onOk, onErr) {
+    Http.post(baseUrl, "/registration/anonymous/create-payment",
+              { username: username, pay_currency: "xmr" }, null, function (data) {
+        var body = data || {};
+        var d = body.data || body;
+        var pay = d.data || d;
+        if (!pay || !pay.payment_id || !pay.pay_address) {
+            onErr({ status: 200, message: (body.message || d.message) || "Failed to create payment. Please try again." });
+            return;
+        }
+        onOk({
+            paymentId:  String(pay.payment_id),
+            payAddress: pay.pay_address,
+            payAmount:  String(pay.pay_amount !== undefined && pay.pay_amount !== null ? pay.pay_amount : ""),
+            expiresAt:  pay.expires_at || "",
+            paymentUrl: pay.payment_url || ""
+        });
+    }, onErr);
+}
+
+// Poll status. Pending gives a NOWPayments code (waiting/confirming/...); once
+// done status is "completed" and postingPrivateKey comes back just this once.
+function checkAnonymousStatus(baseUrl, paymentId, onOk, onErr) {
+    Http.post(baseUrl, "/registration/anonymous/check-status",
+              { payment_id: paymentId }, null, function (data) {
+        var body = data || {};
+        var s = (body.data && body.data.data) || body.data || body;
+        onOk({
+            status:            s.payment_status || s.status || "waiting",
+            accountCreated:    s.account_created === true,
+            postingPrivateKey: s.posting_private_key || "",
+            username:          s.username || ""
+        });
+    }, onErr);
+}
+
 // Empty optional fields are dropped, so a blank field never overwrites a value the user didn't touch.
 function updateUserDetail(baseUrl, token, fields, onOk, onErr) {
     var body = {};

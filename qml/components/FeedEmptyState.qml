@@ -52,7 +52,8 @@ Item {
     }
 
     Flickable {
-        anchors.fill: parent
+        id: flick
+        anchors { top: parent.top; left: parent.left; right: parent.right; bottom: footer.top }
         contentWidth: width
         contentHeight: col.height + Style.spacingL * 2
         clip: true
@@ -66,7 +67,7 @@ Item {
 
             Image {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(parent.width * 0.6, units.gu(20))
+                width: Math.min(parent.width * 0.5, units.gu(16))
                 height: width * (434 / 398)
                 source: Qt.resolvedUrl("../../assets/onboarding.svg")
                 sourceSize.width: width
@@ -91,7 +92,7 @@ Item {
                 Label {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: Lang.tr("Subscribe to a platform to see its posts here.")
+                    text: Lang.tr("Subscribe to a platform to fill it, or share the first post yourself.")
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFor(text)
                     color: Style.textSecondary
@@ -112,7 +113,7 @@ Item {
 
                 Label {
                     width: parent.width
-                    text: Lang.tr("Active platforms")
+                    text: Lang.tr("Suggested platforms")
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
                     font.family: Style.fontFor(text)
@@ -206,12 +207,27 @@ Item {
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
             }
+        }
+    }
 
-            SecondaryButton {
-                width: parent.width
-                text: Lang.tr("Write your first post")
-                onClicked: root.writePostRequested()
-            }
+    // Pinned so the create action stays reachable no matter how long the list is.
+    Rectangle {
+        id: footer
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: footerBtn.height + Style.spacingM * 2
+        color: Style.surface
+
+        Rectangle {
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: units.dp(1); color: Style.divider
+        }
+
+        SecondaryButton {
+            id: footerBtn
+            anchors { verticalCenter: parent.verticalCenter; horizontalCenter: parent.horizontalCenter }
+            width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
+            text: Lang.tr("Write your first post")
+            onClicked: root.writePostRequested()
         }
     }
 }

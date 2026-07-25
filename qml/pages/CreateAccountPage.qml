@@ -116,6 +116,22 @@ Page {
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
             }
+
+            // Got a free invite link from a community owner? Redeem it here.
+            AbstractButton {
+                width: parent.width
+                height: inviteLink.height + Style.spacingS * 2
+                onClicked: page.pageStack.push(Qt.resolvedUrl("RedeemInvitePage.qml"))
+                Label {
+                    id: inviteLink
+                    anchors.centerIn: parent
+                    text: Lang.tr("Have an invite code?")
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.DemiBold
+                    font.family: Style.fontFor(text)
+                    color: Style.brand
+                }
+            }
         }
     }
 }

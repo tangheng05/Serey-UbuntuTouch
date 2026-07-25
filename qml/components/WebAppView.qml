@@ -75,6 +75,8 @@ FocusScope {
     // params: { subscription_plan_id, method: "crypto"|"stripe" }
     signal buyPlanRequested(var params)
     signal stripeCheckoutIntercepted(string url)
+    // An anonymous-invite link was opened; redeem it natively instead of on the web.
+    signal inviteRedeemIntercepted(string url)
 
     WebEngineProfile {
         id: mobileProfile
@@ -207,6 +209,10 @@ FocusScope {
             if (u.indexOf("https://checkout.stripe.com") === 0) {
                 request.action = 255;
                 webAppView.stripeCheckoutIntercepted(u);
+            } else if (u.indexOf("/invite/anonymous") !== -1) {
+                // Cancel the web load and hand the code to the native redeem flow.
+                request.action = 255;
+                webAppView.inviteRedeemIntercepted(u);
             }
         }
     }

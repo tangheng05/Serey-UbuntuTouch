@@ -97,11 +97,18 @@ function createSelfCustodyAccount(baseUrl, username, email, otp, keys, onOk, onE
     }, null, onOk, onErr);
 }
 
-// Paid, email-less signup. XMR only. Envelope is {status,message,data}; a reused
-// "Payment still valid" response nests the payload one level deeper.
-function createAnonymousPayment(baseUrl, username, onOk, onErr) {
+// Paid, email-less signup. XMR only. Self-custodial like createSelfCustodyAccount:
+// the client generates the keys (KeygenBridge) and sends the public keys + posting
+// private key; the master password never leaves the device. Envelope is
+// {status,message,data}; a reused "Payment still valid" response nests one deeper.
+function createAnonymousPayment(baseUrl, username, keys, onOk, onErr) {
     Http.post(baseUrl, "/registration/anonymous/create-payment",
-              { username: username, pay_currency: "xmr" }, null, function (data) {
+              { username: username, pay_currency: "xmr",
+                owner_public_key: keys.owner_public_key,
+                active_public_key: keys.active_public_key,
+                posting_public_key: keys.posting_public_key,
+                memo_public_key: keys.memo_public_key,
+                posting_private_key: keys.posting_private_key }, null, function (data) {
         var body = data || {};
         var d = body.data || body;
         var pay = d.data || d;

@@ -3,6 +3,7 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 import "../components"
+import "../services/AnonymousInviteService.js" as InviteService
 
 Page {
     id: page
@@ -58,6 +59,11 @@ Page {
             else Payments.openStripe(params.subscription_plan_id);
         }
         onStripeCheckoutIntercepted: Payments.openStripeUrl(url)
+        // Invite link tapped in the mini app: redeem it natively.
+        onInviteRedeemIntercepted: {
+            var code = InviteService.codeFromUrl(url);
+            if (code.length > 0) Nav.redeemInvite(code);
+        }
     }
 
     // After a confirmed payment, reload the site so it reflects the new plan.

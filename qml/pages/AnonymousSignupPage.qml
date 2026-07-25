@@ -5,8 +5,9 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-// Anonymous (Monero) signup. The posting key comes back only once, so step 2
-// has to show it. Steps: 0 username, 1 pay, 2 save key + done, 3 error.
+// Anonymous (Monero) signup, self-custodial: keys are generated on-device and the
+// master password (shown at step 2) never leaves the phone. Steps: 0 username,
+// 1 pay, 2 save key + done, 3 error.
 Page {
     id: page
 
@@ -17,8 +18,11 @@ Page {
     // Carried across steps.
     property string username: ""
     property string createdUsername: ""
-    property string postingKey: ""
+    property string masterKey: ""     // client-generated; shown to the user, never sent
+    property var _keys: null          // full keypair posted to the server
     property bool keySaved: false
+
+    KeygenBridge { id: keygen }
 
     // Payment state.
     property var payment: null            // { paymentId, payAddress, payAmount, expiresAt }
@@ -59,14 +63,21 @@ Page {
         }
         busy = true;
         AccountService.checkUsernameAvailable(Config.baseUrl, usernameField.text,
-            function () { page.username = usernameField.text; page.startPayment(); },
+            function () {
+                page.username = usernameField.text;
+                // Generate the keypair on-device before paying; the master password
+                // stays here, only the public keys + posting key are sent.
+                keygen.generate(page.username,
+                    function (keys) { page._keys = keys; page.masterKey = keys.master_password; page.startPayment(); },
+                    function (msg) { page.busy = false; page.errorMsg = msg; });
+            },
             fail);
     }
 
     function startPayment() {
         page.busy = true;
         page.errorMsg = "";
-        AccountService.createAnonymousPayment(Config.baseUrl, page.username,
+        AccountService.createAnonymousPayment(Config.baseUrl, page.username, page._keys,
             function (pm) {
                 page.busy = false;
                 page.payment = pm;
@@ -110,18 +121,13 @@ Page {
         AccountService.checkAnonymousStatus(Config.baseUrl, page.payment.paymentId,
             function (r) {
                 page.payStatus = r.status;
-                if (r.status === "completed" || (r.accountCreated && r.postingPrivateKey)) {
+                if (r.status === "completed" || r.accountCreated) {
+                    // Master password is already on the device from keygen; the
+                    // account is live, so just show it. No server key needed.
                     _stopTimers();
-                    if (r.postingPrivateKey) {
-                        page.postingKey = r.postingPrivateKey;
-                        page.createdUsername = r.username || page.username;
-                        page.step = 2;
-                        Toast.success(Lang.tr("Account created!"));
-                    } else {
-                        // Key already handed out (webhook likely beat us); nothing to show.
-                        page.errorMsg = Lang.tr("Your account was created but the key was already retrieved. Please contact support.");
-                        page.step = 3;
-                    }
+                    page.createdUsername = r.username || page.username;
+                    page.step = 2;
+                    Toast.success(Lang.tr("Account created!"));
                 } else if (r.status === "failed" || r.status === "refunded" || r.status === "expired") {
                     _stopTimers();
                     page.errorMsg = r.status === "expired"
@@ -137,7 +143,7 @@ Page {
     function finishAndLogin() {
         if (page.busy) return;
         page.busy = true;
-        AccountService.login(Config.baseUrl, page.createdUsername, page.postingKey,
+        AccountService.login(Config.baseUrl, page.createdUsername, page.masterKey,
             function (auth) {
                 page.busy = false;
                 Session.clear();
@@ -367,7 +373,7 @@ Page {
                 width: parent.width
                 height: keyBox.height
                 onClicked: {
-                    Clipboard.push(page.postingKey);
+                    Clipboard.push(page.masterKey);
                     page.keySaved = true;
                     Toast.success(Lang.tr("Key copied. Store it somewhere safe."));
                 }
@@ -421,7 +427,7 @@ Page {
 
                         Label {
                             width: parent.width
-                            text: page.postingKey
+                            text: page.masterKey
                             wrapMode: Text.WrapAnywhere
                             font.pixelSize: Style.fontRegular
                             font.family: "Ubuntu Mono"

@@ -554,6 +554,50 @@ Page {
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
+            SettingsSectionHeader {
+                text: Lang.tr("Grow your audience")
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(parent.width, page.maxContentWidth)
+            }
+
+            // Free anonymous-account invite links (quota by plan).
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(parent.width, page.maxContentWidth)
+                height: units.gu(6.5)
+
+                AbstractButton {
+                    anchors.fill: parent
+                    onClicked: page.pageStack.push(Qt.resolvedUrl("AnonymousInvitesPage.qml"))
+                }
+                Row {
+                    anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    spacing: Style.spacingM
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2.6); height: width
+                        name: "contact"
+                        color: Style.textSecondary
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Lang.tr("Anonymous Invites")
+                        font.pixelSize: Style.fontRegular
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                    }
+                }
+                Icon {
+                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    width: units.gu(2); height: width
+                    name: "next"
+                    color: Style.textSecondary
+                }
+            }
+
+            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
             // Everything else lives in the full web CMS.
             LinkButton {
                 anchors.horizontalCenter: parent.horizontalCenter

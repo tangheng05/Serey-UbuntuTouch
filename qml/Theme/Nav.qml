@@ -41,5 +41,9 @@ QtObject {
     // Session-only; a relaunch always shows the normal Homepage.
     signal goToFeed()
 
+    // Deep link: an invite URL was opened inside the app (WebAppView intercept).
+    // Main switches to Homepage and pushes RedeemInvitePage prefilled with the code.
+    signal redeemInvite(string code)
+
     function home() { goToTab(0); }
 }

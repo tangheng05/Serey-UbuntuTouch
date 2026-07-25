@@ -512,6 +512,14 @@ MainView {
                 homeStack.pop();
             homeStack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
         }
+        // Invite link opened in-app: redeem it natively on the Homepage tab.
+        function onRedeemInvite(code) {
+            root.currentTab = 0;
+            root._ensureTab(0);
+            while (homeStack.depth > 1)
+                homeStack.pop();
+            homeStack.push(Qt.resolvedUrl("pages/RedeemInvitePage.qml"), { prefillCode: code });
+        }
     }
 
     AppHeader {

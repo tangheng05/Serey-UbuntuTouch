@@ -790,7 +790,7 @@ MainView {
     Rectangle {
         id: sideNavBar
         anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-        width: (root.showNavBar && root.wideMode) ? units.gu(9) : 0
+        width: (root.showNavBar && root.wideMode) ? units.gu(20) : 0
         visible: root.showNavBar && root.wideMode
         color: Style.surface
 
@@ -809,16 +809,28 @@ MainView {
                 model: root._tabs
                 delegate: AbstractButton {
                     width: sideNavBar.width
-                    height: units.gu(7)
+                    height: units.gu(6)
                     property bool active: root.currentTab === index
                     property alias keyArea: railTap
 
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(4)
-                        height: width
-                        name: modelData.icon
-                        color: active ? Style.brand : Style.textSecondary
+                    Row {
+                        anchors { left: parent.left; leftMargin: units.gu(2); verticalCenter: parent.verticalCenter }
+                        spacing: units.gu(1.5)
+
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(3.2)
+                            height: width
+                            name: modelData.icon
+                            color: active ? Style.brand : Style.textSecondary
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.label
+                            font.pixelSize: Style.fontMedium
+                            font.weight: active ? Font.DemiBold : Font.Normal
+                            color: active ? Style.brand : Style.textSecondary
+                        }
                     }
                     onClicked: root.currentTab = index
                     KeyTapArea {

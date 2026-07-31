@@ -28,6 +28,10 @@ RowLayout {
     property bool showComments: true
     property bool showShare: true
     property bool showVotersLabel: false
+    // Cluster everything to the left instead of pushing the coin pill to the bar's far edge.
+    property bool compact: false
+    // Keyboard nav highlight, set by a host page's arrow-key handling: 0 = upvote, 1 = downvote, -1 = none.
+    property int keyboardHighlight: -1
 
     readonly property bool allowFlag: author !== Session.username
     readonly property string shareUrl: (author.length > 0 && permlink.length > 0)
@@ -281,6 +285,13 @@ RowLayout {
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: upRow.implicitWidth
         onClicked: bar.doUpvote()
+        Rectangle {
+            anchors.fill: parent
+            radius: Style.cardRadius
+            color: "transparent"
+            border.width: bar.keyboardHighlight === 0 ? units.dp(2) : 0
+            border.color: Style.brand
+        }
         Row {
             id: upRow
             anchors.verticalCenter: parent.verticalCenter
@@ -350,10 +361,18 @@ RowLayout {
     }
 
     AbstractButton {
+        id: downvoteBtn
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: downRow.implicitWidth
         visible: bar.allowFlag
         onClicked: bar.doFlag()
+        Rectangle {
+            anchors.fill: parent
+            radius: Style.cardRadius
+            color: "transparent"
+            border.width: bar.keyboardHighlight === 1 ? units.dp(2) : 0
+            border.color: Style.brand
+        }
         Row {
             id: downRow
             anchors.verticalCenter: parent.verticalCenter
@@ -413,10 +432,16 @@ RowLayout {
         }
     }
 
-    Item { Layout.fillWidth: true }
+    // Excluded from the layout (not just shrunk) when compact, so no leftover
+    // spacing gap remains around it and the coin pill sits close to the icons.
+    Item { visible: !bar.compact; Layout.fillWidth: true }
 
     CoinValue {
         visible: bar.onChain && bar.payout.length > 0 && bar.voteType !== "comment"
         value: bar.payout
     }
+
+    // Compact mode: soak up any leftover width after the coin pill instead of
+    // letting it stretch flush to the bar's edge.
+    Item { visible: bar.compact; Layout.fillWidth: true }
 }

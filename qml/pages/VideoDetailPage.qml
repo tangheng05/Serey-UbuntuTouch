@@ -1,5 +1,6 @@
 import QtQuick 2.7
 import QtQuick.Layouts 1.3
+import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import Lomiri.Components.Popups 1.3
 import "../Theme"
@@ -53,6 +54,109 @@ Page {
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
     property var moreVideos: []
+
+    // Desktop-only "•••" dropdown in the header (see videoMoreHeaderBtn).
+    property bool headerMenuOpen: false
+    property int headerMenuIndex: -1
+
+    readonly property string shareUrl: (page.video && page.video.author && page.video.permlink)
+        ? ("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink) : ""
+    readonly property bool isOwn: Session.isLoggedIn && !!(page.video && page.video.author) && page.video.author === Session.username
+
+    // Row data for the desktop "•••" dropdown; report/delete/block/edit-caption still
+    // route through the mobile sheet (opened at the matching step) since those need their own sub-flow.
+    function headerMenuItems() {
+        var items = [
+            { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },
+            { icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" }
+        ];
+        if (page.canDownload) {
+            items.push({ divider: true });
+            items.push({ icon: page.dlSaved ? "tick" : "save",
+                         label: page.dlSaved ? Lang.tr("Remove download") : Lang.tr("Save video offline"),
+                         action: "toggleDownload" });
+        }
+        items.push({ divider: true });
+        if (page.isOwn) {
+            items.push({ icon: "edit", label: Lang.tr("Edit caption"), action: "editCaption" });
+            items.push({ icon: "delete", label: Lang.tr("Delete video"), danger: true, action: "delete" });
+        } else {
+            items.push({ icon: "close", label: Lang.tr("Hide this video"), action: "hide" });
+            items.push({ icon: "dialog-warning-symbolic", label: Lang.tr("Report video"), action: "report" });
+        }
+        return items;
+    }
+    function runHeaderMenuAction(action) {
+        if (action === "copyLink") { Clipboard.push(page.shareUrl); Toast.show(Lang.tr("Link copied")); }
+        else if (action === "openBrowser") Qt.openUrlExternally(page.shareUrl);
+        else if (action === "toggleDownload") page.doDownloadToggle();
+        else if (action === "editCaption") PostActions.open(page.video, "video", 4);
+        else if (action === "delete") PostActions.open(page.video, "video", 2);
+        else if (action === "hide") {
+            HiddenPosts.hide(page.video.permlink || "");
+            PostActions.hideRequested(page.video.author || "", page.video.permlink || "");
+            page.pageStack.pop();
+        }
+        else if (action === "report") PostActions.open(page.video, "video", 1);
+    }
+    // Flattened, keyboard-navigable rows for headerMenu, Block appended last.
+    function headerMenuRows() {
+        var items = page.headerMenuItems();
+        if (!page.isOwn)
+            items.push({ divider: true }, { icon: "", label: Lang.tr("Block @%1").arg(page.video.author || ""), danger: true, action: "block", custom: "block" });
+        return items;
+    }
+    function headerMenuMove(delta) {
+        var rows = page.headerMenuRows();
+        var i = page.headerMenuIndex;
+        for (var n = 0; n < rows.length; n++) {
+            i = (i + delta + rows.length) % rows.length;
+            if (!rows[i].divider) { page.headerMenuIndex = i; return; }
+        }
+    }
+    function headerMenuActivate() {
+        var rows = page.headerMenuRows();
+        if (page.headerMenuIndex < 0 || page.headerMenuIndex >= rows.length) return;
+        var row = rows[page.headerMenuIndex];
+        page.headerMenuOpen = false;
+        if (row.action === "block") PostActions.open(page.video, "video", 3);
+        else page.runHeaderMenuAction(row.action);
+    }
+
+    // Right rail: related videos, vote row and comments — wide mode only.
+    readonly property bool showSidePanel: Config.wideMode && !!(page.video && page.video.permlink)
+    // Resizable via the drag handle below; clamped so the article column always keeps a sane minimum width.
+    property real sidePanelWidth: units.gu(34)
+    readonly property real _minSidePanelW: units.gu(26)
+    readonly property real _maxSidePanelW: Math.max(_minSidePanelW, Math.min(page.width * 0.5, page.width - units.gu(40)))
+    readonly property real _sidePanelW: Math.max(_minSidePanelW, Math.min(_maxSidePanelW, sidePanelWidth))
+
+    // Keyboard: Right from the video steps into the side panel (see scroll's
+    // Keys.onPressed); Down/Up walk related videos, then upvote, then downvote,
+    // then hand off to the comment composer, mirroring PostDetailPage's panel.
+    function focusSidePanel() {
+        if (!page.showSidePanel) return;
+        sidePanelFlick.forceActiveFocus();
+        page.sidePanelIndex = 0;
+    }
+    property int sidePanelIndex: -1
+    readonly property int _voteUpIdx: page.moreVideos.length
+    readonly property int _voteDownIdx: page.moreVideos.length + 1
+    readonly property int _sidePanelItemCount: page.moreVideos.length + 2
+    function openRelatedVideo(v) {
+        page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v });
+    }
+    function sidePanelActivate() {
+        if (page.sidePanelIndex < 0) return;
+        if (page.sidePanelIndex < page.moreVideos.length) page.openRelatedVideo(page.moreVideos[page.sidePanelIndex]);
+        else if (page.sidePanelIndex === page._voteUpIdx) page.doUpvote();
+        else if (page.sidePanelIndex === page._voteDownIdx) page.doFlag();
+    }
+    // Down past the last item (downvote) hands off to the comment composer for typing.
+    function sidePanelFocusComposer() {
+        page.sidePanelIndex = -1;
+        panelComposer.forceActiveFocus();
+    }
 
     // Caption edited elsewhere; swap in a fresh object so bindings re-evaluate
     Connections {
@@ -322,7 +426,8 @@ Page {
 
     Rectangle {
         id: videoDetailHeader
-        anchors { top: parent.top; left: parent.left; right: parent.right }
+        // Only the article column: the right rail gets its own header row (below).
+        anchors { top: parent.top; left: parent.left; right: page.showSidePanel ? sidePanel.left : parent.right }
         height: units.gu(6) + units.dp(1)
         color: Style.surface
         z: 10
@@ -349,7 +454,7 @@ Page {
             anchors { right: videoMoreHeaderBtn.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
             width: units.gu(4); height: units.gu(4)
             enabled: !!(page.video && page.video.author && page.video.permlink)
-            onClicked: Share.open("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink, videoShareHeaderBtn)
+            onClicked: Share.open(page.shareUrl, videoShareHeaderBtn)
             Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
         }
 
@@ -357,7 +462,9 @@ Page {
             id: videoMoreHeaderBtn
             anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             width: units.gu(4); height: units.gu(4)
-            onClicked: PostActions.open(page.video, "video")
+            // Desktop: a compact anchored dropdown. Phone: the full-screen action sheet
+            // (report reasons / delete-confirm / edit-caption need more room than a dropdown row gives).
+            onClicked: Config.wideMode ? (page.headerMenuOpen = !page.headerMenuOpen) : PostActions.open(page.video, "video")
             Column {
                 anchors.centerIn: parent
                 spacing: units.dp(3)
@@ -373,11 +480,125 @@ Page {
             }
         }
 
+        // ----- Desktop dropdown menu (mirrors the action sheet's rows, minus the ones that need a sub-flow) -----
+        // Keyboard: Down/Up move headerMenuIndex, Enter/Return activates, Escape closes.
         Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: units.dp(1)
-            color: Style.divider
+            id: headerMenu
+            visible: page.headerMenuOpen
+            z: 20
+            anchors { top: videoMoreHeaderBtn.bottom; right: videoMoreHeaderBtn.right; topMargin: Style.spacingXs }
+            width: units.gu(24)
+            height: headerMenuCol.height
+            radius: Style.cardRadius
+            color: Style.surface
+            border.width: units.dp(1)
+            border.color: Style.divider
+
+            activeFocusOnTab: true
+            Keys.onEscapePressed: page.headerMenuOpen = false
+            Keys.onDownPressed: page.headerMenuMove(1)
+            Keys.onUpPressed: page.headerMenuMove(-1)
+            Keys.onReturnPressed: page.headerMenuActivate()
+            Keys.onEnterPressed: page.headerMenuActivate()
+            onVisibleChanged: if (visible) { page.headerMenuIndex = -1; headerMenu.forceActiveFocus(); }
+
+            Column {
+                id: headerMenuCol
+                width: parent.width
+
+                Repeater {
+                    // {divider:true} | {icon, label, danger, action, custom}
+                    model: page.headerMenuRows()
+                    delegate: Item {
+                        width: headerMenuCol.width
+                        height: modelData.divider ? units.dp(1) : units.gu(5.5)
+
+                        Rectangle {
+                            visible: !!modelData.divider
+                            anchors.fill: parent
+                            color: Style.divider
+                        }
+
+                        Rectangle {
+                            visible: !modelData.divider && index === page.headerMenuIndex
+                            anchors.fill: parent
+                            color: Style.iconBackground
+                        }
+
+                        AbstractButton {
+                            visible: !modelData.divider
+                            anchors.fill: parent
+                            onClicked: {
+                                page.headerMenuOpen = false;
+                                if (modelData.action === "block") PostActions.open(page.video, "video", 3);
+                                else page.runHeaderMenuAction(modelData.action);
+                            }
+                            Row {
+                                anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                spacing: Style.spacingM
+                                // No "block" glyph in the Suru icon set (same reason PostActionSheet draws its own).
+                                Icon {
+                                    visible: modelData.custom !== "block"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2.2); height: width
+                                    name: modelData.icon || ""
+                                    color: modelData.danger ? Style.danger : Style.textPrimary
+                                }
+                                Item {
+                                    visible: modelData.custom === "block"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2.2); height: width
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        radius: width / 2
+                                        color: "transparent"
+                                        border.width: units.dp(1.5)
+                                        border.color: Style.danger
+                                    }
+                                    Rectangle {
+                                        anchors.centerIn: parent
+                                        width: parent.width * 0.7; height: units.dp(1.5)
+                                        color: Style.danger
+                                        rotation: 45
+                                    }
+                                }
+                                Label {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: modelData.label || ""
+                                    font.pixelSize: Style.fontSmall
+                                    color: modelData.danger ? Style.danger : Style.textPrimary
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    // Dismiss the header dropdown on an outside click. A page-level sibling (not
+    // nested in videoDetailHeader) so it catches clicks anywhere, not just the header;
+    // z above the scroll/panel content but below videoDetailHeader and the menu itself.
+    MouseArea {
+        visible: page.headerMenuOpen
+        z: 9
+        anchors.fill: parent
+        onClicked: page.headerMenuOpen = false
+    }
+
+    // Single divider under both header rows (video + right rail), spanning the
+    // full page width, so the two headers' own borders never show as a mismatched
+    // double line at the seam between them.
+    Rectangle {
+        z: 9
+        anchors {
+            top: parent.top
+            topMargin: videoDetailHeader.height
+            left: parent.left
+            right: page.showSidePanel ? sidePanel.left : parent.right
+        }
+        height: units.dp(1)
+        color: Style.divider
     }
 
     function loadComments() {
@@ -470,11 +691,16 @@ Page {
             page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: page.video.author });
     }
 
-    function startReply(comment) { page.replyTarget = comment; composer.forceActiveFocus(); Qt.inputMethod.show(); }
+    function startReply(comment) {
+        page.replyTarget = comment;
+        (page.showSidePanel ? panelComposer : composer).forceActiveFocus();
+        Qt.inputMethod.show();
+    }
     function cancelReply() { page.replyTarget = null; }
 
     function submitComment() {
-        var text = composer.text.trim();
+        var activeComposer = page.showSidePanel ? panelComposer : composer;
+        var text = activeComposer.text.trim();
         if (text.length === 0) return;
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
@@ -491,7 +717,7 @@ Page {
             Session.token,
             function () {
                 page.posting = false;
-                composer.text = "";
+                activeComposer.text = "";
                 var mine = { author: Session.username, permlink: "", body: text,
                              parentAuthor: parentAuthor, parentPermlink: parentPermlink,
                              date: Lang.tr("just now"), votes: 0, voters: [], replies: [],
@@ -545,6 +771,28 @@ Page {
         page.loadComments();
     }
 
+    // Shared by the mobile description sheet and the always-visible wide-mode
+    // description block: strips markup StyledText can't render, keeps b/i/u/a.
+    function formatVideoBody() {
+        var t = page.video.body || "";
+        t = t.replace(/<br\s*\/?>/gi, "\n");
+        t = t.replace(/<\/p>/gi, "\n");
+        t = t.replace(/<(?!\/?(?:b|i|u|a)\b)[^>]+>/g, "");
+        t = t.replace(/&nbsp;/g, " ");
+        t = t.replace(/&amp;/g, "&");
+        // Decode numeric entities (smart quotes etc.) that StyledText can't render; keep &,<,> encoded.
+        t = t.replace(/&#(\d+);/g, function (mm, n) {
+            var code = parseInt(n, 10);
+            return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+        });
+        t = t.replace(/&#x([0-9a-fA-F]+);/gi, function (mm, n) {
+            var code = parseInt(n, 16);
+            return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+        });
+        t = t.replace(/\n{3,}/g, "\n\n");
+        return t.trim();
+    }
+
     function _loadMoreVideos() {
         var myPermlink = page.video ? page.video.permlink : "";
         VideoService.listVideos(Config.baseUrl, { limit: 6, offset: 0 }, Session.token,
@@ -553,7 +801,7 @@ Page {
                 var filtered = result.filter(function (v) {
                     return v.permlink !== myPermlink;
                 });
-                page.moreVideos = filtered.slice(0, 5);
+                page.moreVideos = filtered.slice(0, 3);
             },
             function (err) { /* ignore */ });
     }
@@ -591,7 +839,7 @@ Page {
 
     Flickable {
         id: scroll
-        anchors { top: videoDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: videoDetailHeader.bottom; left: parent.left; right: page.showSidePanel ? sidePanel.left : parent.right; bottom: parent.bottom }
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
@@ -622,11 +870,12 @@ Page {
             // back to the master list so the viewer can pick the next video.
             else if (event.key === Qt.Key_Escape && page.isFullscreen) { page.setFullscreen(false); event.accepted = true; }
             else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
+            // Right steps into the side panel (related videos/vote/comments).
+            else if (event.key === Qt.Key_Right && page.showSidePanel) { page.focusSidePanel(); event.accepted = true; }
         }
-        // Focus lands on the flick when the video opens (guarded so it never
-        // steals focus from the comment composer).
-        onVisibleChanged: if (visible && !composer.activeFocus) Qt.callLater(scroll.forceActiveFocus)
-        Component.onCompleted: if (visible && !composer.activeFocus) scroll.forceActiveFocus()
+        // No auto-focus-on-load here: that used to steal focus (and show the
+        // keyboard focus border) even for mouse opens. Keyboard entry already
+        // focuses scroll explicitly via keyboardFocusItem (AdaptiveStack.focusDetail()).
 
         Column {
             id: contentCol
@@ -742,7 +991,7 @@ Page {
 
             Item {
                 width: parent.width
-                height: units.gu(5)
+                height: units.gu(7)
 
                 Row {
                     id: authorRow
@@ -754,7 +1003,7 @@ Page {
                     spacing: Style.spacingS
 
                     Item {
-                        width: units.gu(3.5); height: width
+                        width: units.gu(5.5); height: width
                         anchors.verticalCenter: parent.verticalCenter
 
                         Rectangle {
@@ -765,7 +1014,7 @@ Page {
                             Label {
                                 anchors.centerIn: parent
                                 text: (page.video.author || "?").charAt(0).toUpperCase()
-                                font.pixelSize: Style.fontSmall
+                                font.pixelSize: Style.fontMedium
                                 font.bold: true
                                 color: Style.brand
                             }
@@ -774,17 +1023,28 @@ Page {
                             id: authorAvatar
                             anchors.fill: parent
                             source: page.video.authorImage || ""
-                            decode: units.gu(7)
+                            decode: units.gu(11)
                             visible: loaded
                         }
                     }
 
-                    Label {
+                    // Name above, timestamp below, instead of the date sitting off on the trailing edge.
+                    Column {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: page.video.author || ""
-                        font.pixelSize: Style.fontSmall
-                        font.weight: Font.DemiBold
-                        color: Style.textPrimary
+                        spacing: units.dp(2)
+
+                        Label {
+                            text: page.video.author || ""
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            color: Style.textPrimary
+                        }
+                        Label {
+                            id: dateLabel
+                            text: Style.formatTimeAgo(page.video.date || "")
+                            font.pixelSize: Style.fontSmall
+                            color: Style.textSecondary
+                        }
                     }
                 }
 
@@ -795,18 +1055,9 @@ Page {
                     onClicked: page.openProfile()
                 }
 
-                // Metadata sits with "...more" on the trailing edge, leaving the leading
-                // side for identity: avatar + name + Follow.
-                Label {
-                    id: dateLabel
-                    anchors { right: moreBtn.left; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    text: Style.formatTimeAgo(page.video.date || "")
-                    font.pixelSize: Style.fontSmall
-                    color: Style.textSecondary
-                }
-
                 AbstractButton {
                     id: moreBtn
+                    visible: !Config.wideMode
                     anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: moreLabel.implicitWidth
                     height: units.gu(4)
@@ -824,16 +1075,20 @@ Page {
                 // Follow acts on the AUTHOR, so it sits beside the name (not the
                 // header or vote row, which are video actions). Outside authorRow on
                 // purpose: the profile MouseArea spans that Row and would swallow the tap.
+                // Filled brand pill with white text/icon, matching the app's primary-action buttons.
                 AbstractButton {
                     id: followBtn
                     visible: (page.video.author || "") !== "" && page.video.author !== Session.username
                     anchors { left: authorRow.right; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    width: followInner.implicitWidth
-                    // Keeps Lomiri's gu(4) minimum touch target while the visible mark
-                    // stays light; matches the "...more" link's weight, in brand colour.
+                    width: followInner.implicitWidth + Style.spacingM * 2
                     height: units.gu(4)
                     onClicked: page.toggleFollow()
 
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: height / 2
+                        color: page.isFollowing ? Style.iconBackground : Style.brand
+                    }
                     Row {
                         id: followInner
                         anchors.centerIn: parent
@@ -842,14 +1097,14 @@ Page {
                             anchors.verticalCenter: parent.verticalCenter
                             width: units.gu(1.8); height: width
                             name: "contact"
-                            color: page.isFollowing ? Style.textSecondary : Style.brand
+                            color: page.isFollowing ? Style.textSecondary : Style.textOnBrand
                         }
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
                             text: page.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
                             font.pixelSize: Style.fontSmall
                             font.weight: Font.DemiBold
-                            color: page.isFollowing ? Style.textSecondary : Style.brand
+                            color: page.isFollowing ? Style.textSecondary : Style.textOnBrand
                         }
                     }
                 }
@@ -859,7 +1114,9 @@ Page {
 
             // Vote row: actions on the VIDEO itself. Share/Download live in the page
             // header's action slots; Follow sits on the author row above.
+            // Wide mode: moved into the side panel instead (see sidePanel below).
             RowLayout {
+                visible: !page.showSidePanel
                 x: Style.spacingM
                 width: parent.width - Style.spacingM * 2
                 height: units.gu(4.5)
@@ -910,16 +1167,67 @@ Page {
                 }
 
                 Item { Layout.fillWidth: true }
+
+                CoinValue { visible: page.onChain && page.payout.length > 0; value: page.payout }
             }
 
             Item { width: 1; height: Style.spacingM }
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
+            // Wide mode: the description that phones reach via the "...more" sheet
+            // is always visible here instead of behind a tap.
+            Column {
+                visible: Config.wideMode
+                width: parent.width
+                spacing: Style.spacingM
+
+                Item { width: 1; height: Style.spacingM }
+
+                Label {
+                    x: Style.spacingM
+                    text: Lang.tr("Description")
+                    font.pixelSize: Style.fontMedium
+                    font.weight: Font.DemiBold
+                    color: Style.textPrimary
+                }
+
+                Rectangle {
+                    visible: (page.video.body || "").length > 0
+                    width: parent.width - Style.spacingM * 2
+                    x: Style.spacingM
+                    height: inlineBodyLabel.height + Style.spacingM * 2
+                    radius: Style.cardRadius
+                    color: Style.iconBackground
+
+                    Label {
+                        id: inlineBodyLabel
+                        anchors {
+                            left: parent.left; right: parent.right
+                            top: parent.top
+                            margins: Style.spacingM
+                        }
+                        text: page.formatVideoBody()
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                        wrapMode: Text.Wrap
+                        textFormat: Text.StyledText
+                        onLinkActivated: Qt.openUrlExternally(link)
+                    }
+                }
+
+                Item { width: 1; height: Style.spacingS }
+
+                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+            }
+
             Item { width: 1; height: Style.spacingS }
 
-            // Comments header, tappable, opens the comment sheet
+            // Comments header, tappable, opens the comment sheet.
+            // Wide mode: the panel shows the full comment list inline instead.
             AbstractButton {
+                visible: !page.showSidePanel
                 width: parent.width
                 height: units.gu(5)
                 onClicked: page.commentSheetOpen = true
@@ -965,6 +1273,430 @@ Page {
 
             Item { width: 1; height: Style.spacingL }
         }
+    }
+
+    // Draggable splitter: resizes sidePanel by dragging its left edge. Runs the
+    // full page height so it lines up with the panel's own header row, not just
+    // the video's own — the two headers sit side by side, not one above the other.
+    Rectangle {
+        id: sidePanelDivider
+        z: 11
+        anchors { top: parent.top; bottom: parent.bottom; right: sidePanel.left }
+        width: units.dp(2)
+        visible: page.showSidePanel
+        color: sidePanelDragArea.containsMouse || sidePanelDragArea.pressed ? Style.brand : Style.divider
+    }
+    MouseArea {
+        id: sidePanelDragArea
+        visible: page.showSidePanel
+        anchors { top: parent.top; bottom: parent.bottom }
+        x: sidePanel.x - width / 2
+        width: units.gu(1.5)
+        hoverEnabled: true
+        preventStealing: true
+        cursorShape: Qt.SplitHCursor
+        onPositionChanged: {
+            if (!pressed) return;
+            var pagePointX = mapToItem(page, mouse.x, 0).x;
+            page.sidePanelWidth = Math.max(page._minSidePanelW, Math.min(page._maxSidePanelW, page.width - pagePointX));
+        }
+    }
+
+    // --- Right rail (wide mode): related videos, upvote/downvote, comments, composer ---
+    Rectangle {
+        id: sidePanel
+        anchors { top: parent.top; right: parent.right; bottom: parent.bottom }
+        width: page.showSidePanel ? page._sidePanelW : 0
+        visible: page.showSidePanel
+        clip: true
+        color: Style.surface
+
+        Rectangle {
+            id: sidePanelHeader
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: videoDetailHeader.height
+            color: Style.surface
+
+            Label {
+                anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                text: Lang.tr("Related")
+                font.pixelSize: Style.fontSmall
+                font.weight: Font.Bold
+                color: Style.textSecondary
+            }
+        }
+
+        Flickable {
+            id: sidePanelFlick
+            anchors { top: sidePanelHeader.bottom; left: parent.left; right: parent.right; bottom: sideComposerBar.top }
+            contentWidth: width
+            contentHeight: sidePanelCol.height + Style.spacingM * 2
+            clip: true
+
+            activeFocusOnTab: true
+            function _kbScroll(dy) {
+                var maxY = Math.max(0, sidePanelFlick.contentHeight - sidePanelFlick.height);
+                sidePanelFlick.contentY = Math.max(0, Math.min(maxY, sidePanelFlick.contentY + dy));
+            }
+            // Scrolls the highlighted item (related-video row or the vote row) into view.
+            function _revealSelected() {
+                var it = page.sidePanelIndex < page.moreVideos.length
+                    ? relatedRepeater.itemAt(page.sidePanelIndex) : sidePanelVoteRow;
+                if (!it) return;
+                var top = it.mapToItem(sidePanelFlick.contentItem, 0, 0).y;
+                var bottom = top + it.height;
+                if (bottom > sidePanelFlick.contentY + sidePanelFlick.height)
+                    sidePanelFlick.contentY = bottom - sidePanelFlick.height;
+                else if (top < sidePanelFlick.contentY)
+                    sidePanelFlick.contentY = top;
+            }
+            Keys.onPressed: {
+                var pageStep = sidePanelFlick.height * 0.9;
+                if (event.key === Qt.Key_Down) {
+                    if (page.sidePanelIndex < page._sidePanelItemCount - 1) {
+                        page.sidePanelIndex = page.sidePanelIndex + 1;
+                        sidePanelFlick._revealSelected();
+                    } else {
+                        page.sidePanelFocusComposer();
+                    }
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Up && page.sidePanelIndex > 0) {
+                    page.sidePanelIndex = page.sidePanelIndex - 1;
+                    sidePanelFlick._revealSelected(); event.accepted = true;
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    page.sidePanelActivate(); event.accepted = true;
+                } else if (event.key === Qt.Key_PageDown) { sidePanelFlick._kbScroll(pageStep);  event.accepted = true; }
+                else if (event.key === Qt.Key_PageUp)   { sidePanelFlick._kbScroll(-pageStep); event.accepted = true; }
+                else if (event.key === Qt.Key_Home)     { sidePanelFlick.contentY = 0; event.accepted = true; }
+                else if (event.key === Qt.Key_End)      { sidePanelFlick._kbScroll(sidePanelFlick.contentHeight); event.accepted = true; }
+                else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { page.sidePanelIndex = -1; scroll.forceActiveFocus(); event.accepted = true; }
+            }
+
+            Column {
+                id: sidePanelCol
+                x: Style.spacingM
+                y: Style.spacingM
+                width: parent.width - Style.spacingM * 2
+                spacing: Style.spacingM
+
+                Repeater {
+                    id: relatedRepeater
+                    model: page.moreVideos
+                    delegate: AbstractButton {
+                        id: relatedBtn
+                        width: sidePanelCol.width
+                        height: units.gu(7)
+                        onClicked: page.openRelatedVideo(modelData)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Style.cardRadius
+                            color: (index === page.sidePanelIndex || relatedHover.containsMouse) ? Style.iconBackground : "transparent"
+                            border.width: index === page.sidePanelIndex ? units.dp(2) : 0
+                            border.color: Style.brand
+                        }
+                        MouseArea {
+                            id: relatedHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            propagateComposedEvents: true
+                            onClicked: (mouse) => { mouse.accepted = false; }
+                        }
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: units.dp(4)
+                            spacing: Style.spacingS
+
+                            Item {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(9); height: units.gu(6.5)
+                                Rectangle { anchors.fill: parent; radius: Style.thumbRadius; color: Style.iconBackground }
+                                Image {
+                                    id: relatedThumbImg
+                                    anchors.fill: parent
+                                    source: modelData.thumbnail || ""
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    visible: false
+                                }
+                                Rectangle {
+                                    id: relatedThumbMask
+                                    anchors.fill: parent
+                                    radius: Style.thumbRadius
+                                    visible: false
+                                }
+                                OpacityMask {
+                                    anchors.fill: parent
+                                    source: relatedThumbImg
+                                    maskSource: relatedThumbMask
+                                    visible: (modelData.thumbnail || "") !== ""
+                                }
+                                Icon {
+                                    anchors.centerIn: parent
+                                    width: units.gu(2); height: width
+                                    name: "media-playback-start"
+                                    color: Qt.rgba(1, 1, 1, 0.85)
+                                    visible: (modelData.thumbnail || "") === ""
+                                }
+                            }
+                            Label {
+                                width: parent.width - units.gu(9) - Style.spacingS
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.title || ""
+                                font.pixelSize: Style.fontSmall
+                                font.weight: Font.DemiBold
+                                font.family: Style.fontFor(text)
+                                color: Style.textPrimary
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 3
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+
+                // Upvote / downvote, mirroring the main-content vote row but living
+                // here in wide mode; keyboardHighlight border matches PostDetailPage's chain.
+                RowLayout {
+                    id: sidePanelVoteRow
+                    width: sidePanelCol.width
+                    height: units.gu(4.5)
+                    spacing: Style.spacingS
+
+                    AbstractButton {
+                        Layout.preferredHeight: units.gu(4.5)
+                        Layout.preferredWidth: panelUpvoteInner.implicitWidth + Style.spacingM
+                        enabled: !page.voteBusy
+                        onClicked: page.doUpvote()
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Style.cardRadius
+                            color: "transparent"
+                            border.width: page.sidePanelIndex === page._voteUpIdx ? units.dp(2) : 0
+                            border.color: Style.brand
+                        }
+                        Row {
+                            id: panelUpvoteInner
+                            anchors.centerIn: parent
+                            spacing: Style.spacingXs
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2.5); height: width
+                                name: "thumb-up"
+                                color: page.upvoted ? Style.brand : Style.textSecondary
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: page.voteCount
+                                font.pixelSize: Style.fontRegular
+                                color: page.upvoted ? Style.brand : Style.textPrimary
+                            }
+                        }
+                    }
+
+                    AbstractButton {
+                        Layout.preferredHeight: units.gu(4.5)
+                        Layout.preferredWidth: units.gu(3.5)
+                        enabled: !page.voteBusy
+                        onClicked: page.doFlag()
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Style.cardRadius
+                            color: "transparent"
+                            border.width: page.sidePanelIndex === page._voteDownIdx ? units.dp(2) : 0
+                            border.color: Style.brand
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.5); height: width
+                            name: "thumb-down"
+                            color: page.flagged ? Style.danger : Style.textSecondary
+                        }
+                    }
+
+                    ActivityIndicator {
+                        visible: page.voteBusy
+                        running: page.voteBusy
+                        Layout.preferredHeight: units.gu(2.5)
+                        Layout.preferredWidth: units.gu(2.5)
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    CoinValue { visible: page.onChain && page.payout.length > 0; value: page.payout }
+                }
+
+                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+                Label {
+                    width: parent.width
+                    text: Lang.tr("COMMENTS (%1)").arg(page.commentCount)
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.Bold
+                    color: Style.textSecondary
+                }
+
+                Label {
+                    width: parent.width
+                    visible: page.comments.length === 0
+                    text: Lang.tr("No comments yet. Be the first!")
+                    textSize: Label.Small
+                    color: Style.textSecondary
+                }
+
+                Repeater {
+                    model: page.comments
+                    delegate: CommentItem {
+                        width: sidePanelCol.width
+                        comment: modelData
+                        onDeleted: page.removeComment(permlink)
+                        onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
+                        onReplyRequested: page.startReply(comment)
+                    }
+                }
+
+                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+            }
+        }
+
+        // A mouse click anywhere in the panel grabs keyboard focus for it too, so
+        // arrow-key scrolling keeps working after a mouse interaction; passes the
+        // press through unaccepted so related-video/vote buttons underneath still fire.
+        MouseArea {
+            anchors.fill: sidePanelFlick
+            propagateComposedEvents: true
+            onPressed: { sidePanelFlick.forceActiveFocus(); mouse.accepted = false; }
+        }
+
+        // Sticky comment composer, pinned to the bottom of the panel.
+        Rectangle {
+            id: sideComposerBar
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            anchors.bottomMargin: page.kbHeight
+            Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+            height: panelComposerArea.height + Style.spacingS * 2
+            color: Style.surface
+
+            Rectangle {
+                anchors { top: parent.top; left: parent.left; right: parent.right }
+                height: units.dp(1)
+                color: Style.divider
+            }
+            Rectangle {
+                anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
+                width: units.dp(1)
+                color: Style.divider
+            }
+
+            Column {
+                id: panelComposerArea
+                x: Style.spacingS
+                y: Style.spacingS
+                width: parent.width - Style.spacingS * 2
+                spacing: units.dp(4)
+
+                Row {
+                    visible: page.replyTarget !== null
+                    width: parent.width
+                    spacing: Style.spacingS
+
+                    Label {
+                        text: page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                        font.pixelSize: Style.fontSmall
+                        color: Style.textSecondary
+                    }
+                    AbstractButton {
+                        width: panelCancelLabel.implicitWidth
+                        height: panelCancelLabel.implicitHeight
+                        onClicked: page.cancelReply()
+                        Label {
+                            id: panelCancelLabel
+                            text: Lang.tr("Cancel")
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            color: Style.brand
+                        }
+                    }
+                }
+
+                Item {
+                    width: parent.width
+                    height: units.gu(5)
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Style.cardRadius
+                        color: Style.iconBackground
+                        border.width: units.dp(1)
+                        border.color: Style.divider
+                    }
+
+                    TextField {
+                        id: panelComposer
+                        anchors { left: parent.left; leftMargin: Style.spacingM; right: panelSendButton.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
+                        height: parent.height - units.dp(2)
+                        StyleHints {
+                            backgroundColor: "transparent"
+                            borderColor: "transparent"
+                            color: Style.textPrimary
+                        }
+                        hasClearButton: false
+                        placeholderText: Session.isLoggedIn ? Lang.tr("Post a comment…") : Lang.tr("Log in to comment…")
+                        font.family: Style.fontFor(text)
+                        font.pixelSize: Style.fontRegular
+                        onAccepted: page.submitComment()
+                        // Up steps back to the downvote button; Escape returns to the video.
+                        Keys.onUpPressed: {
+                            if (page.showSidePanel) {
+                                page.sidePanelIndex = page._voteDownIdx;
+                                sidePanelFlick.forceActiveFocus();
+                                sidePanelFlick._revealSelected();
+                            }
+                        }
+                        Keys.onEscapePressed: { page.sidePanelIndex = -1; scroll.forceActiveFocus(); }
+                    }
+
+                    AbstractButton {
+                        id: panelSendButton
+                        anchors { right: parent.right; rightMargin: units.dp(3); verticalCenter: parent.verticalCenter }
+                        width: units.gu(3.8); height: width
+                        enabled: !page.posting && panelComposer.text.trim().length > 0
+                        onClicked: page.submitComment()
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: panelSendButton.enabled ? Style.brand : "transparent"
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.2); height: width
+                            name: "send"
+                            color: panelSendButton.enabled ? Style.textOnBrand : Style.textSecondary
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        anchors.fill: scroll
+        visible: scroll.activeFocus
+        color: "transparent"
+        border.width: units.dp(2)
+        border.color: Style.brand
+        // Above sidePanelDivider's z:11, else the divider paints over this border's right edge.
+        z: 12
+    }
+    Rectangle {
+        anchors.fill: sidePanelFlick
+        visible: page.showSidePanel && sidePanelFlick.activeFocus
+        color: "transparent"
+        border.width: units.dp(2)
+        border.color: Style.brand
+        z: 12
     }
 
     // Fullscreen host: setFullscreen() reparents the player Loader in here to fill the screen, above content and bottom sheets (z 1500).
@@ -1345,25 +2077,7 @@ Page {
                                 top: parent.top
                                 margins: Style.spacingM
                             }
-                            text: {
-                                var t = page.video.body || "";
-                                t = t.replace(/<br\s*\/?>/gi, "\n");
-                                t = t.replace(/<\/p>/gi, "\n");
-                                t = t.replace(/<(?!\/?(?:b|i|u|a)\b)[^>]+>/g, "");
-                                t = t.replace(/&nbsp;/g, " ");
-                                t = t.replace(/&amp;/g, "&");
-                                // Decode numeric entities (smart quotes etc.) that StyledText can't render; keep &,<,> encoded.
-                                t = t.replace(/&#(\d+);/g, function (mm, n) {
-                                    var code = parseInt(n, 10);
-                                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
-                                });
-                                t = t.replace(/&#x([0-9a-fA-F]+);/gi, function (mm, n) {
-                                    var code = parseInt(n, 16);
-                                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
-                                });
-                                t = t.replace(/\n{3,}/g, "\n\n");
-                                return t.trim();
-                            }
+                            text: page.formatVideoBody()
                             font.pixelSize: Style.fontRegular
                             font.family: Style.fontFor(text)
                             color: Style.textPrimary

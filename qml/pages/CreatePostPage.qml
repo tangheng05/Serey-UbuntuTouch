@@ -18,7 +18,7 @@ Page {
     // On-screen-keyboard height; the formatting toolbar rides above it so B/I/U stay reachable while typing.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     readonly property int titleMaxLength: 250
-    readonly property real maxContentWidth: units.gu(60)
+    readonly property real maxContentWidth: units.gu(72)
     property string coverImageUrl: ""
     property bool uploading: false
     // Maps editor placeholder "[image N]" -> uploaded URL; publish() swaps them back to <img>

@@ -18,7 +18,7 @@ Item {
     property string emptyDetailMessage: ""
 
     // Resizable leading (master/list) panel: draggable when min != max.
-    property real listWidth: units.gu(40)
+    property real listWidth: units.gu(46)
     readonly property real _minListW: units.gu(30)
     readonly property real _maxListW: Math.max(_minListW, Math.min(width * 0.6, width - units.gu(45)))
     readonly property real _listW: Math.max(_minListW, Math.min(_maxListW, listWidth))

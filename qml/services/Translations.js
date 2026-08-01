@@ -96,6 +96,7 @@ var nl = {
     "Failed to terminate session.":                 "Beëindigen van sessie mislukt.",
     "Logged out":                                   "Uitgelogd",
     "No active sessions":                           "Geen actieve sessies",
+    "No results found":                             "Geen resultaten gevonden",
     "Saved for offline use":                        "Opgeslagen voor offline gebruik",
     "Serey only, no votes or rewards.":             "Alleen Serey, geen stemmen of beloningen.",
     "Session terminated.":                          "Sessie beëindigd.",

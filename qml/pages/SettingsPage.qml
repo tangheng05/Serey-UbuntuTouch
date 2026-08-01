@@ -35,7 +35,6 @@ Page {
         var q = query.trim()
         if (q.length < 2) {
             searchModel.clear()
-            page.searchOpen = false
             return
         }
         page.searching = true
@@ -146,7 +145,9 @@ Page {
                 visible: !page.searchActive
                 anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                 width: units.gu(4); height: width
-                onClicked: { page.searchActive = true; searchField.forceActiveFocus(); }
+                // searchOpen right away so the results panel shows its empty state
+                // instead of the user tapping search and seeing nothing happen.
+                onClicked: { page.searchActive = true; page.searchOpen = true; searchField.forceActiveFocus(); }
                 Icon {
                     anchors.centerIn: parent
                     width: units.gu(2.6); height: width
@@ -228,10 +229,9 @@ Page {
                             clip: true
                             inputMethodHints: Qt.ImhNoPredictiveText
                             onTextChanged: {
-                                if (searchField.text.trim().length < 2) {
-                                    page.searchOpen = false
+                                // Panel stays up (empty state) while the field is open.
+                                if (searchField.text.trim().length < 2)
                                     searchModel.clear()
-                                }
                                 searchDebounce.restart()
                             }
                             Keys.onReturnPressed: {
@@ -809,14 +809,15 @@ Page {
 
     Rectangle {
         id: searchOverlay
-        visible: page.searchOpen && (searchModel.count > 0 || page.searching)
+        visible: page.searchOpen
         anchors {
             top: parent.top
             topMargin: units.gu(7)
             horizontalCenter: parent.horizontalCenter
         }
         width: Math.min(parent.width, page.maxContentWidth) - Style.spacingM * 2
-        height: Math.min(searchModel.count * units.gu(7.5), units.gu(40))
+        height: searchModel.count > 0 ? Math.min(searchModel.count * units.gu(7.5), units.gu(40))
+                                      : units.gu(14)
         radius: units.gu(1)
         color: Style.surface
         clip: true
@@ -835,6 +836,26 @@ Page {
             anchors.centerIn: parent
             running: page.searching && searchModel.count === 0
             visible: running
+        }
+
+        Column {
+            anchors.centerIn: parent
+            spacing: Style.spacingS
+            visible: !page.searching && searchModel.count === 0
+
+            Icon {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: units.gu(4); height: width
+                name: "find"
+                color: Style.textSecondary
+            }
+            Label {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: Lang.tr("No results found")
+                font.pixelSize: Style.fontSmall
+                font.family: Style.fontFor(text)
+                color: Style.textSecondary
+            }
         }
 
         ListView {

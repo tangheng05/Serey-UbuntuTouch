@@ -84,7 +84,7 @@ Page {
     function _navRows() {
         var c = [profileCardBtn, loginBtn, signupBtn, languageRow,
                  createPlatformRow, managePlatformRow, editProfileRow,
-                 passwordRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+                 passwordRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
         var rows = [];
         for (var i = 0; i < c.length; i++)
             if (c[i].visible) rows.push(c[i]);
@@ -298,7 +298,7 @@ Page {
         refreshProfile();
         var rows = [profileCardBtn, loginBtn, signupBtn, languageRow,
                     createPlatformRow, managePlatformRow, editProfileRow,
-                    passwordRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+                    passwordRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
         for (var i = 0; i < rows.length; i++) {
             rows[i].pressedChanged.connect((function (row) {
                 return function () { if (row.pressed) page.navCurrent = null; };

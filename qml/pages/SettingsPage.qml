@@ -729,6 +729,15 @@ Page {
                 onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
             }
             SettingsRow {
+                id: sessionsRow
+                visible: Session.isLoggedIn
+                showDivider: false
+                iconName: "computer-symbolic"
+                label: Lang.tr("Active sessions")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ActiveSessionsPage.qml"))
+            }
+            SettingsRow {
                 id: blockedRow
                 visible: Session.isLoggedIn
                 showDivider: false

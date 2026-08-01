@@ -148,7 +148,7 @@ Page {
                 page.busy = false;
                 Session.clear();
                 FollowStore.reset();
-                Session.setAuth(auth.token, page.createdUsername);
+                Session.setAuth(auth.token, page.createdUsername, auth.userDeviceId);
                 AccountService.profile(Config.baseUrl, page.createdUsername, auth.token,
                     function (user) { Session.avatarUrl = user.profileUrl; },
                     function (err) { /* keep letter-fallback avatar */ });

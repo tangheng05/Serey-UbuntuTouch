@@ -10,6 +10,8 @@ QtObject {
     // Not persisted; refetched each launch via AccountService.profile()
     property string avatarUrl: ""
     property bool pushEnabled: true
+    // user_devices row for this login; lets Active sessions mark "This device". 0 = unknown (pre-existing session).
+    property int deviceId: 0
     property string language: "en"   // "en" or "nl"
     // epoch ms of last push-token registration
     property double lastPushRegisterAt: 0
@@ -43,6 +45,7 @@ QtObject {
                     else if (row.k === "pushEnabled") session.pushEnabled = (row.v !== "false");
                     else if (row.k === "language") session.language = row.v;
                     else if (row.k === "lastPushRegisterAt") session.lastPushRegisterAt = Number(row.v) || 0;
+                    else if (row.k === "deviceId") session.deviceId = Number(row.v) || 0;
                 }
             });
         } catch (e) {
@@ -93,11 +96,22 @@ QtObject {
                      + "' will not survive an app restart");
     }
 
-    function setAuth(newToken, newUsername) {
+    function setAuth(newToken, newUsername, newDeviceId) {
         // Username first: token fires onTokenChanged synchronously, and listeners fetch the profile by username immediately.
         username = newUsername;
         token = newToken;
         _save();
+        setDeviceId(Number(newDeviceId) || 0);
+    }
+
+    function setDeviceId(id) {
+        deviceId = id;
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
+                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('deviceId', ?)", [String(id)]);
+            });
+        } catch (e) { console.warn("Session save deviceId error: " + e); }
     }
 
     function setPushEnabled(enabled) {
@@ -161,11 +175,12 @@ QtObject {
         token = "";
         username = "";
         avatarUrl = "";
+        deviceId = 0;
         // Logout deletes the stored credentials rather than persisting empty strings, since _save()'s write-verify would log a spurious failure for an empty session.
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
-                tx.executeSql("DELETE FROM auth WHERE k IN ('token','username')");
+                tx.executeSql("DELETE FROM auth WHERE k IN ('token','username','deviceId')");
             });
         } catch (e) { console.warn("Session clear error: " + e); }
     }

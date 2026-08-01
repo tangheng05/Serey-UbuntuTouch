@@ -32,7 +32,7 @@ Page {
                 // Clear -> set, never overwrite in place, so account B never inherits anything cached from account A.
                 Session.clear();
                 FollowStore.reset();
-                Session.setAuth(auth.token, usernameField.text);
+                Session.setAuth(auth.token, usernameField.text, auth.userDeviceId);
                 AccountService.profile(Config.baseUrl, usernameField.text, auth.token,
                     function (user) { Session.avatarUrl = user.profileUrl; },
                     function (err) { /* keep letter-fallback avatar */ });

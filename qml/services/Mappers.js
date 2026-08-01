@@ -269,3 +269,21 @@ function toUser(username, raw) {
         phone: phone || ""
     };
 }
+
+// An active login session. The web client posts the literal "Unknown" when it
+// has no geo, and our own login sends no location at all, so normalise both to
+// "" and let the UI drop the line rather than print "Unknown, Unknown".
+function devicePlace(v) {
+    var s = (v || "").trim();
+    return (s === "Unknown" || s === "None" || s === "null") ? "" : s;
+}
+
+function toDevice(raw) {
+    return {
+        id: toInt(raw.id),
+        deviceName: devicePlace(raw.device_name),
+        city: devicePlace(raw.city_name),
+        country: devicePlace(raw.country_name),
+        lastActiveAt: raw.last_active_at || ""
+    };
+}

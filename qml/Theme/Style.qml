@@ -91,6 +91,13 @@ QtObject {
     readonly property string bengaliFamily: bengaliFontLoader.status === FontLoader.Ready
                                             ? bengaliFontLoader.name : fontFamily
 
+    // Emoji only (no Latin/Khmer glyphs), so it's never returned by fontFor() —
+    // just registered here so Qt's own per-glyph fallback can find it when the
+    // active face (whichever fontFor() picked) is missing an emoji codepoint.
+    property FontLoader emojiFontLoader: FontLoader {
+        source: Qt.resolvedUrl("../../assets/fonts/NotoEmoji-Regular.ttf")
+    }
+
     // Script face by codepoint, else Khmer/Latin default.
     function fontFor(text) {
         if (text && /[⺀-鿿豈-﫿＀-￯]/.test(text))

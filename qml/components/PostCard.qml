@@ -1,10 +1,13 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import QtQuick.Layouts 1.3
 import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 import "../services/VoteService.js" as VoteService
+import "../services/PostService.js" as PostService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 Item {
     id: root
@@ -12,6 +15,63 @@ Item {
     property var post: ({})
     // Guard: the delegate may rebind `post` to undefined while the model is cleared/recycled; `p` is always a safe object to read from.
     readonly property var p: post ? post : ({})
+
+    readonly property bool isOwnPost: Session.isLoggedIn && (p.author || "") !== "" && p.author === Session.username
+    readonly property bool isSaved: (SavedPosts.rev, SavedPosts.isSaved(p.permlink || ""))
+    readonly property string shareUrl: (p.author && p.permlink)
+        ? ("https://serey.io/authors/" + p.author + "/" + p.permlink) : ""
+
+    // Feed rows only carry an excerpt, so saving offline needs the full post first
+    // (mirrors PostActionSheet's saveOfflineBtn).
+    function toggleSaved() {
+        if (root.isSaved) { SavedPosts.remove(p.permlink); return; }
+        var author = p.author, permlink = p.permlink;
+        PostService.detail(Config.baseUrl, author, permlink, Session.token,
+            function (result) { if (result && result.post) SavedPosts.save(result.post); },
+            function (err) { Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't save for offline.")); });
+    }
+
+    // moreBtn's compact dropdown (see cardMenu below). Mirrors PostDetailPage's
+    // header menu; report/delete/block still route through PostActionSheet.
+    property bool menuOpen: false
+
+    function menuItems() {
+        var items = [
+            { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },
+            { icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" },
+            { divider: true },
+            { icon: root.isSaved ? "tick" : "save",
+              label: root.isSaved ? Lang.tr("Remove from saved") : Lang.tr("Save for offline"),
+              action: "toggleSaved" }
+        ];
+        if (root.isOwnPost) {
+            items.push({ icon: "edit", label: Lang.tr("Edit post"), action: "edit" });
+            items.push({ icon: "delete", label: Lang.tr("Delete post"), danger: true, action: "delete" });
+        } else {
+            items.push({ icon: "close", label: Lang.tr("Hide this post"), action: "hide" });
+            items.push({ icon: "dialog-warning-symbolic", label: Lang.tr("Report post"), action: "report" });
+        }
+        return items;
+    }
+
+    function runMenuAction(action) {
+        if (action === "copyLink") { Clipboard.push(root.shareUrl); Toast.show(Lang.tr("Link copied")); }
+        else if (action === "openBrowser") Qt.openUrlExternally(root.shareUrl);
+        else if (action === "toggleSaved") root.toggleSaved();
+        else if (action === "edit") PostActions.editRequested(root.p);
+        else if (action === "delete") PostActions.open(root.p, "blog", 2);
+        else if (action === "hide") {
+            HiddenPosts.hide(root.p.permlink || "");
+            PostActions.hideRequested(root.p.author || "", root.p.permlink || "");
+        }
+        else if (action === "report") PostActions.open(root.p, "blog", 1);
+    }
+
+    // cardMenu reparents onto the window while open (see below), so if this
+    // delegate gets recycled/destroyed by the ListView mid-open, force it
+    // closed first — otherwise it'd be orphaned on the window instead of torn
+    // down with the rest of this card.
+    Component.onDestruction: root.menuOpen = false
 
     signal clicked()
     signal requireLogin()
@@ -167,7 +227,7 @@ Item {
                 Layout.preferredWidth: units.gu(3.5)
                 Layout.preferredHeight: units.gu(3.5)
                 Layout.alignment: Qt.AlignVCenter
-                onClicked: root.moreClicked()
+                onClicked: root.menuOpen = !root.menuOpen
 
                 Column {
                     anchors.centerIn: parent
@@ -339,4 +399,124 @@ Item {
         onTriggered: root.moreClicked()
         onActivated: root.clicked()
     }
+
+    // ----- Compact anchored dropdown for moreBtn (icons + rounded box, matching
+    // the article page's header menu) -----
+    // root sits in a ListView row: a z bump only wins against ITS OWN siblings,
+    // not the next row (a sibling of root several levels up), which is a
+    // separate stacking context that paints over anything nested inside root
+    // that visually spills past this row's own height. Reparenting to the
+    // window's contentItem escapes that row entirely, so the menu always paints
+    // above every row regardless of scroll position.
+    readonly property Item _menuOverlayParent: (root.menuOpen && root.Window.window)
+        ? root.Window.window.contentItem : root
+    readonly property point _moreBtnBottomRight: (root.menuOpen && moreBtn)
+        ? moreBtn.mapToItem(root._menuOverlayParent, moreBtn.width, moreBtn.height) : Qt.point(0, 0)
+
+    // Dismiss on an outside click — fills the whole window while open (not just
+    // this card), since the menu can now visually extend over other rows.
+    MouseArea {
+        parent: root._menuOverlayParent
+        visible: root.menuOpen
+        z: 999
+        anchors.fill: parent
+        onClicked: root.menuOpen = false
+    }
+
+    Rectangle {
+        id: cardMenu
+        parent: root._menuOverlayParent
+        visible: root.menuOpen
+        z: 1000
+        x: Math.min(root._moreBtnBottomRight.x - width, root._menuOverlayParent.width - width - Style.spacingXs)
+        y: root._moreBtnBottomRight.y + Style.spacingXs
+        // The article header spans the full window, but a card sits in the
+        // (narrower) list column — cap the width so it doesn't reach almost to
+        // the card's own left edge and look mis-anchored.
+        width: Math.min(units.gu(20), root.width - units.gu(2))
+        height: cardMenuCol.height
+        radius: Style.cardRadius
+        color: Style.surface
+        border.width: units.dp(1)
+        border.color: Style.divider
+
+        Column {
+            id: cardMenuCol
+            width: parent.width
+
+            Repeater {
+                // {divider:true} | {icon, label, danger, action}
+                model: root.menuItems()
+                delegate: Item {
+                    width: cardMenuCol.width
+                    height: modelData.divider ? units.dp(1) : units.gu(5.5)
+
+                    Rectangle {
+                        visible: !!modelData.divider
+                        anchors.fill: parent
+                        color: Style.divider
+                    }
+
+                    AbstractButton {
+                        visible: !modelData.divider
+                        anchors.fill: parent
+                        onClicked: { root.menuOpen = false; root.runMenuAction(modelData.action); }
+                        Row {
+                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2.2); height: width
+                                name: modelData.icon || ""
+                                color: modelData.danger ? Style.danger : Style.textPrimary
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.label || ""
+                                font.pixelSize: Style.fontSmall
+                                color: modelData.danger ? Style.danger : Style.textPrimary
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { visible: !root.isOwnPost; width: parent.width; height: units.dp(1); color: Style.divider }
+            // No "block" glyph in the Suru icon set (same reason PostActionSheet draws its own).
+            AbstractButton {
+                visible: !root.isOwnPost
+                width: parent.width
+                height: units.gu(5.5)
+                onClicked: { root.menuOpen = false; PostActions.open(root.p, "blog", 3); }
+                Row {
+                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingM
+                    Item {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2.2); height: width
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: units.dp(1.5)
+                            border.color: Style.danger
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: parent.width * 0.7; height: units.dp(1.5)
+                            color: Style.danger
+                            rotation: 45
+                        }
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Lang.tr("Block @%1").arg(root.p.author || "")
+                        font.pixelSize: Style.fontSmall
+                        color: Style.danger
+                    }
+                }
+            }
+        }
+    }
+
 }

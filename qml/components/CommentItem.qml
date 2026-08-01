@@ -1,5 +1,6 @@
 import QtQuick 2.7
 import QtQuick.Controls 2.2
+import QtQuick.Layouts 1.3
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
@@ -105,27 +106,32 @@ Item {
                 MouseArea { anchors.fill: parent; onClicked: item.authorClicked(c.author || "") }
             }
 
-            Row {
+            RowLayout {
                 id: nameCol
                 anchors {
                     left: avatar.right
                     leftMargin: Style.spacingS
                     right: moreButton.left
+                    rightMargin: Style.spacingXs
                     verticalCenter: parent.verticalCenter
                 }
                 spacing: Style.spacingXs
 
                 Label {
+                    Layout.fillWidth: true
                     text: c.author || ""
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
+                    elide: Text.ElideRight
                     MouseArea { anchors.fill: parent; onClicked: item.authorClicked(c.author || "") }
                 }
                 Label {
+                    Layout.preferredWidth: implicitWidth
                     text: "· " + Style.formatTimeAgo(c.date || "")
                     font.pixelSize: Style.fontXSmall
                     color: Style.textSecondary
+                    elide: Text.ElideRight
                 }
             }
 
@@ -136,12 +142,18 @@ Item {
                 width: units.gu(3); height: units.gu(3)
                 onClicked: item.menuOpen = !item.menuOpen
 
-                Label {
+                Column {
                     anchors.centerIn: parent
-                    text: "•••"
-                    font.pixelSize: Style.fontMedium
-                    font.weight: Font.Bold
-                    color: Style.textSecondary
+                    spacing: units.dp(3)
+                    Repeater {
+                        model: 3
+                        delegate: Rectangle {
+                            width: units.dp(4); height: units.dp(4)
+                            radius: width / 2
+                            color: Style.textSecondary
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+                    }
                 }
             }
 
@@ -272,7 +284,7 @@ Item {
         }
 
         Row {
-            x: units.gu(3.5) + Style.spacingS
+            anchors.right: parent.right
             spacing: Style.spacingM
 
             VoteBar {
@@ -360,20 +372,22 @@ Item {
             width: parent.width
             height: visible ? repliesCol.height : 0
 
-            // Guide line only on the first indent level
+            // Guide line only on the first indent level; brand-tinted so the thread
+            // stays easy to trace even with a tighter indent in a narrow panel.
             Rectangle {
                 visible: item.depth === 0
-                x: units.gu(1.75) - units.dp(1)
+                x: units.gu(1.25) - units.dp(1)
                 width: units.dp(2)
                 height: parent.height
-                color: Style.divider
+                color: Style.brand
+                opacity: 0.35
             }
 
             Column {
                 id: repliesCol
                 // 'item' inside a Loader delegate shadows the outer CommentItem id
                 readonly property int ownerDepth: item.depth
-                x: ownerDepth === 0 ? units.gu(3.5) : 0
+                x: ownerDepth === 0 ? units.gu(2.5) : 0
                 width: parent.width - x
 
                 function forwardSignals(loaderItem) {

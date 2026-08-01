@@ -21,6 +21,9 @@ Item {
     readonly property bool isOwn: Session.isLoggedIn && authorName !== "" && authorName === Session.username
     // No video editor exists, so Edit is offered for blog/gallery only.
     readonly property bool canEdit: isOwn && PostActions.kind !== "video"
+    // Opened straight at a sub-step (report/delete/block) from a card or header
+    // dropdown, bypassing the main menu — so there's nothing to "go back" to.
+    readonly property bool openedDirectly: PostActions.startStep !== 0
     property bool deleting: false
     property bool blocking: false
     property bool reporting: false
@@ -125,7 +128,8 @@ Item {
         } else {
             step = PostActions.startStep;
             backdropFade.start();
-            sheetSlide.start();
+            if (sheetRect.wide) { sheetFadeIn.start(); sheetScaleIn.start(); }
+            else sheetSlide.start();
             // Guard on !reportTypesLoading too, so reopening before the first fetch resolves doesn't fire a duplicate concurrent request.
             if (!reportTypesLoaded && !reportTypesLoading) _loadReportTypes();
             _prevFocus = Window.activeFocusItem;
@@ -154,7 +158,8 @@ Item {
 
     function closeSheet() {
         backdropFadeOut.start();
-        sheetSlideOut.start();
+        if (sheetRect.wide) sheetFadeOut.start();
+        else sheetSlideOut.start();
     }
 
     function submitReport(typeId, typeName) {
@@ -338,16 +343,17 @@ Item {
     NumberAnimation { id: backdropFade; target: backdrop; property: "opacity"; from: 0; to: 1; duration: 200 }
     NumberAnimation { id: backdropFadeOut; target: backdrop; property: "opacity"; to: 0; duration: 200 }
 
-    // Full-width sheet on phone, centered width-capped card on desktop
+    // Bottom sheet on phone; a true centered modal on desktop (not a bottom
+    // sheet with a capped width — vertically centered, fades/scales in, no
+    // drag handle, since it isn't swipe-to-dismiss there).
     Rectangle {
         id: sheetRect
         readonly property bool wide: Config.wideMode
-        // Centered + explicit width handles both cases (full-width on phone, capped
-        // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
         anchors {
             horizontalCenter: parent.horizontalCenter
-            bottom: parent.bottom
-            bottomMargin: sheet.kbHeight + (sheetRect.wide ? units.gu(4) : 0)
+            bottom: sheetRect.wide ? undefined : parent.bottom
+            verticalCenter: sheetRect.wide ? parent.verticalCenter : undefined
+            bottomMargin: sheetRect.wide ? 0 : sheet.kbHeight
         }
         width: sheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(60)) : parent.width
         height: (sheet.step === 0 ? mainCol.height
@@ -358,13 +364,22 @@ Item {
         radius: units.dp(16)
         color: Style.surface
 
-        transform: Translate { id: sheetTranslate; y: 0 }
+        // Phone: slides up from the bottom.
+        transform: Translate { id: sheetTranslate; y: sheetRect.wide ? 0 : sheetTranslate.y }
         NumberAnimation { id: sheetSlide; target: sheetTranslate; property: "y"; from: sheetRect.height + units.gu(4); to: 0; duration: 300; easing.type: Easing.OutCubic }
         NumberAnimation { id: sheetSlideOut; target: sheetTranslate; property: "y"; to: sheetRect.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: PostActions.close() }
+
+        // Desktop: fades and scales in centered, like a standard modal dialog.
+        scale: 1
+        opacity: 1
+        NumberAnimation { id: sheetFadeIn; target: sheetRect; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
+        NumberAnimation { id: sheetScaleIn; target: sheetRect; property: "scale"; from: 0.94; to: 1; duration: 200; easing.type: Easing.OutQuad }
+        NumberAnimation { id: sheetFadeOut; target: sheetRect; property: "opacity"; to: 0; duration: 150; easing.type: Easing.InQuad; onStopped: PostActions.close() }
 
         Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
 
         Rectangle {
+            visible: !sheetRect.wide
             anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
             width: units.gu(4.5)
             height: units.dp(4)
@@ -674,6 +689,9 @@ Item {
                 width: parent.width; height: units.gu(5)
 
                 AbstractButton {
+                    // Opened directly at the report step (from a card/header dropdown),
+                    // there's no main menu underneath to go back to.
+                    visible: !sheet.openedDirectly
                     anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: units.gu(3.5); height: units.gu(3.5)
                     onClicked: sheet.step = 0

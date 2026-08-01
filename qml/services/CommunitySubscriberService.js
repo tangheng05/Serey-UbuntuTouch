@@ -57,6 +57,7 @@ function suggestedCommunities(baseUrl, limit, onOk, onErr) {
                 title: r.title || "",
                 dns: r.dns || "",
                 icon: r.icon_url || r.logo_url || "",
+                description: r.meta_description || "",   // owner-set blurb, often empty
                 subscribers: parseInt(r.total_subscribers, 10) || 0
             });
         }

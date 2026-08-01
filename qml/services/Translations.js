@@ -281,9 +281,9 @@ var nl = {
     "Something went wrong":                             "Er is iets misgegaan",
     "Something went wrong.":                            "Er is iets misgegaan.",
     "Start exploring":                                  "Begin met verkennen",
-    "Subscribe":                                        "Subscribe",
-    "Subscribed":                                       "Subscribed",
-    "Subscribed!":                                      "Subscribed!",
+    "Subscribe":                                        "Abonneren",
+    "Subscribed":                                       "Geabonneerd",
+    "Subscribed!":                                      "Geabonneerd!",
     "Tap photo to change":                              "Tik op foto om te wijzigen",
     "Tell people a little about yourself":              "Vertel mensen iets over uzelf",
     "Their posts will be hidden from your feeds.":      "Hun berichten worden verborgen in uw feeds.",
@@ -476,7 +476,24 @@ var nl = {
     "category":                                          "categorie",
     "country":                                            "land",
     "name":                                              "naam",
-    "this platform":                                     "dit platform"
+    "this platform":                                     "dit platform",
+
+    // Article summary
+    "This article in one minute":                       "Dit artikel in één minuut",
+    "· %1 min read":                                    "· %1 min leestijd",
+    "Expand":                                           "Uitklappen",
+    "Collapse":                                         "Inklappen",
+    "Summarizing...":                                   "Samenvatten...",
+
+    // Empty feed / discover platforms
+    "Your feed is empty":                               "Je feed is leeg",
+    "Subscribe to a platform to fill it, or share the first post yourself.": "Abonneer op een platform om berichten te zien, of plaats zelf het eerste bericht.",
+    "Discover platforms to follow":                     "Ontdek platforms om te volgen",
+    "Subscribe to platforms to see their posts in your feed.": "Abonneer u op platforms om berichten in uw feed te zien.",
+    "Write your first post":                            "Schrijf je eerste bericht",
+    "That platform isn't available right now.":         "Dat platform is momenteel niet beschikbaar.",
+    "Couldn't subscribe. Try again.":                   "Abonneren mislukt. Probeer het opnieuw.",
+    "Couldn't unsubscribe. Try again.":                 "Afmelden mislukt. Probeer het opnieuw."
 };
 
 function tr(str, lang) {

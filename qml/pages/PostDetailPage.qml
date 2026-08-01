@@ -8,6 +8,7 @@ import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 import "../services/VoteService.js" as VoteService
 import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/SummaryService.js" as SummaryService
 
 Page {
     id: page
@@ -155,16 +156,52 @@ Page {
         return !!(c && c.indexOf && c.indexOf("video") >= 0);
     }
 
+    // AI TL;DR. Server-cached per article, so this is one cheap call per open;
+    // a failure just leaves the box hidden.
+    property var summaryBullets: []
+    property int summaryMinutes: 0
+    property bool summaryLoading: false
+
+    // Reading time is just a word count, so compute it locally and show the bar
+    // immediately; the AI bullets fill in behind it. 200 wpm, same as the server.
+    function _localReadMinutes(html) {
+        var text = String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        if (text === "") return 0;
+        return Math.max(1, Math.round(text.split(" ").length / 200));
+    }
+
+    function _loadSummary() {
+        if (!page.post || !page.post.body) return;
+        page.summaryMinutes = page._localReadMinutes(page.post.body);
+        page.summaryLoading = true;
+        SummaryService.summarize(Config.baseUrl, page.post, Session.token,
+            function (res) {
+                // Generation can take seconds; the reader may have closed the page by now.
+                if (!page) return;
+                page.summaryLoading = false;
+                page.summaryBullets = res.bullets;
+                page.summaryMinutes = res.readMinutes;
+            },
+            function () {
+                // No summary is a non-event: the reading-time bar still stands.
+                if (!page) return;
+                page.summaryLoading = false;
+                page.summaryBullets = [];
+            });
+    }
+
     function load() {
         page.loading = true;
         page.errorMsg = "";
         PostService.detail(Config.baseUrl, author, permlink, Session.token,
             function (result) {
+                if (!page) return;   // page closed while the fetch was in flight
                 page.loading = false;
                 page.post = result.post;
                 page.comments = result.replies || [];
                 page.commentCount = page._countAll(page.comments);
                 page._parseBody();
+                page._loadSummary();
                 // Deep-link from a comment/reply notification: scroll to the target once the comment rows have laid out.
                 if (page.scrollToCommentPermlink !== "") scrollToTimer.start();
 
@@ -571,6 +608,14 @@ Page {
                 font.family: Style.fontFor(text)
                 color: Style.textPrimary
                 wrapMode: Text.Wrap
+            }
+
+            ArticleSummary {
+                width: parent.width - Style.spacingM * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                bullets: page.summaryBullets
+                readMinutes: page.summaryMinutes
+                loading: page.summaryLoading
             }
 
             Row {

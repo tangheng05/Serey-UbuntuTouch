@@ -826,8 +826,10 @@ Page {
     }
     // Logged in with an empty feed = a new account following nobody; offer the
     // fix instead of a dead end. Logged out, the plain placeholder is right.
+    // Spans both panes when wide; nothing is selectable while the feed is empty.
     FeedEmptyState {
-        anchors.fill: list
+        anchors { top: topBar.bottom; bottom: parent.bottom; left: parent.left; right: parent.right }
+        leadingWidth: page.wide ? list.width : 0
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
                  && Session.isLoggedIn
         // Coalesce a burst of follows into one refetch: refresh() drops calls
@@ -835,12 +837,28 @@ Page {
         // would otherwise fetch only the first one's posts.
         onFollowed: emptyStateRefetch.restart()
         onWritePostRequested: {
-            // My Feed spans every community, so there's no active source to post
-            // into; the composer asks for the platform itself.
-            var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { pickPlatform: true });
-            if (ed && ed.saved) ed.saved.connect(function () { page.refresh(); });
+            // My Feed spans every community, so ask with the News compose sheet.
+            // A null target means it had nothing to offer; the browsed source stands.
+            feedPostPicker.openFor(function (target) {
+                var props = target ? { targetCommunity: target } : {};
+                var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), props);
+                if (ed && ed.saved) ed.saved.connect(function () { page.refresh(); });
+            });
+        }
+        // Make the tapped platform the active source and land on Homepage,
+        // same as picking it from the community pill.
+        onCommunityRequested: {
+            if (!Config.selectCommunityById(community.id)) {
+                Toast.show(Lang.tr("That platform isn't available right now."));
+                return;
+            }
+            if (page.pageStack && page.pageStack.depth > 1) page.pageStack.pop();
+            Nav.goToTab(0);
         }
     }
+    // Own instance: the shell's picker is an id in Main.qml, which a pushed page can't reach.
+    PostCommunityPicker { id: feedPostPicker }
+
     Timer {
         id: emptyStateRefetch
         interval: 700

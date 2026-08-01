@@ -25,6 +25,7 @@ FocusScope {
     readonly property int _lcFrozen: 1
     // Freezing is only legal once `visible` has settled hidden, so defer it; resuming to Active is always legal.
     onSuspendedChanged: {
+        webAppView._log("[lifecycle] suspended -> " + suspended);
         if (suspended) {
             // Active->Frozen is rejected while the page is visible. An overlay
             // (Stripe sheet) leaves the view visible, so hide it explicitly or
@@ -35,6 +36,7 @@ FocusScope {
             freezeTimer.stop();
             if (!webAppView.appAway) webView.visible = true;
             webView.lifecycleState = webAppView._lcActive;
+            webAppView._log("[lifecycle] resumed -> Active");
         }
     }
 
@@ -46,6 +48,7 @@ FocusScope {
     property bool appAway: Qt.application.state === Qt.ApplicationSuspended
                            || (Qt.application.state !== Qt.ApplicationActive && !_windowShown)
     onAppAwayChanged: {
+        webAppView._log("[lifecycle] appAway -> " + appAway);
         if (appAway) {
             webView.visible = false;
             appFreezeTimer.restart();
@@ -190,6 +193,13 @@ FocusScope {
             }
         }
 
+        // A discarded/crashed renderer loses the page's in-memory state, which
+        // looks like content vanishing on its own. Always logged, not just in debug.
+        onRenderProcessTerminated: {
+            console.log("WebAppView: [lifecycle] RENDERER TERMINATED status="
+                        + terminationStatus + " exit=" + exitCode);
+        }
+
         onJavaScriptConsoleMessage: {
             if (message.indexOf("UBUNTU_BRIDGE:") === 0) {
                 webAppView._handleBridgeMessage(message.substring(14));
@@ -239,11 +249,16 @@ FocusScope {
         if (Config.debugWebApp) console.log("WebAppView: " + msg);
     }
 
+    // Covers the view through an in-place hop; without it the old route stays
+    // painted until the SPA repaints, which looks like the previous page flashing.
+    property bool _hopping: false
+
     onUrlChanged: {
         if (url === "") return;
         _navStartedAt = Date.now();
         if (_pageReady && _samePagePath(url) !== "" && _samePagePath(_loadedUrl) !== "") {
             _log("url -> " + url + " | in-place hop queued");
+            _hopping = true;
             navTimer.restart();   // coalesce; see below
         } else {
             _log("url -> " + url + " | full load"
@@ -261,7 +276,7 @@ FocusScope {
         repeat: false
         onTriggered: {
             var path = webAppView._samePagePath(webAppView.url);
-            if (path === "") { loadTimer.restart(); return; }
+            if (path === "") { webAppView._hopping = false; loadTimer.restart(); return; }
             webAppView._log("in-place hop -> " + path);
             webView.runJavaScript(
                 "(function(){ if (typeof window.__sereyNavigate !== 'function') return false;" +
@@ -271,12 +286,33 @@ FocusScope {
                     if (handled) {
                         webAppView._log("in-place hop accepted after "
                                         + (Date.now() - webAppView._navStartedAt) + "ms");
+                        hopSettle.tries = 0;
+                        hopSettle.restart();
                         navVerify.restart();
                     } else {
                         webAppView._log("in-place hop refused (site has no __sereyNavigate) — full load");
+                        webAppView._hopping = false;
                         loadTimer.restart();
                     }
                 });
+        }
+    }
+
+    // Uncover once the router reports the new path; the try cap stops a silently
+    // rejected hop from leaving the view covered forever.
+    Timer {
+        id: hopSettle
+        property int tries: 0
+        interval: 120
+        repeat: true
+        onTriggered: {
+            var want = webAppView._samePagePath(webAppView.url).split("?")[0];
+            if (want === "" || ++tries > 12) { stop(); webAppView._hopping = false; return; }
+            webView.runJavaScript("window.location.pathname", function (got) {
+                if (got !== want) return;
+                hopSettle.stop();
+                webAppView._hopping = false;
+            });
         }
     }
 
@@ -315,7 +351,11 @@ FocusScope {
         id: freezeTimer
         interval: 300
         repeat: false
-        onTriggered: if (webAppView.suspended) webView.lifecycleState = webAppView._lcFrozen
+        onTriggered: {
+            if (!webAppView.suspended) return;
+            webView.lifecycleState = webAppView._lcFrozen;
+            webAppView._log("[lifecycle] tab-hidden freeze -> " + webView.lifecycleState);
+        }
     }
 
     // App-suspend counterpart: freeze once the view has been hidden, guarded in case the app was re-activated within the delay.
@@ -327,18 +367,19 @@ FocusScope {
     }
 
     Rectangle {
+        id: cover
         anchors.fill: parent
         color: Style.surface
-        visible: webAppView.loading
+        visible: webAppView.loading || webAppView._hopping
         ActivityIndicator {
             anchors.centerIn: parent
-            running: webAppView.loading
-            visible: webAppView.loading
+            running: cover.visible
+            visible: cover.visible
         }
     }
 
     function reload() {
-        navTimer.stop(); navVerify.stop();   // a pending hop is moot once we reload
+        navTimer.stop(); navVerify.stop(); hopSettle.stop(); _hopping = false;
         webView.url = "";
         loadTimer.restart();
     }

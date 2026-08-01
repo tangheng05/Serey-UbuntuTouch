@@ -216,6 +216,7 @@ function toCommunity(raw) {
         dns: raw.dns || "",
         icon: raw.icon_url || raw.logo_url || "",
         country: raw.country || "",
+        description: raw.meta_description || "",   // owner-set blurb, often empty
         level: toInt(raw.level),
         // is_allow_post=true means anyone may post, false means owner/managers only; drives whether the compose buttons are shown for this community.
         allowPost: !!raw.is_allow_post,

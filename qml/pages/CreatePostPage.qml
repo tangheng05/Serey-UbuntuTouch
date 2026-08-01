@@ -26,39 +26,17 @@ Page {
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
-    // Entry points not tied to a source (My Feed compose) set pickPlatform:
-    // the platform is chosen here and categories load once one is picked.
-    property bool pickPlatform: false
-    property var targetPlatform: null       // {id, title, icon} from Config.communityById
-    property bool platformSheetOpen: false
-    // Set by the compose flow's community-picker step to post into a specific
-    // (sub-)community regardless of the browsed one. Checked after targetPlatform.
+    // Chosen in PostCommunityPicker before this page opens; unset = post into the
+    // browsed source.
     property var targetCommunity: null
-    readonly property int postCommunityId: page.targetPlatform ? Number(page.targetPlatform.id)
-                                           : (page.targetCommunity ? Number(page.targetCommunity.id) : Config.communityId)
-    // The two differ off the platform path: categories are keyed by the selected
-    // sub-community, the post itself by its top-level source. Keep both as they were.
-    readonly property string catCommunityName: page.targetPlatform ? page.targetPlatform.title
-                                               : (page.targetCommunity ? page.targetCommunity.name : Config.currentCommunityName)
-    readonly property string postCommunityName: page.targetPlatform ? page.targetPlatform.title
-                                                : (page.targetCommunity ? page.targetCommunity.name : Config.communityName)
-
-    // Real platforms the user may post in. Countries/superhubs are containers,
-    // and the exclude_home subtree is hidden from the Global feed server-side,
-    // so posts there would never surface.
-    readonly property var platformOptions: {
-        var out = [];
-        for (var k in Config.communityById) {
-            var c = Config.communityById[k];
-            if (!c || !c.dns || c.childCount > 0) continue;
-            if (Config.topLevelCommunityIds[String(c.id)]) continue;
-            if (Config.hiddenCommunityIds[String(c.id)]) continue;
-            if (!c.allowPost && !Config.ownedCommunityIdSet[c.id]) continue;
-            out.push(c);
-        }
-        out.sort(function (a, b) { return (a.title || "").localeCompare(b.title || ""); });
-        return out;
-    }
+    readonly property int postCommunityId: page.targetCommunity ? Number(page.targetCommunity.id)
+                                                                : Config.communityId
+    // The two differ: categories are keyed by the selected sub-community, the post
+    // itself by its top-level source. Keep both as they were.
+    readonly property string catCommunityName: page.targetCommunity ? page.targetCommunity.name
+                                                                    : Config.currentCommunityName
+    readonly property string postCommunityName: page.targetCommunity ? page.targetCommunity.name
+                                                                     : Config.communityName
 
     // When set, this page edits an existing post (sends its permlink to update in place) instead of creating a new one.
     property var editPost: null
@@ -85,16 +63,8 @@ Page {
     function loadCategories() {
         var epoch = ++page.catEpoch;
         var prev = page.selectedCategory;
-        // Nothing to fetch until a platform is picked; categories are per-community.
-        if (page.pickPlatform && !page.targetPlatform) {
-            page.categoriesLoading = false;
-            page.categories = [];
-            page.subcatsByCat = ({});
-            return;
-        }
         page.categoriesLoading = true;
-        // catCommunityName/postCommunityId already resolve targetPlatform (My Feed
-        // compose) > targetCommunity (source-scoped compose picker) > Config fallback.
+        // catCommunityName/postCommunityId already resolve targetCommunity > Config.
         CategoryService.listByCommunity(Config.baseUrl, page.catCommunityName, page.postCommunityId, Session.token,
             function (names, raw) {
                 if (epoch !== page.catEpoch) return;   // stale community switch
@@ -193,7 +163,6 @@ Page {
             width: postPillLabel.implicitWidth + Style.spacingM * 2
             height: units.gu(4)
             enabled: !page.submitting && titleField.text.trim().length > 0 && bodyArea.getText(0, bodyArea.length).trim().length > 0
-                     && (!page.pickPlatform || !!page.targetPlatform)
             onClicked: page.publish()
 
             Rectangle {
@@ -278,10 +247,6 @@ Page {
     function publish() {
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
-            return;
-        }
-        if (page.pickPlatform && !page.targetPlatform) {
-            Toast.error(Lang.tr("Select a platform first"));
             return;
         }
         var body = page._richHtmlToSimple(bodyArea.text).trim();
@@ -538,52 +503,6 @@ Page {
                     Loader {
                         anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
                         sourceComponent: parent.visible ? formatButtonsComp : undefined
-                    }
-                }
-            }
-
-            // Platform selector, pickPlatform path only; picking one loads that platform's categories.
-            AbstractButton {
-                width: parent.width
-                height: units.gu(6)
-                visible: page.pickPlatform
-                onClicked: page.platformSheetOpen = true
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Style.cardRadius
-                    color: "transparent"
-                    border.width: units.dp(1.5)
-                    border.color: Style.divider
-                }
-
-                Row {
-                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
-                    spacing: Style.spacingS
-
-                    CircleImage {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: units.gu(3.5); height: width
-                        visible: !!page.targetPlatform
-                        source: page.targetPlatform ? (page.targetPlatform.icon || "") : ""
-                        decode: units.gu(4)
-                    }
-                    Label {
-                        width: parent.width - platChevron.width - Style.spacingS
-                               - (page.targetPlatform ? units.gu(3.5) + Style.spacingS : 0)
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: page.targetPlatform ? page.targetPlatform.title : Lang.tr("Select platform")
-                        elide: Text.ElideRight
-                        font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFor(text)
-                        color: page.targetPlatform ? Style.textPrimary : Style.textSecondary
-                    }
-                    Icon {
-                        id: platChevron
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: units.gu(2); height: width
-                        name: "next"
-                        color: Style.textSecondary
                     }
                 }
             }
@@ -1111,159 +1030,6 @@ Page {
                         Item { width: 1; height: Style.spacingM }
                     }   // catListCol
                 }       // catListFlick
-            }
-        }
-    }
-
-    // --- Platform picker bottom sheet (pickPlatform path only) ----------------
-    Item {
-        id: platSheet
-        anchors.fill: parent
-        visible: page.platformSheetOpen
-        z: 210
-        onVisibleChanged: if (visible) { platBdFade.start(); platSlideAnim.start(); }
-        function closeAnimated() { platBdFadeOut.start(); platSlideOut.start(); }
-
-        Rectangle {
-            id: platBd
-            anchors.fill: parent
-            color: Qt.rgba(0, 0, 0, 0.4)
-            opacity: 0
-            MouseArea { anchors.fill: parent; onClicked: platSheet.closeAnimated() }
-        }
-        NumberAnimation { id: platBdFade; target: platBd; property: "opacity"; from: 0; to: 1; duration: 200 }
-        NumberAnimation { id: platBdFadeOut; target: platBd; property: "opacity"; to: 0; duration: 200 }
-
-        Rectangle {
-            id: platSheetRect
-            readonly property bool wide: Config.wideMode
-            anchors {
-                horizontalCenter: parent.horizontalCenter
-                bottom: parent.bottom
-                bottomMargin: platSheetRect.wide ? units.gu(4) : 0
-            }
-            width: platSheetRect.wide ? Math.min(parent.width - units.gu(4), Config.sheetMaxWidth) : parent.width
-            height: platSheetCol.height + units.gu(4)
-            radius: units.gu(1)
-            color: Style.surface
-            transform: Translate { id: platSlideT; y: 0 }
-            NumberAnimation { id: platSlideAnim; target: platSlideT; property: "y"; from: platSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }
-            NumberAnimation { id: platSlideOut; target: platSlideT; property: "y"; to: platSheetRect.height; duration: 250; easing.type: Easing.InCubic; onStopped: page.platformSheetOpen = false }
-
-            Rectangle {
-                anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
-                width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
-                color: Style.lightGray
-            }
-
-            Column {
-                id: platSheetCol
-                anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
-                spacing: 0
-
-                Item {
-                    width: parent.width; height: units.gu(5)
-                    Label {
-                        anchors.centerIn: parent
-                        text: Lang.tr("Select platform")
-                        font.pixelSize: Style.fontMedium
-                        font.weight: Font.DemiBold
-                        color: Style.textPrimary
-                    }
-                    AbstractButton {
-                        anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                        width: units.gu(3.5); height: units.gu(3.5)
-                        onClicked: platSheet.closeAnimated()
-                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "close"; color: Style.textPrimary }
-                    }
-                }
-
-                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
-
-                Flickable {
-                    width: parent.width
-                    height: Math.min(platListCol.height, platSheet.height * 0.65)
-                    contentHeight: platListCol.height
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-
-                    Column {
-                        id: platListCol
-                        width: parent.width
-                        spacing: 0
-
-                        // The tree is fetched at startup; empty means nothing postable was found.
-                        Item {
-                            width: parent.width
-                            height: units.gu(8)
-                            visible: page.platformOptions.length === 0
-                            Label {
-                                anchors.centerIn: parent
-                                text: Lang.tr("No platforms you can post in")
-                                font.pixelSize: Style.fontSmall
-                                color: Style.textSecondary
-                            }
-                        }
-
-                        Repeater {
-                            model: page.platformOptions
-
-                            delegate: AbstractButton {
-                                width: platSheetCol.width
-                                height: units.gu(6.5)
-                                readonly property bool isSelected: page.targetPlatform
-                                                                   && String(page.targetPlatform.id) === String(modelData.id)
-                                onClicked: {
-                                    page.targetPlatform = modelData;
-                                    page.selectedCategory = "";
-                                    page.selectedSubCategory = "";
-                                    page.loadCategories();
-                                    platSheet.closeAnimated();
-                                }
-
-                                Row {
-                                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
-                                    spacing: Style.spacingM
-
-                                    Rectangle {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: units.gu(4.5); height: width; radius: width / 2
-                                        color: Style.iconBackground
-                                        CircleImage {
-                                            anchors { fill: parent; margins: units.dp(2) }
-                                            source: modelData.icon || ""
-                                            decode: units.gu(5)
-                                        }
-                                    }
-                                    Label {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - units.gu(4.5) - platTick.width - Style.spacingM * 2
-                                        text: modelData.title
-                                        elide: Text.ElideRight
-                                        font.pixelSize: Style.fontRegular
-                                        font.family: Style.fontFor(text)
-                                        color: isSelected ? Style.brand : Style.textPrimary
-                                        font.weight: isSelected ? Font.DemiBold : Font.Normal
-                                    }
-                                    Icon {
-                                        id: platTick
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: units.gu(2.2); height: width
-                                        name: "tick"; color: Style.brand
-                                        visible: isSelected
-                                    }
-                                }
-
-                                Rectangle {
-                                    anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
-                                    height: units.dp(1); color: Style.divider
-                                }
-                            }
-                        }
-
-                        Item { width: 1; height: Style.spacingM }
-                    }
-                }
             }
         }
     }

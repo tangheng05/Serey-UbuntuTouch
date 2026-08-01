@@ -77,7 +77,8 @@ MainView {
                               : currentTab === 2 ? videoStack.columns
                               : settingsStack.columns
     readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3
-    readonly property bool showNavBar: activeColumns > 1 || activeDepth <= 1
+    // Wide windows keep the rail inside pushed pages too: it's app chrome there.
+    readonly property bool showNavBar: root.wideMode || activeColumns > 1 || activeDepth <= 1
 
     Component.onCompleted: {
         // Expired tokens are caught lazily via 401 (can't check up-front); only clear if the rejected token is still the current one.

@@ -124,7 +124,8 @@ Page {
     }
 
     // Right rail: related videos, vote row and comments — wide mode only.
-    readonly property bool showSidePanel: Config.wideMode && !!(page.video && page.video.permlink)
+    // Desktop only: tablet has room for list + video, not a third column.
+    readonly property bool showSidePanel: Config.desktopMode && !!(page.video && page.video.permlink)
     // Resizable via the drag handle below; clamped so the article column always keeps a sane minimum width.
     property real sidePanelWidth: units.gu(34)
     readonly property real _minSidePanelW: units.gu(26)

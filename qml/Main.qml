@@ -28,6 +28,8 @@ MainView {
     // Convergence breakpoint shared with AdaptiveStack.qml via Config; drives the side nav rail, independent of any tab's column state.
     readonly property bool wideMode: width >= Config.convergenceBreakpoint
     Binding { target: Config; property: "wideMode"; value: root.wideMode }
+    readonly property bool desktopMode: width >= Config.desktopBreakpoint
+    Binding { target: Config; property: "desktopMode"; value: root.desktopMode }
 
     // Follow the OS light/dark setting: bind the Style singleton's `dark` switch to
     // the active Suru theme so every color token re-skins centrally (no call-site

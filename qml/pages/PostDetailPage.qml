@@ -159,7 +159,7 @@ Page {
         }
 
         Label {
-            anchors { left: backBtn.right; leftMargin: Style.spacingS; right: shareHeaderBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            anchors { left: backBtn.right; leftMargin: Style.spacingS; right: headerActions.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             text: page.postReady ? (page.post.title || (page.isVideoPost() ? Lang.tr("Video") : Lang.tr("Blog"))) : ""
             font.pixelSize: Style.fontLarge
             font.weight: Font.Light
@@ -167,33 +167,63 @@ Page {
             elide: Text.ElideRight
         }
 
-        AbstractButton {
-            id: shareHeaderBtn
-            anchors { right: moreHeaderBtn.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: units.gu(4)
-            enabled: page.shareUrl.length > 0
-            onClicked: Share.open(page.shareUrl, shareHeaderBtn)
-            Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
-        }
-
-        AbstractButton {
-            id: moreHeaderBtn
+        // A Row, not anchor-chained buttons: invisible ones drop out of the layout
+        // instead of leaving a hole where they would have sat.
+        Row {
+            id: headerActions
             anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: units.gu(4)
-            enabled: page.postReady
-            // Desktop: a compact anchored dropdown. Phone: the full-screen action sheet
-            // (report reasons / delete-confirm need more room than a dropdown row gives).
-            onClicked: Config.wideMode ? (page.headerMenuOpen = !page.headerMenuOpen) : PostActions.open(page.post, "blog")
-            Column {
-                anchors.centerIn: parent
-                spacing: units.dp(3)
-                Repeater {
-                    model: 3
-                    delegate: Rectangle {
-                        width: units.dp(4); height: units.dp(4)
-                        radius: width / 2
-                        color: Style.textSecondary
-                        anchors.horizontalCenter: parent.horizontalCenter
+            spacing: Style.spacingXs
+
+            // Tablet only: bookmark + open-in-browser are promoted out of the "..."
+            // menu. Desktop keeps them in the menu, phone keeps the share button.
+            AbstractButton {
+                id: saveHeaderBtn
+                visible: Config.tabletMode && page.postReady
+                width: units.gu(4); height: units.gu(4)
+                onClicked: page.toggleSaved()
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.2); height: width
+                    name: "bookmark"
+                    color: page.isSaved ? Style.brand : Style.textPrimary
+                }
+            }
+
+            AbstractButton {
+                id: browserHeaderBtn
+                visible: Config.tabletMode && page.shareUrl.length > 0
+                width: units.gu(4); height: units.gu(4)
+                onClicked: Qt.openUrlExternally(page.shareUrl)
+                Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "external-link"; color: Style.textPrimary }
+            }
+
+            AbstractButton {
+                id: shareHeaderBtn
+                visible: !Config.wideMode
+                width: units.gu(4); height: units.gu(4)
+                enabled: page.shareUrl.length > 0
+                onClicked: Share.open(page.shareUrl, shareHeaderBtn)
+                Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
+            }
+
+            AbstractButton {
+                id: moreHeaderBtn
+                width: units.gu(4); height: units.gu(4)
+                enabled: page.postReady
+                // Desktop: a compact anchored dropdown. Phone: the full-screen action sheet
+                // (report reasons / delete-confirm need more room than a dropdown row gives).
+                onClicked: Config.wideMode ? (page.headerMenuOpen = !page.headerMenuOpen) : PostActions.open(page.post, "blog")
+                Column {
+                    anchors.centerIn: parent
+                    spacing: units.dp(3)
+                    Repeater {
+                        model: 3
+                        delegate: Rectangle {
+                            width: units.dp(4); height: units.dp(4)
+                            radius: width / 2
+                            color: Style.textSecondary
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
                     }
                 }
             }
@@ -205,7 +235,10 @@ Page {
             id: headerMenu
             visible: page.headerMenuOpen
             z: 20
-            anchors { top: moreHeaderBtn.bottom; right: moreHeaderBtn.right; topMargin: Style.spacingXs }
+            // headerActions, not moreHeaderBtn: the button now lives inside that Row,
+            // and anchors only reach a parent or sibling. It's the last item, so the
+            // Row's right edge is the button's right edge.
+            anchors { top: headerActions.bottom; right: headerActions.right; topMargin: Style.spacingXs }
             width: units.gu(24)
             height: headerMenuCol.height
             radius: Style.cardRadius
@@ -751,7 +784,8 @@ Page {
     }
 
     // Right rail: related posts, vote bar and comments — wide mode only.
-    readonly property bool showSidePanel: Config.wideMode && page.postReady
+    // Desktop only: tablet has room for list + article, not a third column.
+    readonly property bool showSidePanel: Config.desktopMode && page.postReady
 
     // Resizable via the drag handle below; clamped so the article column always keeps a sane minimum width.
     property real sidePanelWidth: units.gu(34)

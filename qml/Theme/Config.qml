@@ -10,6 +10,10 @@ QtObject {
 
     // Single source of truth for the convergence breakpoint, shared by Main.qml and AdaptiveStack.qml so the two never drift out of sync.
     readonly property real convergenceBreakpoint: units.gu(80)
+    // Second tier: desktop is where a THIRD column fits at its natural width.
+    // Derived, not picked: nav rail 20 + list 46 + article 50 + side panel 34.
+    // Lomiri itself only defines the 80gu two-column point, so this one is ours.
+    readonly property real desktopBreakpoint: units.gu(150)
 
     // Convergence readability caps (HIG: adapt, not scale; don't let a column
     // stretch edge-to-edge on a desktop window). Long-form reading/detail columns
@@ -87,6 +91,10 @@ QtObject {
 
     // Mirrored from Main.wideMode
     property bool wideMode: false
+    // Mirrored from Main.desktopMode
+    property bool desktopMode: false
+    // Split view, but not a full desktop window.
+    readonly property bool tabletMode: wideMode && !desktopMode
 
     property int sourceIndex: 0  // default to Global (combined feed, no community filter)
     // Set when user picks a sub-community from the picker; null = use top-level source.

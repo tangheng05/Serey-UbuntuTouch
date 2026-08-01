@@ -292,6 +292,7 @@ Page {
         Session.clear();
         FollowStore.reset();
         page.profile = null;
+        Toast.show(Lang.tr("Logged out"));
     }
 
     Component.onCompleted: {

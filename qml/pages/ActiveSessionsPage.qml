@@ -26,8 +26,7 @@ Page {
             Action {
                 iconName: "delete"
                 text: Lang.tr("Terminate all")
-                // Needs _hasCurrent: the server rejects the whole batch if it
-                // contains this device, so don't offer it until we know which row that is.
+                // Server 400s the whole batch if it includes this device.
                 visible: page.otherCount > 0 && page._hasCurrent && !page.loading
                 onTriggered: PopupUtils.open(terminateAllDialog)
             }
@@ -36,8 +35,8 @@ Page {
 
     ListModel { id: deviceModel; dynamicRoles: true }
 
-    // Marks which row is this device. Sessions created before deviceId was
-    // stored have none, so fall back to: a single session must be this one.
+    // Logins before deviceId was stored have no marker, so fall back to:
+    // a single session must be this one.
     function _markCurrent() {
         var onlyOne = deviceModel.count === 1
         page._hasCurrent = false
@@ -93,8 +92,7 @@ Page {
             function (err) {
                 var i = page._indexOfDevice(id)
                 if (i >= 0) deviceModel.setProperty(i, "busy", false)
-                // 400 on this route means "that's your current device". Record it
-                // so the row stops offering to terminate itself.
+                // 400 here means "that's your current device"; remember it.
                 if (err.status === 400 && i >= 0) {
                     Session.setDeviceId(id)
                     page._markCurrent()

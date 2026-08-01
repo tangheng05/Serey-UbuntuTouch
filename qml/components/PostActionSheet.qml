@@ -182,7 +182,7 @@ Item {
             function () {
                 sheet.reporting = false;
                 sheet.closeSheet();
-                Toast.show(Lang.tr("Report submitted. Thank you."));
+                Toast.show(Lang.tr("Thanks for your report"));
             },
             function (err) {
                 sheet.reporting = false;
@@ -200,7 +200,7 @@ Item {
                 BlockedUsers.add(username);   // persist so feeds stay filtered on reload
                 PostActions.userBlocked(username);
                 sheet.closeSheet();
-                Toast.show(Lang.tr("@%1 blocked.").arg(username));
+                Toast.show(Lang.tr("%1 blocked").arg(username));
             },
             function (err) {
                 sheet.blocking = false;

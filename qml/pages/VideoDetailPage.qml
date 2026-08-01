@@ -342,7 +342,7 @@ Page {
                 if (!page.upvoted) page.voteCount++;
                 page.upvoted = true; page.flagged = false;
                 page._voteApply(r); page._voteCache();
-                Toast.success(Lang.tr("Upvoted %1%").arg(weight));
+                Toast.success(Lang.tr("Thanks for your vote!"));
             }, page._voteFail);
     }
     function doUpvote() {
@@ -373,7 +373,7 @@ Page {
                 function (r) {
                     if (page.upvoted) page.voteCount = Math.max(0, page.voteCount - 1);
                     page.flagged = true; page.upvoted = false;
-                    page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Flagged"));
+                    page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Thanks for your feedback!"));
                 }, page._voteFail);
         }
     }

@@ -701,12 +701,14 @@ Page {
     readonly property int _voteDownIdx: page.relatedPosts.length + 1
     readonly property int _sidePanelItemCount: page.relatedPosts.length + 2
 
-    function openRelated(post) {
-        page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"), { author: post.author, permlink: post.permlink });
+    function openRelated(post, byKeyboard) {
+        page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
+                            { author: post.author, permlink: post.permlink,
+                              focusOnOpen: byKeyboard === true });
     }
     function sidePanelActivate() {
         if (page.sidePanelIndex < 0) return;
-        if (page.sidePanelIndex < page.relatedPosts.length) page.openRelated(page.relatedPosts[page.sidePanelIndex]);
+        if (page.sidePanelIndex < page.relatedPosts.length) page.openRelated(page.relatedPosts[page.sidePanelIndex], true);
         else if (page.sidePanelIndex === page._voteUpIdx) detailVoteBar.doUpvote();
         else if (page.sidePanelIndex === page._voteDownIdx) detailVoteBar.doFlag();
     }
@@ -738,6 +740,15 @@ Page {
     // The scroll view owns arrow-key focus so a keyboard user can scroll the article;
     // AdaptiveStack.focusDetail() targets this when entering from the list.
     property Item keyboardFocusItem: scroll
+
+    // A push from inside the detail column skips AdaptiveStack.focusDetail(), so a
+    // keyboard-opened related post would land unfocused. Waits for postReady since
+    // `scroll` is hidden until then and focusing a hidden item does nothing.
+    property bool focusOnOpen: false
+    onPostReadyChanged: if (postReady && page.focusOnOpen) {
+        page.focusOnOpen = false;
+        Qt.callLater(function () { if (scroll.visible) scroll.forceActiveFocus(); });
+    }
 
     // Right rail: related posts, vote bar and comments — wide mode only.
     readonly property bool showSidePanel: Config.wideMode && page.postReady

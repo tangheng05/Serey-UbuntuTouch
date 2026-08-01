@@ -165,7 +165,7 @@ RowLayout {
         bar.upvoted = true;
         bar.flagged = false;
         bar._cache();
-        Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Upvoted %1%").arg(weight));
+        Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Thanks for your vote!"));
         bar.busy = true;
         VoteService.upvote(Config.baseUrl, author, permlink, voteType, weight, Session.token,
             function (r) { _apply(r); bar._cache(); },
@@ -271,7 +271,7 @@ RowLayout {
             bar.flagged = true;
             bar.upvoted = false;
             bar._cache();
-            Toast.show(Lang.tr("Flagged"));
+            Toast.show(Lang.tr("Thanks for your feedback!"));
             bar.busy = true;
             VoteService.flag(Config.baseUrl, author, permlink, voteType, Session.token,
                 function (r) { _apply(r); bar._cache(); },

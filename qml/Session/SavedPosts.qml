@@ -92,7 +92,7 @@ QtObject {
         // Persist the text immediately, then cache images in the background and rewrite to local paths as they arrive.
         _persist(post);
         store._load();
-        Toast.success("Saved for offline");
+        Toast.success(Lang.tr("Saved for offline use"));
         store._cacheImages(post.permlink, post);
     }
 

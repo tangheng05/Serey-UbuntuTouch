@@ -185,7 +185,7 @@ QtObject {
             delete _active[permlink];
             dl.destroy();
             store.rev++;
-            Toast.success("Saved for offline");
+            Toast.success(Lang.tr("Saved for offline use"));
         });
         dl.failed.connect(function (message) {
             delete _active[permlink];

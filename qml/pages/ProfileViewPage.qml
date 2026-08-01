@@ -76,8 +76,8 @@ Page {
                 page.blockLoading = false;
                 page.isBlocked = !page.isBlocked;
                 Toast.show(page.isBlocked
-                    ? Lang.tr("@%1 blocked.").arg(page.username)
-                    : Lang.tr("@%1 unblocked.").arg(page.username));
+                    ? Lang.tr("%1 blocked").arg(page.username)
+                    : Lang.tr("%1 unblocked").arg(page.username));
                 if (page.isBlocked) { BlockedUsers.add(page.username); PostActions.userBlocked(page.username); }
                 else { BlockedUsers.remove(page.username); PostActions.userUnblocked(page.username); }
             },

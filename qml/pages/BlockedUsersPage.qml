@@ -53,7 +53,7 @@ Page {
         AccountService.toggleBlock(Config.baseUrl, Session.token, username, "REMOVE",
             function () {
                 blockedModel.remove(index)
-                Toast.show(Lang.tr("@%1 unblocked.").arg(username))
+                Toast.show(Lang.tr("%1 unblocked").arg(username))
             },
             function (err) {
                 blockedModel.setProperty(index, "unblocking", false)

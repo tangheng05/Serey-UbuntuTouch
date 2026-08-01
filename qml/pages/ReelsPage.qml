@@ -64,7 +64,7 @@ Page {
                 if (!reel.upvoted) reel.votes = reel.votes + 1;
                 reel.upvoted = true; reel.flagged = false; reel.busy = false;
                 VoteService._updateCache(page._voteAuthor, page._votePermlink, true, false, reel.votes, "");
-                Toast.success(Lang.tr("Upvoted %1%").arg(weight));
+                Toast.success(Lang.tr("Thanks for your vote!"));
             },
             function (e) {
                 reel.busy = false;

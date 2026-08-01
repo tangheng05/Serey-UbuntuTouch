@@ -26,6 +26,11 @@ Page {
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
+    // Bound by the publish button; bodyArea lives further down the file.
+    readonly property bool canPublish: !page.submitting
+        && titleField.text.trim().length > 0
+        && bodyArea.getText(0, bodyArea.length).trim().length > 0
+
     // Chosen in PostCommunityPicker before this page opens; unset = post into the
     // browsed source.
     property var targetCommunity: null
@@ -156,29 +161,6 @@ Page {
             font.pixelSize: Style.fontMedium
             font.weight: Font.DemiBold
             color: Style.textPrimary
-        }
-
-        AbstractButton {
-            anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-            width: postPillLabel.implicitWidth + Style.spacingM * 2
-            height: units.gu(4)
-            enabled: !page.submitting && titleField.text.trim().length > 0 && bodyArea.getText(0, bodyArea.length).trim().length > 0
-            onClicked: page.publish()
-
-            Rectangle {
-                anchors.fill: parent
-                radius: Style.cardRadius
-                color: parent.enabled ? Style.brand : Style.iconBackground
-            }
-            Label {
-                id: postPillLabel
-                anchors.centerIn: parent
-                text: page.submitting ? (page.isEdit ? Lang.tr("Saving…") : Lang.tr("Posting…"))
-                                      : (page.isEdit ? Lang.tr("Save") : Lang.tr("Publish"))
-                font.pixelSize: Style.fontSmall
-                font.weight: Font.DemiBold
-                color: parent.enabled ? Style.textOnBrand : Style.textSecondary
-            }
         }
 
         Rectangle {
@@ -547,20 +529,14 @@ Page {
                 }
             }
 
-            Rectangle {
+            // Bare row, no card: the toggle reads as a form setting rather than a section.
+            Item {
                 width: parent.width
-                height: chainRow.implicitHeight + Style.spacingM * 2
-                radius: Style.cardRadius
-                color: "transparent"
-                border.width: units.dp(1.5)
-                border.color: Style.divider
+                height: chainRow.implicitHeight
 
                 Row {
                     id: chainRow
-                    anchors {
-                        left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
-                        leftMargin: Style.spacingM; rightMargin: Style.spacingM
-                    }
+                    anchors { left: parent.left; right: parent.right }
                     spacing: Style.spacingM
 
                     Column {
@@ -577,9 +553,8 @@ Page {
                         }
                         Label {
                             width: parent.width
-                            text: page.postToBlockchain
-                                ? Lang.tr("Permanent, tamper proof storage on the blockchain. Proves authorship and earns SRY rewards")
-                                : Lang.tr("Serey only, no votes or rewards.")
+                            text: page.postToBlockchain ? Lang.tr("Can earn votes and rewards.")
+                                                        : Lang.tr("Serey only, no votes or rewards.")
                             font.pixelSize: Style.fontXSmall
                             font.family: Style.fontFor(text)
                             color: Style.textSecondary
@@ -600,7 +575,10 @@ Page {
                 width: parent.width
                 height: units.gu(20)
                 radius: Style.thumbRadius
-                color: Style.iconBackground
+                // Outlined while empty, filled once an image sits behind it.
+                color: page.coverImageUrl.length > 0 ? Style.iconBackground : "transparent"
+                border.width: page.coverImageUrl.length > 0 ? 0 : units.dp(1.5)
+                border.color: Style.divider
                 clip: true
 
                 Image {
@@ -655,13 +633,13 @@ Page {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: units.gu(5); height: width
                         radius: width / 2
-                        color: Style.brand
+                        color: Style.iconBackground
 
                         Icon {
                             anchors.centerIn: parent
                             width: units.gu(2.5); height: width
                             name: "add"
-                            color: Style.textOnBrand
+                            color: Style.textPrimary
                         }
                     }
 
@@ -678,6 +656,15 @@ Page {
                     enabled: !page.uploading && page.coverImageUrl.length === 0
                     onClicked: page.pickCoverImage()
                 }
+            }
+
+            PrimaryButton {
+                width: parent.width
+                enabled: page.canPublish
+                busy: page.submitting
+                text: page.submitting ? (page.isEdit ? Lang.tr("Saving…") : Lang.tr("Posting…"))
+                                      : (page.isEdit ? Lang.tr("Save") : Lang.tr("Publish"))
+                onClicked: page.publish()
             }
 
             Item { width: 1; height: Style.spacingM }

@@ -510,7 +510,7 @@ Item {
                     }
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Lang.tr("Block @%1").arg(root.p.author || "")
+                        text: Lang.tr("Block %1").arg(root.p.author || "")
                         font.pixelSize: Style.fontSmall
                         color: Style.danger
                     }

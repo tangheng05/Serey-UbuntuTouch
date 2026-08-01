@@ -63,6 +63,18 @@ Page {
         ? ("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink) : ""
     readonly property bool isOwn: Session.isLoggedIn && !!(page.video && page.video.author) && page.video.author === Session.username
 
+    // Category tag, same shape as PostDetailPage. "video" is a routing tag, not a
+    // topic, so it never becomes the label.
+    function _realCategories() {
+        var c = (page.video && page.video.categories) || [];
+        var out = [];
+        for (var i = 0; i < c.length; i++)
+            if (String(c[i]).toLowerCase() !== "video") out.push(c[i]);
+        return out;
+    }
+    function maincategory() { return page._realCategories()[0] || ""; }
+    function subcategories() { return page._realCategories().slice(1); }
+
     // Row data for the desktop "•••" dropdown; report/delete/block/edit-caption still
     // route through the mobile sheet (opened at the matching step) since those need their own sub-flow.
     function headerMenuItems() {
@@ -103,7 +115,7 @@ Page {
     function headerMenuRows() {
         var items = page.headerMenuItems();
         if (!page.isOwn)
-            items.push({ divider: true }, { icon: "", label: Lang.tr("Block @%1").arg(page.video.author || ""), danger: true, action: "block", custom: "block" });
+            items.push({ divider: true }, { icon: "", label: Lang.tr("Block %1").arg(page.video.author || ""), danger: true, action: "block", custom: "block" });
         return items;
     }
     function headerMenuMove(delta) {
@@ -442,7 +454,7 @@ Page {
         }
 
         Label {
-            anchors { left: videoBackBtn.right; leftMargin: Style.spacingS; right: videoShareHeaderBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            anchors { left: videoBackBtn.right; leftMargin: Style.spacingS; right: videoHeaderActions.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             text: Lang.tr("Video")
             font.pixelSize: Style.fontLarge
             font.weight: Font.Light
@@ -450,32 +462,60 @@ Page {
             elide: Text.ElideRight
         }
 
-        AbstractButton {
-            id: videoShareHeaderBtn
-            anchors { right: videoMoreHeaderBtn.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: units.gu(4)
-            enabled: !!(page.video && page.video.author && page.video.permlink)
-            onClicked: Share.open(page.shareUrl, videoShareHeaderBtn)
-            Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
-        }
-
-        AbstractButton {
-            id: videoMoreHeaderBtn
+        // Same shape as PostDetailPage's header: a Row so hidden buttons don't
+        // leave a gap, tablet promotes bookmark + open-in-browser out of the menu.
+        Row {
+            id: videoHeaderActions
             anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: units.gu(4)
-            // Desktop: a compact anchored dropdown. Phone: the full-screen action sheet
-            // (report reasons / delete-confirm / edit-caption need more room than a dropdown row gives).
-            onClicked: Config.wideMode ? (page.headerMenuOpen = !page.headerMenuOpen) : PostActions.open(page.video, "video")
-            Column {
-                anchors.centerIn: parent
-                spacing: units.dp(3)
-                Repeater {
-                    model: 3
-                    delegate: Rectangle {
-                        width: units.dp(4); height: units.dp(4)
-                        radius: width / 2
-                        color: Style.textSecondary
-                        anchors.horizontalCenter: parent.horizontalCenter
+            spacing: Style.spacingXs
+
+            AbstractButton {
+                id: videoSaveHeaderBtn
+                visible: Config.tabletMode && page.canDownload
+                width: units.gu(4); height: units.gu(4)
+                onClicked: page.runHeaderMenuAction("toggleDownload")
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.2); height: width
+                    name: "bookmark"
+                    color: page.dlSaved ? Style.brand : Style.textPrimary
+                }
+            }
+
+            AbstractButton {
+                id: videoBrowserHeaderBtn
+                visible: Config.tabletMode && page.shareUrl.length > 0
+                width: units.gu(4); height: units.gu(4)
+                onClicked: Qt.openUrlExternally(page.shareUrl)
+                Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "external-link"; color: Style.textPrimary }
+            }
+
+            AbstractButton {
+                id: videoShareHeaderBtn
+                visible: !Config.wideMode
+                width: units.gu(4); height: units.gu(4)
+                enabled: !!(page.video && page.video.author && page.video.permlink)
+                onClicked: Share.open(page.shareUrl, videoShareHeaderBtn)
+                Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
+            }
+
+            AbstractButton {
+                id: videoMoreHeaderBtn
+                width: units.gu(4); height: units.gu(4)
+                // Desktop: a compact anchored dropdown. Phone: the full-screen action sheet
+                // (report reasons / delete-confirm / edit-caption need more room than a dropdown row gives).
+                onClicked: Config.wideMode ? (page.headerMenuOpen = !page.headerMenuOpen) : PostActions.open(page.video, "video")
+                Column {
+                    anchors.centerIn: parent
+                    spacing: units.dp(3)
+                    Repeater {
+                        model: 3
+                        delegate: Rectangle {
+                            width: units.dp(4); height: units.dp(4)
+                            radius: width / 2
+                            color: Style.textSecondary
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
                     }
                 }
             }
@@ -487,7 +527,9 @@ Page {
             id: headerMenu
             visible: page.headerMenuOpen
             z: 20
-            anchors { top: videoMoreHeaderBtn.bottom; right: videoMoreHeaderBtn.right; topMargin: Style.spacingXs }
+            // The Row, not the button: anchors only reach a parent or sibling, and
+            // "..." is the Row's last item so their right edges coincide.
+            anchors { top: videoHeaderActions.bottom; right: videoHeaderActions.right; topMargin: Style.spacingXs }
             width: units.gu(24)
             height: headerMenuCol.height
             radius: Style.cardRadius
@@ -976,6 +1018,40 @@ Page {
                 id: metaCol
                 width: parent.width
                 spacing: 0
+
+            // Category tag above the title, same as PostDetailPage.
+            Row {
+                visible: page.maincategory().length > 0
+                x: Style.spacingM
+                spacing: Style.spacingXs
+
+                Rectangle {
+                    width: units.dp(10); height: units.dp(10)
+                    radius: units.dp(2)
+                    color: Style.accentRed
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Label {
+                    text: page.maincategory().toUpperCase()
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.Bold
+                    font.family: Style.fontFor(text)
+                    color: Style.accentRed
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Label {
+                    visible: text.length > 0
+                    text: page.subcategories().length > 0
+                          ? ("› " + page.subcategories().join(" · ").toUpperCase()) : ""
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.Bold
+                    font.family: Style.fontFor(text)
+                    color: Style.textSecondary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            Item { width: 1; height: Style.spacingXs; visible: page.maincategory().length > 0 }
 
             Label {
                 width: parent.width - Style.spacingM * 2

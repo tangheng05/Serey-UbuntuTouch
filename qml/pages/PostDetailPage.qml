@@ -48,7 +48,7 @@ Page {
     function headerMenuRows() {
         var items = page.headerMenuItems();
         if (!page.isOwnPost)
-            items.push({ divider: true }, { icon: "", label: Lang.tr("Block @%1").arg(page.author), danger: true, action: "block", custom: "block" });
+            items.push({ divider: true }, { icon: "", label: Lang.tr("Block %1").arg(page.author), danger: true, action: "block", custom: "block" });
         return items;
     }
     function headerMenuMove(delta) {

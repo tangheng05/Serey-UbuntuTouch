@@ -802,7 +802,7 @@ Item {
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: Lang.tr("Block @%1?").arg(sheet.authorName)
+                text: Lang.tr("Block %1?").arg(sheet.authorName)
                 font.pixelSize: Style.fontLarge
                 font.weight: Font.DemiBold
                 color: Style.textPrimary

@@ -3,9 +3,7 @@
 
 var _db = null
 
-// Feeds call loadAll() on every response (several times per cold start), and it
-// does a full table scan. The set only changes through the writers below, so
-// memoise the map and let them invalidate it.
+// loadAll() does a full table scan; memoise and let writers below invalidate
 var _cache = null
 
 function _invalidate() { _cache = null }

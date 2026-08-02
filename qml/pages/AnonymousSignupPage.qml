@@ -5,9 +5,7 @@ import "../Session"
 import "../components"
 import "../services/AccountService.js" as AccountService
 
-// Anonymous (Monero) signup, self-custodial: keys are generated on-device and the
-// master password (shown at step 2) never leaves the phone. Steps: 0 username,
-// 1 pay, 2 save key + done, 3 error.
+// Anonymous Monero signup, self-custodial: master password never leaves the phone
 Page {
     id: page
 
@@ -65,8 +63,7 @@ Page {
         AccountService.checkUsernameAvailable(Config.baseUrl, usernameField.text,
             function () {
                 page.username = usernameField.text;
-                // Generate the keypair on-device before paying; the master password
-                // stays here, only the public keys + posting key are sent.
+                // Master password stays on-device; only public keys + posting key are sent
                 keygen.generate(page.username,
                     function (keys) { page._keys = keys; page.masterKey = keys.master_password; page.startPayment(); },
                     function (msg) { page.busy = false; page.errorMsg = msg; });
@@ -122,8 +119,7 @@ Page {
             function (r) {
                 page.payStatus = r.status;
                 if (r.status === "completed" || r.accountCreated) {
-                    // Master password is already on the device from keygen; the
-                    // account is live, so just show it. No server key needed.
+                    // Master password already on device from keygen; no server key needed
                     _stopTimers();
                     page.createdUsername = r.username || page.username;
                     page.step = 2;
@@ -148,7 +144,7 @@ Page {
                 page.busy = false;
                 Session.clear();
                 FollowStore.reset();
-                Session.setAuth(auth.token, page.createdUsername, auth.userDeviceId);
+                Session.setAuth(auth.token, page.createdUsername, auth.deviceId);
                 AccountService.profile(Config.baseUrl, page.createdUsername, auth.token,
                     function (user) { Session.avatarUrl = user.profileUrl; },
                     function (err) { /* keep letter-fallback avatar */ });
@@ -265,8 +261,7 @@ Page {
                 width: units.gu(22); height: width
                 radius: units.dp(10)
                 color: "#FFFFFF"
-                // Monero URI with the amount, so a scanning wallet auto-fills it
-                // exactly (copy-address below stays plain for manual paste).
+                // Monero URI includes amount for auto-fill; copy-address stays plain
                 QrCode {
                     anchors { fill: parent; margins: units.gu(1) }
                     text: page.payment

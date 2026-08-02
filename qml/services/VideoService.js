@@ -25,8 +25,7 @@ function detail(baseUrl, author, permlink, token, onOk, onErr) {
 
 // --- Admin/CMS moderation (requires an owner/manager token) ----------------
 
-// Move a video's position; direction is the "up"/"down" string
-// (backend schema not available in this repo).
+// Move a video's position; direction is "up"/"down"
 function reorder(baseUrl, id, direction, token, onOk, onErr) {
     Http.post(baseUrl, "/video-component/up-or-down", { id: id, direction: direction }, token,
               function (data) { onOk(data || {}); }, onErr);

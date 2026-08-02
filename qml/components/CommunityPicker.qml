@@ -18,8 +18,7 @@ Item {
     property var cache: ({})
     property int loadingIndex: -1
 
-    // cache/expandedIndex are keyed by row index, so they go stale when Config.sources
-    // is rebuilt (indices shift after platform create/delete). Drop and re-fetch.
+    // Keyed by row index, so they go stale when Config.sources is rebuilt; drop and re-fetch
     property Connections _sourcesWatcher: Connections {
         target: Config
         function onSourcesChanged() {
@@ -28,9 +27,7 @@ Item {
             picker.loadingIndex = -1
         }
     }
-    // Geo hint: hoist the detected country to the top, expanded, rest behind "See more".
-    // Reorders the VIEW ONLY; state stays keyed by the real Config.sources index, carried
-    // per display row as `_realIndex`. No detection -> detectedIndex -1, normal list.
+    // Geo hint: hoist detected country to top, expanded; reorders the VIEW ONLY, state stays keyed by `_realIndex`
     readonly property int detectedIndex: Config.indexForCountryCode(Config.detectedCountryCode)
     property bool showAll: false
     readonly property var displaySources: picker._buildDisplaySources()
@@ -47,8 +44,7 @@ Item {
         var di = picker.detectedIndex
         if (di < 0) return out          // undetected: today's list, untouched
 
-        // Global stays pinned at the top (default combined feed); the geo hint
-        // slots in BELOW it. (di is never 0: _indexForCountry skips Global.)
+        // Global stays pinned at top (default combined feed); geo hint slots in BELOW it
         var mine = out.splice(di, 1)[0]
         out.splice(1, 0, mine)
         // Collapsed: Global + the user's country. The rest are one tap away.
@@ -67,13 +63,10 @@ Item {
         cpBackdropFade.start()
         cpSlide.start()
         if (Session.isLoggedIn && !subscriptionsLoaded) _loadSubscriptions()
-        // Geo-detected country opens expanded: it's the one row we're confident
-        // the user wants, and collapsed it would show nothing but its own name.
-        // Only when the user hasn't already expanded something themselves.
+        // Geo-detected country opens expanded, unless the user already expanded something
         if (picker.detectedIndex > 0 && picker.expandedIndex === -1)
             picker._toggleExpand(picker.detectedIndex)
-        // Keyboard users can open this via the header pill (Enter): own the keys
-        // while open so Escape dismisses and Tab can't tunnel to the page below.
+        // Own the keys while open so Escape dismisses and Tab can't tunnel to the page below
         picker._prevFocus = Window.activeFocusItem
         picker.forceActiveFocus()
         // Cursor starts on the active source; the ring only shows once a key is pressed.
@@ -82,8 +75,7 @@ Item {
     }
     function close()         { picker._closing = false; closeGuard.stop(); picker.visible = false }
 
-    // Closing but still visible until cpSlideOut finishes. The backdrop MouseArea still
-    // hit-tests at opacity 0, so it must be disabled while the exit animation runs.
+    // Closing but visible until cpSlideOut finishes; backdrop hit-tests at opacity 0 so disable it
     property bool _closing: false
 
     function closeAnimated() {
@@ -102,15 +94,13 @@ Item {
         onTriggered: if (picker.visible) picker.close()
     }
 
-    // Rows live in nested Repeaters (source > category > community), so the cursor is
-    // data coordinates, not Items; it survives delegate recreation. cat/com -1 = source row.
+    // Cursor is data coordinates, not Items, so it survives delegate recreation; cat/com -1 = source row
     property int navSrc: -1
     property int navCat: -1
     property int navCom: -1
     property bool navActive: false
 
-    // Selectable rows in visual order (category headers excluded). Walks displaySources,
-    // not Config.sources, so the cursor visits what's on screen; `src` stays the REAL index.
+    // Walks displaySources, not Config.sources, so cursor visits what's on screen; `src` stays REAL index
     function _navEntries() {
         var out = [], srcs = picker.displaySources || []
         for (var d = 0; d < srcs.length; d++) {
@@ -178,15 +168,13 @@ Item {
 
     // Whatever held keyboard focus before the picker opened; restored on close.
     property var _prevFocus: null
-    // True when a platform was actually chosen (vs. cancel/Escape). Focus then belongs
-    // in the reloaded feed, not back on the pill, whose KeyTapArea has no arrow nav.
+    // True when a platform was chosen (vs. cancel/Escape); focus then goes to the reloaded feed
     property bool _chose: false
     onVisibleChanged: {
         if (visible) return
         var prev = _prevFocus, chose = _chose
         _prevFocus = null; _chose = false
-        // Deferred: a synchronous grab while this sheet is still tearing down lands
-        // nowhere, leaving the keyboard dead until a click.
+        // Deferred: a synchronous grab mid-teardown lands nowhere, leaving keyboard dead
         Qt.callLater(function () {
             if (chose) { Nav.focusContent(); return }
             try { if (prev && prev.visible) prev.forceActiveFocus() } catch (e) { /* item destroyed since */ }
@@ -431,8 +419,7 @@ Item {
     Rectangle {
         id: sheet
         readonly property bool wide: Config.wideMode
-        // Centered + explicit width handles both cases (full-width on phone, capped
-        // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
+        // Centered + explicit width avoids mixing left/right/horizontalCenter, which QML warns on
         anchors {
             horizontalCenter: parent.horizontalCenter
             bottom: parent.bottom
@@ -486,8 +473,7 @@ Item {
                 Item { width: 1; height: Style.spacingM }
 
                 Repeater {
-                    // Display order, which may differ from Config.sources when a
-                    // country is geo-detected; srcIndex carries the real index.
+                    // Display order may differ from Config.sources when geo-detected; srcIndex is real index
                     model: picker.displaySources
 
                     delegate: Column {
@@ -962,8 +948,7 @@ Item {
                     }
                 }
 
-                // See more: shown only while the geo hint collapses the list;
-                // expanding is one-way for the session.
+                // See more: shown only while geo hint collapses the list; expanding is one-way
                 AbstractButton {
                     id: seeMoreBtn
                     visible: picker.detectedIndex >= 0 && !picker.showAll

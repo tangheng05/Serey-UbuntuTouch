@@ -20,9 +20,7 @@ Page {
     property string _pendingRemoveArticle: ""
     readonly property real maxContentWidth: units.gu(100)
 
-    // Keyboard nav: the active list owns arrow focus; settings' Nav.focusDetail
-    // targets this when the row is activated. Left/Escape return to the settings
-    // list; Up-at-top climbs into the Video/Articles strip.
+    // Keyboard nav: active list owns arrow focus; Left/Escape returns to settings list
     property Item keyboardFocusItem: tabIndex === 0 ? videoList : articleList
     function _focusActiveList() { (tabIndex === 0 ? videoList : articleList).forceActiveFocus(); }
     onVisibleChanged: if (visible) _focusActiveList()
@@ -139,6 +137,7 @@ Page {
                 id: videoCard
                 width: parent.width
                 video: modelData
+                compactMenu: false
                 onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: modelData })
                 onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                     { username: modelData.author })
@@ -219,8 +218,7 @@ Page {
                 ]
             }
 
-            // Pointer/keyboard parity: right-click or the MENU key opens the same
-            // Remove/Share actions the swipe exposes (see ContextActionArea).
+            // Pointer/keyboard parity: right-click or MENU key opens the same actions as swipe
             ContextActionArea {
                 id: contextArea
                 onActivated: page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),

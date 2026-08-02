@@ -3,9 +3,7 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 
-// "This article in one minute": AI bullets above the article body. Collapsed by
-// default so it costs one line until the reader wants it. The request is fired
-// by the page (JS services are null inside components), so this is view only.
+// AI bullet summary above the article body; view only, page fires the request
 Item {
     id: root
 
@@ -14,8 +12,7 @@ Item {
     property bool loading: false
     property bool expanded: false
 
-    // Shown as soon as the reading time is known (computed locally), so the bar
-    // never waits on the AI; the bullets drop in when they arrive.
+    // Shown as soon as reading time is known locally; bullets drop in when they arrive
     visible: readMinutes > 0
     height: visible ? box.height : 0
 
@@ -48,8 +45,7 @@ Item {
                     name: "clock"
                     color: Style.brand
                 }
-                // Fixed phrase: it promises how long the SUMMARY takes, not the
-                // article. The article's own reading time follows it.
+                // Fixed phrase: promises how long the SUMMARY takes, not the article
                 Label {
                     anchors.verticalCenter: parent.verticalCenter
                     text: Lang.tr("This article in one minute")
@@ -90,9 +86,7 @@ Item {
             }
         }
 
-        // Clipped drawer: the delegates stay alive and the height animates, so
-        // expanding while the bullets are still generating doesn't rebuild rows
-        // underneath the animation.
+        // Clipped drawer: delegates stay alive so expanding mid-generation doesn't rebuild rows
         Item {
             id: body
             anchors {

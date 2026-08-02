@@ -28,8 +28,7 @@ Page {
         ]
     }
 
-    // Keyboard nav: focus lands on the first field when opened from settings
-    // (Tab then moves through the fields); Escape returns to the settings list.
+    // Keyboard nav: focus lands on the first field; Escape returns to settings list
     property Item keyboardFocusItem: firstField.input
     Keys.onEscapePressed: Nav.focusMaster()
 

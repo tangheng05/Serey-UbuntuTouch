@@ -1,8 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-// communityId filters client-side: the backend matches `community` by title text, which
-// collides across communities sharing a name (seen live, e.g. two "Web3" platforms).
+// communityId filters client-side; backend matches `community` by title text, which can collide
 function listByCommunity(baseUrl, community, communityId, token, onOk, onErr) {
     return Http.get(baseUrl, "/category/list-by-community",
              { community: community || "global" }, token || "",
@@ -18,9 +17,7 @@ function listByCommunity(baseUrl, community, communityId, token, onOk, onErr) {
         }, onErr);
 }
 
-// Omit `id` to create, pass it to update. The backend rebuilds the row from what's
-// sent, so on update always pass the current icon_url/color/subs or they get wiped.
-// Each sub-category needs a name AND a numeric position.
+// Omit `id` to create; on update pass current icon_url/color/subs or they get wiped
 function createOrUpdate(baseUrl, token, params, onOk, onErr) {
     var body = { community_id: params.communityId, name: params.name };
     if (params.id) body.id = params.id;
@@ -44,8 +41,7 @@ function remove(baseUrl, token, id, onOk, onErr) {
     Http.post(baseUrl, "/category/delete", { id: id }, token, onOk, onErr);
 }
 
-// Platform/community classification taxonomy (the web CMS's "Category" picker),
-// distinct from listByCommunity's per-post categories above.
+// Platform/community classification taxonomy, distinct from per-post categories above
 function listMarketplaceCategories(baseUrl, token, onOk, onErr) {
     Http.get(baseUrl, "/general/list-marketplace-categories", {}, token || "",
         function (data) {

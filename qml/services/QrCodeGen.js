@@ -1,8 +1,6 @@
 .pragma library
 
-// Vendored from qrcode-generator 1.4.x (Kazuhiko Arase, MIT) — unmodified below
-// this header. Exposes the top-level `qrcode` factory; the UMD tail is a no-op
-// in QML's JS engine. Used by components/QrCode.qml.
+// Vendored from qrcode-generator 1.4.x (Kazuhiko Arase, MIT), unmodified below this header
 
 //---------------------------------------------------------------------
 //

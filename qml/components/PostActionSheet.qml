@@ -21,8 +21,7 @@ Item {
     readonly property bool isOwn: Session.isLoggedIn && authorName !== "" && authorName === Session.username
     // No video editor exists, so Edit is offered for blog/gallery only.
     readonly property bool canEdit: isOwn && PostActions.kind !== "video"
-    // Opened straight at a sub-step (report/delete/block) from a card or header
-    // dropdown, bypassing the main menu — so there's nothing to "go back" to.
+    // Opened straight at a sub-step (report/delete/block), bypassing the main menu
     readonly property bool openedDirectly: PostActions.startStep !== 0
     property bool deleting: false
     property bool blocking: false
@@ -38,9 +37,7 @@ Item {
     // Lift the sheet above the OSK (the edit-caption step has text inputs).
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
-    // ---- Keyboard navigation (UBports HIG input parity): Up/Down or Tab move a
-    // highlight over the current step's actions, Enter/Space activates, Escape backs
-    // out/closes. The highlight only appears after a key press, so touch is unchanged.
+    // Keyboard nav: Up/Down/Tab move a highlight, Enter/Space activates, Escape backs out
     property var navRows: []
     property int navIndex: -1
     readonly property Item navCurrent: (navIndex >= 0 && navIndex < navRows.length) ? navRows[navIndex] : null
@@ -83,8 +80,7 @@ Item {
             if (!busy) { if (step === 0) closeSheet(); else step = 0; }
             event.accepted = true;
         } else if (step === 4) {
-            // Text-entry step: trap Tab between the two fields so focus can't
-            // tunnel to the covered page; every other key belongs to the fields.
+            // Text-entry step: trap Tab between the two fields so focus can't tunnel to the page
             if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
                 if (captionTitleField.activeFocus) captionDescField.forceActiveFocus();
                 else captionTitleField.forceActiveFocus();
@@ -260,8 +256,7 @@ Item {
             });
     }
 
-    // ---- Video offline download, mirroring VideoDetailPage's routing: direct-file
-    // videos download as-is, YouTube clips resolve a direct URL via InnerTube first.
+    // Video offline download: direct-file downloads as-is, YouTube resolves via InnerTube first
     function _isDirectFile(u) {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
@@ -343,9 +338,7 @@ Item {
     NumberAnimation { id: backdropFade; target: backdrop; property: "opacity"; from: 0; to: 1; duration: 200 }
     NumberAnimation { id: backdropFadeOut; target: backdrop; property: "opacity"; to: 0; duration: 200 }
 
-    // Bottom sheet on phone; a true centered modal on desktop (not a bottom
-    // sheet with a capped width — vertically centered, fades/scales in, no
-    // drag handle, since it isn't swipe-to-dismiss there).
+    // Bottom sheet on phone; true centered modal on desktop, no drag handle (not swipe-dismiss)
     Rectangle {
         id: sheetRect
         readonly property bool wide: Config.wideMode
@@ -455,8 +448,7 @@ Item {
                 }
             }
 
-            // Save video for offline playback (SEREY/direct-file or YouTube via InnerTube).
-            // Toggles to "Remove download" when already saved; spinner while in flight.
+            // Save video offline; toggles to "Remove download" when already saved
             AbstractButton {
                 id: saveVideoBtn
                 width: parent.width; height: units.gu(8)
@@ -689,8 +681,7 @@ Item {
                 width: parent.width; height: units.gu(5)
 
                 AbstractButton {
-                    // Opened directly at the report step (from a card/header dropdown),
-                    // there's no main menu underneath to go back to.
+                    // Opened directly at the report step: no main menu underneath to go back to
                     visible: !sheet.openedDirectly
                     anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: units.gu(3.5); height: units.gu(3.5)
@@ -1033,9 +1024,7 @@ Item {
             Item { width: 1; height: Style.spacingM }
         }
 
-        // Keyboard-highlight ring: one Rectangle reparented into whichever row is
-        // arrow-key selected (same brand ring as the card focus ring, so keyboard
-        // users see one consistent affordance). Touch/pointer users never see it.
+        // Keyboard-highlight ring: reparented into whichever row is arrow-key selected
         Rectangle {
             parent: sheet.navCurrent ? sheet.navCurrent : sheetRect
             anchors.fill: parent

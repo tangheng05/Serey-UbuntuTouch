@@ -74,16 +74,14 @@ Page {
     // Suppress the default header and draw our own, since Page.header didn't render the right-side search action icon reliably.
     header: Item { height: 0 }
 
-    // Keyboard navigation: the rows live in a Column inside a Flickable (no
-    // ListView cursor), so the page keeps its own row cursor, same pattern as
-    // PostActionSheet (visibility-filtered rows, one reparenting ring).
+    // Column-in-Flickable has no ListView cursor, so keep our own (see PostActionSheet)
     property Item keyboardFocusItem: scroll
     property Item navCurrent: null
 
     function _navRows() {
         var c = [profileCardBtn, loginBtn, signupBtn, languageRow,
                  createPlatformRow, managePlatformRow, editProfileRow,
-                 passwordRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+                 passwordRow, twoFaRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
         var rows = [];
         for (var i = 0; i < c.length; i++)
             if (c[i].visible) rows.push(c[i]);
@@ -106,9 +104,7 @@ Page {
             scroll.contentY = y + it.height - scroll.height;
     }
 
-    // Focus the row list when the tab is shown so keyboard nav works without a
-    // click; the cursor appears on first key press. (Merged into the single
-    // onVisibleChanged below; a Page allows only one handler per signal.)
+    // Focus the row list on show so keyboard nav works without a click first
     function _onShownForKeyboard() {
         if (!searchField.activeFocus) {
             page.navCurrent = null;
@@ -119,14 +115,12 @@ Page {
     Rectangle {
         id: settingsHeader
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        // Matches PageHeader's own height (Ambiance style: titleAreaHeight gu(6) + 1dp divider)
-        // so this row lines up with a pushed detail page's PageHeader (e.g. Edit profile) in split/wide layouts.
+        // Matches PageHeader's height so it lines up with a pushed detail page's header
         height: units.gu(6) + units.dp(1)
         color: Style.surface
         z: 50
 
-        // Centered column that caps at maxContentWidth; on phone widths this
-        // just equals settingsHeader's full width, so the layout is unchanged.
+        // Centered column caps at maxContentWidth; on phone this equals full width
         Item {
             id: headerContent
             anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
@@ -145,8 +139,7 @@ Page {
                 visible: !page.searchActive
                 anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                 width: units.gu(4); height: width
-                // searchOpen right away so the results panel shows its empty state
-                // instead of the user tapping search and seeing nothing happen.
+                // searchOpen right away so tapping search shows the empty state, not nothing
                 onClicked: { page.searchActive = true; page.searchOpen = true; searchField.forceActiveFocus(); }
                 Icon {
                     anchors.centerIn: parent
@@ -176,8 +169,7 @@ Page {
                 }
             }
 
-            // ----- Active state: back chevron + inline search field (Lomiri header
-            // search; the field expands into the header, per the HIG reference). -----
+            // ----- Active state: back chevron + inline search field (Lomiri HIG) -----
             AbstractButton {
                 id: searchBack
                 visible: page.searchActive
@@ -268,7 +260,7 @@ Page {
     }
 
     function refreshProfile() {
-        // Also reset `loading`: logging out mid-fetch would otherwise leave the earlier request's loading=true with profile nulled, a stuck spinner.
+        // Also reset `loading`: mid-fetch logout would otherwise leave a stuck spinner
         if (!Session.isLoggedIn) { profile = null; loading = false; return; }
         loading = true;
         errorMsg = "";
@@ -299,7 +291,7 @@ Page {
         refreshProfile();
         var rows = [profileCardBtn, loginBtn, signupBtn, languageRow,
                     createPlatformRow, managePlatformRow, editProfileRow,
-                    passwordRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+                    passwordRow, twoFaRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
         for (var i = 0; i < rows.length; i++) {
             rows[i].pressedChanged.connect((function (row) {
                 return function () { if (row.pressed) page.navCurrent = null; };
@@ -354,14 +346,11 @@ Page {
         contentHeight: col.height
         clip: true
 
-        // Arrow cursor over the settings rows; Enter activates on release so
-        // the pushed sub-page / dialog doesn't inherit the tail of the press.
+        // Enter activates on release so pushed sub-page doesn't inherit the tail of the press
         activeFocusOnTab: true
         property bool _armed: false
         Keys.onPressed: {
-            // A row click gives that AbstractButton keyboard focus, so scroll loses
-            // activeFocus and the ring (gated on it) hides. Reclaim focus on the
-            // first nav key so the cursor reappears and keyboard nav resumes.
+            // A row click steals activeFocus (hiding the ring); reclaim it on next nav key
             if (!scroll.activeFocus) scroll.forceActiveFocus();
             if (event.key === Qt.Key_Down)      { page._navMove(1);  event.accepted = true; }
             else if (event.key === Qt.Key_Up)   { page._navMove(-1); event.accepted = true; }
@@ -369,7 +358,12 @@ Page {
                 scroll._armed = true; event.accepted = true;
             }
             else if (event.key === Qt.Key_Left) { Nav.focusNav();    event.accepted = true; }
-            else if (event.key === Qt.Key_Right){ Nav.focusDetail(); event.accepted = true; }
+            else if (event.key === Qt.Key_Right) {
+                // No sub-page pushed: hand off to the persistent Account rail (see Main.qml)
+                if (page.pageStack && page.pageStack.depth === 1) Nav.focusRightPanel();
+                else Nav.focusDetail();
+                event.accepted = true;
+            }
         }
         Keys.onReleased: {
             if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)
@@ -377,9 +371,7 @@ Page {
                 scroll._armed = false;
                 if (page.navCurrent) {
                     page.navCurrent.clicked();
-                    // If the row pushed a detail page (split mode), move focus into
-                    // it. No-op for dialog/external rows (nothing was pushed) and
-                    // for narrow mode (the pushed page auto-focuses itself).
+                    // Move focus into a pushed detail page; no-op for dialogs/narrow mode
                     Qt.callLater(function () { Nav.focusDetail(); });
                 }
                 event.accepted = true;
@@ -610,16 +602,12 @@ Page {
                     id: langDlg
                     title: Lang.tr("Language")
 
-                    // Keyboard nav: Up/Down move the selection, Enter activates,
-                    // Escape cancels. The ring adapts colour so it stays visible
-                    // even on the brand-blue active-language button.
+                    // Keyboard nav: Up/Down move selection, Enter activates, Escape cancels
                     property int selIndex: Session.language === "nl" ? 1 : 0
                     // Restore keyboard focus to the settings list when the dialog closes.
                     function _closeAndRestore() { PopupUtils.close(langDlg); Qt.callLater(function () { scroll.forceActiveFocus(); }); }
 
-                    // Zero-size focus holder: Keys on the Dialog root didn't reliably
-                    // own focus (the settings list behind the modal kept it), so this
-                    // grabs focus deferred and handles all keys without breaking layout.
+                    // Zero-size focus holder: Dialog root didn't reliably own focus otherwise
                     Item {
                         id: keyGrab
                         width: 0; height: 0
@@ -730,6 +718,15 @@ Page {
                 onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
             }
             SettingsRow {
+                id: twoFaRow
+                visible: Session.isLoggedIn
+                showDivider: false
+                iconName: "system-lock-screen"
+                label: Lang.tr("Two-step verification")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("TwoFactorPage.qml"), { initialEmail: (page.profile && page.profile.email) || "" })
+            }
+            SettingsRow {
                 id: sessionsRow
                 visible: Session.isLoggedIn
                 showDivider: false
@@ -785,9 +782,7 @@ Page {
         }
     }
 
-    // Keyboard cursor: one ring reparented into the selected row. Fallback parent
-    // is `page`, NOT the Column `col` (an anchored child disables its layout).
-    // Only visible once a key has moved the cursor, so touch users never see it.
+    // Keyboard cursor ring; falls back to `page`, not Column `col` (breaks its layout)
     Rectangle {
         parent: page.navCurrent ? page.navCurrent : page
         anchors.fill: parent

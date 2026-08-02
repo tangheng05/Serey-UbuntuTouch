@@ -2,8 +2,7 @@
 .import "Http.js" as Http
 .import "Mappers.js" as M
 
-// /terminate needs a non-expiring token (isDeviceJwtAuthenticated), which is
-// why login sends `device_name`. Listing takes any JWT.
+// /terminate needs a non-expiring token, hence login sends `device_name`
 
 function list(baseUrl, token, onOk, onErr) {
     return Http.get(baseUrl, "/user-device/list-by-current-user", {}, token,

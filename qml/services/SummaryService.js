@@ -1,10 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-// AI TL;DR for an article. The server caches per author/permlink/language, so
-// repeat opens cost nothing and come back instantly.
-// The server reads the article from its own DB, so we send identifiers only.
-// Bullets are always English; only the surrounding UI is translated.
+// AI TL;DR; server caches per author/permlink/language, bullets always English
 function summarize(baseUrl, post, token, onOk, onErr) {
     var body = {
         author: post.author || "",

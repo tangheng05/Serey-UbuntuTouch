@@ -2,17 +2,37 @@
 .import "Http.js" as Http
 .import "Mappers.js" as M
 
-function login(baseUrl, username, password, onOk, onErr) {
+// on2faRequired(emailHint) called instead of onErr when account has 2FA on
+function login(baseUrl, username, password, onOk, onErr, on2faRequired) {
     // `device_name` mints a NON-expiring token (auth_service: hasExpired = !device_name); without it the token hard-expires in 24h.
     Http.post(baseUrl, "/auth/login",
               { username: username, password: password, device_name: "Ubuntu Touch" },
               null, function (data) {
-        var token = data.data && data.data.token;
-        if (!token) {
+        var d = data.data || {};
+        if (d.requires_2fa) {
+            if (on2faRequired) on2faRequired(d.two_factor_email_hint || "");
+            else onErr({ message: "Two-factor authentication is required." });
+            return;
+        }
+        if (!d.token) {
             onErr({ message: "Login succeeded but no token was returned." });
             return;
         }
-        onOk({ token: token, userDeviceId: data.data.user_device_id });
+        onOk({ token: d.token, deviceId: d.user_device_id });
+    }, onErr);
+}
+
+// Completes a login gated by 2FA: same success shape as login().
+function verifyLogin2fa(baseUrl, username, otp, onOk, onErr) {
+    Http.post(baseUrl, "/auth/2fa/verify-login",
+              { username: username, otp: otp, device_name: "Ubuntu Touch" },
+              null, function (data) {
+        var d = data.data || {};
+        if (!d.token) {
+            onErr({ message: "Verification succeeded but no token was returned." });
+            return;
+        }
+        onOk({ token: d.token, deviceId: d.user_device_id });
     }, onErr);
 }
 
@@ -29,8 +49,7 @@ function profile(baseUrl, username, token, onOk, onErr) {
     }, onErr);
 }
 
-// Community ids the user owns/manages, so an owner can post to an owner-only
-// community. onOk gets an array of numeric ids (community_owner.community_ids).
+// Community ids the user owns/manages; onOk gets an array of numeric ids
 function ownedCommunityIds(baseUrl, token, onOk, onErr) {
     Http.get(baseUrl, "/user-permission/permission-by-current-user", {}, token,
              function (data) {
@@ -39,9 +58,7 @@ function ownedCommunityIds(baseUrl, token, onOk, onErr) {
     }, onErr);
 }
 
-// Custodial signup + password reset, email OTP only (phone OTP is Cambodia-only).
-// Server-enforced rules: password 8-16 chars with lower+upper+digit,
-// username 5-30 chars [a-z0-9-].
+// Custodial signup: password 8-16 chars lower+upper+digit, username 5-30 chars [a-z0-9-]
 var PASSWORD_RE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?#&^()[\]{}]{8,16}$/;
 var USERNAME_RE = /^[a-z0-9-]{5,30}$/;
 
@@ -97,10 +114,7 @@ function createSelfCustodyAccount(baseUrl, username, email, otp, keys, onOk, onE
     }, null, onOk, onErr);
 }
 
-// Paid, email-less signup. XMR only. Self-custodial like createSelfCustodyAccount:
-// the client generates the keys (KeygenBridge) and sends the public keys + posting
-// private key; the master password never leaves the device. Envelope is
-// {status,message,data}; a reused "Payment still valid" response nests one deeper.
+// Paid, email-less signup, XMR only, self-custodial; master password never leaves device
 function createAnonymousPayment(baseUrl, username, keys, onOk, onErr) {
     Http.post(baseUrl, "/registration/anonymous/create-payment",
               { username: username, pay_currency: "xmr",
@@ -126,8 +140,7 @@ function createAnonymousPayment(baseUrl, username, keys, onOk, onErr) {
     }, onErr);
 }
 
-// Poll status. Pending gives a NOWPayments code (waiting/confirming/...); once
-// done status is "completed" and postingPrivateKey comes back just this once.
+// Poll status; once done, postingPrivateKey comes back just this once
 function checkAnonymousStatus(baseUrl, paymentId, onOk, onErr) {
     Http.post(baseUrl, "/registration/anonymous/check-status",
               { payment_id: paymentId }, null, function (data) {
@@ -175,6 +188,30 @@ function changePassword(baseUrl, token, currentPassword, newPassword, onOk, onEr
     Http.post(baseUrl, "/accounts/change-password",
               { current_password: currentPassword, new_password: newPassword },
               token, onOk, onErr);
+}
+
+// Two-factor authentication (Settings > Two-step verification)
+function get2faStatus(baseUrl, token, onOk, onErr) {
+    Http.get(baseUrl, "/accounts/2fa/status", null, token, function (data) {
+        var d = (data && data.data) || {};
+        onOk({ enabled: !!d.enabled, email: d.email || "" });
+    }, onErr);
+}
+function request2faEnable(baseUrl, token, email, onOk, onErr) {
+    Http.post(baseUrl, "/accounts/2fa/request-enable", { email: email }, token, onOk, onErr);
+}
+function confirm2faEnable(baseUrl, token, otp, onOk, onErr) {
+    Http.post(baseUrl, "/accounts/2fa/confirm-enable", { otp: otp }, token, onOk, onErr);
+}
+// Requires the exact 2FA email on file; onOk gets the masked email the code was sent to.
+function request2faDisable(baseUrl, token, email, onOk, onErr) {
+    Http.post(baseUrl, "/accounts/2fa/request-disable", { email: email }, token, function (data) {
+        var d = (data && data.data) || {};
+        onOk({ emailHint: d.email_hint || "" });
+    }, onErr);
+}
+function disable2fa(baseUrl, token, otp, onOk, onErr) {
+    Http.post(baseUrl, "/accounts/2fa/disable", { otp: otp }, token, onOk, onErr);
 }
 
 // Step 0 of password reset: look up the account's masked contact hint (data.data.{email,phone}) so the UI can tell the user where the code will go.

@@ -6,8 +6,7 @@ import "../Session"
 import "../components"
 import "../services/AnonymousInviteService.js" as InviteService
 
-// Creator side of anonymous invites: mint free codes (quota by plan), copy the
-// share link, revoke unused ones. Mirrors the web SocialMediaOwner CMS panel.
+// Creator side of anonymous invites: mint/copy/revoke codes; mirrors web SocialMediaOwner CMS panel.
 Page {
     id: page
 
@@ -58,8 +57,7 @@ Page {
             });
     }
 
-    // Imported JS services resolve to null inside Repeater delegates, so the
-    // share/revoke rows call these page-level functions instead of InviteService.
+    // JS services resolve to null in Repeater delegates, so route through page-level functions
     function shareCode(code) { Share.open(InviteService.inviteLink(code)); }
 
     function revoke(code) {
@@ -75,8 +73,7 @@ Page {
         id: revokeDialog
         Dialog {
             id: rdlg
-            // Title carries the specific code (Lomiri dialog guidance: the dialog
-            // should read as incomplete without its title).
+            // Title carries the code (dialog shouldn't read as incomplete without one)
             title: Lang.tr("Revoke %1?").arg(page._pendingRevoke)
             text: Lang.tr("The invite link stops working and the slot goes back to your quota.")
             Button {
@@ -131,8 +128,7 @@ Page {
         }
     }
 
-    // Real ListView (not a Repeater-in-Column) so ListItem swipe actions align to
-    // the capped, centered list width instead of bleeding across a wide detail pane.
+    // Real ListView (not Repeater-in-Column) so swipe actions align to the capped list width
     ListView {
         id: list
         anchors { top: page.header.bottom; bottom: footer.top; horizontalCenter: parent.horizontalCenter }
@@ -216,9 +212,7 @@ Page {
             }
         }
 
-        // Standard Lomiri ListItem: swipe reveals actions with HIG polarity
-        // (LEADING = negative red revoke, TRAILING = positive share). Only active
-        // codes are actionable; a redeemed code just shows its status.
+        // Swipe HIG polarity: LEADING = red revoke, TRAILING = share; only active codes act
         delegate: ListItem {
             width: list.width
             height: rowInner.height + Style.spacingM * 2

@@ -15,8 +15,7 @@ Page {
     property string username: ""
     property var profile: null
     property bool profileLoading: false
-    // Wider reading column on desktop/tablet so the profile doesn't sit as a thin
-    // strip in the detail panel; phones stay full-width (parent.width wins the min).
+    // Wider column on desktop/tablet; phones stay full-width (min wins)
     readonly property real maxContentWidth: Config.wideMode ? units.gu(72) : units.gu(60)
 
     // `st` is mutated in place, so `rev` is bumped to make `cur*` bindings re-evaluate
@@ -264,9 +263,7 @@ Page {
                         z: 10
                         onClicked: PopupUtils.open(blockDialog)
 
-                        // Scrim disc so the control stays legible over any cover
-                        // photo and in both themes: dark by default, solid red
-                        // once the user is blocked.
+                        // Scrim disc: dark by default, solid red once blocked
                         Rectangle {
                             anchors.fill: parent
                             radius: width / 2
@@ -274,9 +271,7 @@ Page {
                                 ? Qt.rgba(Style.danger.r, Style.danger.g, Style.danger.b, 0.92)
                                 : Qt.rgba(0, 0, 0, 0.38)
                         }
-                        // Prohibition mark drawn as a vector (the Suru theme has no
-                        // "block" icon; same shape PostActionSheet uses). White so it
-                        // reads on the dark/red scrim.
+                        // Prohibition mark drawn as a vector: no "block" icon in Suru theme
                         Item {
                             anchors.centerIn: parent
                             width: units.gu(2.4); height: width

@@ -372,8 +372,7 @@ Item {
             width: parent.width
             height: visible ? repliesCol.height : 0
 
-            // Guide line only on the first indent level; brand-tinted so the thread
-            // stays easy to trace even with a tighter indent in a narrow panel.
+            // Guide line only on the first indent level; brand-tinted to trace the thread
             Rectangle {
                 visible: item.depth === 0
                 x: units.gu(1.25) - units.dp(1)

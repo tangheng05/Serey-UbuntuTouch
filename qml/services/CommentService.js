@@ -14,8 +14,7 @@ function create(baseUrl, params, token, onOk, onErr) {
               function (data) { onOk(data || {}); }, onErr);
 }
 
-// Delete a comment (or post); backend authorises against the token's username.
-// Uses the POST alias because Qt's QML XMLHttpRequest can't attach a body to DELETE.
+// POST alias for delete; QML XMLHttpRequest can't attach a body to DELETE
 function remove(baseUrl, permlink, username, token, onOk, onErr) {
     Http.post(baseUrl, "/serey-web/delete-post-or-comment",
               { username: username, permlink: permlink }, token,

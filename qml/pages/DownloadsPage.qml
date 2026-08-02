@@ -118,6 +118,7 @@ Page {
                 id: videoCard
                 width: parent.width
                 video: modelData
+                compactMenu: false
                 onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: modelData })
                 onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                     { username: modelData.author })

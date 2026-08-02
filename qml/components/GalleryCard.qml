@@ -28,9 +28,7 @@ Item {
         _syncVoteBar();
     }
 
-    // ListModel.set() mutates the object `p` already references, so onPChanged never
-    // fires on an in-place row swap; without these the imperatively assigned vote
-    // count/payout kept the previous post's values (see PostCard, same fix).
+    // ListModel.set() mutates `p` in place so onPChanged never fires; sync vote fields manually
     readonly property int _pVotes: p.votes || 0
     readonly property string _pPayout: p.payout || ""
     readonly property string _pPermlink: p.permlink || ""
@@ -245,8 +243,7 @@ Item {
 
             MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
 
-            // Category tag, top-left (top-right is the "+N" badge). categories is
-            // ListModel-wrapped here, so use the mapper's scalar copy instead.
+            // Category tag, top-left ("+N" badge is top-right); use mapper's scalar copy
             Rectangle {
                 visible: (p.primaryCategory || "") !== ""
                 anchors { top: parent.top; left: parent.left; topMargin: Style.spacingS; leftMargin: Style.spacingS }
@@ -294,7 +291,6 @@ Item {
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
             // From the voterStr scalar; the feed ListModel mangles string arrays
-            // (see PostCard's cardVoteBar).
             voters: (p.voterStr || "").split(",").filter(function (n) { return n.length > 0; })
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0
@@ -325,8 +321,7 @@ Item {
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }
 
-    // Pointer/keyboard parity: right-click or MENU opens the context menu;
-    // Enter opens the post (same as a tap). See ContextActionArea.
+    // Pointer/keyboard parity: right-click/MENU opens context menu, Enter opens the post
     ContextActionArea {
         onTriggered: root.moreClicked()
         onActivated: root.clicked()

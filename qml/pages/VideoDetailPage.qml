@@ -63,8 +63,7 @@ Page {
         ? ("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink) : ""
     readonly property bool isOwn: Session.isLoggedIn && !!(page.video && page.video.author) && page.video.author === Session.username
 
-    // Category tag, same shape as PostDetailPage. "video" is a routing tag, not a
-    // topic, so it never becomes the label.
+    // Category tag; "video" is a routing tag, not a topic, so never the label
     function _realCategories() {
         var c = (page.video && page.video.categories) || [];
         var out = [];
@@ -75,8 +74,7 @@ Page {
     function maincategory() { return page._realCategories()[0] || ""; }
     function subcategories() { return page._realCategories().slice(1); }
 
-    // Row data for the desktop "•••" dropdown; report/delete/block/edit-caption still
-    // route through the mobile sheet (opened at the matching step) since those need their own sub-flow.
+    // Row data for the desktop "•••" dropdown; report/delete/block/edit-caption stay on the mobile sheet
     function headerMenuItems() {
         var items = [
             { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },
@@ -135,8 +133,7 @@ Page {
         else page.runHeaderMenuAction(row.action);
     }
 
-    // Right rail: related videos, vote row and comments — wide mode only.
-    // Desktop only: tablet has room for list + video, not a third column.
+    // Right rail (related/vote/comments): desktop only, tablet has no room for it
     readonly property bool showSidePanel: Config.desktopMode && !!(page.video && page.video.permlink)
     // Resizable via the drag handle below; clamped so the article column always keeps a sane minimum width.
     property real sidePanelWidth: units.gu(34)
@@ -144,9 +141,7 @@ Page {
     readonly property real _maxSidePanelW: Math.max(_minSidePanelW, Math.min(page.width * 0.5, page.width - units.gu(40)))
     readonly property real _sidePanelW: Math.max(_minSidePanelW, Math.min(_maxSidePanelW, sidePanelWidth))
 
-    // Keyboard: Right from the video steps into the side panel (see scroll's
-    // Keys.onPressed); Down/Up walk related videos, then upvote, then downvote,
-    // then hand off to the comment composer, mirroring PostDetailPage's panel.
+    // Keyboard: Right enters side panel, Down/Up walk related/vote/downvote/composer
     function focusSidePanel() {
         if (!page.showSidePanel) return;
         sidePanelFlick.forceActiveFocus();
@@ -289,9 +284,7 @@ Page {
         webLoader.parent = on ? fsHost : stage;
     }
 
-    // Space-bar playback control: starts playback if it hasn't begun, else
-    // toggles pause on whichever player is live. Cross-origin embeds (YouTube
-    // iframe) can't be driven from outside; their own controls apply.
+    // Space-bar: starts playback or toggles pause; cross-origin embeds ignore this
     function togglePlayPause() {
         if (!page.playing) { page.startPlay(); return; }
         var it = webLoader.item;
@@ -462,8 +455,7 @@ Page {
             elide: Text.ElideRight
         }
 
-        // Same shape as PostDetailPage's header: a Row so hidden buttons don't
-        // leave a gap, tablet promotes bookmark + open-in-browser out of the menu.
+        // Same shape as PostDetailPage's header; tablet promotes bookmark + open-in-browser
         Row {
             id: videoHeaderActions
             anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
@@ -502,8 +494,7 @@ Page {
             AbstractButton {
                 id: videoMoreHeaderBtn
                 width: units.gu(4); height: units.gu(4)
-                // Desktop: a compact anchored dropdown. Phone: the full-screen action sheet
-                // (report reasons / delete-confirm / edit-caption need more room than a dropdown row gives).
+                // Desktop: compact dropdown. Phone: full sheet (needs more room than a dropdown row)
                 onClicked: Config.wideMode ? (page.headerMenuOpen = !page.headerMenuOpen) : PostActions.open(page.video, "video")
                 Column {
                     anchors.centerIn: parent
@@ -521,14 +512,12 @@ Page {
             }
         }
 
-        // ----- Desktop dropdown menu (mirrors the action sheet's rows, minus the ones that need a sub-flow) -----
-        // Keyboard: Down/Up move headerMenuIndex, Enter/Return activates, Escape closes.
+        // ----- Desktop dropdown menu; Down/Up/Enter/Escape drive keyboard nav -----
         Rectangle {
             id: headerMenu
             visible: page.headerMenuOpen
             z: 20
-            // The Row, not the button: anchors only reach a parent or sibling, and
-            // "..." is the Row's last item so their right edges coincide.
+            // Anchored to the Row (not button): "..." is its last item, edges coincide
             anchors { top: videoHeaderActions.bottom; right: videoHeaderActions.right; topMargin: Style.spacingXs }
             width: units.gu(24)
             height: headerMenuCol.height
@@ -619,9 +608,7 @@ Page {
         }
     }
 
-    // Dismiss the header dropdown on an outside click. A page-level sibling (not
-    // nested in videoDetailHeader) so it catches clicks anywhere, not just the header;
-    // z above the scroll/panel content but below videoDetailHeader and the menu itself.
+    // Dismiss header dropdown on outside click; page-level so it catches clicks anywhere
     MouseArea {
         visible: page.headerMenuOpen
         z: 9
@@ -629,9 +616,7 @@ Page {
         onClicked: page.headerMenuOpen = false
     }
 
-    // Single divider under both header rows (video + right rail), spanning the
-    // full page width, so the two headers' own borders never show as a mismatched
-    // double line at the seam between them.
+    // Single full-width divider avoids a mismatched double line at the header seam
     Rectangle {
         z: 9
         anchors {
@@ -814,8 +799,7 @@ Page {
         page.loadComments();
     }
 
-    // Shared by the mobile description sheet and the always-visible wide-mode
-    // description block: strips markup StyledText can't render, keeps b/i/u/a.
+    // Shared by mobile description sheet and wide-mode block; strips unsupported markup
     function formatVideoBody() {
         var t = page.video.body || "";
         t = t.replace(/<br\s*\/?>/gi, "\n");
@@ -876,8 +860,7 @@ Page {
         }
     }
 
-    // The scroll view owns arrow-key focus so a keyboard user can scroll the page;
-    // AdaptiveStack.focusDetail() targets this when entering from the video list.
+    // Scroll view owns arrow-key focus; AdaptiveStack.focusDetail() targets this
     property Item keyboardFocusItem: scroll
 
     Flickable {
@@ -889,9 +872,7 @@ Page {
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
-        // Keyboard parity with PostDetailPage's reading keys, plus video-specific
-        // Space/Enter = play-pause (a video page's Space belongs to the player,
-        // not page-scrolling; PageDown/PageUp still scroll).
+        // Same reading keys as PostDetailPage, but Space/Enter = play-pause here
         activeFocusOnTab: true
         function _kbScroll(dy) {
             var maxY = Math.max(0, scroll.contentHeight - scroll.height);
@@ -909,24 +890,19 @@ Page {
             else if (event.key === Qt.Key_Space
                   || event.key === Qt.Key_Return
                   || event.key === Qt.Key_Enter)    { page.togglePlayPause(); event.accepted = true; }
-            // Escape leaves fullscreen first; otherwise Left/Escape hand focus
-            // back to the master list so the viewer can pick the next video.
+            // Escape leaves fullscreen first, else Left/Escape hand focus back to the master list
             else if (event.key === Qt.Key_Escape && page.isFullscreen) { page.setFullscreen(false); event.accepted = true; }
             else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
             // Right steps into the side panel (related videos/vote/comments).
             else if (event.key === Qt.Key_Right && page.showSidePanel) { page.focusSidePanel(); event.accepted = true; }
         }
-        // No auto-focus-on-load here: that used to steal focus (and show the
-        // keyboard focus border) even for mouse opens. Keyboard entry already
-        // focuses scroll explicitly via keyboardFocusItem (AdaptiveStack.focusDetail()).
+        // No auto-focus-on-load: used to steal focus even for mouse opens (see keyboardFocusItem)
 
         Column {
             id: contentCol
             width: scroll.width
 
-            // Player wrapper: the stage centers in the full-width row, capped by
-            // viewport height so the title and vote row stay above the fold on
-            // wide windows; leftover width becomes padding. Phones stay full-width.
+            // Stage caps at viewport height so title/vote row stay above the fold on wide windows
             Item {
                 id: stageWrap
                 width: parent.width
@@ -935,9 +911,7 @@ Page {
                 Rectangle {
                     id: stage
                     anchors.horizontalCenter: parent.horizontalCenter
-                    // Height-cap keeps the title/description + upvote row above
-                    // the fold; then give back 50% of the side padding (Lomiri
-                    // prescribes no fixed media size). Stays 16:9.
+                    // Height-cap keeps title/description above the fold; gives back 50% side padding
                     readonly property real _capW: Math.min(stageWrap.width, scroll.height * 0.5 * 16 / 9)
                     width: _capW + (stageWrap.width - _capW) * 0.5
                     height: width * 9 / 16
@@ -1149,10 +1123,7 @@ Page {
                     }
                 }
 
-                // Follow acts on the AUTHOR, so it sits beside the name (not the
-                // header or vote row, which are video actions). Outside authorRow on
-                // purpose: the profile MouseArea spans that Row and would swallow the tap.
-                // Filled brand pill with white text/icon, matching the app's primary-action buttons.
+                // Follow sits beside the name, outside authorRow (its MouseArea would swallow the tap)
                 AbstractButton {
                     id: followBtn
                     visible: (page.video.author || "") !== "" && page.video.author !== Session.username
@@ -1189,9 +1160,7 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Vote row: actions on the VIDEO itself. Share/Download live in the page
-            // header's action slots; Follow sits on the author row above.
-            // Wide mode: moved into the side panel instead (see sidePanel below).
+            // Vote row (video actions); Share/Download in header, Follow on author row above
             RowLayout {
                 visible: !page.showSidePanel
                 x: Style.spacingM
@@ -1252,8 +1221,7 @@ Page {
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-            // Wide mode: the description that phones reach via the "...more" sheet
-            // is always visible here instead of behind a tap.
+            // Wide mode: description always visible here instead of behind the "...more" sheet
             Column {
                 visible: Config.wideMode
                 width: parent.width
@@ -1301,8 +1269,7 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Comments header, tappable, opens the comment sheet.
-            // Wide mode: the panel shows the full comment list inline instead.
+            // Comments header opens the sheet; wide mode shows the panel's list instead
             AbstractButton {
                 visible: !page.showSidePanel
                 width: parent.width
@@ -1352,9 +1319,7 @@ Page {
         }
     }
 
-    // Draggable splitter: resizes sidePanel by dragging its left edge. Runs the
-    // full page height so it lines up with the panel's own header row, not just
-    // the video's own — the two headers sit side by side, not one above the other.
+    // Draggable splitter; runs full page height so both header rows sit side by side
     Rectangle {
         id: sidePanelDivider
         z: 11
@@ -1533,8 +1498,7 @@ Page {
                     }
                 }
 
-                // Upvote / downvote, mirroring the main-content vote row but living
-                // here in wide mode; keyboardHighlight border matches PostDetailPage's chain.
+                // Upvote/downvote, mirroring the main vote row but living here in wide mode
                 RowLayout {
                     id: sidePanelVoteRow
                     width: sidePanelCol.width
@@ -1637,9 +1601,7 @@ Page {
             }
         }
 
-        // A mouse click anywhere in the panel grabs keyboard focus for it too, so
-        // arrow-key scrolling keeps working after a mouse interaction; passes the
-        // press through unaccepted so related-video/vote buttons underneath still fire.
+        // Click anywhere grabs keyboard focus; press passes through unaccepted for buttons below
         MouseArea {
             anchors.fill: sidePanelFlick
             propagateComposedEvents: true

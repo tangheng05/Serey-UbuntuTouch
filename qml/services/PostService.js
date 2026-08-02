@@ -15,9 +15,7 @@ function listFeedFollowing(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-feed-following", params, token, onOk, onErr);
 }
 
-// Posts from followed authors OR subscribed communities; a superset of
-// listFeedFollowing. This is what My Feed uses, so subscribing to a community
-// actually fills it.
+// Posts from followed authors OR subscribed communities; what My Feed uses
 function listFeedMixed(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-feed-mixed", params, token, onOk, onErr);
 }
@@ -158,22 +156,19 @@ function deletePost(baseUrl, username, permlink, token, onOk, onErr) {
 
 // --- Admin/CMS moderation (requires an owner/manager token) ----------------
 
-// Moderator delete of any post/comment by numeric row id (unlike deletePost,
-// not limited to the token's own username).
+// Moderator delete by numeric row id, unlike deletePost not limited to own username
 function adminDeletePost(baseUrl, id, token, onOk, onErr) {
     Http.del(baseUrl, "/serey-web/admin-delete-post-or-comment/" + id, token,
              function (data) { onOk(data || {}); }, onErr);
 }
 
-// Needs a JSON body (list of ids), so it goes through Http.delWithBody
-// rather than the bodiless del().
+// Needs a JSON body (list of ids), so uses Http.delWithBody not bodiless del()
 function adminBulkDeletePosts(baseUrl, ids, token, onOk, onErr) {
     Http.delWithBody(baseUrl, "/serey-web/admin-bulk-delete-posts", { ids: ids }, token,
                       function (data) { onOk(data || {}); }, onErr);
 }
 
-// Used by BlogManagementPage to list/filter a community's posts for moderation.
-// Same paginated {posts:[...]} shape as the other feeds.
+// Used by BlogManagementPage for moderation; same paginated shape as other feeds
 function listAdvancedSearch(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/search-advanced", params, token, onOk, onErr);
 }

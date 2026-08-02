@@ -8,8 +8,7 @@ import "../services/AnonymousInviteService.js" as InviteService
 Page {
     id: page
 
-    // Go straight to the resolved route; `/` only redirects here anyway, and
-    // that hop cost a remount plus a wait on the bridge before anything painted.
+    // Go straight to the resolved route; `/` redirect cost a remount + bridge wait
     function siteUrl() {
         return Config.homeLandingPageUrl + "/" + Config.communityId
              + "?community_id=" + Config.communityId;
@@ -18,19 +17,13 @@ Page {
     // Zero-height header: the global AppHeader is the real top bar.
     header: Item { height: 0 }
 
-    // Keyboard parity on arrival (see NewsPage): hand key focus to the web view
-    // whenever this tab is shown, so the site scrolls with arrows immediately.
-    // Nav.focusMaster (Right from the nav rail) targets the same item.
+    // Keyboard parity on arrival (see NewsPage): hand focus to web view when shown
     property Item keyboardFocusItem: webApp
     onVisibleChanged: if (visible) webApp.forceActiveFocus()
-    // Deferred: the web view's load is itself deferred, so grabbing focus straight
-    // from onCompleted lands on nothing (measured: activeFocus stayed false and the
-    // window had no focus item at all), leaving the site unscrollable until a click.
+    // Web view load is itself deferred; grabbing focus from onCompleted lands on nothing
     Component.onCompleted: if (visible) Qt.callLater(webApp.forceActiveFocus)
 
-    // Adopt a community the web side moved to, at any depth. Config.communityId
-    // then re-points siteUrl(), so a bridge-only request (a superhub card, which
-    // doesn't navigate itself) takes the web view along too.
+    // Adopt a community the web side moved to; re-points siteUrl() for bridge-only requests
     function applyCommunity(communityId) {
         if (String(communityId) === String(Config.communityId)) return;
         Config.selectCommunityById(communityId);
@@ -48,12 +41,10 @@ Page {
         communityId: String(Config.communityId)
         communityName: Config.communityName
         onOpenCommunityRequested: page.applyCommunity(communityId)
-        // Same for card taps the site handles itself. Ignoring the already-selected
-        // community is what stops our own siteUrl() hops from looping.
+        // Ignoring the already-selected community stops our own siteUrl() hops from looping
         onSiteNavigated: page.applyCommunity(Config.communityIdForUrl(url))
 
-        // Buy-plan: bridge calls and intercepted Stripe redirects both land in
-        // the native payment flow (PaymentSheet / StripeCheckoutSheet).
+        // Buy-plan: bridge calls and Stripe redirects both land in the native payment flow
         onBuyPlanRequested: {
             if (params.method === "crypto") Payments.openCrypto(params.subscription_plan_id);
             else Payments.openStripe(params.subscription_plan_id);

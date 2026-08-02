@@ -42,9 +42,7 @@ RowLayout {
 
     spacing: Style.spacingM
 
-    // "alice, bob, carol and 4 more" summary for the voters popover. `voters` may be
-    // a plain array or a dynamicRoles-wrapped ListModel (.count/.get(i) instead of
-    // .length/[i]); handle both shapes.
+    // "alice, bob and 4 more" summary; `voters` may be a plain array or a wrapped ListModel
     function _votersText() {
         var v = bar.voters;
         if (!v) return "";
@@ -55,8 +53,7 @@ RowLayout {
         for (var i = 0; i < limit; i++) {
             var item = (typeof v.get === "function") ? v.get(i) : v[i];
             var name = (item && item.modelData !== undefined) ? item.modelData : item;
-            // Only accept real usernames; a ListModel-wrapped entry is a QML
-            // object that would stringify as "@QQmlDM..." garbage.
+            // Only accept real usernames; a ListModel-wrapped entry stringifies as garbage
             if (typeof name === "string" && name.length > 0) shown.push("@" + name);
         }
         if (shown.length === 0) return "";
@@ -73,9 +70,7 @@ RowLayout {
         }
         return !bar.busy;
     }
-    // Reconcile server-confirmed fields after an optimistic vote. Count isn't taken
-    // from r.voterCount: the async chain broadcast means the immediate response still
-    // carries the pre-vote count, so the optimistic +/-1 stands.
+    // Reconcile server-confirmed fields; count isn't taken from r.voterCount, which lags the broadcast
     function _apply(r) {
         bar.busy = false;
         bar.flaggers = r.flaggerCount;
@@ -104,14 +99,11 @@ RowLayout {
             bar.votes   = saved.votes;
         }
     }
-    // A 401 is already surfaced (and the session cleared) by Http.js's global
-    // unauthorized handler in Main.qml, so re-toasting it here would double up.
-    // The server sends one for a rotated posting key, not just an expired token.
+    // A 401 is already surfaced by Http.js's global unauthorized handler; don't double-toast
     function _isHandledAuthFailure(e) {
         return !!e && e.status === 401;
     }
-    // Shared failure handler: undo the optimistic change, then surface the error
-    // (unless it's the globally-handled 401).
+    // Shared failure handler: undo the optimistic change, surface error unless it's a 401
     function _failReverting(e, snap) {
         bar.busy = false;
         _rollback(snap);
@@ -119,9 +111,7 @@ RowLayout {
             return;
         Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
     }
-    // "Already voted" means the server already has our vote, so the optimistic
-    // upvote is already correct: keep it, no rollback. Kept separate from
-    // flag/removeVote so a failed unvote can't flip the UI to "liked".
+    // "Already voted" means our optimistic upvote is already correct: keep it, no rollback
     function _failUpvote(e, snap) {
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
         if (!_isHandledAuthFailure(e) && msg.indexOf("already") >= 0) {
@@ -157,8 +147,7 @@ RowLayout {
             function (e) { bar._failReverting(e, snap); });
     }
 
-    // Optimistic upvote: count it, turn blue, and toast immediately; the chain
-    // broadcast runs in the background so the user never waits on confirmation.
+    // Optimistic upvote: count and toast immediately, broadcast runs in the background
     function _sendUpvote(weight) {
         var snap = _snapshot();
         if (!bar.upvoted) bar.votes = bar.votes + 1;
@@ -312,9 +301,7 @@ RowLayout {
             }
         }
 
-        // Mouse hover (desktop) or press-and-hold (touch) reveals who upvoted.
-        // Topmost MouseArea gets the press first; a short tap is unaccepted so
-        // it falls through to upvoteBtn's own click, only the hold is caught here.
+        // Hover/press-and-hold reveals who upvoted; short taps fall through to upvoteBtn's click
         MouseArea {
             anchors.fill: parent
             hoverEnabled: true
@@ -332,9 +319,7 @@ RowLayout {
             id: votersPopup
             visible: false
             anchors { bottom: parent.top; bottomMargin: Style.spacingXs }
-            // Centered on the button but clamped inside the bar (a centered long list
-            // would run off the screen's left edge). x is in upvoteBtn coordinates,
-            // hence the -upvoteBtn.x offsets for the bar's own edges.
+            // Centered on the button but clamped inside the bar so a long list can't run off-screen
             x: {
                 var centered = (upvoteBtn.width - width) / 2;
                 var minX = -upvoteBtn.x;
@@ -432,8 +417,7 @@ RowLayout {
         }
     }
 
-    // Excluded from the layout (not just shrunk) when compact, so no leftover
-    // spacing gap remains around it and the coin pill sits close to the icons.
+    // Excluded from the layout (not just shrunk) when compact, so no leftover gap remains
     Item { visible: !bar.compact; Layout.fillWidth: true }
 
     CoinValue {
@@ -441,7 +425,6 @@ RowLayout {
         value: bar.payout
     }
 
-    // Compact mode: soak up any leftover width after the coin pill instead of
-    // letting it stretch flush to the bar's edge.
+    // Compact mode: soak up leftover width instead of letting the pill stretch flush to the edge
     Item { visible: bar.compact; Layout.fillWidth: true }
 }

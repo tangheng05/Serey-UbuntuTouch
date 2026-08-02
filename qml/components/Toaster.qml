@@ -5,8 +5,7 @@ import "../Theme"
 Item {
     id: toaster
     anchors.fill: parent
-    // Above every overlay sheet (sheets are 1500, Stripe checkout 1600); toasts
-    // fire while a sheet is open and must not be hidden behind it.
+    // Above every overlay sheet (up to 1600) since toasts fire while a sheet is open
     z: 2000
 
     Rectangle {

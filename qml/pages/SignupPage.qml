@@ -105,7 +105,7 @@ Page {
             otpField.text, password,
             function (auth) {
                 busy = false;
-                Session.setAuth(auth.token, username, auth.userDeviceId);
+                Session.setAuth(auth.token, username, auth.deviceId);
                 step = 3;   // celebration screen
             },
             fail);

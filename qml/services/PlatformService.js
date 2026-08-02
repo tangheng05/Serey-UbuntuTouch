@@ -1,9 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-// Create-your-platform flow, gated on an active subscription. Server rules:
-// dns is the subdomain SLUG only (server appends ".serey.io"), country ids are
-// uuid strings, name is letters/digits/spaces, one community per user.
+// Create-your-platform flow, gated on active subscription; dns is subdomain slug only
 
 // Resolved by username from the JWT; no community_id involved.
 function getActiveSubscription(baseUrl, token, onOk, onErr) {
@@ -26,8 +24,7 @@ function getActiveSubscription(baseUrl, token, onOk, onErr) {
     }, onErr);
 }
 
-// Paid-amount field names are unconfirmed (no documented schema); try the
-// common candidates and fall back to "" rather than guessing wrong.
+// Paid-amount field names unconfirmed; try common candidates, fall back to ""
 function getLatestPayment(baseUrl, token, onOk, onErr) {
     Http.get(baseUrl, "/subscription/payment-history", { page: 1, limit: 1 }, token, function (data) {
         var rows = (data && (data.payments || data.data || data.history)) || [];
@@ -40,8 +37,7 @@ function getLatestPayment(baseUrl, token, onOk, onErr) {
     }, onErr);
 }
 
-// Banned users. `community` is the community TITLE string, not the numeric id
-// (unlike every other community endpoint).
+// Banned users; `community` is the TITLE string, not numeric id (unlike others)
 function listBannedUsers(baseUrl, communityTitle, token, onOk, onErr) {
     Http.get(baseUrl, "/banning-user/list-by-community", { community: communityTitle }, token,
         function (data) {
@@ -66,18 +62,14 @@ function banUser(baseUrl, token, communityTitle, username, reason, onOk, onErr) 
 }
 
 function unbanUser(baseUrl, token, communityTitle, username, onOk, onErr) {
-    // POST alias: Qt's QML XMLHttpRequest drops the body on DELETE, and the
-    // backend reads username/community from req.body, so DELETE was silently ignored.
+    // POST alias: QML XMLHttpRequest drops the body on DELETE, backend needs req.body
     var body = { username: username, community: communityTitle };
     Http.post(baseUrl, "/banning-user/remove", body, token, onOk, onErr);
 }
 
 // Soft delete - sets deleted/deleted_at/deleted_reason on the Community row.
 function deleteCommunity(baseUrl, token, id, onOk, onErr) {
-    // POST alias (added to serey-api). Qt's QML XMLHttpRequest drops the body on
-    // DELETE, so the DELETE route arrives with no id ("id is a required field").
-    // POST delivers the body reliably; the alias reuses the same controller/schema.
-    // deleted_reason is optional server-side, so it's omitted.
+    // POST alias: QML XMLHttpRequest drops the DELETE body, so DELETE arrives with no id
     Http.post(baseUrl, "/community/delete-community", { id: id }, token, onOk, onErr);
 }
 
@@ -88,14 +80,12 @@ function checkSubdomain(baseUrl, slug, onOk, onErr) {
 }
 
 // onOk([{ id, name, iconUrl }]) - Country table rows; `id` is a uuid STRING
-// (the create payload's country_id is a string, not a number).
 function getCountries(baseUrl, onOk, onErr) {
     Http.get(baseUrl, "/country/list-countries", {}, null, function (data) {
         var rows = (data && data.countries) || [];
         var out = [];
         for (var i = 0; i < rows.length; i++) {
-            // Cambodia is hidden for now (product decision) - omit it from every
-            // country picker (Create Platform and Edit > Parent Country both use this).
+            // Cambodia hidden for now (product decision) - omit from every country picker
             if ((rows[i].name || "").toLowerCase() === "cambodia") continue;
             out.push({
                 id: String(rows[i].id),
@@ -107,8 +97,7 @@ function getCountries(baseUrl, onOk, onErr) {
     }, onErr);
 }
 
-// onOk([{ id, name, color, iconUrl }]) - community topical categories.
-// `id` maps to community_category_id (a NUMBER in the create payload).
+// onOk([{ id, name, color, iconUrl }]); `id` maps to community_category_id (a NUMBER)
 function getCategories(baseUrl, onOk, onErr) {
     Http.get(baseUrl, "/community/categories", {}, null, function (data) {
         var rows = (data && data.categories) || [];
@@ -125,20 +114,11 @@ function getCategories(baseUrl, onOk, onErr) {
     }, onErr);
 }
 
-/*
- * createCommunity `form`: { name, slug, independent, countryId, categoryId,
- * iconUrl, logoUrl, footerLogoUrl }. Image URLs default to "/logo.png" (the web
- * wizard's default) since logo_url/footer_logo_url are required strings.
- */
+// createCommunity `form` image URLs default to "/logo.png" since those fields are required
 // ---- Manage (owner CMS basics) ---------------------------------------------
-// The server authorizes every mutation by CommunityManager membership, so the
-// app only needs to find WHICH community the user manages and show its state.
+// Server authorizes mutations by CommunityManager membership; app just finds WHICH community
 
-/*
- * Find every community in the get-communities tree whose id is in `idSet`.
- * Searches nested child_communities (owned platforms usually live at level 3
- * under a country). onOk(list), possibly empty; may return several to switch between.
- */
+// Find every community in the get-communities tree whose id is in `idSet`.
 function findManagedCommunities(baseUrl, idSet, onOk, onErr) {
     Http.get(baseUrl, "/general/get-communities", {}, "", function (data) {
         var groups = ["globals", "locals", "foreigns", "independents"];
@@ -153,9 +133,7 @@ function findManagedCommunities(baseUrl, idSet, onOk, onErr) {
                     title: node.title || "",
                     dns: node.dns || "",
                     icon: node.icon_url || node.logo_url || "",
-                    // Raw logo fields, echoed back by updateCommunityLogo (the
-                    // update-logo schema requires logo_url + footer_logo_url
-                    // even when only the icon changes).
+                    // Raw logo fields, echoed back; update-logo schema requires both even for icon-only change
                     logoUrl: node.logo_url || "",
                     footerLogoUrl: node.footer_logo_url || "",
                     isAllowPost: !!node.is_allow_post,
@@ -173,10 +151,7 @@ function findManagedCommunities(baseUrl, idSet, onOk, onErr) {
     }, onErr);
 }
 
-/*
- * Resolve a community's parent country (its top-level ancestor in the tree,
- * not a field on the node) and its community_category_id.
- */
+// Resolve a community's parent country (top-level ancestor, not a node field)
 function getCommunityContext(baseUrl, id, onOk, onErr) {
     Http.get(baseUrl, "/general/get-communities", {}, "", function (data) {
         var groups = ["globals", "locals", "foreigns", "independents"];
@@ -205,11 +180,7 @@ function getCommunityContext(baseUrl, id, onOk, onErr) {
     }, onErr);
 }
 
-/*
- * Whether the community has POSTER members (CommunityManager role 2, role 1 =
- * owner). Blog-posting mode: is_allow_post=true -> everyone; false + posters ->
- * custom; false -> only me.
- */
+// Whether the community has POSTER members (CommunityManager role 2, role 1 = owner)
 function hasPosterMembers(baseUrl, communityId, onOk, onErr) {
     Http.get(baseUrl, "/community/list-community-manager-by-community-id/" + communityId,
              {}, "", function (data) {
@@ -241,11 +212,7 @@ function updateCommunityMetaDescription(baseUrl, token, id, desc, onOk, onErr) {
               { id: id, meta_description: desc }, token, onOk, onErr);
 }
 
-/*
- * Change the community icon (icon_url). Schema also requires logo_url +
- * footer_logo_url as strict strings, so the caller passes current values back
- * unchanged (default "/logo.png" when a community has none).
- */
+// Change icon_url; schema also requires logo_url + footer_logo_url passed back unchanged
 function updateCommunityIcon(baseUrl, token, community, iconUrl, onOk, onErr) {
     Http.post(baseUrl, "/community/update-logo", {
         community_id: community.id,
@@ -284,8 +251,7 @@ function createCommunity(baseUrl, token, form, onOk, onErr) {
     Http.post(baseUrl, "/community/create-or-update-community", body, token,
               function (data) {
         var c = (data && data.community) || {};
-        // Seed the in-session cache without a re-fetch; get-communities is
-        // server-cached and returns stale data right after a create.
+        // Seed in-session cache without re-fetch; get-communities is stale right after create
         onOk({
             id: c.id || 0,
             dns: c.dns || "",

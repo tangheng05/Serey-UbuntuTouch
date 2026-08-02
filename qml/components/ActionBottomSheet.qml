@@ -2,9 +2,7 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-// Lightweight page-local action sheet: show([{iconName, text, danger, onTriggered}, ...])
-// slides it up; a tap runs onTriggered and closes. For a post's full options menu
-// use PostActionSheet/PostActions instead.
+// Lightweight page-local action sheet; for full post options use PostActionSheet instead
 Item {
     id: sheet
     anchors.fill: parent

@@ -142,8 +142,7 @@ Item {
 
     Rectangle {
         id: panel
-        // Anchored above the keyboard; height clamps so it never runs off the top when the OSK is up.
-        // Convergence: centered, gu-capped panel on wide windows.
+        // Anchored above the keyboard, clamped height; centered gu-capped panel on wide windows
         anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: sheet.kbHeight }
         width: Math.min(parent.width, Config.sheetMaxWidth)
         height: Math.min(sheet.height * 0.72, sheet.height - sheet.kbHeight - units.gu(2))

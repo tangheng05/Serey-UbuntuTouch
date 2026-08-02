@@ -7,42 +7,33 @@ QtObject {
     // Tab index to switch to (0 = Homepage); Main listens and also clears the stack the auth flow was pushed onto.
     signal goToTab(int tab)
 
-    // Buy-plan -> create-platform funnel: emitted by the payment sheets after a
-    // successful purchase; Main switches to Settings and pushes the wizard.
+    // Buy-plan -> create-platform funnel; Main switches to Settings and pushes the wizard
     signal createPlatform()
 
-    // Master-detail keyboard focus (split windows): a detail page (e.g. an article)
-    // emits focusMaster() to hand arrow-key focus back to the list; a list emits
-    // focusDetail() to move into the open detail. The active, split AdaptiveStack acts.
+    // Master-detail keyboard focus: detail emits focusMaster() back to list, list emits focusDetail()
     signal focusMaster()
     signal focusDetail()
 
-    // Focus the tab navigation itself (side rail / bottom bar), emitted by a
-    // list's Left key (step out of content) and by the F6 shortcut; Main acts.
+    // Focus the tab nav itself, emitted by a list's Left key and the F6 shortcut
     signal focusNav()
 
-    // Focus the active tab's content (the feed). Emitted after the community picker
-    // changes source: the reloaded feed is where the user wants to be, and unlike
-    // focusMaster this works on every tab, split or not. Main acts.
+    // Focus a persistent right rail outside a tab's AdaptiveStack (Settings)
+    signal focusRightPanel()
+
+    // Focus active tab's content; emitted after community picker changes source
     signal focusContent()
 
-    // Tapped a post's category badge: jump to the blog tab, filtered, in the post's own community.
-    // Main applies the switch + tab jump; NewsPage consumes pendingCategory.
+    // Tapped a category badge: jump to blog tab filtered in that community
     signal filterCategory(string category, var community)
     property string pendingCategory: ""
 
-    // Re-fetch get-communities and rebuild Config.sources, emitted after
-    // creating or deleting a platform so the picker updates without a
-    // restart. Main acts (it owns the fetch + icon mapping).
+    // Re-fetch communities and rebuild Config.sources after create/delete platform
     signal refreshCommunities()
 
-    // Emitted right after a login/signup completes at a primary entry point
-    // (not a login-gate interruption): land on My Feed instead of Homepage.
-    // Session-only; a relaunch always shows the normal Homepage.
+    // After login/signup at a primary entry point, land on My Feed; session-only
     signal goToFeed()
 
-    // Deep link: an invite URL was opened inside the app (WebAppView intercept).
-    // Main switches to Homepage and pushes RedeemInvitePage prefilled with the code.
+    // Deep link: invite URL opened inside app; Main pushes RedeemInvitePage prefilled
     signal redeemInvite(string code)
 
     function home() { goToTab(0); }

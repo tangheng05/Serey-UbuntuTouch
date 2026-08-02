@@ -5,9 +5,7 @@ import Lomiri.Components 1.3
 QtObject {
     id: style
 
-    // Single light/dark switch; Main.qml binds it to the system theme so every
-    // token below re-skins for SuruDark centrally. Values are Suru palette hexes.
-    // Brand tokens stay fixed (Serey blue is identity, not a theme role).
+    // Single light/dark switch bound to system theme; brand tokens stay fixed
     property bool dark: false
 
     // --- Brand (fixed across themes) ------------------------------------------
@@ -46,9 +44,7 @@ QtObject {
     readonly property real spacingL: units.gu(3)
     readonly property real cellPadding: units.gu(2)
 
-    // Grid-unit type scale per the Ubuntu typography guide. gu(n) == dp(8n) on
-    // Ubuntu Touch, so these match the old dp() values pixel-for-pixel;
-    // fontMedium/Large/Title are the app's own intermediate steps.
+    // Grid-unit type scale; gu(n) == dp(8n), matches old dp() values pixel-for-pixel
     readonly property int fontXSmall: units.gu(1.375) // ~x-small
     readonly property int fontSmall:  units.gu(1.5)   // small
     readonly property int fontRegular: units.gu(1.75) // medium
@@ -71,7 +67,7 @@ QtObject {
     readonly property real coinIconSize: units.dp(16)
     readonly property real fabSize: units.gu(7)
 
-    // Bundled Noto Sans Khmer/SC fonts don't cover each other's glyphs and Qt won't fall back between them, so pick the right face via `fontFor(text)` to avoid tofu boxes.
+    // Bundled fonts don't cover each other's glyphs; pick right face via fontFor() to avoid tofu boxes
     property FontLoader fontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansKhmer-Regular.ttf")
     }
@@ -91,9 +87,7 @@ QtObject {
     readonly property string bengaliFamily: bengaliFontLoader.status === FontLoader.Ready
                                             ? bengaliFontLoader.name : fontFamily
 
-    // Emoji only (no Latin/Khmer glyphs), so it's never returned by fontFor() —
-    // just registered here so Qt's own per-glyph fallback can find it when the
-    // active face (whichever fontFor() picked) is missing an emoji codepoint.
+    // Emoji only, never returned by fontFor(); registered so Qt's glyph fallback can find it
     property FontLoader emojiFontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoEmoji-Regular.ttf")
     }

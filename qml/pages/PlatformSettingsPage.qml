@@ -11,8 +11,7 @@ import "../services/AccountService.js" as AccountService
 Page {
     id: page
 
-    // Filled from a fresh get-communities walk (loadName); the startup cache can be
-    // stale right after creating a platform (used to render "Delete Global" here).
+    // Filled from loadName's walk; startup cache can be stale right after creating a platform
     property string managedTitle: Config.communityInfoFor(Config.managedCommunityId)
         ? Config.communityInfoFor(Config.managedCommunityId).title : Lang.tr("this platform")
     function loadName() {
@@ -50,8 +49,7 @@ Page {
             if (Number(k) !== gone) set[k] = true
         Config.ownedCommunityIdSet = set
         Config.overrideManagedCommunityId = 0
-        // Rebuild the community picker so the deleted platform (and its country
-        // row, if this was its only community) disappears without a restart.
+        // Rebuild picker so deleted platform (and its lone country row) disappears without restart
         Nav.refreshCommunities()
         Toast.success(Lang.tr("Platform deleted."))
         Nav.goToTab(3)
@@ -282,8 +280,7 @@ Page {
         }
     }
 
-    // Handle to the open confirm dialog so deletePlatform's callbacks can close
-    // it when the request finishes.
+    // Handle to the open confirm dialog so deletePlatform's callbacks can close it
     property var _deleteDlg: null
     function _closeDeleteDialog() {
         if (page._deleteDlg) {
@@ -292,9 +289,7 @@ Page {
         }
     }
 
-    // Confirm before the (soft) delete. The dialog stays open with buttons
-    // disabled while the request runs; it used to close on the Delete tap,
-    // leaving the deletion running with no feedback.
+    // Dialog stays open with buttons disabled while deleting; used to close on tap with no feedback
     Component {
         id: deleteDialog
         Popups.Dialog {
@@ -317,8 +312,7 @@ Page {
         }
     }
 
-    // Banned users state lives on THIS page (not the pushed sub-page) since
-    // JS imports can resolve to null inside dynamically created components.
+    // Banned users state lives on THIS page: JS imports can resolve null in dynamic components
     ListModel { id: bannedModel; dynamicRoles: true }
     property bool banLoading: false
     property bool banning: false
@@ -382,8 +376,7 @@ Page {
             property bool banSearching: false
             property bool banSearchOpen: false
             property int banSearchGeneration: 0
-            // Bridges a search-result tap (banSearchListView's delegate) into banField/banSearchDebounce,
-            // which live in banList's `header:`, a separate id scope that delegate can't reach directly.
+            // Bridges a search-result tap into banField/banSearchDebounce across header's separate id scope
             property string pendingFillUsername: ""
             ListModel { id: banSearchModel }
 
@@ -443,8 +436,7 @@ Page {
                         anchors { left: parent.left; leftMargin: Style.spacingM; right: banBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
                         height: units.gu(4)
 
-                        // A plain TextInput, not Lomiri's TextField; matches SettingsPage's
-                        // user search, which fires onTextChanged live per keystroke.
+                        // Plain TextInput (not TextField) to fire onTextChanged live per keystroke, like SettingsPage
                         TextInput {
                             id: banField
                             anchors.fill: parent
@@ -480,12 +472,10 @@ Page {
                         Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "add"; color: enabled ? Style.danger : Style.textSecondary }
                     }
 
-                    // Lives inside the same header component as banField; a Timer declared
-                    // outside ListView.header (a separate implicit Component) can't see it.
+                    // Must live inside header's Component with banField; outside it can't see banField
                     Timer { id: banSearchDebounce; interval: 250; onTriggered: banPage.doBanSearch(banField.text) }
 
-                    // Picks up a search-result tap relayed via banPage.pendingFillUsername; that
-                    // delegate is a sibling Component and can't reach banField directly.
+                    // Relays a search-result tap via pendingFillUsername; delegate can't reach banField directly
                     Connections {
                         target: banPage
                         function onPendingFillUsernameChanged() {
@@ -610,8 +600,7 @@ Page {
                     delegate: AbstractButton {
                         width: banSearchListView.width
                         height: units.gu(6)
-                        // banField/banSearchDebounce live in banList's `header:` (a separate id scope
-                        // this delegate can't reach), so relay the pick via banPage.pendingFillUsername.
+                        // banField lives in a separate header id scope; relay the pick via pendingFillUsername
                         onClicked: { banPage.pendingFillUsername = model.username; banPage.closeBanSearch() }
 
                         Row {

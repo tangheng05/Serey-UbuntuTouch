@@ -102,8 +102,7 @@ function del(baseUrl, path, token, onOk, onErr) {
     return send("DELETE", baseUrl + path, token, null, onOk, onErr);
 }
 
-// Some admin endpoints (e.g. bulk delete) need a DELETE with a JSON body.
-// `del()` above sends no body, which those routes reject.
+// Some admin endpoints need a DELETE with a JSON body; `del()` sends none
 function delWithBody(baseUrl, path, bodyObj, token, onOk, onErr) {
     return send("DELETE", baseUrl + path, token, bodyObj || {}, onOk, onErr);
 }

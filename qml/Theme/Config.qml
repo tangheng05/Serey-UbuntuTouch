@@ -10,14 +10,10 @@ QtObject {
 
     // Single source of truth for the convergence breakpoint, shared by Main.qml and AdaptiveStack.qml so the two never drift out of sync.
     readonly property real convergenceBreakpoint: units.gu(80)
-    // Second tier: desktop is where a THIRD column fits at its natural width.
-    // Derived, not picked: nav rail 20 + list 46 + article 50 + side panel 34.
-    // Lomiri itself only defines the 80gu two-column point, so this one is ours.
+    // Second tier: desktop is where a THIRD column fits (nav 20 + list 46 + article 50 + panel 34)
     readonly property real desktopBreakpoint: units.gu(150)
 
-    // Convergence readability caps (HIG: adapt, not scale; don't let a column
-    // stretch edge-to-edge on a desktop window). Long-form reading/detail columns
-    // cap at readingMaxWidth centered; bottom sheets/pickers at sheetMaxWidth.
+    // Convergence readability caps: reading/detail columns cap at readingMaxWidth, sheets at sheetMaxWidth
     readonly property real readingMaxWidth: units.gu(80)
     readonly property real sheetMaxWidth: units.gu(50)
 
@@ -28,12 +24,9 @@ QtObject {
 
     readonly property bool showDevOptions: false   // set true locally to expose dev tools
 
-    // Homepage web-view tracing + page console forwarding. Chatty, so off for
-    // release. Flip on and: clickable logs | grep -E "WebAppView|SEREY_PROF"
+    // Homepage web-view tracing + console forwarding; chatty, off for release
     readonly property bool debugWebApp: false
-    // Runs the profiler's scroll benchmark once per load (p50/p90/p99 frame times,
-    // grep "scroll\[auto\]"). Scrolls the page out from under the user, so it's
-    // only for a measurement run, and it needs debugWebApp on as well.
+    // Scroll benchmark once per load; scrolls the page, needs debugWebApp on too
     readonly property bool debugScrollTest: false
     property bool useLocalDev: false
 
@@ -67,9 +60,7 @@ QtObject {
     // The live source list, seeded with baseSources; Main.qml appends every other top-level country from the backend at startup. Indexed by sourceIndex everywhere.
     property var sources: baseSources
 
-    // Rebuild sources: the fixed three plus backend countries (deduped by dns).
-    // The list can shrink after a platform delete, so re-pin the selection by
-    // dns and fall back to Global if that dns disappeared.
+    // Rebuild sources; re-pin selection by dns, fall back to Global if it disappeared
     function appendCountries(extra) {
         var currentDns = sources[sourceIndex] ? sources[sourceIndex].dns : "";
         var seen = {};
@@ -115,12 +106,10 @@ QtObject {
     readonly property string communityDns: sources[sourceIndex].dns
     readonly property string communityName: sources[sourceIndex].name
 
-    // ISO-3166 alpha-2 from Cloudflare's edge, resolved once at startup (see
-    // GeoService.js). "" = not detected; treat as "no hint", never block on it.
+    // ISO-3166 alpha-2 from Cloudflare's edge; "" = not detected, treat as no hint
     property string detectedCountryCode: ""
 
-    // sources row for an ISO-3166 alpha-2 code, or -1. Skips row 0 (Global is
-    // not a country). Shared by Main and CommunityPicker so both agree.
+    // sources row for an ISO-3166 alpha-2 code, or -1; skips row 0 (Global)
     function indexForCountryCode(code) {
         if (!code) return -1;
         var want = String(code).toLowerCase();
@@ -139,22 +128,16 @@ QtObject {
     // Map of every community (string id -> {id,title,dns,icon,...}) at any nesting depth, unlike superhubChildrenById
     property var communityById: ({})
 
-    // { id: true } for the country hubs (tree top level). Not postable, so
-    // postable-platform lists must skip them; childCount alone can't tell
-    // (a country with no platforms yet looks exactly like a leaf).
+    // { id: true } for country hubs (tree top level), not postable; childCount alone can't tell
     property var topLevelCommunityIds: ({})
 
-    // { id: true } for the community the Global feed hides (?exclude_home=1)
-    // plus descendants; mirrors serey-api's getHiddenFeedIds(). Anything picking
-    // communities client-side must skip these.
+    // { id: true } for the community the Global feed hides plus descendants
     property var hiddenCommunityIds: ({})
 
     // child community id (string) -> parent id, from the same get-communities tree.
     property var parentCommunityById: ({})
 
-    // Select any community by id at any depth; keeps the pill and native feeds
-    // in step with the mini app. False when the id isn't in the cached tree
-    // (selection then stays put).
+    // Select any community by id at any depth; false when not in cached tree
     function selectCommunityById(id) {
         var idStr = String(id);
         if (idStr === "" || idStr === "undefined" || idStr === "null") return false;
@@ -167,8 +150,7 @@ QtObject {
         }
         var c = communityById[idStr];
         if (!c) return false;
-        // Point the top-level row at this community's country so the picker opens
-        // in the right place; the selection itself stays the community.
+        // Point top-level row at this community's country so the picker opens correctly
         var ancestor = idStr, guard = 0;
         while (parentCommunityById[ancestor] !== undefined && guard++ < 12)
             ancestor = parentCommunityById[ancestor];
@@ -184,13 +166,12 @@ QtObject {
         return true;
     }
 
-    // Community id for a URL the mini app landed on, or "" if it names none: the
-    // landing site's /<community_id> route, or a platform on its own subdomain.
+    // Community id for a URL the mini app landed on, or "" if it names none
     function communityIdForUrl(u) {
         if (!u) return "";
         var m = String(u).match(/^https?:\/\/([^\/?#]+)([^?#]*)/);
         if (!m) return "";
-        // Path first: the landing host can itself be a community dns.
+        // Path first: landing host can itself be a community dns
         var seg = (m[2] || "").split("/")[1] || "";
         if (/^[0-9]+$/.test(seg)) return seg;
         var host = m[1].toLowerCase();
@@ -207,9 +188,7 @@ QtObject {
         return c || null;
     }
 
-    // Patches edited fields into the cache in place (reassigning so bindings
-    // notice) instead of re-fetching get-communities, which is cached
-    // server-side and returns stale data for a bit right after a write.
+    // Patches fields into cache in place instead of re-fetching (server cache is stale after write)
     function updateCommunityFields(id, fields) {
         var idStr = String(id);
         var entry = communityById[idStr];
@@ -225,8 +204,7 @@ QtObject {
         updateCommunityFields(id, { title: title });
     }
 
-    // Insert/merge a community into the cache; used right after creating a
-    // platform (get-communities is server-cached and would still omit it).
+    // Insert/merge a community into cache; used right after creating a platform
     function addOrUpdateCommunity(entry) {
         if (!entry || entry.id === undefined || entry.id === null) return;
         var idStr = String(entry.id);

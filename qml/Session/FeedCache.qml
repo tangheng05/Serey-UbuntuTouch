@@ -2,9 +2,7 @@ pragma Singleton
 import QtQuick 2.7
 import QtQuick.LocalStorage 2.0
 
-// Page-0 cache for the News/Video feeds so a relaunch paints rows, not a
-// skeleton. peek() = cached rows, sync; request() always hits the network and
-// coalesces concurrent callers (startup prefetch vs. an early tab-tap).
+// Page-0 cache so a relaunch paints rows, not a skeleton; peek() is sync, request() coalesces callers
 QtObject {
     id: store
 
@@ -14,11 +12,9 @@ QtObject {
     property var _waiters: ({})
     property var _dbHandle: null
 
-    // Enough to fill the first screen, no more. This is a paint-fast cache, not
-    // an offline store; SavedPosts/Downloads are the real offline features.
+    // Enough to fill the first screen; this is a paint-fast cache, not an offline store
     readonly property int maxRows: 12
-    // Rows older than this are dropped at load: showing week-old rows for the
-    // instant it takes to revalidate is worse than showing the skeleton.
+    // Rows older than this are dropped at load rather than shown stale
     readonly property int maxAgeMs: 3 * 24 * 60 * 60 * 1000
 
     function _db() {
@@ -53,8 +49,7 @@ QtObject {
         return (e && e.items && e.items.length > 0) ? e.items : null;
     }
 
-    // Drop a key: put() refuses empty lists, so a feed that legitimately went
-    // empty could never overwrite its old rows without this.
+    // Drop a key; put() refuses empty lists so this is needed to clear stale rows
     function remove(key) {
         delete store._mem[key];
         try {
@@ -84,9 +79,7 @@ QtObject {
         }
     }
 
-    // `starter(ok, err)` must fire the request and return its xhr; returns null
-    // when attached to an in-flight request (nothing to abort). Callers keep
-    // their own reqEpoch guard, same as a direct request.
+    // `starter(ok, err)` fires the request and returns its xhr; null when joining an in-flight one
     function request(key, starter, onOk, onErr) {
         if (store._waiters[key]) {
             store._waiters[key].push({ ok: onOk, err: onErr });
@@ -107,9 +100,7 @@ QtObject {
         });
     }
 
-    // Keyed per account: the server personalises the authed blog feed (it drops
-    // the viewer's own hidden posts), so a shared key would paint one user's
-    // feed for another. Guest gets its own bucket.
+    // Keyed per account: server personalises the authed feed, so a shared key would leak
     function _who() {
         return (Session.isLoggedIn && Session.username && Session.username.length > 0)
                 ? Session.username : "__guest__";

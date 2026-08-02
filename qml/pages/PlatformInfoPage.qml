@@ -10,12 +10,10 @@ import "../services/PlatformService.js" as PlatformService
 Page {
     id: page
 
-    // Filled from a fresh get-communities walk in loadContext; the startup cache
-    // can be stale right after creating a platform (used to render "Global").
+    // Filled from loadContext's walk; startup cache can be stale right after creating a platform
     property string platformNameValue: Config.communityInfoFor(Config.managedCommunityId)
         ? Config.communityInfoFor(Config.managedCommunityId).title : ""
-    // Parent is structural in the get-communities tree (no `country` field on
-    // the node); resolved by loadContext's tree walk.
+    // Parent is structural in the tree (no country field); resolved by loadContext's walk
     property string parentCountryName: ""
     property string parentCountryId: ""
     property string categoryName: ""
@@ -30,8 +28,7 @@ Page {
     property int _initialCategoryId: 0
     property string _initialSeo: ""
 
-    // categoryId (from the community) and categoryOptions (from the taxonomy)
-    // arrive from two async calls in either order; sync whenever both are in.
+    // categoryId and categoryOptions arrive via two async calls in either order; sync when both land
     function _syncCategoryName() {
         for (var i = 0; i < page.categoryOptions.length; i++) {
             if (page.categoryOptions[i].id === page.categoryId) {
@@ -41,8 +38,7 @@ Page {
         }
     }
 
-    // The tree may only give the parent's TITLE; resolve its serey-countries
-    // UUID by name match once the country list is in (either call order).
+    // Tree may give only the parent's TITLE; resolve its UUID by name match once countries load
     function _syncCountryId() {
         if (page.parentCountryId.length > 0 || page.parentCountryName.length === 0) return
         for (var i = 0; i < page.countryOptions.length; i++) {
@@ -63,8 +59,7 @@ Page {
             function () { /* non-fatal: picker just stays empty */ })
     }
 
-    // Prefer Config's cache (kept fresh by updateCommunityFields) over ctx here;
-    // get-communities is cached server-side and can be stale right after a save.
+    // Prefer Config's cache over ctx; get-communities is server-cached and can be stale post-save
     function loadContext() {
         PlatformService.getCommunityContext(Config.baseUrl, Config.managedCommunityId,
             function (ctx) {
@@ -84,8 +79,7 @@ Page {
     }
 
     function loadCountries() {
-        // Country table rows with uuid ids, the country_id update-community-country
-        // needs (serey-countries only returns { icon_url, country_name }, no id).
+        // Country rows with uuid ids; serey-countries alone returns no id, only icon/name
         PlatformService.getCountries(Config.baseUrl,
             function (list) {
                 page.countryOptions = list

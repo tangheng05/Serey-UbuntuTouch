@@ -276,11 +276,7 @@ Page {
                 width: parent.width
                 height: Math.max(units.gu(5), titleField.contentHeight + Style.spacingM)
 
-                // The editor is only as tall as its text, so the box's padding
-                // was dead space and the keyboard only opened on the text line
-                // itself. Declared FIRST so it sits under the editor: taps on
-                // the text still reach it, this catches the surrounding gap
-                // (same fix as CreatePostPage).
+                // Declared FIRST so it sits under the editor, catching taps on the padding gap
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
@@ -318,8 +314,7 @@ Page {
                 width: parent.width
                 height: Math.max(units.gu(10), descField.contentHeight + Style.spacingM)
 
-                // Same dead-space fix as the title field above: catch taps on
-                // the empty area below the one-line editor.
+                // Same dead-space fix as the title field above
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {

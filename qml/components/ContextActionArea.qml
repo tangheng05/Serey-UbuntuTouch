@@ -4,11 +4,7 @@ import Lomiri.Components.ListItems 1.3 as ListItems
 import Lomiri.Components.Popups 1.3
 import "../Theme"
 
-/*
- * Input-method parity (UBports HIG): swipe/long-press context actions must also be
- * reachable by right-click and keyboard (MENU / Shift+F10). Wire `triggered()`, or set
- * `menuActions` to show those actions in a popover menu.
- */
+// Input-method parity: context actions also reachable by right-click and keyboard (MENU/Shift+F10)
 Item {
     id: area
     anchors.fill: parent
@@ -19,8 +15,7 @@ Item {
     // Optional ActionList presented as a context menu (see above).
     property var menuActions: null
 
-    // byKeyboard: the HIG reference shows a keyboard-opened menu with its first
-    // item already highlighted, while a right-click menu highlights nothing.
+    // byKeyboard: keyboard-opened menu highlights its first item, right-click highlights nothing
     function _invoke(byKeyboard) {
         if (!area.menuActions) { area.triggered(); return; }
         var p = PopupUtils.open(menuComp, area);
@@ -49,17 +44,14 @@ Item {
         }
     }
 
-    // Lomiri-native context menu, built from the row's own actions. The toolkit's
-    // ActionSelectionPopover ships no key handling at all (Popover only closes on
-    // Escape), so the arrow cursor and highlight are supplied here.
+    // ActionSelectionPopover ships no key handling beyond Escape, so arrow nav is added here
     Component {
         id: menuComp
         ActionSelectionPopover {
             id: popover
             actions: area.menuActions
 
-            // The highlighted action, matched by object: the delegate is loaded in
-            // THIS file's scope, so it can't see the popover Repeater's `index`.
+            // Matched by object: delegate is loaded in this file's scope, can't see Repeater's `index`
             property var navAction: null
             function navFirst() { var l = popover._navList(); popover.navAction = l.length ? l[0] : null; }
             function _navList() {
@@ -80,8 +72,7 @@ Item {
                                               : l[(cur + d + l.length) % l.length];
             }
 
-            // Zero-size grabber: Lomiri popups never take keyboard focus themselves,
-            // so without this the arrows keep driving the list behind the menu.
+            // Zero-size grabber: Lomiri popups never take keyboard focus themselves
             Item {
                 id: keyGrab
                 width: 0; height: 0

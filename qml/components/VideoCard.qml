@@ -1,8 +1,11 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
+import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/YouTube.js" as YouTube
 
 AbstractButton {
     id: root
@@ -14,16 +17,97 @@ AbstractButton {
     signal authorClicked()
     signal moreClicked()
 
-    // Primes the shared follow-state store so a swiped-open Follow action (VideoPage's
-    // trailing ListItemActions) can render its already-following color immediately.
+    readonly property bool isOwn: Session.isLoggedIn && !!(v.author) && v.author === Session.username
+
+    // Compact anchored dropdown (mirrors PostCard's cardMenu); desktop only, phone/tablet use the full sheet
+    property bool compactMenu: Config.desktopMode
+    property bool menuOpen: false
+    Component.onDestruction: root.menuOpen = false
+
+    function _isDirectFile(u) { return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || ""); }
+    readonly property string _remoteUrl: {
+        if (v.platform === "SEREY") return v.videoLink || v.embedUrl || "";
+        if (root._isDirectFile(v.videoLink)) return v.videoLink;
+        if (root._isDirectFile(v.embedUrl)) return v.embedUrl;
+        return "";
+    }
+    readonly property string _youtubeId: {
+        if (v.platform === "YOUTUBE" && (v.videoId || "").length === 11) return v.videoId;
+        var s = (v.embedUrl || "") + " " + (v.videoLink || "");
+        var m = s.match(/(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+        return m ? m[1] : "";
+    }
+    readonly property bool _isYouTube: v.platform === "YOUTUBE" && root._youtubeId.length > 0
+    readonly property bool _canDownload: root._remoteUrl.length > 0 || root._isYouTube
+    readonly property bool _dlSaved: (Downloads.rev, Downloads.isSaved(v.permlink || ""))
+    property bool _ytExtracting: false
+
+    function toggleDownload() {
+        var pl = v.permlink || "";
+        if (pl.length === 0 || root._ytExtracting) return;
+        if (root._dlSaved) { Downloads.remove(pl); return; }
+        if (root._remoteUrl.length > 0) {
+            Downloads.start(v, root._remoteUrl);
+            Toast.show(Lang.tr("Downloading video…"));
+            return;
+        }
+        if (root._isYouTube) {
+            root._ytExtracting = true;
+            Toast.show(Lang.tr("Preparing download…"));
+            YouTube.extract(root._youtubeId, function (result, errMsg) {
+                root._ytExtracting = false;
+                if (result && result.url) {
+                    Downloads.start(v, result.url);
+                    Toast.show(Lang.tr("Downloading video…"));
+                } else {
+                    Toast.error(Lang.tr("This YouTube video can't be downloaded."));
+                }
+            });
+        }
+    }
+
+    function menuItems() {
+        var items = [];
+        if (root._canDownload) {
+            items.push({ icon: root._dlSaved ? "tick" : "save",
+                         label: root._dlSaved ? Lang.tr("Remove download") : Lang.tr("Save video offline"),
+                         action: "toggleDownload" });
+            items.push({ divider: true });
+        }
+        if (root.isOwn) {
+            items.push({ icon: "edit", label: Lang.tr("Edit caption"), action: "editCaption" });
+            items.push({ icon: "delete", label: Lang.tr("Delete video"), danger: true, action: "delete" });
+        } else {
+            items.push({ icon: "close", label: Lang.tr("Hide this video"), action: "hide" });
+            items.push({ icon: "dialog-warning-symbolic", label: Lang.tr("Report video"), action: "report" });
+        }
+        return items;
+    }
+
+    function runMenuAction(action) {
+        if (action === "toggleDownload") root.toggleDownload();
+        else if (action === "editCaption") PostActions.open(root.v, "video", 4);
+        else if (action === "delete") PostActions.open(root.v, "video", 2);
+        else if (action === "hide") {
+            HiddenPosts.hide(v.permlink || "");
+            PostActions.hideRequested(v.author || "", v.permlink || "");
+        }
+        else if (action === "report") PostActions.open(root.v, "video", 1);
+    }
+
+    // Reparent onto the window while open so the menu isn't clipped by the list row (see PostCard)
+    readonly property Item _menuOverlayParent: (root.menuOpen && root.Window.window)
+        ? root.Window.window.contentItem : root
+    readonly property point _moreBtnBottomRight: (root.menuOpen && moreBtn)
+        ? moreBtn.mapToItem(root._menuOverlayParent, moreBtn.width, moreBtn.height) : Qt.point(0, 0)
+
+    // Primes the shared follow-state store so a swiped-open Follow action renders correctly
     onVChanged: {
         if (Session.isLoggedIn && v.author && v.author !== Session.username)
             FollowStore.load(Config.baseUrl, Session.username, v.author);
     }
 
-    // Keyboard: VideoCard itself (an AbstractButton / FocusScope) is the single
-    // tab-stop so its own ring shows; the ContextActionArea child is made
-    // non-focusable below. Enter activates natively, MENU opens the context menu.
+    // VideoCard itself is the single tab-stop so its ring shows; child area is non-focusable
     activeFocusOnTab: true
 
     onPressAndHold: root.moreClicked()
@@ -64,9 +148,7 @@ AbstractButton {
                 color: Style.iconBackground
             }
 
-            // Double-buffered like PostCard's cover: the hidden loader fetches the new
-            // source while thumbImg keeps the last-good frame, so a row swap never
-            // blanks to black while the phone re-downloads an evicted image.
+            // Double-buffered like PostCard's cover: hidden loader fetches while thumbImg keeps last frame
             Image {
                 id: thumbLoader
                 anchors.fill: parent
@@ -88,8 +170,7 @@ AbstractButton {
                 asynchronous: true
                 sourceSize.width: thumbLoader.sourceSize.width
                 visible: false
-                // Fade fully out while the loader replaces a stale frame; a dimmed
-                // ghost of the previous content read as the wrong thumbnail (see PostCard).
+                // Fade fully out while replacing a stale frame; a dimmed ghost read as wrong thumbnail
                 readonly property bool transitioning:
                     thumbLoader.status === Image.Loading && status === Image.Ready
                 Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -212,7 +293,7 @@ AbstractButton {
                 id: moreBtn
                 anchors.top: parent.top
                 width: units.gu(3.5); height: units.gu(3.5)
-                onClicked: root.moreClicked()
+                onClicked: root.compactMenu ? (root.menuOpen = !root.menuOpen) : root.moreClicked()
 
                 Column {
                     anchors.centerIn: parent
@@ -238,17 +319,13 @@ AbstractButton {
         color: Style.divider
     }
 
-    // Pointer parity: right-click opens the context menu. Keyboard is handled by
-    // the AbstractButton root (single focus owner), so this must NOT be a
-    // tab-stop or it competes and hides the ring.
+    // Pointer parity: right-click opens context menu; must NOT be a tab-stop or it hides the ring
     ContextActionArea {
         activeFocusOnTab: false
         onTriggered: root.moreClicked()
     }
 
-    // Keyboard-focus ring. VideoCard is a FocusScope and takes focus itself
-    // (unlike PostCard's child-ring setup), so draw the ring here; activeFocus
-    // is true whether the button or its ContextActionArea child holds focus.
+    // VideoCard is a FocusScope and takes focus itself, so draw the ring here (unlike PostCard)
     Rectangle {
         anchors.fill: parent
         anchors.margins: units.dp(1)
@@ -258,5 +335,107 @@ AbstractButton {
         border.color: Style.brand
         radius: units.gu(0.5)
         z: 100
+    }
+
+    // Dismiss on outside click; fills the whole window while open once reparented
+    MouseArea {
+        parent: root._menuOverlayParent
+        visible: root.menuOpen
+        z: 999
+        anchors.fill: parent
+        onClicked: root.menuOpen = false
+    }
+
+    Rectangle {
+        id: cardMenu
+        parent: root._menuOverlayParent
+        visible: root.menuOpen
+        z: 1000
+        x: Math.min(root._moreBtnBottomRight.x - width, root._menuOverlayParent.width - width - Style.spacingXs)
+        y: root._moreBtnBottomRight.y + Style.spacingXs
+        width: Math.min(units.gu(20), root.width - units.gu(2))
+        height: cardMenuCol.height
+        radius: Style.cardRadius
+        color: Style.surface
+        border.width: units.dp(1)
+        border.color: Style.divider
+
+        Column {
+            id: cardMenuCol
+            width: parent.width
+
+            Repeater {
+                // {divider:true} | {icon, label, danger, action}
+                model: root.menuItems()
+                delegate: Item {
+                    width: cardMenuCol.width
+                    height: modelData.divider ? units.dp(1) : units.gu(5.5)
+
+                    Rectangle {
+                        visible: !!modelData.divider
+                        anchors.fill: parent
+                        color: Style.divider
+                    }
+
+                    AbstractButton {
+                        visible: !modelData.divider
+                        anchors.fill: parent
+                        onClicked: { root.menuOpen = false; root.runMenuAction(modelData.action); }
+                        Row {
+                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2.2); height: width
+                                name: modelData.icon || ""
+                                color: modelData.danger ? Style.danger : Style.textPrimary
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.label || ""
+                                font.pixelSize: Style.fontSmall
+                                color: modelData.danger ? Style.danger : Style.textPrimary
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { visible: !root.isOwn; width: parent.width; height: units.dp(1); color: Style.divider }
+            // No "block" glyph in the Suru icon set (same reason PostActionSheet draws its own).
+            AbstractButton {
+                visible: !root.isOwn
+                width: parent.width
+                height: units.gu(5.5)
+                onClicked: { root.menuOpen = false; PostActions.open(root.v, "video", 3); }
+                Row {
+                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingM
+                    Item {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2.2); height: width
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: units.dp(1.5)
+                            border.color: Style.danger
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: parent.width * 0.7; height: units.dp(1.5)
+                            color: Style.danger
+                            rotation: 45
+                        }
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Lang.tr("Block %1").arg(v.author || "")
+                        font.pixelSize: Style.fontSmall
+                        color: Style.danger
+                    }
+                }
+            }
+        }
     }
 }

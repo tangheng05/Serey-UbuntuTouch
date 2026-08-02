@@ -15,14 +15,11 @@ QtObject {
     function known(author) { return rev >= 0 && _map.hasOwnProperty(author); }
 
     function _resetIfViewerChanged(viewer) {
-        // Drop the queue too: those entries carry the previous viewer and would
-        // flush a logged-out (or wrong-account) query after the switch.
+        // Drop queue too: entries carry the previous viewer and would flush wrong-account
         if (_viewer !== viewer) { _map = ({}); _busy = ({}); _queue = []; _viewer = viewer; rev++; }
     }
 
-    // The first feed's ~10 cards each query /follow/status at once, competing
-    // with the thumbnails the user is waiting for. Hold that first burst so
-    // images get the connection; once flushed, `_warm` sends queries directly.
+    // Hold the first burst of ~10 status queries so thumbnails get the connection first
     property bool _warm: false
     property var _queue: []
     property Timer _burstTimer: Timer {
@@ -42,8 +39,7 @@ QtObject {
         _resetIfViewerChanged(viewer);
         if (!author || _map.hasOwnProperty(author) || _busy[author]) return;
         if (!_warm) {
-            // Mark busy now so the same author queued twice (ListView recycling)
-            // can't be sent twice on flush.
+            // Mark busy now so the same author queued twice can't be sent twice on flush
             _busy[author] = true;
             _queue.push({ baseUrl: baseUrl, viewer: viewer, author: author });
             _burstTimer.restart();

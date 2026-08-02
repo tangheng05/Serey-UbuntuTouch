@@ -12,9 +12,7 @@ Item {
     property bool controls: true
     property bool loop: false
 
-    // A CSS pixel here is a physical pixel (no devicePixelRatio), so fixed-px
-    // controls render too small to tap on a phone. Scale the bar by the app's
-    // grid-unit ratio, quantized to 0.25 so trivial width changes don't thrash _load().
+    // CSS pixel is a physical pixel here, so scale controls by the app's grid-unit ratio
     property real cssScale: Math.max(1, Math.round((units.gu(1) / 8) * 4) / 4)
     // True once the <video> has a decoded frame; hosts fade in on this so the WebView's blank first frame never flashes.
     property bool ready: false
@@ -24,9 +22,7 @@ Item {
     // Freeze the Chromium renderer on app background/suspend; same SIGBUS-on-resume issue and lifecycleState int trap as WebAppView.
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
-    // Unfocused is not put away: side by side our window stays on screen while
-    // another app holds focus, and freezing there blanked a playing video.
-    // Freeze only once actually suspended or no longer shown.
+    // Unfocused alone doesn't freeze it (side-by-side windows blanked a playing video)
     readonly property bool _windowShown: Window.visibility !== Window.Hidden
                                          && Window.visibility !== Window.Minimized
     property bool appAway: Qt.application.state === Qt.ApplicationSuspended
@@ -47,9 +43,7 @@ Item {
         interval: 300
         onTriggered: if (root.appAway) wv.lifecycleState = root._lcFrozen
     }
-    // Thawing restores the renderer but not its dropped compositor frame, so a paused
-    // <video> stays black. Re-seeking to the current position forces a decode; the
-    // opacity nudge covers the cross-origin iframe case.
+    // Thawing drops the compositor frame; re-seek forces a decode, opacity nudge covers iframes
     Timer {
         id: vwRepaintTimer
         interval: 150
@@ -149,9 +143,7 @@ Item {
                '</iframe></body></html>';
     }
 
-    // Chromium's own <video controls> timeline only seeks on touchmove (a tap does
-    // nothing) and sits in a closed shadow root that can't be patched, so we render
-    // our own bar and seek from pointerdown; one code path for mouse and touch.
+    // Chromium's own timeline only seeks on touchmove and can't be patched, so render our own bar
     readonly property string _svgPlay: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'
     readonly property string _svgPause: '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
     readonly property string _svgFull: '<svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>'
@@ -181,9 +173,7 @@ Item {
                'function seek(x){var b=trk.getBoundingClientRect();' +
                'var p=Math.min(1,Math.max(0,(x-b.left)/b.width));' +
                'if(v.duration&&isFinite(v.duration))v.currentTime=p*v.duration;upd();poke();}' +
-               // Drag latch must be release-proof: UT's QtWebEngine can drop the pointerup
-               // after a track tap, and a stuck drag turned every later touch into a seek.
-               // Release on buttons-up, window-level up/cancel, and lostpointercapture.
+               // Drag latch must be release-proof: QtWebEngine can drop pointerup after a tap
                'trk.addEventListener("pointerdown",function(e){drag=true;' +
                'try{trk.setPointerCapture(e.pointerId);}catch(_){}' +
                'seek(e.clientX);e.preventDefault();});' +
@@ -209,9 +199,7 @@ Item {
     function _videoHtml() {
         var attrs = 'autoplay playsinline webkit-playsinline preload="auto"';
         if (loop) attrs += ' loop';
-        // Every control dimension multiplies by cssScale so the bar has the same
-        // physical size (and tappable area) on a dense phone panel as on a desktop
-        // monitor. px() rounds to whole CSS pixels.
+        // Every control dimension multiplies by cssScale for consistent physical size across densities
         var s = root.cssScale;
         function px(v) { return Math.round(v * s) + 'px'; }
         return '<!DOCTYPE html><html><head>' +
@@ -227,8 +215,7 @@ Item {
                '#row{display:flex;align-items:center}' +
                '.btn{width:' + px(30) + ';height:' + px(30) + ';flex:none;fill:#fff;cursor:pointer}' +
                '.btn svg{width:100%;height:100%}' +
-               // min-width keeps the track usable if the fixed elements (buttons +
-               // time label) ever crowd a narrow stage at high scale.
+               // min-width keeps the track usable if buttons + time label crowd a narrow stage
                '#track{position:relative;flex:1;min-width:' + px(60) + ';height:' + px(30) + ';margin:0 ' + px(8) + ';' +
                'display:flex;align-items:center;touch-action:none;cursor:pointer}' +
                '#trk,#fill{position:absolute;height:' + px(4) + ';border-radius:' + px(2) + '}' +

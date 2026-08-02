@@ -4,10 +4,7 @@ import "../Theme"
 import "../Session"
 import "../services/PaymentService.js" as PaymentService
 
-/*
- * Native crypto (NOWPayments) buy-plan sheet; state in Theme/Payments.qml.
- * Only "finished" is terminal: the backend activates the plan there, no webhook.
- */
+// Native crypto (NOWPayments) buy-plan sheet; only "finished" is terminal, no webhook
 Item {
     id: sheet
     anchors.fill: parent
@@ -42,8 +39,7 @@ Item {
         sheetSlideOut.start();
     }
 
-    // Recommended options (mirrors the web's smart default, usdttrc20 first),
-    // shown at the top; everything else follows alphabetically.
+    // Recommended options (mirrors web's smart default) shown at top, rest alphabetical
     readonly property var preferredCurrencies: [
         "usdttrc20", "usdterc20", "usdtmatic", "usdtbsc",
         "usdc", "usdcmatic", "btc", "eth", "sol", "bnb"
@@ -62,9 +58,7 @@ Item {
         return head.concat(tail);
     }
 
-    // Only the recommended currencies at first; "More currencies" expands to
-    // everything NOWPayments offers. If none of the preferred ones are
-    // available there's nothing sensible to collapse to, so show all.
+    // Recommended currencies first; "More" expands to all. If none preferred, show all.
     readonly property var visibleCurrencies:
         (showAllCurrencies || preferredCount === 0) ? currencies
                                                     : currencies.slice(0, preferredCount)
@@ -84,8 +78,7 @@ Item {
             });
     }
 
-    // NOWPayments codes are lowercase with the network glued on; show the
-    // common stablecoin variants with a readable network suffix.
+    // NOWPayments codes are lowercase with the network glued on; show a readable suffix
     function prettyCurrency(code) {
         var known = {
             usdttrc20: "USDT (TRC20)", usdterc20: "USDT (ERC20)",
@@ -95,15 +88,12 @@ Item {
         return known[code] || String(code).toUpperCase();
     }
 
-    // What the user picked. The backend reuses a still-valid pending payment for the
-    // plan regardless of requested currency (no cancel endpoint), so the response can
-    // come back in a different coin; surface that instead of showing it silently.
+    // Backend reuses a still-valid pending payment regardless of requested currency; surface mismatch
     property string requestedCode: ""
     readonly property bool currencyMismatch: payment !== null && requestedCode !== ""
         && payment.payCurrency.toLowerCase() !== requestedCode.toLowerCase()
 
-    // Called from the currency list delegate; must live at root level because
-    // imported JS services are null inside delegate handlers.
+    // Lives at root level: imported JS services are null inside delegate handlers
     function selectCurrency(code) {
         if (sheet.busy) return;
         sheet.busy = true;
@@ -114,9 +104,7 @@ Item {
             function (pm) {
                 sheet.busy = false;
                 sheet.payment = pm;
-                // Persist it: if the user pays after closing the sheet (or the
-                // app), Main.qml's background check still activates the plan
-                // (crypto has no webhook fallback).
+                // Persist it: Main.qml's background check still activates the plan (no webhook)
                 Payments.setPendingCrypto(pm.paymentId, Payments.planId, pm.expiresAt);
                 sheet.payStatus = "waiting";
                 sheet._startCountdown(pm.expiresAt);
@@ -157,8 +145,7 @@ Item {
         PaymentService.checkCryptoStatus(Config.baseUrl, Session.token, sheet.payment.paymentId,
             function (status) {
                 sheet.payStatus = status;
-                // Only "finished" is terminal: the backend activates the plan inside
-                // check-status (no webhook), so keep polling until it flips.
+                // Only "finished" is terminal; keep polling until check-status flips it
                 if (status === "finished") {
                     pollTimer.stop(); countdownTimer.stop();
                     Payments.clearPendingCrypto();
@@ -180,8 +167,7 @@ Item {
     Timer { id: pollTimer;      interval: 10000; repeat: true; onTriggered: sheet._pollStatus() }
     Timer { id: countdownTimer; interval: 1000;  repeat: true; onTriggered: sheet._tickCountdown() }
 
-    // While waiting for a payment a stray tap must not dismiss the sheet
-    // (losing the address mid-payment), so step 1 ignores backdrop taps.
+    // While waiting for a payment, a stray tap must not dismiss the sheet mid-payment
     Rectangle {
         id: backdrop
         anchors.fill: parent
@@ -309,8 +295,7 @@ Item {
             spacing: 0
             visible: sheet.step === 1
 
-            // Pending-payment notice: the backend returned an earlier, still
-            // valid payment in a different currency than the one just picked.
+            // Pending-payment notice: backend returned an earlier payment in a different currency
             Label {
                 visible: sheet.currencyMismatch
                 width: parent.width - Style.spacingL * 2
@@ -469,8 +454,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: units.gu(6)
                 onClicked: {
-                    // Plan is active; funnel straight into creating the
-                    // platform, unless the user already owns one.
+                    // Plan is active; funnel straight into creating a platform, unless already owned
                     var owns = false;
                     for (var k in Config.ownedCommunityIdSet) { owns = true; break; }
                     sheet.closeSheet();

@@ -1,9 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-// Navbar/menu management. The backend hardcodes `website` as the literal "SEREY"
-// (not per-community), so that's the default here; list-by-website-and-community
-// requires BOTH `website` and `community_id` (confirmed via a live 400).
+// Navbar/menu management; backend hardcodes `website` as literal "SEREY"
 
 var DEFAULT_WEBSITE = "SEREY";
 
@@ -41,8 +39,7 @@ function updateLayout(baseUrl, id, layout, token, onOk, onErr) {
         function (data) { onOk(data || {}); }, onErr);
 }
 
-// Documented as DELETE only (no POST alias, unlike delete-post-or-comment),
-// so send id as a query param rather than a body.
+// DELETE only, no POST alias; send id as query param not body
 function deleteMenu(baseUrl, id, token, onOk, onErr) {
     Http.del(baseUrl, "/custom-menu/delete-menu" + Http.buildQuery({ id: id }), token,
         function (data) { onOk(data || {}); }, onErr);

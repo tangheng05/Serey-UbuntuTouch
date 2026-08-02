@@ -1,9 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-// Anonymous invite codes: community-plan owners mint free codes, friends redeem
-// them for a no-payment anonymous account. Endpoints under /anonymous-invites.
-// The backend wraps every payload as {status, message, data:{...}}, so unwrap.
+// Anonymous invite codes; backend wraps every payload as {status, message, data:{...}}, so unwrap
 function _payload(body) { return (body && body.data) ? body.data : (body || {}); }
 
 // ── Creator (needs JWT) ─────────────────────────────────────────────────────
@@ -54,10 +52,7 @@ function validateInvite(baseUrl, code, onOk, onErr) {
     }, onErr);
 }
 
-// Redeem: creates the free account. Self-custodial like the signup flows — the
-// client generates the keys and sends the public keys + posting private key; the
-// master password stays on the device and is what we show the user. onOk gets
-// { username, invitedBy }.
+// Redeem: creates account self-custodially; client sends keys, master password stays on device
 function redeemInvite(baseUrl, code, username, keys, onOk, onErr) {
     Http.post(baseUrl, "/anonymous-invites/redeem",
               { code: code, username: username,
@@ -75,8 +70,7 @@ function redeemInvite(baseUrl, code, username, keys, onOk, onErr) {
     }, onErr);
 }
 
-// Build the shareable web link a creator copies. Friends open it on the web, or
-// the app intercepts it (see WebAppView) to redeem natively.
+// Shareable web link; app intercepts it (see WebAppView) to redeem natively
 function inviteLink(code) { return "https://serey.io/invite/anonymous?code=" + encodeURIComponent(code); }
 
 // Pull ?code= out of an invite URL (used by the in-app deep-link intercept).

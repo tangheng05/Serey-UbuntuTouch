@@ -1,23 +1,17 @@
 import QtQuick 2.7
 import "../services/QrCodeGen.js" as QrGen
 
-/*
- * QR code rendered locally on a Canvas via the vendored services/QrCodeGen.js.
- * Local generation is deliberate: crypto payment addresses (PaymentSheet) must
- * not round-trip through a third-party QR image service.
- */
+// QR rendered locally via vendored QrCodeGen.js; crypto addresses must not hit a third-party service
 Canvas {
     id: qr
 
-    // Encode + paint off the UI thread; the synchronous paint froze a frame
-    // for seconds.
+    // Encode + paint off the UI thread; synchronous paint froze a frame for seconds
     renderStrategy: Canvas.Threaded
 
     property string text: ""
     property color foreground: "#000000"
     property color background: "#FFFFFF"
-    // Quiet zone around the code, in modules (QR spec asks for 4; 2 is fine
-    // on-screen where the sheet already provides white padding).
+    // Quiet zone in modules (QR spec asks for 4; 2 is fine given the sheet's own padding)
     property int quietZone: 2
 
     onTextChanged: requestPaint()
@@ -52,8 +46,7 @@ Canvas {
             for (var c = 0; c < n; c++) {
                 if (!q.isDark(r, c))
                     continue;
-                // +0.5px overlap hides hairline seams between adjacent modules
-                // at fractional cell sizes.
+                // +0.5px overlap hides hairline seams at fractional cell sizes
                 ctx.fillRect(ox + c * cell, oy + r * cell, cell + 0.5, cell + 0.5);
             }
         }

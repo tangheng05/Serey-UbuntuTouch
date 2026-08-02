@@ -53,7 +53,7 @@ QtObject {
         }
     }
 
-    // Write then read back and verify; a silent write failure is how an old account resurrects next launch.
+    // Write then read back to catch a silent write failure
     function _writeAuthOnce() {
         _db().transaction(function (tx) {
             tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
@@ -97,7 +97,7 @@ QtObject {
     }
 
     function setAuth(newToken, newUsername, newDeviceId) {
-        // Username first: token fires onTokenChanged synchronously, and listeners fetch the profile by username immediately.
+        // Username first: token fires onTokenChanged synchronously
         username = newUsername;
         token = newToken;
         _save();
@@ -176,7 +176,7 @@ QtObject {
         username = "";
         avatarUrl = "";
         deviceId = 0;
-        // Logout deletes the stored credentials rather than persisting empty strings, since _save()'s write-verify would log a spurious failure for an empty session.
+        // Deletes credentials rather than persisting empty (avoids a spurious write-verify failure)
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");

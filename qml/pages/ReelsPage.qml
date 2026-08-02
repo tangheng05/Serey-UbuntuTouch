@@ -445,8 +445,7 @@ Page {
 
                         Label {
                             id: descPreviewLabel
-                            // Always reserve the "more" slot. Making the width depend on
-                            // moreLabel.visible looped: visible <- this.truncated <- this.width.
+                            // Always reserve "more" slot; depending on moreLabel.visible would loop
                             width: parent.width - moreLabel.width - units.dp(4)
                             text: page._descPreview(modelData.body || "")
                             color: Qt.rgba(1, 1, 1, 0.85)

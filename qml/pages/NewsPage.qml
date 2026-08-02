@@ -21,9 +21,7 @@ Page {
     // Request generation bumped on reload() so a late response from a previous community/tab can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
-    // True while the rows on screen came from FeedCache rather than the network.
-    // The page-0 response replaces them wholesale instead of appending onto them,
-    // and a failed load keeps them rather than blanking to an error.
+    // Cached rows: page-0 replaces wholesale, failed load keeps them instead of blanking
     property bool showingCached: false
 
     // Cards need swipe actions, so a fixed-cell GridView won't work; cap + center instead
@@ -107,8 +105,7 @@ Page {
     // Source switching lives in the global AppHeader community pill; the feed just reloads when Config.sourceIndex changes.
     Connections {
         target: Config
-        // Warm the other tab for the new community too, or the first toggle after
-        // a community switch flashes the skeleton again.
+        // Warm the other tab too, or first toggle after a community switch flashes skeleton
         function onCommunityIdChanged() { page.loadCategories(); page.reload(); page._warmOtherFeed(); }
     }
 
@@ -165,8 +162,7 @@ Page {
     function feedFn() { return _feedFnFor(page.feedIndex); }
 
     function _pageParams(offset) {
-        // Bigger batches while a category filter is on (no server-side filter,
-        // so most of a page can be dropped client-side) - see _fetchLimit.
+        // Bigger batches while filtering client-side (no server-side filter) - see _fetchLimit
         var params = { limit: page._fetchLimit(), offset: offset };
         if (Config.communityId > 0)
             params.community_id = Config.communityId;
@@ -175,9 +171,7 @@ Page {
         return params;
     }
 
-    // Prefetch the tab the user isn't on so the first Trending/Latest toggle
-    // paints from cache instead of flashing the skeleton. Only done on arrival;
-    // the toggle itself already revalidates through FeedCache.
+    // Prefetch the other tab on arrival so first toggle paints from cache, not skeleton
     function _warmOtherFeed() {
         var other = page.feedIndex === 1 ? 0 : 1;
         var params = _pageParams(0);
@@ -199,18 +193,14 @@ Page {
         errorMsg = "";
         autoFetches = 0;
         page.showingCached = false;
-        // Only wipe the list when there's nothing cached to show in its place;
-        // clearing first would flash the skeleton between the two feeds.
+        // Only wipe list if nothing cached, else clearing flashes skeleton between feeds
         if (!_paintCached()) feedModel.clear();
-        // Back to the top: rows are synced in place, so unlike the old
-        // clear()-based reload the ListView keeps its scroll offset; switching
-        // tabs mid-scroll landed the user mid-list of the OTHER feed.
+        // Force to top: synced-in-place rows keep scroll offset, unlike old clear()-based reload
         list.positionViewAtBeginning();
         loadMore();
     }
 
-    // Hides and blocks change independently of any rows we hold, so re-filter on
-    // the way in rather than trusting whatever was stored.
+    // Re-filter on the way in; hides/blocks can change independently of stored rows
     function _filterRows(rows) {
         var hidden = HiddenPosts.loadAll();
         var blocked = BlockedUsers.loadAll();
@@ -222,10 +212,7 @@ Page {
         return out;
     }
 
-    // Sync in place, not clear()+append: clear() destroys delegates, so
-    // PostCard thumbnails re-fade on every Trending/Latest toggle.
-    // Row differs on a different article, or same one with stale counts/content:
-    // an edit keeps permlink+counters, so comparing only those left stale body.
+    // Sync in place (not clear()+append, which re-fades thumbnails); differs if permlink/votes/comments changed
     function _rowDiffers(cur, next) {
         return cur.permlink !== next.permlink
             || cur.votes !== next.votes
@@ -237,9 +224,7 @@ Page {
     }
 
     function _syncRows(rows) {
-        // Overwrite by index: reusing rows keeps delegates, so an unchanged feed
-        // does nothing. Reconciling by permlink was tried and is worse: the two
-        // feeds are disjoint, so every row became insert + trim (full teardown).
+        // Overwrite by index to keep delegates; permlink reconciliation caused full teardown
         var n = Math.min(rows.length, feedModel.count);
         for (var i = 0; i < n; i++)
             if (_rowDiffers(feedModel.get(i), rows[i]))
@@ -250,9 +235,7 @@ Page {
             feedModel.remove(feedModel.count - 1);
     }
 
-    // Paint cached rows for this feed+community so tab switches show content at
-    // once (this is also what suppresses the count===0 skeleton); the request
-    // fired right after replaces them. Returns false on a cold cache.
+    // Paint cached rows immediately (suppresses skeleton); the fresh request replaces them
     function _paintCached() {
         var cached = FeedCache.peek(FeedCache.newsKey(page.feedIndex, Config.communityId));
         if (!cached) return false;
@@ -278,14 +261,12 @@ Page {
                 inflight = null;
                 page.refreshing = false;
                 page.loading = false;
-                // In place, same as loadMore's page 0: a refresh that returns the
-                // same rows shouldn't visibly rebuild the list.
+                // In place like loadMore's page 0: unchanged refresh shouldn't rebuild the list
                 page._syncRows(page._filterRows(result));
                 page.showingCached = false;
                 page.offset = rawCount;
                 page.endReached = rawCount < params.limit;
-                // Keep paging if filtering left less than a screenful, but cap
-                // the chain (see _fetchLimit) so a sparse category can't spiral.
+                // Keep paging if filtered below a screenful, capped so a sparse category can't spiral
                 if (!page.endReached && feedModel.count < Config.pageSize && page.autoFetches < 6) {
                     page.autoFetches++;
                     page.loadMore();
@@ -298,9 +279,7 @@ Page {
                 page.refreshing = false;
                 // Must also clear loading: an aborted in-flight loadMore's own callback early-returns and would leave the skeleton stuck otherwise.
                 page.loading = false;
-                // On an empty feed surface the error so ErrorState's Retry shows;
-                // falling through to EmptyState reads as "nothing here" rather
-                // than "this didn't load".
+                // On empty feed, surface the error (ErrorState/Retry) rather than EmptyState
                 if (feedModel.count === 0) page.errorMsg = err.message;
             });
     }
@@ -319,9 +298,7 @@ Page {
             loading = false;
             var rows = page._filterRows(result);
             if (isFirstPage) {
-                // Page 0 owns the whole list: sync in place so unchanged rows keep
-                // their delegates (and loaded thumbnails). This also replaces the
-                // old "clear cached rows first" step, which left duplicates.
+                // Page 0 owns the whole list: sync in place, replaces old clear-first step (dupes)
                 page._syncRows(rows);
                 page.showingCached = false;
             } else {
@@ -330,15 +307,12 @@ Page {
             }
             page.offset += rawCount;
             if (rawCount < params.limit) page.endReached = true;
-            // Keep paging if this page was filtered below a screenful, but cap
-            // the chain (see _fetchLimit) so a sparse category can't spiral.
+            // Keep paging if filtered below a screenful, capped so a sparse category can't spiral
             if (!page.endReached && feedModel.count < Config.pageSize && page.autoFetches < 6) {
                 page.autoFetches++;
                 page.loadMore();
             }
-            // An atYEnd trigger during this request hit the `loading` guard and
-            // won't re-fire. Re-check after layout settles; a synchronous atYEnd
-            // read here is stale and over-fetched a page on every load.
+            // Re-check atYEnd after layout settles; a synchronous read here over-fetched
             endRecheck.restart();
         };
         var onErr = function (err) {
@@ -349,8 +323,7 @@ Page {
             if (!page.showingCached) page.errorMsg = err.message;
         };
 
-        // Page 0 goes through FeedCache (stores the result, attaches to Main.qml's
-        // startup prefetch); deeper pages are one-shot and go direct.
+        // Page 0 goes through FeedCache (ties into Main.qml prefetch); deeper pages go direct
         if (isFirstPage) {
             inflight = FeedCache.request(FeedCache.newsKey(page.feedIndex, Config.communityId),
                 function (ok, err) { return feedFn()(Config.baseUrl, params, Session.token, ok, err); },
@@ -360,9 +333,7 @@ Page {
         }
     }
 
-    // Fires after rows are applied and the ListView has re-laid-out (atYEnd is
-    // trustworthy by then): keep loading if the user is parked at the end, since
-    // their flick landed while `loading` was true and won't re-fire.
+    // Fires after layout settles (atYEnd trustworthy); resumes loading if parked at the end
     Timer {
         id: endRecheck
         interval: 120
@@ -393,12 +364,14 @@ Page {
         _warmOtherFeed();
         if (visible) list.forceActiveFocus();
     }
-    // Keyboard parity on arrival: the list takes arrow-key focus whenever this
-    // page is (re)shown, so keyboard nav works before the first click/tap.
-    onVisibleChanged: if (visible) list.forceActiveFocus()
+    // Keyboard parity: list grabs arrow-key focus whenever page is (re)shown
+    onVisibleChanged: if (visible) {
+        list.kbEngaged = false
+        if (list.currentItem) list.currentItem.focus = false
+        list.forceActiveFocus()
+    }
 
-    // After publishing a new post: jump to the Latest tab (newest-first) and
-    // reload, so the just-published post appears at the top.
+    // After publishing: jump to Latest tab and reload so the new post is on top
     function showLatest() {
         page.feedIndex = 1;
         page.reload();
@@ -412,12 +385,10 @@ Page {
         onSelected: {
             page.feedIndex = index;
             page.reload();
-            // Lomiri buttons take focus on press, which silently killed the
-            // list's arrow keys after a tab click; always hand focus back.
+            // Lomiri buttons steal focus on press; hand it back to the list after a tab click
             list.forceActiveFocus();
         }
-        // Reset the keyboard cursor when dropping back in from the strip; a stale
-        // currentIndex made the first Down appear dead. -1 lands on the first card.
+        // Reset cursor from the strip: stale currentIndex made first Down appear dead
         onFocusList: { list.currentIndex = -1; list.forceActiveFocus(); }
     }
 
@@ -485,15 +456,13 @@ Page {
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
     property Item keyboardFocusItem: list
 
-    // Lomiri only paints a ListItem's focus frame when the Qt focus REASON is
-    // key-nav; plain forceActiveFocus() leaves the cursor invisible. Only the
-    // keyboard path (Nav.focusMaster) calls this, so touch users never see it.
+    // Focus frame only paints for key-nav focus reason; touch path never calls this
     function focusListKeyNav() {
+        list.kbEngaged = true;
         if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0;
         var it = list.currentItem;
         if (!it) { list.forceActiveFocus(); return; }
-        // Qt delivers no focusInEvent to an item that already holds focus, so the
-        // key-nav reason never lands; drop focus first, then re-take it.
+        // Drop focus first: Qt won't re-fire focusInEvent on an item that already has it
         it.focus = false;
         it.forceActiveFocus(Qt.TabFocusReason);
     }
@@ -505,14 +474,14 @@ Page {
         clip: true
         model: feedModel
         cacheBuffer: units.gu(12)
-        // The keyboard cursor visual is the ListItem's own key-navigation frame;
-        // a custom ListView highlight painted a second ring, don't re-add one.
+        // Gates the tap-triggered focus frame so it doesn't double up with ListItem's own ring (mirrors VideoPage)
+        property bool kbEngaged: false
+        Keys.onPressed: list.kbEngaged = true
         // Right arrow steps into the open article's reading pane (split windows).
         Keys.onRightPressed: Nav.focusDetail()
         // Left steps out of the content to the tab nav (rail / bottom bar).
         Keys.onLeftPressed: Nav.focusNav()
-        // Up on the very first card climbs into the Trending/Latest strip;
-        // anywhere else Up stays unaccepted so the ListView moves the cursor.
+        // Up on the first card climbs to the Trending/Latest strip, else moves the cursor
         Keys.onUpPressed: {
             if (list.atYBeginning && list.currentIndex <= 0) { tabs.focusCurrent(); event.accepted = true; }
             else event.accepted = false;
@@ -540,16 +509,18 @@ Page {
             color: (Config.wideMode && page.openPermlink !== "" && page.openPermlink === model.permlink)
                 ? Style.iconBackground : Style.surface
 
-            // ListItem emits clicked() on Enter when focused (and on taps of
-            // non-interactive areas); this is what makes Enter open the post.
+            // ListItem emits clicked() on Enter when focused; this is what opens the post
             onClicked: {
-                // Push first: swapping the detail pane transiently drops the stack to
-                // depth 0, which would race with the currentPageChanged reset below.
+                // Push first: swapping panes transiently drops stack to depth 0 (races reset below)
                 var p = feedModel.get(index)
                 if (!p) return
-                // Pointer clicks don't move currentIndex, so the key-nav cursor would
-                // sit at the top when Left brings focus back from the detail.
+                // Pointer clicks don't move currentIndex; sync it so Left returns to the right row
                 list.currentIndex = index
+                // Drop tap focus; deferred again since currentIndex change re-grants it a tick later
+                if (!list.kbEngaged) {
+                    newsItem.focus = false
+                    Qt.callLater(function () { newsItem.focus = false })
+                }
                 page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
                     { author: p.author, permlink: p.permlink, title: p.title })
                 page.openPermlink = p.permlink
@@ -581,8 +552,7 @@ Page {
                         onTriggered: {
                             var p = feedModel.get(index)
                             if (p) {
-                                // Persist to the local hidden-posts store so it stays hidden across
-                                // restarts, matching the overflow-menu Hide (PostActionSheet).
+                                // Persist to local hidden-posts store to survive restarts (matches PostActionSheet)
                                 HiddenPosts.hide(p.permlink || "")
                                 PostActions.hideRequested(p.author, p.permlink)
                             }
@@ -662,9 +632,7 @@ Page {
                 page.loadMore();
         }
 
-        // Prefetch: start the next page while ~2 screens of content remain, so
-        // a steady scroll almost never lands on the footer spinner. atYEnd above
-        // stays as the fallback for flicks that outrun this trigger.
+        // Prefetch next page ~2 screens early so scrolling rarely hits the footer spinner
         onContentYChanged: {
             if (!page.loading && !page.endReached && page.errorMsg === ""
                     && contentHeight > height

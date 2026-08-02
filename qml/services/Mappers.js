@@ -35,9 +35,7 @@ function parseList(val) {
 
 var _entities = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">" };
 
-// Called once per row per page, on the UI thread, against the full article body.
-// The four entity rules were four separate full-string passes; one alternation
-// does the same work in a single scan. Three passes now: tags, entities, spaces.
+// Hot path (per row per page); single-pass entity alternation instead of four
 function stripHtml(html, max) {
     if (!html)
         return "";
@@ -87,8 +85,7 @@ function voterNames(arr) {
 
 function toPost(raw) {
     raw = raw || {};
-    // Each of these was recomputed per field below (categories parsed 4x, each
-    // voter list walked twice) for every row of every page. Same values, built once.
+    // Built once instead of recomputed per field below (was parsed/walked multiple times)
     var cats = parseList(raw.categories);
     var voters = voterNames(raw.voters);
     var flaggers = voterNames(raw.flaggers);
@@ -108,9 +105,7 @@ function toPost(raw) {
         categories: cats,
         // Scalar copy of the first category since a dynamicRoles ListModel wraps the `categories` array (losing [] indexing); edit-prefill reads this.
         primaryCategory: cats[0] || "",
-        // The post's tag list is [mainCategory, ...subcategories]; everything after
-        // the first is a sub-category. Scalar copy of the first for the same
-        // ListModel-wrapping reason as primaryCategory.
+        // Tag list is [mainCategory, ...subcategories]; scalar copy for ListModel-wrapping reason
         subCategories: cats.slice(1),
         primarySubCategory: cats[1] || "",
         voters: voters,
@@ -218,11 +213,11 @@ function toCommunity(raw) {
         country: raw.country || "",
         description: raw.meta_description || "",   // owner-set blurb, often empty
         level: toInt(raw.level),
-        // is_allow_post=true means anyone may post, false means owner/managers only; drives whether the compose buttons are shown for this community.
+        // Drives whether compose buttons are shown for this community
         allowPost: !!raw.is_allow_post,
-        // video_is_allow_post gates the Video upload FAB independently of the blog flag (true = anyone, false = owner/managers only).
+        // Gates the Video upload FAB independently of the blog flag
         videoAllowPost: !!raw.video_is_allow_post,
-        // Number of sub-communities under this one, used to hide empty countries from the picker.
+        // Used to hide empty countries from the picker
         childCount: Array.isArray(raw.child_communities) ? raw.child_communities.length : 0
     };
 }
@@ -270,8 +265,7 @@ function toUser(username, raw) {
     };
 }
 
-// The web client posts a literal "Unknown" when it has no geo; blank it so the
-// UI drops the line instead of printing "Unknown, Unknown".
+// Web client posts literal "Unknown" when it has no geo; blank it out
 function devicePlace(v) {
     var s = (v || "").trim();
     return (s === "Unknown" || s === "None" || s === "null") ? "" : s;

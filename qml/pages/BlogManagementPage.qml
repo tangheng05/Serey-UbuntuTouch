@@ -64,13 +64,11 @@ Page {
             })
     }
 
-    // Sub-categories are kept as a JSON string per row (subsJson) so the
-    // dynamicRoles ListModel doesn't wrap them as a nested QQmlListModel.
+    // Sub-categories kept as a JSON string per row (avoids nested QQmlListModel wrapping)
     ListModel { id: categoryModel; dynamicRoles: true }
     property bool categoriesLoading: false
     property bool categorySaving: false
-    // id -> true while a request for that category is in flight; blocks
-    // duplicate requests from rapid double-taps.
+    // id -> true while a request is in flight; blocks rapid double-tap duplicates
     property var _busyIds: ({})
 
     function _findIndexById(id) {
@@ -83,8 +81,7 @@ Page {
         var info = Config.communityInfoFor(Config.managedCommunityId)
         var title = info ? info.title
                          : (Config.managedCommunityId === Config.communityId ? Config.currentCommunityName : "")
-        // Never fall back to "global": the service defaults an empty title to
-        // the Global category list. Show empty instead.
+        // Never fall back to "global": service defaults empty title to Global list
         if (!title || title.length === 0) {
             page.categoriesLoading = false
             categoryModel.clear()
@@ -152,16 +149,14 @@ Page {
             },
             function (err) {
                 delete page._busyIds[id]
-                // 404 = the row was already gone server-side: the goal (it's
-                // removed) is met, so treat it as success rather than an error.
+                // 404 = already gone server-side: treat as success, not an error
                 if (err && err.status === 404) { Toast.show(Lang.tr("Category deleted.")); return }
                 Toast.error((err && err.message) || Lang.tr("Failed to delete category."))
                 page.loadCategories()          // restore the optimistically-removed row
             })
     }
 
-    // Persist a category's whole record (name/icon/color preserved) with a new
-    // sub-category list. Used for both adding and removing sub-categories.
+    // Persists a category's whole record with a new sub-category list (add/remove share this)
     function _saveSubs(index, subs, okMsg) {
         var item = categoryModel.get(index)
         if (!item) return
@@ -297,8 +292,7 @@ Page {
         }
     }
 
-    // On-screen-keyboard height; the list shrinks above it so focused inputs (the
-    // sub-category field sits low in the list) aren't hidden behind the keyboard.
+    // On-screen-keyboard height; list shrinks above it so focused inputs stay visible
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     property var _focusTarget: null
 
@@ -401,9 +395,7 @@ Page {
                     Icon { anchors.centerIn: parent; width: units.gu(2.4); height: width; name: "add"; color: Style.brand }
                     MouseArea {
                         anchors.fill: parent
-                        // Must stay ALWAYS enabled: gating on text length broke when the
-                        // typed text was still in the input method's uncommitted preedit
-                        // buffer (not yet in .text). Commit on press, then read the text.
+                        // Always enabled: gating on text length broke on uncommitted preedit text
                         onPressed: {
                             Qt.inputMethod.commit()
                             page.addCategory(newCategoryField.text)
@@ -545,8 +537,7 @@ Page {
                                 Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "add"; color: Style.brand }
                                 MouseArea {
                                     anchors.fill: parent
-                                    // Always enabled + commit preedit on press (same reason as
-                                    // the category add button above).
+                                    // Always enabled + commit preedit on press (same as category add above)
                                     onPressed: {
                                         Qt.inputMethod.commit()
                                         page.addSubCategory(index, newSubField.text)
@@ -569,8 +560,7 @@ Page {
                 color: Style.textSecondary
             }
 
-            // Extra bottom room so the lowest sub-category field can scroll clear
-            // of the keyboard when focused (see ensureVisible).
+            // Extra bottom room so the lowest sub-category field can scroll clear of the keyboard
             Item { width: 1; height: units.gu(8) }
         }
     }

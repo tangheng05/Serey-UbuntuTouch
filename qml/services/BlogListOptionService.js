@@ -1,9 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-/*
- * Per-community blog visibility toggle under /blog-list-option (JWT-protected).
- */
+// Per-community blog visibility toggle (JWT-protected)
 
 function getByCommunity(baseUrl, communityId, token, onOk, onErr) {
     Http.get(baseUrl, "/blog-list-option/list-by-community-id/" + communityId, {}, token, function (data) {

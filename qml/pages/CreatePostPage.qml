@@ -31,13 +31,11 @@ Page {
         && titleField.text.trim().length > 0
         && bodyArea.getText(0, bodyArea.length).trim().length > 0
 
-    // Chosen in PostCommunityPicker before this page opens; unset = post into the
-    // browsed source.
+    // Chosen in PostCommunityPicker before this page opens; unset = post into the browsed source
     property var targetCommunity: null
     readonly property int postCommunityId: page.targetCommunity ? Number(page.targetCommunity.id)
                                                                 : Config.communityId
-    // The two differ: categories are keyed by the selected sub-community, the post
-    // itself by its top-level source. Keep both as they were.
+    // Categories key by the selected sub-community; the post itself by its top-level source
     readonly property string catCommunityName: page.targetCommunity ? page.targetCommunity.name
                                                                     : Config.currentCommunityName
     readonly property string postCommunityName: page.targetCommunity ? page.targetCommunity.name
@@ -47,14 +45,12 @@ Page {
     property var editPost: null
     readonly property bool isEdit: !!editPost
 
-    // isNew = true for a freshly published post (false for an in-place edit), so
-    // the feed can jump to Latest only when there's actually a new post to show.
+    // isNew: feed jumps to Latest only when there's actually a new post to show
     signal saved(bool isNew)
 
     // Categories are per-community, loaded from the backend for the currently-selected source rather than hardcoded.
     property var categories: []
-    // Map of main-category name -> array of its sub-category names, so the picker
-    // can offer sub-categories (posts send them in `subcategories`).
+    // Map of main-category name -> array of its sub-category names
     property var subcatsByCat: ({})
     property bool categoriesLoading: false
     property int catEpoch: 0
@@ -126,8 +122,7 @@ Page {
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
-    // React to source changes so the category list stays correct, unless a
-    // specific target community was chosen via the compose picker step.
+    // React to source changes, unless a specific target community was chosen via the picker
     Connections {
         target: Config
         function onCommunityIdChanged() { if (!page.targetCommunity) page.loadCategories() }
@@ -209,9 +204,7 @@ Page {
         onFailed: Toast.error(message)
     }
 
-    // Qt's RichText TextEdit re-serializes formatting as style spans, not the
-    // simple <b>/<i>/<s> tags our HTML renderers whitelist; collapse them back
-    // so formatting survives display elsewhere.
+    // Qt's RichText re-serializes formatting as style spans; collapse back to <b>/<i>/<s> tags
     function _richHtmlToSimple(html) {
         var t = html || "";
         var bodyMatch = t.match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -270,8 +263,7 @@ Page {
         });
     }
 
-    // Applies formatting to the selection; a selection is required since a plain
-    // TextEdit has no "current format" state to toggle for future typing.
+    // Requires a selection: plain TextEdit has no "current format" state to toggle
     function wrapSelection(tagOpen, tagClose) {
         var start = bodyArea.selectionStart;
         var end = bodyArea.selectionEnd;
@@ -369,9 +361,7 @@ Page {
                 border.width: units.dp(1.5)
                 border.color: titleField.activeFocus ? Style.brand : Style.divider
 
-                // Declared FIRST so it sits under the input: catches taps in the
-                // box's dead space (the one-line input is pinned to the top) and
-                // focuses the field.
+                // Declared FIRST so it sits under the input, catching taps in the dead space
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
@@ -431,9 +421,7 @@ Page {
                 border.width: units.dp(1.5)
                 border.color: bodyArea.activeFocus ? Style.brand : Style.divider
 
-                // Same as the title: declared FIRST so it sits under the editor;
-                // catches taps on the blank area below the text and drops the
-                // cursor at the end.
+                // Same as the title: declared FIRST so it catches taps below the text
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
@@ -745,8 +733,7 @@ Page {
         }
     }
 
-    // Phone: docked above the OSK. Desktop has no OSK, so this stays hidden
-    // there and an inline copy sits directly under the body field instead.
+    // Phone: docked above the OSK. Desktop has no OSK; an inline copy sits under the body field
     Rectangle {
         id: toolbar
         visible: !Config.wideMode
@@ -798,8 +785,7 @@ Page {
             id: catSheetRect
             // Full-width sheet on phone, centered width-capped card on desktop
             readonly property bool wide: Config.wideMode
-            // Centered + explicit width handles both cases (full-width on phone, capped
-            // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
+            // Centered + explicit width avoids mixing left/right/horizontalCenter, which QML warns on
             anchors {
                 horizontalCenter: parent.horizontalCenter
                 bottom: parent.bottom
@@ -843,8 +829,7 @@ Page {
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-                // Scrollable list: caps the sheet height so a category with many
-                // sub-categories scrolls instead of overflowing off the top.
+                // Scrollable list: caps sheet height so long sub-category lists scroll, not overflow
                 Flickable {
                     id: catListFlick
                     width: parent.width
@@ -890,12 +875,10 @@ Page {
                             return (s && s.length) ? s : []
                         }
                         readonly property bool isSelected: page.selectedCategory === catName
-                        // Sub list is revealed only by tapping the arrow; a fresh row starts
-                        // expanded when it's the already-selected category with a sub chosen.
+                        // Sub list expands on arrow tap, or by default if already-selected category has a sub chosen
                         property bool expanded: catRow.isSelected && page.selectedSubCategory.length > 0
 
-                        // Main row: tapping the row body picks the MAIN category and closes.
-                        // Only the arrow (separate tap target on the right) expands the subs.
+                        // Main row picks the MAIN category and closes; only the arrow expands subs
                         Item {
                             width: parent.width
                             height: units.gu(6)
@@ -937,8 +920,7 @@ Page {
                                     visible: (catRow.isSelected && page.selectedSubCategory.length === 0) || catRow.subs.length > 0
                                 }
                             }
-                            // Arrow hit area (on top of the row's MouseArea, right side):
-                            // expands/collapses the sub list without selecting or closing.
+                            // Arrow hit area: expands/collapses the sub list without selecting or closing
                             MouseArea {
                                 visible: catRow.subs.length > 0
                                 enabled: visible

@@ -4,9 +4,7 @@ import "../Theme"
 import "../Session"
 import "../services/CommunitySubscriberService.js" as SubscriberService
 
-// My Feed's empty state: a new account follows nothing, so offer subscriptions to fill it.
-// Only valid because My Feed reads /serey-web/list-by-feed-mixed (follows OR community
-// subscriptions); if that reverts to list-by-feed-following, subscribing here won't fill it.
+// My Feed empty state: offer subscriptions; relies on list-by-feed-mixed including them
 Item {
     id: root
 

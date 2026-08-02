@@ -93,9 +93,7 @@ Page {
         if (ed && ed.saved) ed.saved.connect(page.load);
     }
 
-    // Row data for the desktop "•••" dropdown (see moreHeaderBtn). Mirrors
-    // PostActionSheet's main-menu rows; report/delete/block still route through
-    // that sheet (opened at the matching step) since those need their own sub-flow.
+    // Desktop "•••" dropdown rows; report/delete/block route through PostActionSheet
     function headerMenuItems() {
         var items = [
             { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },
@@ -125,8 +123,7 @@ Page {
         else if (action === "report") PostActions.open(page.post, "blog", 1);
     }
 
-    // Delete and Block run in the sheet and only reach us as signals; either way this
-    // page is left showing content that's gone, so unwind to the feed behind it.
+    // Delete/Block reach us only as signals; content is gone, so pop back to feed
     Connections {
         target: PostActions
         function onPostDeleted(author, permlink) {
@@ -167,15 +164,13 @@ Page {
             elide: Text.ElideRight
         }
 
-        // A Row, not anchor-chained buttons: invisible ones drop out of the layout
-        // instead of leaving a hole where they would have sat.
+        // Row, not anchors: invisible buttons drop out instead of leaving a hole
         Row {
             id: headerActions
             anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             spacing: Style.spacingXs
 
-            // Tablet only: bookmark + open-in-browser are promoted out of the "..."
-            // menu. Desktop keeps them in the menu, phone keeps the share button.
+            // Tablet only: bookmark + open-in-browser promoted out of the "..." menu
             AbstractButton {
                 id: saveHeaderBtn
                 visible: Config.tabletMode && page.postReady
@@ -210,8 +205,7 @@ Page {
                 id: moreHeaderBtn
                 width: units.gu(4); height: units.gu(4)
                 enabled: page.postReady
-                // Desktop: a compact anchored dropdown. Phone: the full-screen action sheet
-                // (report reasons / delete-confirm need more room than a dropdown row gives).
+                // Desktop: anchored dropdown. Phone: full-screen sheet (needs more room)
                 onClicked: Config.wideMode ? (page.headerMenuOpen = !page.headerMenuOpen) : PostActions.open(page.post, "blog")
                 Column {
                     anchors.centerIn: parent
@@ -229,15 +223,12 @@ Page {
             }
         }
 
-        // ----- Desktop dropdown menu (mirrors PostActionSheet's rows, minus the ones that need a sub-flow) -----
-        // Keyboard: Down/Up move headerMenuIndex, Enter/Return activates, Escape closes.
+        // Desktop dropdown menu (mirrors PostActionSheet's rows); arrow keys move, Enter activates, Escape closes
         Rectangle {
             id: headerMenu
             visible: page.headerMenuOpen
             z: 20
-            // headerActions, not moreHeaderBtn: the button now lives inside that Row,
-            // and anchors only reach a parent or sibling. It's the last item, so the
-            // Row's right edge is the button's right edge.
+            // Anchored to headerActions (last item's edge = Row's right edge)
             anchors { top: headerActions.bottom; right: headerActions.right; topMargin: Style.spacingXs }
             width: units.gu(24)
             height: headerMenuCol.height
@@ -329,9 +320,7 @@ Page {
 
     }
 
-    // Dismiss the header dropdown on an outside click. A page-level sibling (not
-    // nested in postDetailHeader) so it catches clicks anywhere, not just the header;
-    // z above the scroll/panel content but below postDetailHeader and the menu itself.
+    // Dismiss header dropdown on outside click; page-level so it catches clicks anywhere
     MouseArea {
         visible: page.headerMenuOpen
         z: 9
@@ -339,11 +328,7 @@ Page {
         onClicked: page.headerMenuOpen = false
     }
 
-    // Single divider under both header rows (article + right rail), spanning the
-    // full page width, so the two headers' own borders never show as a mismatched
-    // double line at the seam between them. z above the scroll/panel content
-    // declared later, so their backgrounds don't paint over this line. Article
-    // column only — the right rail has no divider below its own "Related" row.
+    // Single divider under both header rows, avoids a mismatched double line at the seam
     Rectangle {
         z: 9
         anchors {
@@ -371,14 +356,12 @@ Page {
         return !!(c && c.indexOf && c.indexOf("video") >= 0);
     }
 
-    // AI TL;DR. Server-cached per article, so this is one cheap call per open;
-    // a failure just leaves the box hidden.
+    // AI TL;DR, server-cached per article; failure just leaves the box hidden
     property var summaryBullets: []
     property int summaryMinutes: 0
     property bool summaryLoading: false
 
-    // Reading time is just a word count, so compute it locally and show the bar
-    // immediately; the AI bullets fill in behind it. 200 wpm, same as the server.
+    // Local word-count estimate shown immediately; AI bullets fill in behind it (200 wpm)
     function _localReadMinutes(html) {
         var text = String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
         if (text === "") return 0;
@@ -680,9 +663,7 @@ Page {
                 text = text.replace(/(?:<br\/>\s*){3,}/gi, "<br/><br/>");
                 text = text.replace(/^(?:\s|<br\/>)+/i, "");
                 text = text.replace(/(?:\s|<br\/>)+$/i, "");
-                // Lomiri TextArea has no linkAt(), so capture each anchor's href and the
-                // exact visible text it renders. The delegate hit-tests a tap position
-                // (positionAt) against these spans in the displayed plain text to open links.
+                // No linkAt() API: capture href + visible text so taps can be hit-tested
                 var links = [];
                 var reA = /<a\s+[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
                 var am;
@@ -717,11 +698,7 @@ Page {
     }
     function openAuthor() { if (page.post) page.openProfile(page.post.author); }
 
-    // Keyboard: Right from the article steps into the side panel (see scroll's
-    // Keys.onPressed); the panel's own Flickable handles scrolling from there,
-    // with Left/Escape stepping back out to the article. Down/Up walk a single
-    // ordered chain: related posts, then upvote, then downvote, then the comment
-    // composer — mirroring the panel's own visual top-to-bottom order.
+    // Right steps into side panel; Down/Up walk related posts, upvote, downvote, composer
     function focusSidePanel() {
         if (!page.showSidePanel) return;
         sidePanelFlick.forceActiveFocus();
@@ -770,21 +747,17 @@ Page {
         }
     }
 
-    // The scroll view owns arrow-key focus so a keyboard user can scroll the article;
-    // AdaptiveStack.focusDetail() targets this when entering from the list.
+    // Owns arrow-key focus; AdaptiveStack.focusDetail() targets this from the list
     property Item keyboardFocusItem: scroll
 
-    // A push from inside the detail column skips AdaptiveStack.focusDetail(), so a
-    // keyboard-opened related post would land unfocused. Waits for postReady since
-    // `scroll` is hidden until then and focusing a hidden item does nothing.
+    // Push from detail column skips focusDetail(); waits for postReady so scroll exists
     property bool focusOnOpen: false
     onPostReadyChanged: if (postReady && page.focusOnOpen) {
         page.focusOnOpen = false;
         Qt.callLater(function () { if (scroll.visible) scroll.forceActiveFocus(); });
     }
 
-    // Right rail: related posts, vote bar and comments — wide mode only.
-    // Desktop only: tablet has room for list + article, not a third column.
+    // Right rail (related/votes/comments): desktop only, tablet has no room for a 3rd column
     readonly property bool showSidePanel: Config.desktopMode && page.postReady
 
     // Resizable via the drag handle below; clamped so the article column always keeps a sane minimum width.
@@ -813,9 +786,7 @@ Page {
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
-        // Keyboard reading: a plain Flickable ignores keys, so scroll keys are handled
-        // here. Focus lands on the flick when the article opens (never stealing it from
-        // the comment box); tapping the body TextArea still takes focus for selection.
+        // Plain Flickable ignores keys, so scroll keys are handled here
         activeFocusOnTab: true
         function _kbScroll(dy) {
             var maxY = Math.max(0, scroll.contentHeight - scroll.height + scroll.bottomMargin);
@@ -833,13 +804,10 @@ Page {
             else if (event.key === Qt.Key_Space)    { scroll._kbScroll((event.modifiers & Qt.ShiftModifier) ? -pageStep : pageStep); event.accepted = true; }
             // Hand focus back to the master list (the sidebar) so the reader can pick the next post.
             else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
-            // Right steps into the side panel (related/votes/comments), mirroring
-            // the rail's own Right-steps-into-content convention.
+            // Right steps into the side panel (related/votes/comments)
             else if (event.key === Qt.Key_Right && page.showSidePanel) { page.focusSidePanel(); event.accepted = true; }
         }
-        // No auto-focus-on-load here: that used to steal focus (and show the
-        // keyboard focus border) even for mouse opens. Keyboard entry already
-        // focuses scroll explicitly via keyboardFocusItem (AdaptiveStack.focusDetail()).
+        // No auto-focus-on-load: used to steal focus even for mouse opens
 
         Column {
             id: contentCol
@@ -1081,9 +1049,7 @@ Page {
                                 TextArea {
                                     id: bodyTxt
                                     width: parent.width
-                                    // Stray-selection guard: a scrolling press doesn't cancel TextEdit's
-                                    // press-and-hold word-select timer, so it can fire well after motion stops.
-                                    // Flag "scrolled since focus" and clear any selection that appears meanwhile.
+                                    // Stray-selection guard: scroll doesn't cancel the press-and-hold word-select timer
                                     property real _lastScrollMs: 0
                                     property bool _scrolledSinceFocus: false
                                     readonly property int _scrollSelGuardMs: 1500
@@ -1100,9 +1066,7 @@ Page {
                                     function _fitHeight() { if (height < paintedHeight) height = paintedHeight; }
                                     // Long-press selection requires the field to already be focused
                                     activeFocusOnPress: true
-                                    // Once focused, the read-only cursor would swallow the reading keys;
-                                    // chain them to the flick (arrows/Page/Space/Left/Escape) while copy
-                                    // and select-all fall through untouched.
+                                    // Chain reading keys to the flick; copy/select-all fall through untouched
                                     Keys.forwardTo: [scroll]
                                     font.pixelSize: Config.wideMode ? Style.fontMedium * 1.2 : Style.fontMedium
                                     font.family: Style.fontFor(text)
@@ -1114,14 +1078,11 @@ Page {
                                         overlaySpacing: 0
                                     }
                                     onLinkActivated: Qt.openUrlExternally(link)
-                                    // A fresh press (focus gained) starts a new gesture; reset the flag so a
-                                    // deliberate long-press with no scroll is never blocked.
+                                    // Fresh press resets the flag so a deliberate long-press is never blocked
                                     onActiveFocusChanged: if (activeFocus) bodyTxt._scrolledSinceFocus = false
                                     // Caret visible only while selected, gating the native Copy popover; always-on left an idle blue cursor while reading.
                                     onSelectedTextChanged: {
-                                        // Stray if the scroller is in motion, or a scroll happened during this
-                                        // press and is still recent (the late press-and-hold timer). A
-                                        // deliberate long-press is never cleared.
+                                        // Stray if scroller is moving, or scrolled recently during this press
                                         if (selectedText.length > 0
                                                 && (scroll.moving || scroll.flicking
                                                     || (bodyTxt._scrolledSinceFocus
@@ -1134,8 +1095,7 @@ Page {
                                     onCursorVisibleChanged: if (!cursorVisible && selectedText.length > 0) cursorVisible = true
                                 }
 
-                                // Track scroll activity so the selection guard above can distinguish a stray
-                                // (scroll happened during this press) from a deliberate long-press.
+                                // Track scroll activity so the selection guard can distinguish stray vs deliberate
                                 Connections {
                                     target: scroll
                                     onMovementStarted: { bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now(); bodyTxt.deselect() }
@@ -1145,9 +1105,7 @@ Page {
                                     onDraggingChanged: { if (scroll.dragging) bodyTxt._scrolledSinceFocus = true; bodyTxt._lastScrollMs = Date.now() }
                                 }
 
-                                // Tap-to-open links: Lomiri TextArea has no linkAt() and onLinkActivated is
-                                // unreliable inside a Flickable, so hit-test the tap (positionAt) against the
-                                // block's link spans. A non-link press falls through so scrolling still works.
+                                // Tap-to-open links: no linkAt()/onLinkActivated inside a Flickable, hit-test instead
                                 MouseArea {
                                     anchors.fill: bodyTxt
                                     propagateComposedEvents: true
@@ -1171,8 +1129,7 @@ Page {
                                     }
                                     onPressed: {
                                         _pendingHref = _hrefAt(mouse.x, mouse.y);
-                                        // Only grab the press when it's on a link; otherwise let the TextArea/
-                                        // Flickable underneath handle selection and scrolling.
+                                        // Only grab the press when it's on a link
                                         mouse.accepted = (_pendingHref.length > 0);
                                     }
                                     onClicked: {
@@ -1230,12 +1187,7 @@ Page {
 
     }
 
-    // Draggable splitter: resizes sidePanel by dragging its left edge. Runs the
-    // full page height so it lines up with the panel's own header row, not just
-    // the article's — the two headers sit side by side, not one above the other.
-    // The ONLY vertical divider between the two columns (z above postDetailHeader's
-    // z:10, so it stays a single unbroken line instead of getting hidden behind it
-    // for the header's height and needing a second, differently-sized patch there).
+    // Draggable splitter for sidePanel; z above postDetailHeader for an unbroken line
     Rectangle {
         id: sidePanelDivider
         z: 11
@@ -1260,9 +1212,7 @@ Page {
         }
     }
 
-    // --- Right rail (wide mode): related posts, vote bar, comments, composer ---------
-    // Starts at the page's own top (not below the article's header), with its own
-    // header row, so it reads as its own column rather than sitting under the blog header.
+    // --- Right rail (wide mode): related posts, vote bar, comments, composer; own header row ---
     Rectangle {
         id: sidePanel
         anchors { top: parent.top; right: parent.right; bottom: parent.bottom }
@@ -1271,9 +1221,7 @@ Page {
         clip: true
         color: Style.surface
 
-        // No border drawn here — sidePanelDivider (a page-level sibling, sitting
-        // just outside sidePanel's own left edge) is the single vertical line for
-        // the whole height; a second one here would double up or drift out of sync.
+        // No border here: sidePanelDivider (page-level sibling) is the single vertical line
 
         Rectangle {
             id: sidePanelHeader
@@ -1297,8 +1245,7 @@ Page {
             contentHeight: sidePanelCol.height + Style.spacingM * 2
             clip: true
 
-            // Same keyboard-scroll contract as the article's own scroll view;
-            // Left/Escape steps back out to the article instead of the master list.
+            // Same keyboard-scroll contract as article; Left/Escape steps back to article
             activeFocusOnTab: true
             function _kbScroll(dy) {
                 var maxY = Math.max(0, sidePanelFlick.contentHeight - sidePanelFlick.height);
@@ -1452,9 +1399,7 @@ Page {
             }
         }
 
-        // A mouse click anywhere in the panel grabs keyboard focus for it too, so
-        // arrow-key scrolling keeps working after a mouse interaction; passes the
-        // press through unaccepted so related-post/vote buttons underneath still fire.
+        // Click grabs keyboard focus for the panel; press unaccepted so buttons still fire
         MouseArea {
             anchors.fill: sidePanelFlick
             propagateComposedEvents: true
@@ -1476,8 +1421,7 @@ Page {
                 color: Style.divider
             }
 
-            // Continues the panel's own left border past this bar, which would
-            // otherwise paint over it with its opaque background.
+            // Continues the panel's left border past this bar's opaque background
             Rectangle {
                 visible: page.showSidePanel
                 anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
@@ -1518,8 +1462,7 @@ Page {
                     }
                 }
 
-                // Comment composer: a plain Rectangle behind a borderless TextField,
-                // with the send button riding inside its right edge.
+                // Comment composer: plain Rectangle behind a borderless TextField
                 Item {
                     width: parent.width
                     height: units.gu(5)

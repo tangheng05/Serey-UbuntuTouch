@@ -23,8 +23,7 @@ Page {
     property var reels: []
     // True while the rows on screen came from FeedCache rather than the network.
     property bool showingCached: false
-    // The first page is fetched at this depth so the reel shelf (<=12 rows) and
-    // the list can share one response. Deeper pages go back to Config.pageSize.
+    // First page fetched deep enough for reel shelf + list to share one response
     readonly property int initialLimit: 30
     readonly property bool hasReels: reels && reels.length > 0
     readonly property int reelsInsertIndex: feedModel.count > 1 ? 1 : 0
@@ -94,17 +93,14 @@ Page {
         refreshing = false;
         errorMsg = "";
         page.showingCached = false;
-        // Only wipe when there's nothing cached to put in its place, or the list
-        // flashes empty between communities.
+        // Only wipe if nothing cached, else list flashes empty between communities
         if (!_paintCached()) { reels = []; feedModel.clear(); }
         // In-place sync keeps the scroll offset, so reset it explicitly (see NewsPage).
         list.positionViewAtBeginning();
         _fetchInitial(false);
     }
 
-    // Paint the last-seen rows for this community so a relaunch (or switching
-    // back to a community already visited) shows videos at once instead of the
-    // skeleton, which is bound to `count === 0`.
+    // Paint last-seen rows so a relaunch shows videos instead of the skeleton
     function _paintCached() {
         var cached = FeedCache.peek(FeedCache.videoKey(Config.communityId));
         if (!cached) return false;
@@ -113,9 +109,7 @@ Page {
         return page.showingCached;
     }
 
-    // Overwrite rows in place rather than clear() + append: clearing destroys
-    // delegates and VideoCard thumbnails fade back in, flashing an unchanged
-    // list. Same reasoning (and shape) as NewsPage._syncRows.
+    // In-place overwrite avoids clear()+append thumbnail flash (see NewsPage._syncRows)
     function _rowDiffers(cur, next) {
         return cur.permlink !== next.permlink
             || cur.votes !== next.votes
@@ -133,9 +127,7 @@ Page {
             feedModel.remove(feedModel.count - 1);
     }
 
-    // One response drives both the list and the reel shelf (two concurrent
-    // requests paid the ~2.7s Global query twice). rawCount < 0 means "painted
-    // from cache": leave paging counters alone so the real response fetches page 0.
+    // One response drives list + reel shelf; rawCount < 0 means painted from cache
     function _applyRows(result, rawCount) {
         var hidden = HiddenPosts.loadAll();
         var blocked = BlockedUsers.loadAll();
@@ -157,9 +149,7 @@ Page {
         page.reels = out;
         if (rawCount >= 0) {
             page.offset = rawCount;
-            // Compare against what we actually asked for, not pageSize: asking
-            // for 30 and getting 12 means the feed is exhausted, not that a
-            // second page is waiting.
+            // Compare against what we asked for, not pageSize, to detect exhaustion
             page.endReached = rawCount < page.initialLimit;
         }
     }
@@ -172,8 +162,7 @@ Page {
             params.community_id = Config.communityId;
         else
             params.exclude_home = 1;   // Global feed hides the Cambodia community + children
-        // Through FeedCache: stores the rows, and attaches to Main.qml's startup
-        // prefetch rather than firing the same 2.7s request again.
+        // Through FeedCache: attaches to Main.qml's startup prefetch, no duplicate request
         inflight = FeedCache.request(FeedCache.videoKey(Config.communityId),
             function (ok, err) { return VideoService.listVideos(Config.baseUrl, params, Session.token, ok, err); },
             function (result, rawCount) {
@@ -184,9 +173,7 @@ Page {
                 page.showingCached = false;
                 page._applyRows(result, rawCount);
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
-                // Deferred atYEnd recheck: the user can reach the end while this
-                // request was in flight (trigger fired into the loading guard);
-                // checked on a timer because atYEnd is stale until relayout (see NewsPage).
+                // Deferred atYEnd recheck: stale until relayout (see NewsPage)
                 endRecheck.restart();
             },
             function (err) {
@@ -195,7 +182,6 @@ Page {
                 page.loading = false;
                 page.refreshing = false;
                 // Keep cached rows on failure; only an empty list becomes an error
-                // (it used to fall through to EmptyState's "No videos" instead).
                 if (feedModel.count === 0) page.errorMsg = err.message;
             });
     }
@@ -260,12 +246,10 @@ Page {
         _fetchInitial(false);
         if (visible) list.forceActiveFocus();
     }
-    // Keyboard parity on arrival: the list takes arrow-key focus whenever this
-    // page is (re)shown, so keyboard nav works before the first click/tap.
+    // Keyboard parity: list takes arrow-key focus whenever this page is (re)shown
     onVisibleChanged: if (visible) {
         list.kbEngaged = false;
-        // Clear any card that kept scope focus from a previous keyboard session,
-        // else its ring reappears uninvited when the tab regains focus.
+        // Clear stale card focus, else its ring reappears when the tab regains focus
         if (list.currentItem) list.currentItem.focus = false;
         list.forceActiveFocus();
     }
@@ -273,9 +257,7 @@ Page {
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
     property Item keyboardFocusItem: list
 
-    // Same "no cursor on first Left" problem as NewsPage: the cursor is the
-    // VideoCard's own ring, gated on kbEngaged. Engage and focus the card directly;
-    // the wrapper's onActiveFocusChanged never fires if it already holds focus.
+    // Same "no cursor on first Left" issue as NewsPage; engage and focus card directly
     function focusListKeyNav() {
         if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0;
         list.kbEngaged = true;
@@ -292,9 +274,7 @@ Page {
         clip: true
         model: feedModel
         cacheBuffer: units.gu(16)
-        // The keyboard cursor visual is the VideoCard's own ring (the delegate
-        // forwards focus to the card, see rowWrap). kbEngaged gates that so the
-        // page's auto-focus on show never paints a ring for touch users.
+        // kbEngaged gates the VideoCard ring so touch-show never paints a cursor
         property bool kbEngaged: false
         Keys.onPressed: {
             if (!list.kbEngaged) {
@@ -342,13 +322,10 @@ Page {
             width: list.width
             readonly property bool showReelShelf: page.hasReels && index === page.reelsInsertIndex
             height: (showReelShelf ? reelsShelf.implicitHeight : 0) + videoRow.height
-            // Lets focusListKeyNav() reach the real focus owner: the ListView only
-            // hands focus to this wrapper, and the ring lives on the card.
+            // Lets focusListKeyNav() reach the real focus owner (the ring lives on the card)
             property alias rowCard: card
 
-            // The ListView focuses this plain wrapper (needed for the Reels shelf),
-            // so ListItem's key-nav frame never shows; hand focus to the VideoCard,
-            // which draws its own ring. Gated on kbEngaged (see above).
+            // Wrapper focus (needed for Reels shelf) is handed to the VideoCard's own ring
             onActiveFocusChanged: if (activeFocus && list.kbEngaged) card.forceActiveFocus()
 
             Item {
@@ -499,8 +476,7 @@ Page {
                             onTriggered: {
                                 var vm = feedModel.get(index);
                                 if (vm) {
-                                    // Persist to the local hidden-posts store so it stays hidden across
-                                    // restarts, matching the overflow-menu Hide (PostActionSheet).
+                                    // Persist so it stays hidden across restarts (matches PostActionSheet)
                                     HiddenPosts.hide(vm.permlink || "");
                                     PostActions.hideRequested(vm.author, vm.permlink);
                                 }
@@ -551,12 +527,15 @@ Page {
                     width: parent.width
                     video: feedModel.get(index)
                     onClicked: {
-                        // Push first: swapping the detail pane transiently drops the stack to
-                        // depth 0, which would race with the currentPageChanged reset below.
+                        // Push first: swapping the pane transiently drops stack to depth 0
                         var v = feedModel.get(index);
-                        // Pointer clicks don't move currentIndex, so the key-nav cursor would
-                        // sit at the top when Left brings focus back from the detail.
+                        // Pointer clicks don't move currentIndex; set it for key-nav cursor
                         list.currentIndex = index;
+                        // Drop tap-grabbed focus; deferred since currentIndex can re-grant it
+                        if (!list.kbEngaged) {
+                            card.focus = false;
+                            Qt.callLater(function () { card.focus = false; });
+                        }
                         page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v });
                         page.openPermlink = v ? v.permlink : "";
                     }

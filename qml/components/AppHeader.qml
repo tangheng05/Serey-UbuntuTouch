@@ -79,8 +79,7 @@ Rectangle {
                 }
             }
 
-            // Community name, shown beside the flag on wide windows only;
-            // phones keep the compact icon-only chip.
+            // Community name beside the flag on wide windows; phones keep icon-only chip
             Label {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: appHeader.wide && text !== ""

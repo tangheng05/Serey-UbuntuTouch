@@ -17,9 +17,7 @@ QtObject {
         return _dbHandle;
     }
 
-    // Per-account buckets; logged-out uses "__guest__", never "": QML LocalStorage
-    // binds an empty string as SQL NULL, so a guest `owner = ?` matched nothing
-    // and saves vanished on restart. "__guest__" can't be a real username.
+    // Per-account buckets; "" is never used since QML LocalStorage binds it as SQL NULL
     readonly property string guestOwner: "__guest__"
 
     function _owner() {
@@ -27,8 +25,7 @@ QtObject {
                 ? Session.username : store.guestOwner;
     }
 
-    // Rows written before the sentinel existed have owner NULL or ''; fold both onto
-    // the guest bucket so old saves stay visible.
+    // Fold NULL/'' owner rows onto the guest bucket so old saves stay visible
     readonly property string _ownerExpr: "IFNULL(NULLIF(owner,''),'" + guestOwner + "')"
 
     function _load() {
@@ -36,14 +33,13 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT, author TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                // Add `owner` to tables created before per-account scoping existed; harmlessly throws (caught) once the column is present.
+                // Add `owner` column for pre-scoping tables; harmlessly throws once present
                 try { tx.executeSql("ALTER TABLE saved_posts ADD COLUMN owner TEXT DEFAULT ''"); } catch (e2) { }
                 var rs = tx.executeSql("SELECT permlink, data FROM saved_posts WHERE " + store._ownerExpr + " = ? ORDER BY saved_at DESC", [store._owner()]);
                 var seen = {};
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);
-                    // A NULL owner also defeats PRIMARY KEY dedupe, so older duplicate
-                    // rows can exist; newest-first ordering means the first wins.
+                    // NULL owner defeats PRIMARY KEY dedupe; newest-first means first wins
                     if (seen[row.permlink]) continue;
                     seen[row.permlink] = true;
                     var vm = {};
@@ -75,9 +71,7 @@ QtObject {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS saved_posts(permlink TEXT, author TEXT, saved_at INTEGER, data TEXT, owner TEXT DEFAULT '', PRIMARY KEY(permlink, owner))");
-                // Explicit delete before insert: legacy rows with owner NULL (see
-                // _owner) can't be deduped by the PRIMARY KEY, so INSERT OR REPLACE
-                // piled up a new row per save instead of replacing the old one.
+                // Explicit delete before insert: legacy NULL-owner rows can't dedupe via PRIMARY KEY
                 tx.executeSql("DELETE FROM saved_posts WHERE permlink = ? AND " + store._ownerExpr + " = ?", [post.permlink, store._owner()]);
                 tx.executeSql("INSERT INTO saved_posts(permlink, author, saved_at, data, owner) VALUES(?, ?, ?, ?, ?)",
                     [post.permlink, post.author || "", Date.now(), JSON.stringify(post), store._owner()]);
@@ -89,7 +83,7 @@ QtObject {
 
     function save(post) {
         if (!post || !post.permlink || post.permlink.length === 0) return;
-        // Persist the text immediately, then cache images in the background and rewrite to local paths as they arrive.
+        // Persist text immediately, cache images in background and rewrite paths later
         _persist(post);
         store._load();
         Toast.success(Lang.tr("Saved for offline use"));

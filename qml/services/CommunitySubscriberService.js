@@ -31,18 +31,14 @@ function subscriberCount(baseUrl, communityId, onOk, onErr) {
     Http.get(baseUrl, "/community-subscriber/subscriber-count",
              { community_id: communityId }, null, function (data) {
         var d = data && data.data
-        // The server field is `total_subscribers`; `count`/`subscriber_count`
-        // never existed, so this used to silently return 0 for every community.
-        // Real name first, old guesses kept as fallbacks.
+        // Server field is `total_subscribers`; old guesses kept as fallbacks
         var count = (typeof d === "number") ? d
                   : (d && (d.total_subscribers || d.count || d.subscriber_count || 0)) || 0
         onOk(parseInt(count, 10) || 0)
     }, onErr);
 }
 
-// GET /community-subscriber/suggested-communities: leaf communities ranked by
-// subscriber count, hidden (exclude_home) subtree already filtered server-side.
-// One request; replaces the old get-communities + N x subscriberCount fan-out.
+// Leaf communities ranked by subscriber count; replaces old get-communities + N-fan-out
 function suggestedCommunities(baseUrl, limit, onOk, onErr) {
     Http.get(baseUrl, "/community-subscriber/suggested-communities",
              { limit: limit }, null, function (data) {

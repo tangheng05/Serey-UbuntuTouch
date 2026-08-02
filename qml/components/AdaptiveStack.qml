@@ -2,17 +2,12 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Per-tab master-detail container: phones push full-screen, wide windows split list + detail.
- * Breakpoint crossings are pure geometry (no reparenting), so live WebViews survive resizes.
- * Two REAL PageStacks, not an AdaptivePageLayout shim (the shim desynced on push/pop/re-push).
- */
+// Per-tab master-detail: phones push full-screen, wide windows split list + detail (two real PageStacks, not AdaptivePageLayout)
 Item {
     id: root
 
     property bool singleColumnUntilPushed: false
-    // Never enter master-detail: the root fills the tab and every push covers it
-    // full-screen. Used by Homepage, where the web app itself is the panel.
+    // Never enter master-detail: root fills the tab, every push covers full-screen
     property bool neverSplit: false
     property string emptyDetailIconName: ""
     property string emptyDetailMessage: ""
@@ -26,9 +21,7 @@ Item {
     // Real detail pages, excluding the invisible placeholder at detailStack[0].
     readonly property int _detailCount: Math.max(0, detailStack.depth - 1)
 
-    // Split on Config.wideMode (window width), not our own width: reading `width` here
-    // created a binding loop (width -> nav-rail presence -> columns -> split -> width),
-    // and wideMode aligns the split point with the nav rail's breakpoint.
+    // Split on Config.wideMode, not own width: reading `width` here caused a binding loop
     readonly property bool split: !neverSplit && Config.wideMode
                                   && (!singleColumnUntilPushed || _detailCount > 0)
     readonly property int columns: split ? 2 : 1
@@ -40,16 +33,13 @@ Item {
     // The tab's master/root page, regardless of what's in the detail column.
     readonly property var rootPage: rootStack.currentPage
 
-    // Invisible seed page: keeps every real detail at detailStack.depth >= 2 so
-    // Lomiri shows the native back button on the first-pushed detail too.
+    // Invisible seed page: keeps detail depth >= 2 so Lomiri shows the native back button
     Component {
         id: detailPlaceholder
         Page { visible: false; header: Item { height: 0 } }
     }
 
-    // First push is the tab root; later pushes land in the detail column. Only the root
-    // page's pageStack points here, so a master-list push REPLACES the current detail;
-    // navigation within a detail page uses detailStack directly and still stacks.
+    // First push is the tab root; later pushes land in detail and REPLACE the current one
     function push(pageUrl, properties) {
         var props = properties || {};
         if (rootStack.depth === 0) {
@@ -69,14 +59,11 @@ Item {
         else if (rootStack.depth > 1) rootStack.pop();
     }
 
-    // Keyboard master-detail: move focus between the two panels (split only). Pages
-    // opt in by exposing `property Item keyboardFocusItem` (the list/flick that should
-    // own arrow-key focus); otherwise the page itself is focused.
+    // Keyboard master-detail: move focus between panels; pages opt in via `keyboardFocusItem`
     function focusMaster() {
         var p = rootStack.currentPage;
         if (!p) return;
-        // List pages need the key-nav focus reason for Lomiri to paint the row
-        // cursor; plain forceActiveFocus leaves keyNavigationFocus false.
+        // List pages need key-nav focus reason; plain forceActiveFocus leaves keyNavigationFocus false
         if (p.focusListKeyNav) { p.focusListKeyNav(); return; }
         (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
     }
@@ -85,9 +72,7 @@ Item {
         if (!p) return;
         (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
     }
-    // Only the visible, split stack reacts (one tab is visible at a time). If the
-    // open detail runs its OWN nested master-detail (My Feed), it exposes
-    // `_ownsKeyboardNav` and handles these itself; defer so focus stays inside it.
+    // Only the visible, split stack reacts; defer to `_ownsKeyboardNav` pages (e.g. My Feed)
     Connections {
         target: Nav
         function onFocusMaster() {
@@ -113,8 +98,7 @@ Item {
         PageStack { id: rootStack; anchors.fill: parent }
     }
 
-    // Draggable separator between panels (split only). Thicker than a 1dp hairline
-    // so it reads as a grabbable splitter rather than a plain divider.
+    // Draggable separator between panels; thicker than a hairline so it reads as grabbable
     Rectangle {
         id: paneDivider
         anchors { top: parent.top; bottom: parent.bottom; left: listPane.right }

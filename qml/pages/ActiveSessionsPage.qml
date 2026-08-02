@@ -13,8 +13,6 @@ Page {
     property string errorMsg: ""
     readonly property real maxContentWidth: units.gu(60)
 
-    // Rows other than this device; the server refuses to terminate the current one.
-    readonly property int otherCount: Math.max(0, deviceModel.count - (page._hasCurrent ? 1 : 0))
     property bool _hasCurrent: false
 
     header: PageHeader {
@@ -26,8 +24,8 @@ Page {
             Action {
                 iconName: "delete"
                 text: Lang.tr("Terminate all")
-                // Server 400s the whole batch if it includes this device.
-                visible: page.otherCount > 0 && page._hasCurrent && !page.loading
+                // Shown even if current device is unidentified: falls back to a per-device sweep
+                visible: deviceModel.count > 1 && !page.loading
                 onTriggered: PopupUtils.open(terminateAllDialog)
             }
         ]
@@ -35,8 +33,7 @@ Page {
 
     ListModel { id: deviceModel; dynamicRoles: true }
 
-    // Logins before deviceId was stored have no marker, so fall back to:
-    // a single session must be this one.
+    // Pre-deviceId logins: fall back to "only device = current"
     function _markCurrent() {
         var onlyOne = deviceModel.count === 1
         page._hasCurrent = false
@@ -103,23 +100,59 @@ Page {
     }
 
     function terminateOthers() {
-        var ids = []
-        for (var i = 0; i < deviceModel.count; i++) {
-            var it = deviceModel.get(i)
-            if (!it.isCurrent) ids.push(it.deviceId)
+        if (page._hasCurrent) {
+            var ids = []
+            for (var i = 0; i < deviceModel.count; i++) {
+                var it = deviceModel.get(i)
+                if (!it.isCurrent) ids.push(it.deviceId)
+            }
+            if (ids.length === 0) return
+            page.loading = true
+            DeviceService.terminate(Config.baseUrl, Session.token, ids,
+                function () {
+                    Toast.show(ids.length === 1 ? Lang.tr("Session terminated.")
+                                                : Lang.tr("%1 sessions terminated.").arg(ids.length))
+                    page.load()
+                },
+                function (err) {
+                    page.loading = false
+                    if (err.status !== 401)
+                        Toast.error(err.message || Lang.tr("Failed to terminate session."))
+                })
+            return
         }
-        if (ids.length === 0) return
+
+        // Unknown current device: bulk call would 400 the batch, so sweep one at a time
+        var allIds = []
+        for (var j = 0; j < deviceModel.count; j++)
+            allIds.push(deviceModel.get(j).deviceId)
         page.loading = true
-        DeviceService.terminate(Config.baseUrl, Session.token, ids,
+        page._sweepIdx = 0
+        page._sweepIds = allIds
+        page._sweepNext()
+    }
+
+    property var _sweepIds: []
+    property int _sweepIdx: 0
+
+    function _sweepNext() {
+        if (page._sweepIdx >= page._sweepIds.length) {
+            page.loading = false
+            Toast.show(Lang.tr("Other sessions terminated."))
+            page.load()
+            return
+        }
+        var id = page._sweepIds[page._sweepIdx]
+        DeviceService.terminate(Config.baseUrl, Session.token, [id],
             function () {
-                Toast.show(ids.length === 1 ? Lang.tr("Session terminated.")
-                                            : Lang.tr("%1 sessions terminated.").arg(ids.length))
-                page.load()
+                page._sweepIdx++
+                page._sweepNext()
             },
             function (err) {
-                page.loading = false
-                if (err.status !== 401)
-                    Toast.error(err.message || Lang.tr("Failed to terminate session."))
+                if (err.status === 401) { page.loading = false; return }
+                if (err.status === 400) Session.setDeviceId(id)
+                page._sweepIdx++
+                page._sweepNext()
             })
     }
 

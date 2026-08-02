@@ -7,11 +7,7 @@ import "../components"
 import "../services/PlatformService.js" as PlatformService
 import "../services/AccountService.js" as AccountService
 
-/*
- * "Create your platform" wizard, plain communities only. Gated on an active
- * subscription (GET /subscription/active); other rules (one community per
- * user, name charset) are enforced server-side, surface the server message.
- */
+// "Create your platform" wizard; gated on an active subscription (GET /subscription/active)
 Page {
     id: page
 
@@ -22,8 +18,7 @@ Page {
         ]
     }
 
-    // --- Plan gate ---
-    // "checking" while /subscription/active runs -> "ok" | "noplan" | "error".
+    // --- Plan gate: "checking" while /subscription/active runs -> "ok" | "noplan" | "error" ---
     property string gate: "checking"
     property string gateError: ""
 
@@ -63,8 +58,7 @@ Page {
                                       && /^[a-zA-Z0-9 ]+$/.test(nameText)
     readonly property bool canContinue:
         step === 0 ? (nameValid && subStatus === "free")
-        // Web-wizard parity: category required once a country is chosen, unless
-        // the category list failed to load (server defaults to "Other").
+        // Web-wizard parity: category required once a country is chosen (unless list failed to load)
       : step === 1 ? (independent || (country !== null
                                       && (categoryId > 0 || categories.length === 0)))
       : !creating && uploadingTarget === ""
@@ -95,9 +89,7 @@ Page {
             function () { /* optional; the server defaults to "Other" */ });
     }
 
-    // --- Subdomain availability ---
-    // Same constraints the web wizard enforces client-side: 1-54 chars of
-    // [a-z0-9-], no leading/trailing hyphen, not purely numeric, no dots.
+    // --- Subdomain availability: 1-54 chars [a-z0-9-], no leading/trailing hyphen, not numeric-only, no dots ---
     function slugProblem(s) {
         if (s.length === 0) return "";
         if (s.length > 54) return Lang.tr("Address is too long (max 54 characters).");
@@ -131,15 +123,13 @@ Page {
                 },
                 function () {
                     if (epoch !== page.subEpoch) return;
-                    // Couldn't verify; let the user retry by editing. The
-                    // server checks again on create anyway.
+                    // Couldn't verify; let the user retry by editing (server checks again on create)
                     page.subStatus = "idle";
                 });
         }
     }
 
-    // Called from list delegates (imported JS is unreliable inside delegate
-    // handlers, so route through page-level functions).
+    // Routed through page-level functions: imported JS is unreliable inside delegate handlers
     function selectCountry(c) {
         country = { id: c.id, name: c.name, iconUrl: c.iconUrl };
         independent = false;
@@ -202,12 +192,9 @@ Page {
             page.createdDns = res.dns || (slug + ".serey.io");
             page.step = 3;
             Toast.success(Lang.tr("Your platform has been created!"));
-            // Rebuild the community picker so the new platform (and its parent
-            // country, if this was the country's first) shows without a restart.
+            // Rebuild the community picker so the new platform shows without a restart
             Nav.refreshCommunities();
-            // Seed the new community into the in-session cache: another API
-            // instance can serve a stale communities list for up to 60s, so
-            // the re-fetch above is not guaranteed fresh; this seed is.
+            // Seed the in-session cache: another API instance can serve a stale list for up to 60s
             if (res.id) {
                 Config.addOrUpdateCommunity({
                     id: res.id,
@@ -218,16 +205,14 @@ Page {
                     videoAllowPost: false
                 });
             }
-            // The owner may now post to their own community even where posting
-            // is owner-only, so refresh the owned-communities set Main.qml seeded.
+            // Owner may now post to their own community, so refresh the owned-communities set
             AccountService.ownedCommunityIds(Config.baseUrl, Session.token,
                 function (ids) {
                     var set = {};
                     for (var i = 0; i < ids.length; i++) set[ids[i]] = true;
                     if (res.id) set[res.id] = true;   // ensure managedCommunityId resolves now
                     Config.ownedCommunityIdSet = set;
-                    // Pin the CMS hub to the community just created (deterministic
-                    // even if the user somehow owns more than one).
+                    // Pin the CMS hub to the just-created community (deterministic if owns several)
                     if (res.id) Config.overrideManagedCommunityId = res.id;
                 }, function () {
                     if (res.id) {
@@ -327,9 +312,7 @@ Page {
 
         Column {
             id: form
-            // Convergence: not scale but adapt. Phones get the full width
-            // (minus margins); on tablet/desktop windows the form becomes a
-            // centered column instead of fields stretched across the screen.
+            // Convergence: adapt, not scale — desktop centers the form instead of stretching fields
             anchors { top: parent.top; topMargin: Style.spacingL; horizontalCenter: parent.horizontalCenter }
             width: Math.min(parent.width - Style.spacingM * 2, units.gu(60))
             spacing: Style.spacingM
@@ -413,9 +396,7 @@ Page {
                     color: Style.danger
                 }
 
-                // Subdomain slug, forced lowercase. The fixed ".serey.io" suffix
-                // sits inside the field so it always reads as a Serey subdomain,
-                // never a free-form URL.
+                // Subdomain slug, forced lowercase; fixed ".serey.io" suffix sits inside the field
                 Item {
                     width: parent.width
                     height: units.gu(5)
@@ -516,8 +497,7 @@ Page {
                 }
                 Item { width: 1; height: Style.spacingM }
 
-                // Country row, the standard path. Pressed wash and divider run
-                // full-bleed per the Lomiri list-item reference.
+                // Country row: pressed wash and divider run full-bleed per Lomiri list-item reference
                 Item {
                     visible: !page.independent
                     width: parent.width
@@ -641,8 +621,7 @@ Page {
                     }
                 }
 
-                // Quiet opt-in/out link: independent stays available but is
-                // not the standard path.
+                // Quiet opt-in/out link: independent stays available but isn't the standard path
                 Item { width: 1; height: Style.spacingS }
                 LinkButton {
                     label: page.independent ? Lang.tr("Choose a country instead")
@@ -683,8 +662,7 @@ Page {
                         width: form.width
                         height: units.gu(9)
 
-                        // Flat square preview with a hairline border (Lomiri
-                        // image tiles are square/unrounded).
+                        // Flat square preview with a hairline border (Lomiri image tiles are unrounded)
                         Rectangle {
                             id: preview
                             anchors { left: parent.left; verticalCenter: parent.verticalCenter }
@@ -840,8 +818,7 @@ Page {
                     color: Style.textSecondary
                 }
                 Item { width: 1; height: Style.spacingS }
-                // The CMS hub manages the platform natively; ownedCommunityIdSet was
-                // refreshed so Config.managedCommunityId already resolves to it.
+                // CMS hub manages the platform natively; ownedCommunityIdSet already refreshed
                 PrimaryButton {
                     text: Lang.tr("Manage my platform")
                     onClicked: {
@@ -849,8 +826,7 @@ Page {
                         page.pageStack.push(Qt.resolvedUrl("PlatformAdminPage.qml"));
                     }
                 }
-                // The live site is its own subdomain, which the Homepage tab can't show
-                // (homeLandingPageUrl is a fixed site), so viewing it needs a browser.
+                // Live site is its own subdomain; Homepage tab is a fixed site, so needs a browser
                 LinkButton {
                     label: Lang.tr("View live site")
                     onClicked: Qt.openUrlExternally("https://" + page.createdDns)
@@ -895,8 +871,7 @@ Page {
         // Swallow clicks under the sheet.
         MouseArea { anchors.fill: parent }
 
-        // Lomiri header-search pattern: back chevron + rounded search field in
-        // one header row with a hairline underneath, not a separate search bar.
+        // Lomiri header-search pattern: back chevron + rounded search field in one header row
         Item {
             id: pickerHeader
             anchors { top: parent.top; left: parent.left; right: parent.right }

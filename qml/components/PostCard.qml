@@ -22,7 +22,6 @@ Item {
         ? ("https://serey.io/authors/" + p.author + "/" + p.permlink) : ""
 
     // Feed rows only carry an excerpt, so saving offline needs the full post first
-    // (mirrors PostActionSheet's saveOfflineBtn).
     function toggleSaved() {
         if (root.isSaved) { SavedPosts.remove(p.permlink); return; }
         var author = p.author, permlink = p.permlink;
@@ -31,8 +30,7 @@ Item {
             function (err) { Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't save for offline.")); });
     }
 
-    // moreBtn's compact dropdown (see cardMenu below). Mirrors PostDetailPage's
-    // header menu; report/delete/block still route through PostActionSheet.
+    // moreBtn's compact dropdown; report/delete/block still route through PostActionSheet
     property bool menuOpen: false
 
     function menuItems() {
@@ -67,10 +65,7 @@ Item {
         else if (action === "report") PostActions.open(root.p, "blog", 1);
     }
 
-    // cardMenu reparents onto the window while open (see below), so if this
-    // delegate gets recycled/destroyed by the ListView mid-open, force it
-    // closed first — otherwise it'd be orphaned on the window instead of torn
-    // down with the rest of this card.
+    // cardMenu reparents onto the window while open, so force-close it before recycling
     Component.onDestruction: root.menuOpen = false
 
     signal clicked()
@@ -96,9 +91,7 @@ Item {
         _syncVoteBar();
     }
 
-    // ListModel.set() mutates the object `p` already references, so onPChanged never
-    // fires on an in-place row swap and the imperatively-set votes/payout would keep
-    // the previous post's values. Watching the values themselves re-runs the sync.
+    // ListModel.set() mutates `p` in place so onPChanged never fires; watch values directly instead
     readonly property int _pVotes: p.votes || 0
     readonly property string _pPayout: p.payout || ""
     readonly property string _pPermlink: p.permlink || ""
@@ -106,9 +99,7 @@ Item {
     on_PPayoutChanged: _syncVoteBar()
     on_PPermlinkChanged: _syncVoteBar()
 
-    // Vote state checks session cache first (survives navigation), falling back to the model's voters array; set imperatively so VoteBar's own changes aren't overridden.
-    // Children exist by now, so a row whose values arrived before the bar was
-    // built still gets its counts.
+    // Children exist by now, so a row whose values arrived before the bar was built still gets counts
     Component.onCompleted: _syncVoteBar()
 
     function _syncVoteBar() {
@@ -275,9 +266,7 @@ Item {
                 radius: Style.thumbRadius
                 color: Style.iconBackground
             }
-            // Double-buffered cover: an Image drops its old frame when `source` changes,
-            // flashing black until the new one loads (a full re-download on phone).
-            // coverLoader (hidden) fetches while coverImg keeps the last-good frame.
+            // Double-buffered cover: coverLoader (hidden) fetches while coverImg keeps last-good frame
             Image {
                 id: coverLoader
                 anchors.fill: parent
@@ -285,17 +274,14 @@ Item {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 autoTransform: true     // honour EXIF orientation
-                // HIG scaling: snap the decode size to a breakpoint instead of tracking
-                // `cover.width`, which re-rasterized every visible cover on any width
-                // change (window resize, entering/leaving the split pane). Mirrors VideoCard.
+                // Snap decode size to a breakpoint instead of tracking width, which re-rasterized on every resize
                 sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
                 visible: false
                 onStatusChanged: {
                     if (status === Image.Ready) {
                         coverImg.source = source;
                     } else if (status === Image.Error || String(source).length === 0) {
-                        // Unloadable or removed cover: don't keep showing the
-                        // previous article's image under this one's title.
+                        // Unloadable or removed cover: don't keep showing the previous article's image
                         coverImg.source = "";
                     }
                 }
@@ -308,8 +294,7 @@ Item {
                 autoTransform: true
                 sourceSize.width: coverLoader.sourceSize.width
                 visible: false
-                // Fade the stale frame fully out, not just dimmed: a ghost of the
-                // previous photo under the new title read as the wrong thumbnail.
+                // Fade the stale frame fully out; a dimmed ghost read as the wrong thumbnail
                 readonly property bool transitioning:
                     coverLoader.status === Image.Loading && status === Image.Ready
                 Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -377,9 +362,7 @@ Item {
             voteType: "post"
             onChain: p.postToBlockchain !== false
             votes: p.votes || 0
-            // Rebuilt from the voterStr scalar: the feed's dynamicRoles ListModel
-            // wraps the `voters` string array into a nested model whose entries
-            // stringify as QML objects (the popover showed "@QQmlDM..." garbage).
+            // Rebuilt from voterStr scalar: dynamicRoles ListModel stringifies string arrays as garbage
             voters: (p.voterStr || "").split(",").filter(function (n) { return n.length > 0; })
             flaggers: root._len(p.flaggers)
             comments: p.comments || 0
@@ -393,28 +376,19 @@ Item {
         Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
     }
 
-    // Pointer/keyboard parity: right-click or MENU opens the overflow context
-    // menu; Enter opens the post (same as a tap). See ContextActionArea.
+    // Pointer/keyboard parity: right-click/MENU opens overflow context menu, Enter opens post
     ContextActionArea {
         onTriggered: root.moreClicked()
         onActivated: root.clicked()
     }
 
-    // ----- Compact anchored dropdown for moreBtn (icons + rounded box, matching
-    // the article page's header menu) -----
-    // root sits in a ListView row: a z bump only wins against ITS OWN siblings,
-    // not the next row (a sibling of root several levels up), which is a
-    // separate stacking context that paints over anything nested inside root
-    // that visually spills past this row's own height. Reparenting to the
-    // window's contentItem escapes that row entirely, so the menu always paints
-    // above every row regardless of scroll position.
+    // Compact anchored dropdown for moreBtn; reparent onto the window while open so the menu isn't clipped by the list row's stacking context
     readonly property Item _menuOverlayParent: (root.menuOpen && root.Window.window)
         ? root.Window.window.contentItem : root
     readonly property point _moreBtnBottomRight: (root.menuOpen && moreBtn)
         ? moreBtn.mapToItem(root._menuOverlayParent, moreBtn.width, moreBtn.height) : Qt.point(0, 0)
 
-    // Dismiss on an outside click — fills the whole window while open (not just
-    // this card), since the menu can now visually extend over other rows.
+    // Dismiss on outside click; fills the whole window while open, not just this card
     MouseArea {
         parent: root._menuOverlayParent
         visible: root.menuOpen
@@ -430,9 +404,7 @@ Item {
         z: 1000
         x: Math.min(root._moreBtnBottomRight.x - width, root._menuOverlayParent.width - width - Style.spacingXs)
         y: root._moreBtnBottomRight.y + Style.spacingXs
-        // The article header spans the full window, but a card sits in the
-        // (narrower) list column — cap the width so it doesn't reach almost to
-        // the card's own left edge and look mis-anchored.
+        // Card sits in a narrower list column; cap width so it doesn't look mis-anchored
         width: Math.min(units.gu(20), root.width - units.gu(2))
         height: cardMenuCol.height
         radius: Style.cardRadius

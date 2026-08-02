@@ -6,8 +6,7 @@ import "../components"
 import "../services/AccountService.js" as AccountService
 import "../services/AnonymousInviteService.js" as InviteService
 
-// Redeem an invite code -> free anonymous account. Same key-save + auto-login as
-// the paid Monero flow, minus payment. Steps: 0 code, 1 username, 2 save key.
+// Redeem an invite code -> free anonymous account, same key-save flow minus payment
 Page {
     id: page
 
@@ -74,8 +73,7 @@ Page {
             }, fail);
     }
 
-    // step 1: generate keys on-device, then claim the account. The master password
-    // never leaves the device; only the public keys + posting private key are sent.
+    // step 1: generate keys on-device; master password never leaves the device
     function redeem() {
         if (busy) return;
         errorMsg = "";
@@ -108,7 +106,7 @@ Page {
                 page.busy = false;
                 Session.clear();
                 FollowStore.reset();
-                Session.setAuth(auth.token, page.createdUsername, auth.userDeviceId);
+                Session.setAuth(auth.token, page.createdUsername, auth.deviceId);
                 AccountService.profile(Config.baseUrl, page.createdUsername, auth.token,
                     function (user) { Session.avatarUrl = user.profileUrl; },
                     function (err) { /* keep letter-fallback avatar */ });

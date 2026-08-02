@@ -17,9 +17,7 @@ Page {
     // Adapt, not scale: banner stays full-bleed, actionable content caps to a centered column on wide windows
     readonly property real maxContentWidth: units.gu(60)
 
-    // Identity of the MANAGED community (Config.managedCommunityId), not the
-    // picker selection (they can differ). Resolved from the cached community
-    // tree; loadPlatformIdentity() below refines both from the backend.
+    // Identity of the MANAGED community, not the picker selection; refined by loadPlatformIdentity()
     readonly property var _managedInfo: Config.communityInfoFor(Config.managedCommunityId)
     property string platformName: page._managedInfo ? page._managedInfo.title
         : (Config.managedCommunityId === Config.communityId ? Config.currentCommunityName : "")
@@ -27,8 +25,7 @@ Page {
         : (Config.managedCommunityId === Config.communityId ? Config.currentCommunityIconUrl : "")
     property int subscriberCount: 0
     property bool uploadingLogo: false
-    // Empty (or not yet loaded) falls back to a brand gradient. Read-only on
-    // mobile; the web CMS owns editing it (fetched in loadHeroBanner).
+    // Empty falls back to a brand gradient; read-only on mobile, web CMS owns editing
     property string platformBannerUrl: ""
 
     // Inline rename (Settings > Edit Profile pattern)
@@ -70,8 +67,7 @@ Page {
     function loadPlatformIdentity() {
         LandingPageService.getByCommunity(Config.baseUrl, Config.managedCommunityId, Session.token,
             function (data) {
-                // Name comes from loadPlatformName (the community record); only the
-                // logo is taken from the landing page here.
+                // Name comes from loadPlatformName; only the logo is taken from here
                 var logo = data.logo || data.logo_url || data.icon_url || data.image
                 if (logo) page.platformLogoUrl = logo
             },
@@ -82,9 +78,7 @@ Page {
         page.loadHeroBanner()
     }
 
-    // GET /landing-page-v2/get-by-community/:id; the hero photo renders behind
-    // the logo. bg_image_url is a separate overlay field that's commonly unset,
-    // so prefer the section's image_url. Display only; the web CMS edits it.
+    // Hero photo behind the logo; bg_image_url is usually unset, prefer image_url
     function loadHeroBanner() {
         LandingPageV2Service.getByCommunity(Config.baseUrl, Config.managedCommunityId, Session.token,
             function (sections) {
@@ -94,15 +88,13 @@ Page {
             function () { /* non-fatal: no landing page v2 content yet, keep gradient */ })
     }
 
-    // POST /community/update-logo (JWT). Uploads through the same
-    // downscale-then-host flow as EditProfilePage's avatar/cover.
+    // POST /community/update-logo: same downscale-then-host flow as EditProfilePage's avatar
     function uploadLogo(fileUrl) {
         page.uploadingLogo = true
         logoUploader.upload(fileUrl)
     }
 
-    // { id, title } for every community the user owns/manages, from the cached
-    // community tree. Backs the "Switch Platform" picker.
+    // { id, title } list from cached community tree; backs the Switch Platform picker
     function ownedCommunitiesList() {
         var ids = Object.keys(Config.ownedCommunityIdSet)
         var out = []
@@ -117,9 +109,7 @@ Page {
     function switchPlatform(id) {
         if (id === Config.managedCommunityId) return
         Config.overrideManagedCommunityId = id
-        // Reset display state so the old platform doesn't flash while the new
-        // one loads; the initial Config.communityInfoFor bindings were already
-        // broken by loadPlatformIdentity's imperative assignments.
+        // Reset display state so old platform doesn't flash; bindings already broken by imperative assigns
         var info = Config.communityInfoFor(id)
         page.platformName = info ? info.title : ""
         page.platformLogoUrl = info ? info.icon : ""
@@ -130,8 +120,7 @@ Page {
     }
 
     Component.onCompleted: page.loadPlatformIdentity()
-    // Refresh the name whenever the hub reappears (e.g. back from a rename);
-    // onCompleted covers logo/subs. Also grabs keyboard focus for the flick.
+    // Refresh name on reappear (e.g. back from rename); onCompleted covers logo/subs
     onVisibleChanged: if (visible) { page.loadPlatformName(); scroll.forceActiveFocus(); }
 
     PhotoUploader {
@@ -186,8 +175,7 @@ Page {
         }
     }
 
-    // Keyboard nav: Nav.focusDetail targets this flick; arrows scroll, Left/Escape
-    // return to the settings list. Focus grab lives in onVisibleChanged above.
+    // Keyboard nav: arrows scroll, Left/Escape return to settings list (focus grab above)
     property Item keyboardFocusItem: scroll
 
     Flickable {
@@ -219,8 +207,7 @@ Page {
             spacing: Style.spacingL
             bottomPadding: Style.spacingL
 
-            // Own Column (tight spacing) so the outer Style.spacingL section-gap
-            // doesn't land between the logo and the name below it.
+            // Own tight-spacing Column so outer section-gap doesn't land here
             Column {
                 width: parent.width
                 spacing: Style.spacingXs
@@ -256,8 +243,7 @@ Page {
                         enabled: !page.uploadingLogo
                         onClicked: PopupUtils.open(logoPickerComponent)
 
-                        // White backing ring so the logo reads cleanly against the
-                        // banner photo underneath (matches the web CMS reference).
+                        // White backing ring for legibility against the banner (matches web CMS)
                         Rectangle {
                             anchors.fill: parent
                             radius: width / 2
@@ -487,8 +473,7 @@ Page {
                 width: Math.min(parent.width, page.maxContentWidth)
             }
 
-            // Own Column (spacing 0) so the outer Style.spacingL section-gap
-            // doesn't get inserted between the Blog and Video rows too.
+            // Own zero-spacing Column so outer section-gap doesn't land between rows
             Column {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: Math.min(parent.width, page.maxContentWidth)

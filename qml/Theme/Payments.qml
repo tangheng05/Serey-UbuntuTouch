@@ -2,9 +2,7 @@ pragma Singleton
 import QtQuick 2.7
 import QtQuick.LocalStorage 2.0
 
-// Buy-plan payment state; renderers (PaymentSheet, StripeCheckoutSheet) mount
-// once in Main.qml, opened via the mini app's buyPlan bridge or Stripe intercept.
-// stripeOpen also suspends the Homepage WebView (two live Chromiums SIGSEGV).
+// Buy-plan payment state; stripeOpen also suspends Homepage WebView (two live Chromiums SIGSEGV)
 QtObject {
     id: payments
 
@@ -12,14 +10,11 @@ QtObject {
     property bool cryptoOpen: false
     property int planId: 0
 
-    // Stripe checkout sheet. `stripeUrl` empty => the sheet creates the
-    // checkout session itself from `planId`; non-empty (interception path) =>
-    // it loads the URL directly.
+    // Stripe checkout sheet; empty stripeUrl creates session from planId, else loads URL directly
     property bool stripeOpen: false
     property string stripeUrl: ""
 
-    // Fired on a confirmed payment (either method); HomepagePage reloads the
-    // mini app so the site reflects the new plan.
+    // Fired on confirmed payment; HomepagePage reloads mini app to reflect new plan
     signal paymentSucceeded()
 
     function openCrypto(id) {
@@ -39,9 +34,7 @@ QtObject {
     function closeCrypto() { cryptoOpen = false; }
     function closeStripe() { stripeOpen = false; stripeUrl = ""; }
 
-    // Pending crypto payment, persisted across restarts: activation only happens
-    // when our client polls check-status (no webhook), so remember it and keep
-    // checking. Main.qml runs the poll. null = none. { paymentId, planId, expiresAt }.
+    // Pending crypto payment, persisted across restarts; Main.qml polls check-status (no webhook)
     property var pendingCrypto: null
 
     function _db() {

@@ -118,8 +118,7 @@ Page {
                 ]
             }
 
-            // Pointer/keyboard parity: right-click or the MENU key opens the same
-            // Remove/Share actions the swipe exposes (see ContextActionArea).
+            // Right-click or MENU key opens the same actions the swipe exposes
             ContextActionArea {
                 id: contextArea
                 onActivated: page.open(modelData)   // Enter opens the saved post

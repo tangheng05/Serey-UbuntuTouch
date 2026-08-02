@@ -63,8 +63,7 @@ Page {
 
     Component.onCompleted: page.load()
 
-    // Keyboard nav: settings' Nav.focusDetail targets this list; Left/Escape
-    // return to the settings list, arrows move the cursor, Enter opens a profile.
+    // Keyboard nav: Left/Escape return to settings list, Enter opens a profile
     property Item keyboardFocusItem: list
     onVisibleChanged: if (visible) { list.kbEngaged = false; list.forceActiveFocus(); }
 
@@ -74,8 +73,7 @@ Page {
         width: Math.min(parent.width, page.maxContentWidth)
         model: blockedModel
         clip: true
-        // Gates the cursor ring: the page auto-focuses on show, but the ring
-        // only appears after a real key press, never for touch/mouse users.
+        // Ring only appears after a real key press, never for touch/mouse
         property bool kbEngaged: false
         Keys.onPressed: list.kbEngaged = true
         Keys.onLeftPressed: Nav.focusMaster()
@@ -84,8 +82,7 @@ Page {
             var it = blockedModel.get(list.currentIndex);
             if (it) page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: it.username });
         }
-        // Keyboard cursor ring (the delegate is a plain Item, not a ListItem, so
-        // there's no native focus frame; draw one on the current row).
+        // Delegate is a plain Item with no native focus frame; draw one here
         highlight: Rectangle {
             z: 5
             width: list.width

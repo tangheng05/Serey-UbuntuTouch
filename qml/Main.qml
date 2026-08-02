@@ -31,9 +31,7 @@ MainView {
     readonly property bool desktopMode: width >= Config.desktopBreakpoint
     Binding { target: Config; property: "desktopMode"; value: root.desktopMode }
 
-    // Follow the OS light/dark setting: bind the Style singleton's `dark` switch to
-    // the active Suru theme so every color token re-skins centrally (no call-site
-    // change). Luminance of the theme background works regardless of the theme name.
+    // Follow OS light/dark setting: bind Style.dark to the active Suru theme luminance
     Binding { target: Style; property: "dark"; value: root.theme.palette.normal.background.hslLightness < 0.5 }
 
     // Cut/Copy/Paste popover text color
@@ -42,8 +40,7 @@ MainView {
     }
 
     property int currentTab: 0
-    // No fade for the Homepage: animating opacity over the live Chromium view
-    // recomposites it every frame and the tab arrives visibly late.
+    // No fade for Homepage: animating opacity over live Chromium recomposites every frame
     onCurrentTabChanged: {
         Config.currentTab = currentTab;
         _ensureTab(currentTab);
@@ -83,7 +80,7 @@ MainView {
     readonly property bool showNavBar: root.wideMode || activeColumns > 1 || activeDepth <= 1
 
     Component.onCompleted: {
-        // Expired tokens are caught lazily via 401 (can't check up-front); only clear if the rejected token is still the current one.
+        // Expired tokens caught lazily via 401; only clear if rejected token is still current
         Http.setUnauthorizedHandler(function (tokenUsed) {
             if (!Session.isLoggedIn) return;
             if (tokenUsed !== Session.token) return;
@@ -94,9 +91,7 @@ MainView {
         // Needed immediately: the header pill icons and can-post gates read it.
         _loadCommunities();
 
-        // Country hint for the community picker. Fire-and-forget: it only
-        // reorders that sheet, so a failure (offline, VPN, unknown IP) must
-        // leave the app exactly as it is today.
+        // Country hint for community picker; fire-and-forget, failure leaves app as-is
         GeoService.detectCountry(
             function (code) { Config.detectedCountryCode = code; root._applyGeoSource(); },
             function () { /* no hint; Global stays selected, picker keeps its order */ });
@@ -166,13 +161,9 @@ MainView {
             function (err) { /* silent — notification may be gone/read elsewhere */ });
     }
 
-    // Open on the user's own country instead of Global. Needs both the geo hint
-    // and the source list (they race), so it's called from whichever lands second.
-    // Only ever moves OFF Global: a community picked mid-flight must be kept.
+    // Open on the user's own country instead of Global; called from whichever of geo/sources lands second
     property bool _geoSourceApplied: false
-    // Explicit flag, NOT sources.length: `sources` is pre-seeded with baseSources,
-    // so a length check would read "loaded" before the country rows arrive and
-    // the geo hint would latch on no match.
+    // Explicit flag, not sources.length: sources is pre-seeded with baseSources
     property bool _communitiesLoaded: false
     function _applyGeoSource() {
         if (root._geoSourceApplied) return;
@@ -183,9 +174,7 @@ MainView {
             Config.sourceIndex = i;
     }
 
-    // Fetch get-communities and rebuild the picker's sources + derived maps.
-    // Runs at startup and via Nav.refreshCommunities() after a platform
-    // create/delete (the picker otherwise only updated after a restart).
+    // Fetch get-communities and rebuild picker's sources + maps; runs at startup and on refreshCommunities()
     function _loadCommunities() {
         CommunityService.listAll(Config.baseUrl,
             function (list, superhubChildren, byId, hiddenIds, parents) {
@@ -206,7 +195,7 @@ MainView {
                 for (var b = 0; b < Config.baseSources.length; b++)
                     baseDns[Config.baseSources[b].dns] = true;
 
-                // Append every top-level country (except Cambodia) below the fixed rows; icons derive from a flagcdn flag since backend icon_url is empty.
+                // Append top-level countries below fixed rows; icons derive from flagcdn
                 var extra = [];
                 for (var i = 0; i < list.length; i++) {
                     var c = list[i];
@@ -220,17 +209,14 @@ MainView {
 
                 Config.iconByDns = icons;
                 Config.appendCountries(extra);
-                // The country rows just landed: if the geo hint beat them here,
-                // this is where it gets applied.
+                // Country rows just landed; apply geo hint if it beat them here
                 root._communitiesLoaded = true;
                 root._applyGeoSource();
             },
             function (err) { /* keep globe fallback */ });
     }
 
-    // After a platform create/delete: refresh now, then again past the server's
-    // 60s in-process cache TTL, since another API instance can still serve a
-    // stale local entry to the immediate re-fetch.
+    // After create/delete: refresh now, then again past the server's 60s cache TTL
     property Timer _communitiesRetry: Timer {
         interval: 65000
         repeat: false
@@ -244,9 +230,7 @@ MainView {
         }
     }
 
-    // Warm the News/Video feeds at launch so the tabs paint rows, not a skeleton
-    // (the Video request costs seconds server-side). Data only, never the pages;
-    // instantiating the tabs is what made the Homepage janky. FeedCache coalesces.
+    // Warm News/Video feeds at launch so tabs paint rows; data only, never the pages
     function _prefetchFeeds() {
         FeedCache.request(FeedCache.newsKey(0, Config.communityId),
             function (ok, err) {
@@ -260,8 +244,7 @@ MainView {
 
         FeedCache.request(FeedCache.videoKey(Config.communityId),
             function (ok, err) {
-                // Must match VideoPage's first-page request (initialLimit) or the
-                // page's own fetch won't coalesce with this one.
+                // Must match VideoPage's first-page request (initialLimit) to coalesce
                 var p = { limit: 30, offset: 0 };
                 if (Config.communityId > 0) p.community_id = Config.communityId;
                 else p.exclude_home = 1;
@@ -320,9 +303,7 @@ MainView {
     property var  notifSound: null
 
     function _showNotif(body) {
-        // Create the sound player lazily, NOT at startup: constructing a
-        // QtMultimedia Audio spins up media-hub's Hybris video sink, which
-        // SIGSEGVs on an icon relaunch after a kill. By now the window is up.
+        // Lazy, not at startup: constructing QtMultimedia Audio SIGSEGVs on an icon relaunch
         if (!root.notifSound) {
             try {
                 root.notifSound = Qt.createQmlObject(
@@ -360,8 +341,7 @@ MainView {
     }
 
     function _initNotifications() {
-        // The notification sound is deliberately NOT created here: constructing
-        // QtMultimedia Audio SIGSEGVs on an icon relaunch (see _showNotif).
+        // Notification sound deliberately not created here (see _showNotif)
 
         try {
             root.sysNotif = Qt.createQmlObject(
@@ -430,9 +410,7 @@ MainView {
         }
     }
 
-    // Background check for a pending crypto payment: activation only happens
-    // when our client polls check-status (no webhook), so this catches payments
-    // made after the sheet or app closed. PaymentSheet's own poll runs while open.
+    // Catches crypto payments made after the sheet or app closed; PaymentSheet polls while open
     Timer {
         id: cryptoPendingPoller
         interval: 60000
@@ -452,9 +430,7 @@ MainView {
                     } else if (status === "failed" || status === "refunded" || status === "expired") {
                         Payments.clearPendingCrypto()
                     } else {
-                        // Still waiting/confirming. Keep checking a day past
-                        // expiry: late blockchain confirmations can land after
-                        // the NOWPayments window.
+                        // Still waiting/confirming; keep checking a day past expiry for late confirmations
                         var exp = Date.parse(p.expiresAt)
                         if (!isNaN(exp) && Date.now() > exp + 24 * 3600 * 1000)
                             Payments.clearPendingCrypto()
@@ -487,8 +463,7 @@ MainView {
             while (settingsStack.depth > 1)
                 settingsStack.pop();
         }
-        // Buy-plan -> create-platform funnel: land on Settings with the wizard
-        // pushed (its own gate re-checks the now-active subscription).
+        // Buy-plan -> create-platform funnel; wizard re-checks the now-active subscription
         function onCreatePlatform() {
             root.currentTab = 3;
             root._ensureTab(3);
@@ -537,8 +512,7 @@ MainView {
             id: feedBtn
             visible: Session.isLoggedIn
             anchors.centerIn: parent
-            // Tap target fills the header height so it is comfortable to hit;
-            // the icon inside keeps its smaller visual size.
+            // Tap target fills header height for comfort; icon keeps smaller visual size
             width: units.gu(6)
             height: width
             onClicked: {
@@ -609,9 +583,7 @@ MainView {
                 width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
                 height: width
                 onClicked: {
-                    // Target the Video master page: in split mode currentPage is
-                    // VideoDetailPage (no reload()), so the connect was silently
-                    // skipped and the feed never showed the new upload.
+                    // Target the Video master page; currentPage in split mode has no reload()
                     var vp = videoStack.rootPage;
                     var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
                     if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);
@@ -647,8 +619,7 @@ MainView {
 
         AdaptiveStack {
             id: homeStack
-            // The web app is the panel: never split. Sub-pages (My Feed, Login)
-            // cover it full-screen instead of shrinking it into a master column.
+            // The web app is the panel, never split; sub-pages cover it full-screen instead
             neverSplit: true
             anchors.fill: parent
             visible: root.currentTab === 0
@@ -673,37 +644,75 @@ MainView {
             id: settingsStack
             emptyDetailIconName: "settings"
             emptyDetailMessage: Lang.tr("Select a setting")
-            anchors.fill: parent
+            anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: accountPanelDivider.visible ? accountPanelDivider.left : parent.right }
             visible: root.currentTab === 3
+        }
+
+        // Desktop-only (not tablet)
+        readonly property bool _showAccountPanel: root.currentTab === 3 && root.desktopMode
+
+        // Draggable splitter (Account status rail)
+        readonly property real _minAccountPanelW: units.gu(30)
+        readonly property real _maxAccountPanelW: Math.max(_minAccountPanelW, Math.min(body.width * 0.55, body.width - units.gu(45)))
+        property real accountPanelWidth: units.gu(40)
+        readonly property real _accountPanelW: Math.max(_minAccountPanelW, Math.min(_maxAccountPanelW, accountPanelWidth))
+
+        Rectangle {
+            id: accountPanelDivider
+            anchors { top: parent.top; bottom: parent.bottom; right: accountStatusPanel.left }
+            width: units.dp(2)
+            visible: accountStatusPanel.visible
+            color: accountPanelDragArea.containsMouse || accountPanelDragArea.pressed ? Style.brand : Style.divider
+        }
+        MouseArea {
+            id: accountPanelDragArea
+            visible: accountStatusPanel.visible
+            anchors { top: parent.top; bottom: parent.bottom }
+            x: accountPanelDivider.x - width / 2
+            width: units.gu(1.5)
+            hoverEnabled: true
+            preventStealing: true
+            cursorShape: Qt.SplitHCursor
+            onPositionChanged: {
+                if (!pressed) return;
+                var pointX = mapToItem(body, mouse.x, 0).x;
+                body.accountPanelWidth = Math.max(body._minAccountPanelW, Math.min(body._maxAccountPanelW, body.width - pointX));
+            }
+        }
+
+        // Account status rail (outside settingsStack's own split)
+        AccountStatusPanel {
+            id: accountStatusPanel
+            anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
+            width: body._showAccountPanel ? body._accountPanelW : 0
+            visible: body._showAccountPanel
+            profile: settingsStack.rootPage ? settingsStack.rootPage.profile : null
+            pageStack: settingsStack
         }
     }
 
-    // Ctrl+1..4 switch tabs directly (morph-browser style); disabled while the
-    // nav is hidden. Switching must MOVE focus too, or it stays trapped in the
-    // Homepage Chromium view, which keeps eating keys while another tab shows.
-    function switchTab(i) { root.currentTab = i; Qt.callLater(root.focusActiveContent); }
+    // Ctrl+1..4 switch tabs; must MOVE focus too or it stays trapped in the Homepage Chromium view.
+    // fromKeyboard gates the visible keyboard-cursor ring: mouse clicks move focus quietly.
+    function switchTab(i, fromKeyboard) { root.currentTab = i; Qt.callLater(function () { root.focusActiveContent(!!fromKeyboard); }); }
 
-    Shortcut { sequence: "Ctrl+1"; enabled: root.showNavBar; onActivated: root.switchTab(0) }
-    Shortcut { sequence: "Ctrl+2"; enabled: root.showNavBar; onActivated: root.switchTab(1) }
-    Shortcut { sequence: "Ctrl+3"; enabled: root.showNavBar; onActivated: root.switchTab(2) }
-    Shortcut { sequence: "Ctrl+4"; enabled: root.showNavBar; onActivated: root.switchTab(3) }
+    Shortcut { sequence: "Ctrl+1"; enabled: root.showNavBar; onActivated: root.switchTab(0, true) }
+    Shortcut { sequence: "Ctrl+2"; enabled: root.showNavBar; onActivated: root.switchTab(1, true) }
+    Shortcut { sequence: "Ctrl+3"; enabled: root.showNavBar; onActivated: root.switchTab(2, true) }
+    Shortcut { sequence: "Ctrl+4"; enabled: root.showNavBar; onActivated: root.switchTab(3, true) }
 
-    // Ctrl+Tab tab cycling via StandardKey (platform-adaptive, same as morph-
-    // browser). Shortcuts fire before the focused item, so this is the only way
-    // to change tabs from inside the Homepage Chromium view.
+    // Ctrl+Tab cycling via StandardKey; shortcuts fire before focused item, so it's the only way in from the Homepage view
     Shortcut {
         sequence: StandardKey.NextChild
         enabled: root.showNavBar
-        onActivated: root.switchTab((root.currentTab + 1) % root._tabs.length)
+        onActivated: root.switchTab((root.currentTab + 1) % root._tabs.length, true)
     }
     Shortcut {
         sequence: StandardKey.PreviousChild
         enabled: root.showNavBar
-        onActivated: root.switchTab((root.currentTab - 1 + root._tabs.length) % root._tabs.length)
+        onActivated: root.switchTab((root.currentTab - 1 + root._tabs.length) % root._tabs.length, true)
     }
 
-    // F6 jumps to the tab nav from anywhere; an escape from the Homepage Chromium
-    // view, which swallows Tab and the arrows. Single target, like morph-browser.
+    // F6 jumps to the tab nav from anywhere; escape hatch from the Homepage view which swallows Tab/arrows
     Shortcut { sequence: "F6"; enabled: root.showNavBar; onActivated: root.focusNavRail() }
 
     // Focus the active tab's button in whichever nav layout is showing.
@@ -712,24 +721,23 @@ MainView {
         var it = rep.itemAt(root.currentTab);
         if (it) it.keyArea.forceActiveFocus();
     }
-    // Focus the active tab's content page (works on every tab incl. the
-    // Homepage web view; Nav.focusMaster only services split stacks).
-    function focusActiveContent() {
+    // Focus active tab's content page; fromKeyboard shows the list cursor ring, otherwise focus moves quietly (mouse entry)
+    function focusActiveContent(fromKeyboard) {
         var stack = root.currentTab === 0 ? homeStack
                   : root.currentTab === 1 ? newsStack
                   : root.currentTab === 2 ? videoStack
                   : settingsStack;
         var p = stack.rootPage;
         if (!p) return;
-        // Reaching content by keyboard should show the list cursor (same contract as
-        // AdaptiveStack.focusMaster); plain forceActiveFocus leaves it invisible.
-        if (p.focusListKeyNav) { p.focusListKeyNav(); return; }
+        if (fromKeyboard && p.focusListKeyNav) { p.focusListKeyNav(); return; }
         (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
     }
     Connections {
         target: Nav
         function onFocusNav() { root.focusNavRail(); }
         function onFocusContent() { root.focusActiveContent(); }
+        // Only the Settings tab currently has a persistent right rail outside its AdaptiveStack.
+        function onFocusRightPanel() { if (body._showAccountPanel) accountStatusPanel.focusPanel(); }
     }
 
     // Shared by both nav layouts below, so the tab list only exists once.
@@ -773,14 +781,13 @@ MainView {
                         name: modelData.icon
                         color: active ? Style.brand : Style.textSecondary
                     }
-                    onClicked: root.currentTab = index
+                    // Route click through switchTab() (moves focus too)
+                    onClicked: root.switchTab(index)
                     KeyTapArea {
                         id: navTap
-                        // Enter always drops into the tab's content, even when
-                        // the tab is already active (a tab change alone only
-                        // moves focus via the page's onVisibleChanged).
-                        onActivated: root.switchTab(index)
-                        // Horizontal bar: Left/Right walk the tabs.
+                        // Enter always drops into the tab's content, even when already active
+                        onActivated: root.switchTab(index, true)
+                        // Horizontal bar: Left/Right walk the tabs
                         onLeftPressed:  { var it = navRep.itemAt(index - 1); if (it) it.keyArea.forceActiveFocus(); }
                         onRightPressed: { var it = navRep.itemAt(index + 1); if (it) it.keyArea.forceActiveFocus(); }
                     }
@@ -789,11 +796,11 @@ MainView {
         }
     }
 
-    // Side navigation: a full-height vertical rail, matching Lomiri's desktop shell convention (convergence, not scaling).
+    // Side navigation: full-height vertical rail (convergence, not scaling); icon-only on tablet
     Rectangle {
         id: sideNavBar
         anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-        width: (root.showNavBar && root.wideMode) ? units.gu(20) : 0
+        width: (root.showNavBar && root.wideMode) ? (root.desktopMode ? units.gu(20) : units.gu(8)) : 0
         visible: root.showNavBar && root.wideMode
         color: Style.surface
 
@@ -817,7 +824,9 @@ MainView {
                     property alias keyArea: railTap
 
                     Row {
-                        anchors { left: parent.left; leftMargin: units.gu(2); verticalCenter: parent.verticalCenter }
+                        // Centered icon-only (tablet) or left-aligned with label (desktop)
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: root.desktopMode ? units.gu(2) : (parent.width - width) / 2
                         spacing: units.gu(1.5)
 
                         Icon {
@@ -828,6 +837,7 @@ MainView {
                             color: active ? Style.brand : Style.textSecondary
                         }
                         Label {
+                            visible: root.desktopMode
                             anchors.verticalCenter: parent.verticalCenter
                             text: modelData.label
                             font.pixelSize: Style.fontMedium
@@ -835,18 +845,16 @@ MainView {
                             color: active ? Style.brand : Style.textSecondary
                         }
                     }
-                    onClicked: root.currentTab = index
+                    // Same fix as navRep
+                    onClicked: root.switchTab(index)
                     KeyTapArea {
                         id: railTap
-                        // Enter always drops into the tab's content, even when
-                        // the tab is already active (a tab change alone only
-                        // moves focus via the page's onVisibleChanged).
-                        onActivated: root.switchTab(index)
-                        // Vertical rail: Up/Down walk the tabs; Right steps into
-                        // the active tab's content list (mirrors list -> detail).
+                        // Enter always drops into the tab's content, even when already active
+                        onActivated: root.switchTab(index, true)
+                        // Vertical rail: Up/Down walk the tabs; Right steps into content (mirrors list -> detail)
                         onUpPressed:   { var it = railRep.itemAt(index - 1); if (it) it.keyArea.forceActiveFocus(); }
                         onDownPressed: { var it = railRep.itemAt(index + 1); if (it) it.keyArea.forceActiveFocus(); }
-                        onRightPressed: root.focusActiveContent()
+                        onRightPressed: root.focusActiveContent(true)
                     }
                 }
             }

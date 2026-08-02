@@ -30,7 +30,8 @@ Item {
             function (err) { Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't save for offline.")); });
     }
 
-    // moreBtn's compact dropdown; report/delete/block still route through PostActionSheet
+    // moreBtn's compact dropdown; report/delete/block still route through PostActionSheet. Desktop only — phone/tablet use the full sheet.
+    property bool compactMenu: Config.desktopMode
     property bool menuOpen: false
 
     function menuItems() {
@@ -218,7 +219,7 @@ Item {
                 Layout.preferredWidth: units.gu(3.5)
                 Layout.preferredHeight: units.gu(3.5)
                 Layout.alignment: Qt.AlignVCenter
-                onClicked: root.menuOpen = !root.menuOpen
+                onClicked: root.compactMenu ? (root.menuOpen = !root.menuOpen) : root.moreClicked()
 
                 Column {
                     anchors.centerIn: parent

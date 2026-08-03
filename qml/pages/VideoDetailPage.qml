@@ -13,6 +13,7 @@ import "../services/FollowService.js" as FollowService
 import "../services/YouTube.js" as YouTube
 import "../services/VoteService.js" as VoteService
 import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/BlockedUsers.js" as BlockedUsers
 
 Page {
     id: page
@@ -54,6 +55,8 @@ Page {
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
     property var moreVideos: []
+    // Gates the rail's empty state so it can't flash while the request is in flight
+    property bool relatedLoading: false
 
     // Desktop-only "•••" dropdown in the header (see videoMoreHeaderBtn).
     property bool headerMenuOpen: false
@@ -820,17 +823,40 @@ Page {
         return t.trim();
     }
 
+    // Topic of a video row. categories[0] is often the "video" routing tag, not a
+    // topic; use the mapper's scalar since `categories` is ListModel-wrapped here.
+    function _topicOf(v) {
+        var c = String((v && v.primaryCategory) || "");
+        return c.toLowerCase() === "video" ? "" : c;
+    }
+
+    // Right rail - other videos in the same community and category, this one excluded.
+    // Mirrors PostDetailPage.loadRelated(). It used to be the 3 newest videos
+    // site-wide, which is why an unrelated Khmer upload sat under a Russian post.
     function _loadMoreVideos() {
-        var myPermlink = page.video ? page.video.permlink : "";
-        VideoService.listVideos(Config.baseUrl, { limit: 6, offset: 0 }, Session.token,
+        var me = page.video || {};
+        var cat = page._topicOf(me);
+        var p = { limit: 20, offset: 0 };
+        if (me.communityId > 0) p.community_id = me.communityId;
+        else p.exclude_home = 1;
+        page.relatedLoading = true;
+        VideoService.listVideos(Config.baseUrl, p, Session.token,
             function (result) {
                 if (!page) return;   // page torn down before the response arrived
-                var filtered = result.filter(function (v) {
-                    return v.permlink !== myPermlink;
-                });
-                page.moreVideos = filtered.slice(0, 3);
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
+                var out = [];
+                for (var i = 0; i < result.length && out.length < 3; i++) {
+                    var v = result[i];
+                    if (v.permlink === me.permlink) continue;
+                    if (hidden[v.permlink] || blocked[v.author || ""]) continue;
+                    if (page._topicOf(v) !== cat) continue;
+                    out.push(v);
+                }
+                page.moreVideos = out;
+                page.relatedLoading = false;
             },
-            function (err) { /* ignore */ });
+            function (err) { if (page) page.relatedLoading = false; });
     }
 
     Component.onCompleted: {
@@ -1460,6 +1486,8 @@ Page {
                                     source: modelData.thumbnail || ""
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
+                                    // Cap the decode: these are gu(9) thumbs, not full-size covers
+                                    sourceSize.width: units.gu(18)
                                     visible: false
                                 }
                                 Rectangle {
@@ -1496,6 +1524,15 @@ Page {
                             }
                         }
                     }
+                }
+
+                Label {
+                    width: sidePanelCol.width
+                    visible: !page.relatedLoading && page.moreVideos.length === 0
+                    text: Lang.tr("No related videos yet")
+                    font.pixelSize: Style.fontSmall
+                    color: Style.textSecondary
+                    wrapMode: Text.Wrap
                 }
 
                 // Upvote/downvote, mirroring the main vote row but living here in wide mode

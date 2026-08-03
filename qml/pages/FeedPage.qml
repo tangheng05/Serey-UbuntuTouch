@@ -591,7 +591,7 @@ Page {
                     page.openDetail(Qt.resolvedUrl("VideoDetailPage.qml"), { video: p })
                 else
                     page.openDetail(Qt.resolvedUrl("PostDetailPage.qml"),
-                        { author: p.author, permlink: p.permlink, title: p.title })
+                        { author: p.author, permlink: p.permlink, title: p.title, seedPost: p })
             }
 
             // Touch equivalent of the removed overflow button; opens the same Hide/Report/Block sheet.
@@ -683,7 +683,8 @@ Page {
                         width: parent ? parent.width : 0
                         post: feedItem.postData
                         onClicked: page.openDetail(Qt.resolvedUrl("PostDetailPage.qml"),
-                            { author: feedItem.postData.author, permlink: feedItem.postData.permlink, title: feedItem.postData.title })
+                            { author: feedItem.postData.author, permlink: feedItem.postData.permlink,
+                              title: feedItem.postData.title, seedPost: feedItem.postData })
                         onAuthorClicked: page.openDetail(Qt.resolvedUrl("ProfileViewPage.qml"),
                             { username: feedItem.postData.author })
                         onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))

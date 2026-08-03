@@ -136,8 +136,14 @@ Page {
         else page.runHeaderMenuAction(row.action);
     }
 
+    // Opened inside a stack that already owns a third column (Settings > Downloaded
+    // Content): its rail would make a fourth, and related videos are the wrong offer
+    // next to a download you saved to watch offline.
+    property bool allowSidePanel: true
+
     // Right rail (related/vote/comments): desktop only, tablet has no room for it
-    readonly property bool showSidePanel: Config.desktopMode && !!(page.video && page.video.permlink)
+    readonly property bool showSidePanel: Config.desktopMode && page.allowSidePanel
+                                          && !!(page.video && page.video.permlink)
     // Resizable via the drag handle below; clamped so the article column always keeps a sane minimum width.
     property real sidePanelWidth: units.gu(34)
     readonly property real _minSidePanelW: units.gu(26)
@@ -472,7 +478,9 @@ Page {
                 Icon {
                     anchors.centerIn: parent
                     width: units.gu(2.2); height: width
-                    name: "bookmark"
+                    // Same save/tick pair the "..." menu and action sheet use; a
+                    // bookmark glyph here read as a different action than the row below it.
+                    name: page.dlSaved ? "tick" : "save"
                     color: page.dlSaved ? Style.brand : Style.textPrimary
                 }
             }
@@ -830,31 +838,63 @@ Page {
         return c.toLowerCase() === "video" ? "" : c;
     }
 
-    // Right rail - other videos in the same community and category, this one excluded.
-    // Mirrors PostDetailPage.loadRelated(). It used to be the 3 newest videos
-    // site-wide, which is why an unrelated Khmer upload sat under a Russian post.
+    readonly property int _relatedWanted: 3
+
+    // Same topic first, then anything else from the pool, so the rail is rarely empty.
+    function _fillRelated(pool, cat, out, seen, hidden, blocked, sameCatOnly) {
+        for (var i = 0; i < pool.length && out.length < page._relatedWanted; i++) {
+            var v = pool[i];
+            if (!v || !v.permlink || seen[v.permlink]) continue;
+            if (hidden[v.permlink] || blocked[v.author || ""]) continue;
+            if (sameCatOnly && cat !== "" && page._topicOf(v) !== cat) continue;
+            seen[v.permlink] = true;
+            out.push(v);
+        }
+    }
+
+    // Right rail. Cache first (the video feed the viewer came from is already in FeedCache),
+    // network only when that isn't enough. It used to be the 3 newest videos site-wide,
+    // which is why an unrelated Khmer upload sat under a Russian post.
     function _loadMoreVideos() {
+        // Only desktop renders the rail; elsewhere this would be a request nobody sees
+        if (!page.allowSidePanel || !Config.desktopMode) return;
         var me = page.video || {};
         var cat = page._topicOf(me);
-        var p = { limit: 20, offset: 0 };
+        var hidden = HiddenPosts.loadAll();
+        var blocked = BlockedUsers.loadAll();
+        var out = [];
+        var seen = {};
+        seen[me.permlink || ""] = true;
+        var key = "relatedvid:" + (me.communityId || 0) + ":"
+                  + (Session.isLoggedIn && Session.username ? Session.username : "__guest__");
+
+        // The video feed cache describes the community being browsed, so only trust it when
+        // that matches this video (Global carries everything, so it always does).
+        var pool = [];
+        if (Config.communityId === 0 || Config.communityId === (me.communityId || 0))
+            pool = FeedCache.peek(FeedCache.videoKey(Config.communityId)) || [];
+        var prev = FeedCache.peek(key);      // an earlier video already paid for this one
+        if (prev) pool = pool.concat(prev);
+
+        page._fillRelated(pool, cat, out, seen, hidden, blocked, true);
+        if (out.length < page._relatedWanted)
+            page._fillRelated(pool, cat, out, seen, hidden, blocked, false);
+        if (out.length > 0) page.moreVideos = out;
+        if (out.length >= page._relatedWanted) return;
+
+        page.relatedLoading = true;
+        var p = { limit: 12, offset: 0 };
         if (me.communityId > 0) p.community_id = me.communityId;
         else p.exclude_home = 1;
-        page.relatedLoading = true;
-        VideoService.listVideos(Config.baseUrl, p, Session.token,
+        FeedCache.request(key,
+            function (ok, err) { return VideoService.listVideos(Config.baseUrl, p, Session.token, ok, err); },
             function (result) {
                 if (!page) return;   // page torn down before the response arrived
-                var hidden = HiddenPosts.loadAll();
-                var blocked = BlockedUsers.loadAll();
-                var out = [];
-                for (var i = 0; i < result.length && out.length < 3; i++) {
-                    var v = result[i];
-                    if (v.permlink === me.permlink) continue;
-                    if (hidden[v.permlink] || blocked[v.author || ""]) continue;
-                    if (page._topicOf(v) !== cat) continue;
-                    out.push(v);
-                }
-                page.moreVideos = out;
                 page.relatedLoading = false;
+                page._fillRelated(result, cat, out, seen, hidden, blocked, true);
+                if (out.length < page._relatedWanted)
+                    page._fillRelated(result, cat, out, seen, hidden, blocked, false);
+                page.moreVideos = out;
             },
             function (err) { if (page) page.relatedLoading = false; });
     }
@@ -1526,6 +1566,13 @@ Page {
                     }
                 }
 
+                RelatedSkeleton {
+                    width: sidePanelCol.width
+                    // showSidePanel too: an invisible ancestor doesn't stop the pulse animations
+                    visible: page.showSidePanel && page.moreVideos.length === 0 && page.relatedLoading
+                    thumbWidth: units.gu(9)
+                }
+
                 Label {
                     width: sidePanelCol.width
                     visible: !page.relatedLoading && page.moreVideos.length === 0
@@ -1625,16 +1672,30 @@ Page {
 
                 Repeater {
                     model: page.comments
-                    delegate: CommentItem {
+                    // Wrapper carries the between-comments rule; a flush-left body needs
+                    // the separation that the avatar indent used to provide.
+                    delegate: Column {
                         width: sidePanelCol.width
-                        comment: modelData
-                        onDeleted: page.removeComment(permlink)
-                        onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
-                        onReplyRequested: page.startReply(comment)
+                        spacing: Style.spacingS
+
+                        Rectangle {
+                            visible: index > 0
+                            width: parent.width
+                            height: units.dp(1)
+                            color: Style.divider
+                        }
+
+                        CommentItem {
+                            width: parent.width
+                            compact: true
+                            comment: modelData
+                            onDeleted: page.removeComment(permlink)
+                            onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
+                            onReplyRequested: page.startReply(comment)
+                            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: author })
+                        }
                     }
                 }
-
-                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
             }
         }
 

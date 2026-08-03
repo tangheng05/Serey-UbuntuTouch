@@ -42,7 +42,9 @@ QtObject {
             // Mark busy now so the same author queued twice can't be sent twice on flush
             _busy[author] = true;
             _queue.push({ baseUrl: baseUrl, viewer: viewer, author: author });
-            _burstTimer.restart();
+            // start, not restart: restarting per author pushed the flush out indefinitely
+            // while a list kept creating delegates
+            if (!_burstTimer.running) _burstTimer.start();
             return;
         }
         _busy[author] = true;

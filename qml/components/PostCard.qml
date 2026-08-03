@@ -85,12 +85,9 @@ Item {
         return 0;
     }
 
-    // Ensure the shared store knows this author's state, then refresh vote state from session cache or model voters.
-    onPChanged: {
-        if (Session.isLoggedIn && p.author && p.author !== Session.username)
-            FollowStore.load(Config.baseUrl, Session.username, p.author);
-        _syncVoteBar();
-    }
+    // No follow priming here: the card shows no follow state, and doing it per delegate meant
+    // a /follow/status request per author while scrolling. The swipe action primes itself.
+    onPChanged: _syncVoteBar()
 
     // ListModel.set() mutates `p` in place so onPChanged never fires; watch values directly instead
     readonly property int _pVotes: p.votes || 0

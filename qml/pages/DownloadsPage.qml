@@ -119,7 +119,9 @@ Page {
                 width: parent.width
                 video: modelData
                 compactMenu: false
-                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: modelData })
+                // Settings already owns the third column here; no rail on the detail page
+                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
+                    { video: modelData, allowSidePanel: false })
                 onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                     { username: modelData.author })
                 onMoreClicked: { page._pendingRemove = modelData.permlink || ""; PopupUtils.open(removeDialog); }

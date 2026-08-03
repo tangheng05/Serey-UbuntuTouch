@@ -138,7 +138,9 @@ Page {
                 width: parent.width
                 video: modelData
                 compactMenu: false
-                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: modelData })
+                // Settings already owns the third column here; no rail on the detail page
+                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
+                    { video: modelData, allowSidePanel: false })
                 onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                     { username: modelData.author })
                 onMoreClicked: { page._pendingRemoveVideo = modelData.permlink || ""; PopupUtils.open(removeVideoDialog); }
@@ -174,7 +176,7 @@ Page {
             height: articleRow.height + Style.spacingM * 2
             onClicked: page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
                 { author: modelData.author, permlink: modelData.permlink,
-                  title: modelData.title, preloadedPost: modelData })
+                  title: modelData.title, preloadedPost: modelData, allowSidePanel: false })
 
             // HIG polarity: LEADING = negative (red trash), TRAILING = positive.
             leadingActions: ListItemActions {
@@ -223,7 +225,7 @@ Page {
                 id: contextArea
                 onActivated: page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
                     { author: modelData.author, permlink: modelData.permlink,
-                      title: modelData.title, preloadedPost: modelData })
+                      title: modelData.title, preloadedPost: modelData, allowSidePanel: false })
                 menuActions: ActionList {
                     Action {
                         iconName: "delete"; text: Lang.tr("Remove")

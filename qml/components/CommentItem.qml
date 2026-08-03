@@ -16,6 +16,12 @@ Item {
     // Nested replies start collapsed so a deep thread doesn't eagerly instantiate
     property bool repliesExpanded: depth < 1
     property bool topLevel: true
+    // Rail density: the desktop side panel is ~gu(34) wide, so the body drops the
+    // avatar indent, margins tighten, and long comments clamp behind "Read more".
+    property bool compact: false
+    property bool bodyExpanded: false
+    readonly property real _bodyIndent: item.compact ? 0 : units.gu(3.5) + Style.spacingS
+    readonly property real _sideMargin: item.compact ? Style.spacingS : Style.spacingM
 
     // Only the author can edit/delete, and only a comment that exists server-side (optimistic local comments carry an empty permlink).
     readonly property bool canModify: Session.isLoggedIn
@@ -64,8 +70,8 @@ Item {
             left: parent.left
             right: parent.right
             top: parent.top
-            leftMargin: Style.spacingM
-            rightMargin: Style.spacingM
+            leftMargin: item._sideMargin
+            rightMargin: item._sideMargin
             topMargin: Style.spacingS
         }
         spacing: Style.spacingXs
@@ -118,7 +124,10 @@ Item {
                 spacing: Style.spacingXs
 
                 Label {
+                    // Rail only: cap at the text width so the timestamp reads as part of the
+                    // byline instead of a stray value pinned to the far edge of a narrow column.
                     Layout.fillWidth: true
+                    Layout.maximumWidth: item.compact ? implicitWidth : Number.POSITIVE_INFINITY
                     text: c.author || ""
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold
@@ -133,6 +142,7 @@ Item {
                     color: Style.textSecondary
                     elide: Text.ElideRight
                 }
+                Item { Layout.fillWidth: true; visible: item.compact }
             }
 
             AbstractButton {
@@ -229,20 +239,42 @@ Item {
         }
 
         Label {
+            id: bodyLabel
             visible: !item.editing
             width: parent.width - x - Style.wrapSafeMargin
-            x: units.gu(3.5) + Style.spacingS
+            x: item._bodyIndent
             text: c.body || ""
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFor(text)
             color: Style.textPrimary
             wrapMode: Text.Wrap
+            // A 900-character comment otherwise fills the whole rail and buries
+            // every comment under it. 999 is "no clamp": 0 would render nothing.
+            maximumLineCount: (item.compact && !item.bodyExpanded) ? 6 : 999
+            elide: (item.compact && !item.bodyExpanded) ? Text.ElideRight : Text.ElideNone
+        }
+
+        AbstractButton {
+            // truncated goes false once expanded, so bodyExpanded carries the "Show less" state
+            visible: !item.editing && (bodyLabel.truncated || item.bodyExpanded)
+            x: item._bodyIndent
+            width: readMoreLabel.implicitWidth
+            height: units.gu(2.75)
+            onClicked: item.bodyExpanded = !item.bodyExpanded
+            Label {
+                id: readMoreLabel
+                anchors.verticalCenter: parent.verticalCenter
+                text: item.bodyExpanded ? Lang.tr("Show less") : Lang.tr("Read more")
+                font.pixelSize: Style.fontSmall
+                font.weight: Font.DemiBold
+                color: Style.brand
+            }
         }
 
         Column {
             visible: item.editing
-            width: parent.width - (units.gu(3.5) + Style.spacingS)
-            x: units.gu(3.5) + Style.spacingS
+            width: parent.width - item._bodyIndent
+            x: item._bodyIndent
             spacing: Style.spacingXs
 
             TextArea {
@@ -284,7 +316,10 @@ Item {
         }
 
         Row {
-            anchors.right: parent.right
+            // Rail: sits under the body on the same left edge, where the eye already is.
+            // Wide column: stays right-aligned, clear of the reading measure. Positioned
+            // with x, not a conditional anchor, which QML can't reset from a binding.
+            x: item.compact ? item._bodyIndent : Math.max(0, parent.width - width)
             spacing: Style.spacingM
 
             VoteBar {
@@ -340,7 +375,7 @@ Item {
 
         AbstractButton {
             visible: item.replies.length > 0
-            x: units.gu(3.5) + Style.spacingS
+            x: item._bodyIndent
             width: toggleLabel.implicitWidth
             height: units.gu(3)
             onClicked: item.repliesExpanded = !item.repliesExpanded
@@ -386,7 +421,8 @@ Item {
                 id: repliesCol
                 // 'item' inside a Loader delegate shadows the outer CommentItem id
                 readonly property int ownerDepth: item.depth
-                x: ownerDepth === 0 ? units.gu(2.5) : 0
+                readonly property bool ownerCompact: item.compact
+                x: ownerDepth === 0 ? (ownerCompact ? units.gu(1.75) : units.gu(2.5)) : 0
                 width: parent.width - x
 
                 function forwardSignals(loaderItem) {
@@ -407,6 +443,7 @@ Item {
                         Component.onCompleted: setSource(Qt.resolvedUrl("CommentItem.qml"), {
                             comment:  replyData,
                             topLevel: false,
+                            compact:  repliesCol.ownerCompact,
                             depth:    Math.min(repliesCol.ownerDepth + 1, 1)
                         })
                         onItemChanged: repliesCol.forwardSignals(replyLoader.item)

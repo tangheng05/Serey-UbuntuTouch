@@ -522,7 +522,7 @@ Page {
                     Qt.callLater(function () { newsItem.focus = false })
                 }
                 page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
-                    { author: p.author, permlink: p.permlink, title: p.title })
+                    { author: p.author, permlink: p.permlink, title: p.title, seedPost: p })
                 page.openPermlink = p.permlink
             }
 
@@ -568,6 +568,12 @@ Page {
                     // Reflects already-following on the "contact"/Follow action; every other action keeps the neutral color.
                     readonly property bool isFollowAction: action.iconName === "contact"
                     readonly property var _rowPost: isFollowAction ? feedModel.get(index) : null
+                    // Only built when the row is swiped open, so this is one request per swipe
+                    Component.onCompleted: {
+                        if (isFollowAction && _rowPost && Session.isLoggedIn
+                                && _rowPost.author && _rowPost.author !== Session.username)
+                            FollowStore.load(Config.baseUrl, Session.username, _rowPost.author);
+                    }
                     Icon {
                         anchors.centerIn: parent
                         width: units.gu(2.5); height: width
@@ -606,7 +612,7 @@ Page {
                 onClicked: {
                     var p = feedModel.get(index)
                     page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
-                        { author: p.author, permlink: p.permlink, title: p.title })
+                        { author: p.author, permlink: p.permlink, title: p.title, seedPost: p })
                     page.openPermlink = p.permlink
                 }
                 onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),

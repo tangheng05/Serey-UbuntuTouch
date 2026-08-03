@@ -57,10 +57,12 @@ Page {
         }
     }
 
+    // Reached from Settings, which already owns the third column, so the detail page
+    // opens without its own rail rather than stacking a fourth.
     function open(modelData) {
         page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
             { author: modelData.author, permlink: modelData.permlink,
-              title: modelData.title, preloadedPost: modelData });
+              title: modelData.title, preloadedPost: modelData, allowSidePanel: false });
     }
 
     ListView {

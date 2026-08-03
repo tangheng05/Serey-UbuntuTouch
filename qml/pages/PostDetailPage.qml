@@ -8,6 +8,7 @@ import "../services/PostService.js" as PostService
 import "../services/CommentService.js" as CommentService
 import "../services/VoteService.js" as VoteService
 import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/BlockedUsers.js" as BlockedUsers
 import "../services/SummaryService.js" as SummaryService
 
 Page {
@@ -28,6 +29,9 @@ Page {
     property int commentCount: 0
     // Wide mode: right rail — related posts
     property var relatedPosts: []
+    property bool relatedLoading: false
+    // Feed row from the pushing page: lets related start before the article request returns
+    property var seedPost: null
     // Broadcast so the feed card behind this page reflects adds/deletes when the user goes back; feed pages patch the row by permlink.
     onCommentCountChanged: if (page.permlink) PostActions.commentCountChanged(page.permlink, page.commentCount)
     property bool loading: false
@@ -141,8 +145,13 @@ Page {
 
     Rectangle {
         id: postDetailHeader
-        // Only the article column: the right rail gets its own header row (below).
-        anchors { top: parent.top; left: parent.left; right: page.showSidePanel ? sidePanel.left : parent.right }
+        // Only the article column: the right rail (or, while loading, the space held
+        // for it) gets its own header row.
+        anchors {
+            top: parent.top; left: parent.left
+            right: page.showSidePanel ? sidePanel.left : parent.right
+            rightMargin: page._pendingRailW
+        }
         height: units.gu(6) + units.dp(1)
         color: Style.surface
         z: 10
@@ -170,7 +179,7 @@ Page {
             anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             spacing: Style.spacingXs
 
-            // Tablet only: bookmark + open-in-browser promoted out of the "..." menu
+            // Tablet only: save-offline + open-in-browser promoted out of the "..." menu
             AbstractButton {
                 id: saveHeaderBtn
                 visible: Config.tabletMode && page.postReady
@@ -179,7 +188,9 @@ Page {
                 Icon {
                     anchors.centerIn: parent
                     width: units.gu(2.2); height: width
-                    name: "bookmark"
+                    // Same save/tick pair the "..." menu and action sheet use; a
+                    // bookmark glyph here read as a different action than the row below it.
+                    name: page.isSaved ? "tick" : "save"
                     color: page.isSaved ? Style.brand : Style.textPrimary
                 }
             }
@@ -336,6 +347,7 @@ Page {
             topMargin: postDetailHeader.height
             left: parent.left
             right: page.showSidePanel ? sidePanel.left : parent.right
+            rightMargin: page._pendingRailW
         }
         height: units.dp(1)
         color: Style.divider
@@ -360,6 +372,10 @@ Page {
     property var summaryBullets: []
     property int summaryMinutes: 0
     property bool summaryLoading: false
+    // A failed call and a post with no summary both end at zero bullets; the drawer
+    // needs to tell them apart, so keep the reason instead of dropping the error.
+    property string summaryError: ""
+    property bool summaryRequested: false
 
     // Local word-count estimate shown immediately; AI bullets fill in behind it (200 wpm)
     function _localReadMinutes(html) {
@@ -368,10 +384,26 @@ Page {
         return Math.max(1, Math.round(text.split(" ").length / 200));
     }
 
-    function _loadSummary() {
+    // Read time is a local word count, so the bar stands on its own; only the
+    // bullets need the server.
+    function _initSummary() {
+        page.summaryBullets = [];
+        page.summaryError = "";
+        page.summaryLoading = false;
+        page.summaryRequested = false;
+        page.summaryMinutes = page.post ? page._localReadMinutes(page.post.body) : 0;
+    }
+
+    // Fired on first expand, not on page load. The endpoint allows 30 summaries per
+    // 10 minutes per reader, and requesting one for every article opened (expanded or
+    // not) exhausted that in a browsing session; every drawer after it opened empty.
+    function _loadSummary(force) {
         if (!page.post || !page.post.body) return;
+        if (page.summaryLoading || (page.summaryRequested && !force)) return;
+        page.summaryRequested = true;
         page.summaryMinutes = page._localReadMinutes(page.post.body);
         page.summaryLoading = true;
+        page.summaryError = "";
         SummaryService.summarize(Config.baseUrl, page.post, Session.token,
             function (res) {
                 // Generation can take seconds; the reader may have closed the page by now.
@@ -380,32 +412,94 @@ Page {
                 page.summaryBullets = res.bullets;
                 page.summaryMinutes = res.readMinutes;
             },
-            function () {
-                // No summary is a non-event: the reading-time bar still stands.
+            function (err) {
+                // The bar still stands, but the drawer has to say why it's empty:
+                // silently showing nothing reads as a broken expander.
                 if (!page) return;
                 page.summaryLoading = false;
                 page.summaryBullets = [];
+                page.summaryError = (err && err.status === 429)
+                    ? Lang.tr("Too many summary requests. Try again in a minute.")
+                    : Lang.tr("Summary didn't load.");
             });
     }
 
-    // Right rail — other posts in the same category, current post excluded.
+    readonly property int _relatedWanted: 3
+
+    // Enough to load related before the article itself lands; the feed row passed at push
+    // time carries the community and category, which is all this needs.
+    function _relatedSeed() { return page.post || page.seedPost || page.preloadedPost || null; }
+
+    // Same category first, then anything else in the pool: a loosely related rail beats an
+    // empty one. `pass1` restricts to the category.
+    function _fillRelated(pool, cat, out, seen, hidden, blocked, sameCatOnly) {
+        for (var i = 0; i < pool.length && out.length < page._relatedWanted; i++) {
+            var p = pool[i];
+            if (!p || !p.permlink || seen[p.permlink]) continue;
+            if (hidden[p.permlink] || blocked[p.author || ""]) continue;
+            if (sameCatOnly && cat !== "" && p.primaryCategory !== cat) continue;
+            seen[p.permlink] = true;
+            out.push(p);
+        }
+    }
+
+    // Right rail. Cache first: the list the reader came from is already in FeedCache, so the
+    // common case costs no request at all and paints before the article arrives.
     function loadRelated() {
-        if (!page.post) return;
-        var cat = page.maincategory();
-        var p = { limit: 20, offset: 0 };
-        if (page.post.communityId > 0) p.community_id = page.post.communityId;
-        else p.exclude_home = 1;
-        PostService.listTrending(Config.baseUrl, p, Session.token,
+        var seed = page._relatedSeed();
+        // Only desktop renders the rail, so anywhere else this would be a request nobody sees
+        if (!seed || !page.allowSidePanel || !Config.desktopMode) return;
+        // Called twice on purpose (seed, then again once the post lands); both are no-ops
+        // once the rail is full or a request is already out.
+        if (page.relatedLoading || page.relatedPosts.length >= page._relatedWanted) return;
+
+        var cat = seed.primaryCategory || "";
+        var communityId = seed.communityId || 0;
+        var hidden = HiddenPosts.loadAll();
+        var blocked = BlockedUsers.loadAll();
+        var out = [];
+        var seen = {};
+        seen[page.permlink] = true;
+        var key = "related:" + communityId + ":" + cat + ":"
+                  + (Session.isLoggedIn && Session.username ? Session.username : "__guest__");
+
+        // The cached feed only describes the community being browsed. seedPost means the
+        // reader came from that list, so the rows belong to this post; a deep link doesn't.
+        var pool = [];
+        if (page.seedPost) {
+            for (var f = 0; f < 2; f++) {
+                var cached = FeedCache.peek(FeedCache.newsKey(f, Config.communityId));
+                if (cached) pool = pool.concat(cached);
+            }
+        }
+        var prev = FeedCache.peek(key);      // an earlier article already paid for this one
+        if (prev) pool = pool.concat(prev);
+
+        page._fillRelated(pool, cat, out, seen, hidden, blocked, true);
+        if (out.length < page._relatedWanted)
+            page._fillRelated(pool, cat, out, seen, hidden, blocked, false);
+        if (out.length > 0) page.relatedPosts = out;
+        if (out.length >= page._relatedWanted) { page.relatedLoading = false; return; }
+
+        // Narrow server-side rather than pulling 20 posts to keep 3. No `category` on the
+        // global path: that SQL branch compares against a null community_id and drops
+        // cross-posted rows, so filter those client-side instead.
+        page.relatedLoading = true;
+        var params = { limit: 8, offset: 0 };
+        if (communityId > 0) params.community_id = communityId;
+        else params.exclude_home = 1;
+        if (cat !== "" && communityId > 0) params.category = cat;
+        FeedCache.request(key,
+            function (ok, err) { return PostService.listTrending(Config.baseUrl, params, Session.token, ok, err); },
             function (posts) {
-                var out = [];
-                for (var i = 0; i < posts.length && out.length < 3; i++) {
-                    if (posts[i].permlink === page.permlink) continue;
-                    if (posts[i].primaryCategory !== cat) continue;
-                    out.push(posts[i]);
-                }
+                if (!page) return;
+                page.relatedLoading = false;
+                page._fillRelated(posts, cat, out, seen, hidden, blocked, true);
+                if (out.length < page._relatedWanted)
+                    page._fillRelated(posts, cat, out, seen, hidden, blocked, false);
                 page.relatedPosts = out;
             },
-            function (err) { /* right rail stays empty */ });
+            function (err) { if (page) page.relatedLoading = false; });
     }
 
     function load() {
@@ -419,7 +513,7 @@ Page {
                 page.comments = result.replies || [];
                 page.commentCount = page._countAll(page.comments);
                 page._parseBody();
-                page._loadSummary();
+                page._initSummary();
                 page.loadRelated();
                 // Deep-link from a comment/reply notification: scroll to the target once the comment rows have laid out.
                 if (page.scrollToCommentPermlink !== "") scrollToTimer.start();
@@ -688,6 +782,9 @@ Page {
             page.commentCount = page.preloadedPost.comments || 0;
             page._parseBody();
         }
+        // Before load(), not after it: the seed carries community and category, so the rail
+        // fills from cache while the article is still in flight.
+        page.loadRelated();
         load();
     }
 
@@ -712,8 +809,10 @@ Page {
     readonly property int _sidePanelItemCount: page.relatedPosts.length + 2
 
     function openRelated(post, byKeyboard) {
+        // Pass the row as the seed: the next page's rail fills before its article lands
         page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
                             { author: post.author, permlink: post.permlink,
+                              title: post.title || "", seedPost: post,
                               focusOnOpen: byKeyboard === true });
     }
     function sidePanelActivate() {
@@ -757,8 +856,12 @@ Page {
         Qt.callLater(function () { if (scroll.visible) scroll.forceActiveFocus(); });
     }
 
+    // Opened inside a stack that already owns a third column (Settings > Saved
+    // articles / Downloaded Content): its rail would make a fourth.
+    property bool allowSidePanel: true
+
     // Right rail (related/votes/comments): desktop only, tablet has no room for a 3rd column
-    readonly property bool showSidePanel: Config.desktopMode && page.postReady
+    readonly property bool showSidePanel: Config.desktopMode && page.allowSidePanel && page.postReady
 
     // Resizable via the drag handle below; clamped so the article column always keeps a sane minimum width.
     property real sidePanelWidth: units.gu(34)
@@ -882,6 +985,9 @@ Page {
                 bullets: page.summaryBullets
                 readMinutes: page.summaryMinutes
                 loading: page.summaryLoading
+                error: page.summaryError
+                onSummaryNeeded: page._loadSummary(false)
+                onRetryRequested: page._loadSummary(true)
             }
 
             Row {
@@ -1171,13 +1277,28 @@ Page {
                 Repeater {
                     id: commentsRepeater
                     model: page.comments
-                    delegate: CommentItem {
+                    // Wrapper carries the between-comments rule the rail needs; the
+                    // article column keeps the roomier avatar-indented layout.
+                    delegate: Column {
                         width: commentsColumn.width
-                        comment: modelData
-                        onDeleted: page.removeComment(permlink)
-                        onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
-                        onReplyRequested: page.startReply(comment)
-                        onAuthorClicked: page.openProfile(author)
+                        spacing: Style.spacingS
+
+                        Rectangle {
+                            visible: page.showSidePanel && index > 0
+                            width: parent.width
+                            height: units.dp(1)
+                            color: Style.divider
+                        }
+
+                        CommentItem {
+                            width: parent.width
+                            compact: page.showSidePanel
+                            comment: modelData
+                            onDeleted: page.removeComment(permlink)
+                            onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
+                            onReplyRequested: page.startReply(comment)
+                            onAuthorClicked: page.openProfile(author)
+                        }
                     }
                 }
             }
@@ -1293,6 +1414,21 @@ Page {
                 width: parent.width - Style.spacingM * 2
                 spacing: Style.spacingM
 
+                RelatedSkeleton {
+                    width: sidePanelCol.width
+                    // showSidePanel too: an invisible ancestor doesn't stop the pulse animations
+                    visible: page.showSidePanel && page.relatedPosts.length === 0 && page.relatedLoading
+                }
+
+                Label {
+                    width: sidePanelCol.width
+                    visible: page.relatedPosts.length === 0 && !page.relatedLoading && page.postReady
+                    text: Lang.tr("Nothing related yet")
+                    font.pixelSize: Style.fontSmall
+                    color: Style.textSecondary
+                    wrapMode: Text.Wrap
+                }
+
                 Repeater {
                     id: relatedRepeater
                     model: page.relatedPosts
@@ -1332,6 +1468,8 @@ Page {
                                     source: modelData.thumbnail || ""
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
+                                    // Cap the decode: gu(6.5) thumbs, not full-size covers
+                                    sourceSize.width: units.gu(13)
                                     visible: false
                                 }
                                 Rectangle {
@@ -1544,21 +1682,63 @@ Page {
         z: 12
     }
 
+    // The rail only exists once the post lands, so on desktop the placeholder has to
+    // hold its column open; otherwise the page loads full-bleed and then snaps to three.
+    readonly property real _pendingRailW: (Config.desktopMode && page.allowSidePanel && !page.showSidePanel)
+                                          ? page._sidePanelW : 0
+
+    Item {
+        id: railSkeleton
+        anchors { top: parent.top; right: parent.right; bottom: parent.bottom }
+        width: page._pendingRailW
+        // Not on the error path: the skeleton would pulse forever next to a failed article
+        visible: page._pendingRailW > 0 && page.post === null && page.errorMsg === ""
+
+        Rectangle { anchors.fill: parent; color: Style.surface }
+        Rectangle {
+            anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
+            width: units.dp(1)
+            color: Style.divider
+        }
+
+        // Real header, skeleton contents: the column announces what it is while it fills.
+        Item {
+            id: railSkeletonHeader
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: postDetailHeader.height
+            Label {
+                anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                text: Lang.tr("Related")
+                font.pixelSize: Style.fontSmall
+                font.weight: Font.Bold
+                color: Style.textSecondary
+            }
+        }
+
+        RelatedSkeleton {
+            anchors { top: railSkeletonHeader.bottom; left: parent.left; right: parent.right; margins: Style.spacingM }
+            visible: railSkeleton.visible
+        }
+    }
+
     LoadingState {
         anchors {
             top: postDetailHeader.bottom
             left: parent.left
             right: page.showSidePanel ? sidePanel.left : parent.right
+            rightMargin: page._pendingRailW
             bottom: parent.bottom
         }
         visible: page.loading && page.post === null
         count: 1
+        contentMaxWidth: page.maxContentWidth
     }
     ErrorState {
         anchors {
             top: postDetailHeader.bottom
             left: parent.left
             right: page.showSidePanel ? sidePanel.left : parent.right
+            rightMargin: page._pendingRailW
             bottom: parent.bottom
         }
         visible: page.errorMsg !== "" && page.post === null

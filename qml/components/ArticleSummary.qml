@@ -11,6 +11,17 @@ Item {
     property int readMinutes: 0
     property bool loading: false
     property bool expanded: false
+    // Why the drawer is empty; blank means the request simply came back with nothing.
+    property string error: ""
+
+    signal retryRequested()
+    // The page fetches on first expand, so the request is only spent on readers who ask for it
+    signal summaryNeeded()
+
+    onExpandedChanged: {
+        if (root.expanded && !root.loading && root.bullets.length === 0 && root.error === "")
+            root.summaryNeeded();
+    }
 
     // Shown as soon as reading time is known locally; bullets drop in when they arrive
     visible: readMinutes > 0
@@ -23,7 +34,8 @@ Item {
         radius: Style.cardRadius
         // Tinted panel, not a card: it belongs to the article, not beside it.
         color: Style.dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0.51, 0.98, 0.05)
-        Behavior on height { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+        // No Behavior here on purpose: box.height follows body.height, which is already
+        // animating. Easing both made the panel chase its own drawer and stutter.
 
         AbstractButton {
             id: header
@@ -96,8 +108,10 @@ Item {
             height: root.expanded ? content.height + Style.spacingS : 0
             clip: true
             opacity: root.expanded ? 1 : 0
-            Behavior on height { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
-            Behavior on opacity { NumberAnimation { duration: 150 } }
+            // The single height animation in the component: opening, and the regrow when
+            // bullets replace the spinner, both run through this one curve.
+            Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: 140 } }
 
             Column {
                 id: content
@@ -124,12 +138,55 @@ Item {
                     }
                 }
 
+                // Zero bullets used to expand into an empty box, which reads as broken.
+                Column {
+                    width: parent.width
+                    visible: !root.loading && root.bullets.length === 0
+                    spacing: Style.spacingXs
+                    // Created up front, so fade on becoming visible rather than on creation
+                    opacity: visible ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
+
+                    Label {
+                        width: parent.width
+                        text: root.error !== "" ? root.error
+                                                : Lang.tr("No summary for this article.")
+                        font.pixelSize: Style.fontSmall
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                        wrapMode: Text.WordWrap
+                    }
+
+                    AbstractButton {
+                        visible: root.error !== ""
+                        width: retryLabel.implicitWidth
+                        height: units.gu(3)
+                        onClicked: root.retryRequested()
+                        Label {
+                            id: retryLabel
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Lang.tr("Try again")
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            color: Style.brand
+                        }
+                    }
+                }
+
                 Repeater {
                     model: root.bullets
 
                     delegate: Row {
                         width: content.width
                         spacing: Style.spacingS
+
+                        // Bullets replace the spinner in one frame; fading them in line by
+                        // line covers that cut while the drawer is still growing.
+                        opacity: 0
+                        SequentialAnimation on opacity {
+                            PauseAnimation { duration: index * 60 }
+                            NumberAnimation { from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
+                        }
 
                         Rectangle {
                             y: units.gu(0.8)

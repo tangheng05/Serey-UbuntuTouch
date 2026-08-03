@@ -12,8 +12,14 @@ Item {
     // Detail pages (PostDetailPage, GalleryDetailPage) show one full-bleed cover.
     property bool fullBleedCover: false
 
+    // Detail pages cap and center their reading column; the skeleton has to match
+    // or the page visibly jumps from full-bleed to a centered column on load. 0 = no cap.
+    property real contentMaxWidth: 0
+
     readonly property real inset: Style.spacingM
-    readonly property real contentWidth: root.width - inset * 2
+    readonly property real colWidth: root.contentMaxWidth > 0
+        ? Math.min(root.width, root.contentMaxWidth) : root.width
+    readonly property real contentWidth: root.colWidth - inset * 2
     // Covers sit lighter than text bars to keep title-vs-photo hierarchy; needs its own dark variant
     readonly property color coverTone: Style.dark ? "#333333" : "#ECECEC"
     readonly property string photoGlyph: "image-x-generic-symbolic"
@@ -22,14 +28,15 @@ Item {
     Rectangle { anchors.fill: parent; color: Style.surface }
 
     Column {
-        anchors { left: parent.left; right: parent.right; top: parent.top }
+        anchors { top: parent.top; horizontalCenter: parent.horizontalCenter }
+        width: root.colWidth
         spacing: 0
 
         Repeater {
             // Gate on visibility so the pulse animations stop when the skeleton is hidden.
             model: root.visible ? root.count : 0
             delegate: Column {
-                width: root.width
+                width: root.colWidth
                 spacing: Style.spacingS
 
                 Item { width: 1; height: Style.spacingM }
@@ -82,7 +89,7 @@ Item {
                 // Gallery photo (full-bleed square)
                 SkeletonRect {
                     visible: root.variant === "gallery" && !root.fullBleedCover
-                    width: root.width
+                    width: root.colWidth
                     height: width
                     radius: 0
                     baseColor: root.coverTone
@@ -92,7 +99,7 @@ Item {
                 // Detail cover (full-bleed square)
                 SkeletonRect {
                     visible: root.fullBleedCover
-                    width: root.width
+                    width: root.colWidth
                     height: width
                     radius: 0
                     baseColor: root.coverTone

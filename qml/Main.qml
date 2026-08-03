@@ -94,9 +94,10 @@ MainView {
         // Country hint for community picker; fire-and-forget, failure leaves app as-is
         GeoService.detectCountry(
             function (code) { Config.detectedCountryCode = code; root._applyGeoSource(); },
-            function () { /* no hint; Global stays selected, picker keeps its order */ });
+            // No hint: Global stays selected, so the community is settled now
+            function () { root._prefetchFeeds(); });
 
-        _prefetchFeeds();
+        _prefetchLate.start();
         root._checkLaunchUrl();
     }
 
@@ -172,6 +173,14 @@ MainView {
         root._geoSourceApplied = true;   // both inputs are in: this is the decision
         if (i > 0 && Config.sourceIndex === 0 && !Config.selectedSubCommunity)
             Config.sourceIndex = i;
+        root._prefetchFeeds();
+    }
+
+    // Backstop: geo or get-communities may never answer, and the feeds still want warming.
+    Timer {
+        id: _prefetchLate
+        interval: 2500
+        onTriggered: root._prefetchFeeds()
     }
 
     // Fetch get-communities and rebuild picker's sources + maps; runs at startup and on refreshCommunities()
@@ -230,8 +239,13 @@ MainView {
         }
     }
 
-    // Warm News/Video feeds at launch so tabs paint rows; data only, never the pages
+    // Warm News/Video feeds at launch so tabs paint rows; data only, never the pages.
+    // Runs only once the community is settled: geo detection can move it, and rows cached
+    // under the pre-geo community are keyed where no page ever looks.
+    property bool _prefetched: false
     function _prefetchFeeds() {
+        if (root._prefetched) return;
+        root._prefetched = true;
         FeedCache.request(FeedCache.newsKey(0, Config.communityId),
             function (ok, err) {
                 var p = { limit: Config.pageSize, offset: 0 };

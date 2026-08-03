@@ -491,6 +491,12 @@ Page {
                         // Reflects already-following on the "contact"/Follow action; every other action keeps the neutral color.
                         readonly property bool isFollowAction: action.iconName === "contact"
                         readonly property var _rowVideo: isFollowAction ? feedModel.get(index) : null
+                        // Only built when the row is swiped open, so this is one request per swipe
+                        Component.onCompleted: {
+                            if (isFollowAction && _rowVideo && Session.isLoggedIn
+                                    && _rowVideo.author && _rowVideo.author !== Session.username)
+                                FollowStore.load(Config.baseUrl, Session.username, _rowVideo.author);
+                        }
                         Icon {
                             anchors.centerIn: parent
                             width: units.gu(2.5); height: width

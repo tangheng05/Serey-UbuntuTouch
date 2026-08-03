@@ -101,11 +101,8 @@ AbstractButton {
     readonly property point _moreBtnBottomRight: (root.menuOpen && moreBtn)
         ? moreBtn.mapToItem(root._menuOverlayParent, moreBtn.width, moreBtn.height) : Qt.point(0, 0)
 
-    // Primes the shared follow-state store so a swiped-open Follow action renders correctly
-    onVChanged: {
-        if (Session.isLoggedIn && v.author && v.author !== Session.username)
-            FollowStore.load(Config.baseUrl, Session.username, v.author);
-    }
+    // Priming moved to the swipe action itself: a card shows no follow state, so doing it here
+    // cost a /follow/status request per author while scrolling.
 
     // VideoCard itself is the single tab-stop so its ring shows; child area is non-focusable
     activeFocusOnTab: true

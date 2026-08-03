@@ -38,7 +38,7 @@ Page {
         var onlyOne = deviceModel.count === 1
         page._hasCurrent = false
         for (var i = 0; i < deviceModel.count; i++) {
-            var cur = onlyOne || (Session.deviceId > 0 && deviceModel.get(i).deviceId === Session.deviceId)
+            var cur = onlyOne || (Session.deviceId !== "" && deviceModel.get(i).deviceId === Session.deviceId)
             deviceModel.setProperty(i, "isCurrent", cur)
             if (cur) page._hasCurrent = true
         }
@@ -184,7 +184,7 @@ Page {
         }
     }
 
-    property int _pendingId: 0
+    property string _pendingId: ""
     Component {
         id: terminateDialog
         Dialog {

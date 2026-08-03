@@ -273,7 +273,7 @@ function devicePlace(v) {
 
 function toDevice(raw) {
     return {
-        id: toInt(raw.id),
+        id: raw.id, // UUID string, not numeric — do not toInt()
         deviceName: devicePlace(raw.device_name),
         city: devicePlace(raw.city_name),
         country: devicePlace(raw.country_name),

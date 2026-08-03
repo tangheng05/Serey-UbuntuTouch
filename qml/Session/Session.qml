@@ -10,8 +10,8 @@ QtObject {
     // Not persisted; refetched each launch via AccountService.profile()
     property string avatarUrl: ""
     property bool pushEnabled: true
-    // user_devices row for this login; lets Active sessions mark "This device". 0 = unknown (pre-existing session).
-    property int deviceId: 0
+    // user_devices row (UUID) for this login; lets Active sessions mark "This device". "" = unknown (pre-existing session).
+    property string deviceId: ""
     property string language: "en"   // "en" or "nl"
     // epoch ms of last push-token registration
     property double lastPushRegisterAt: 0
@@ -45,7 +45,7 @@ QtObject {
                     else if (row.k === "pushEnabled") session.pushEnabled = (row.v !== "false");
                     else if (row.k === "language") session.language = row.v;
                     else if (row.k === "lastPushRegisterAt") session.lastPushRegisterAt = Number(row.v) || 0;
-                    else if (row.k === "deviceId") session.deviceId = Number(row.v) || 0;
+                    else if (row.k === "deviceId") session.deviceId = row.v || "";
                 }
             });
         } catch (e) {
@@ -101,7 +101,7 @@ QtObject {
         username = newUsername;
         token = newToken;
         _save();
-        setDeviceId(Number(newDeviceId) || 0);
+        setDeviceId(newDeviceId || "");
     }
 
     function setDeviceId(id) {
@@ -175,7 +175,7 @@ QtObject {
         token = "";
         username = "";
         avatarUrl = "";
-        deviceId = 0;
+        deviceId = "";
         // Deletes credentials rather than persisting empty (avoids a spurious write-verify failure)
         try {
             _db().transaction(function (tx) {

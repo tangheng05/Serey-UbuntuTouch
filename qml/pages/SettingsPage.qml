@@ -81,7 +81,7 @@ Page {
     function _navRows() {
         var c = [profileCardBtn, loginBtn, signupBtn, languageRow,
                  createPlatformRow, managePlatformRow, editProfileRow,
-                 passwordRow, twoFaRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+                 passwordRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
         var rows = [];
         for (var i = 0; i < c.length; i++)
             if (c[i].visible) rows.push(c[i]);
@@ -291,7 +291,7 @@ Page {
         refreshProfile();
         var rows = [profileCardBtn, loginBtn, signupBtn, languageRow,
                     createPlatformRow, managePlatformRow, editProfileRow,
-                    passwordRow, twoFaRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+                    passwordRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
         for (var i = 0; i < rows.length; i++) {
             rows[i].pressedChanged.connect((function (row) {
                 return function () { if (row.pressed) page.navCurrent = null; };
@@ -717,15 +717,8 @@ Page {
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
             }
-            SettingsRow {
-                id: twoFaRow
-                visible: Session.isLoggedIn
-                showDivider: false
-                iconName: "system-lock-screen"
-                label: Lang.tr("Two-step verification")
-                showChevron: true
-                onClicked: page.pageStack.push(Qt.resolvedUrl("TwoFactorPage.qml"), { initialEmail: (page.profile && page.profile.email) || "" })
-            }
+            // Two-step verification lives on the Password & Security page now,
+            // as a toggle; the design drops it from this list.
             SettingsRow {
                 id: sessionsRow
                 visible: Session.isLoggedIn

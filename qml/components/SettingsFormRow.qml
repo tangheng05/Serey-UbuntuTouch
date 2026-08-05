@@ -21,12 +21,10 @@ Item {
     readonly property real _labelWidth: units.gu(20)
     readonly property real _controlX: stacked ? Style.spacingM
                                               : Style.spacingM + _labelWidth + Style.spacingM
-    // Side by side the control is capped so it doesn't stretch across a wide
-    // pane; stacked it fills to the gutter like any other full-width field.
-    readonly property real _controlWidth: {
-        var avail = width - _controlX - Style.spacingM;
-        return Math.max(units.gu(12), stacked ? avail : Math.min(avail, units.gu(34)));
-    }
+    // Fills the row in both modes. The page caps and centres the whole column,
+    // so widening here doesn't produce an absurdly long field.
+    readonly property real _controlWidth:
+        Math.max(units.gu(12), width - _controlX - Style.spacingM)
 
     // Stacked rows carry two lines, so they take tighter padding to stay a
     // normal list-row height instead of eating a phone screen.

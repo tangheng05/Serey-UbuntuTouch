@@ -49,10 +49,11 @@ Page {
     property int headerMenuIndex: -1
 
     // Flattened, keyboard-navigable rows for headerMenu, Block appended last.
+    // No divider: Block belongs with Hide/Report in the negative group.
     function headerMenuRows() {
         var items = page.headerMenuItems();
         if (!page.isOwnPost)
-            items.push({ divider: true }, { icon: "", label: Lang.tr("Block %1").arg(page.author), danger: true, action: "block", custom: "block" });
+            items.push({ icon: "", label: Lang.tr("Block %1").arg(page.author), danger: true, action: "block", custom: "block" });
         return items;
     }
     function headerMenuMove(delta) {
@@ -102,10 +103,11 @@ Page {
         var items = [
             { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },
             { icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" },
-            { divider: true },
             { icon: page.isSaved ? "tick" : "save",
               label: page.isSaved ? Lang.tr("Remove from saved") : Lang.tr("Save for offline"),
-              action: "toggleSaved" }
+              action: "toggleSaved" },
+            // Same split as the video menu: content actions above, negative below.
+            { divider: true }
         ];
         if (page.isOwnPost) {
             items.push({ icon: "edit", label: Lang.tr("Edit post"), action: "edit" });
@@ -241,7 +243,8 @@ Page {
             z: 20
             // Anchored to headerActions (last item's edge = Row's right edge)
             anchors { top: headerActions.bottom; right: headerActions.right; topMargin: Style.spacingXs }
-            width: units.gu(24)
+            // gu(24) fit the English labels only; translations run longer.
+            width: units.gu(30)
             height: headerMenuCol.height
             radius: Style.cardRadius
             color: Style.surface
@@ -318,8 +321,12 @@ Page {
                                 }
                                 Label {
                                     anchors.verticalCenter: parent.verticalCenter
+                                    // Bounded + elided so no translation can spill past the panel.
+                                    width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
+                                    elide: Text.ElideRight
                                     text: modelData.label || ""
                                     font.pixelSize: Style.fontSmall
+                                    font.family: Style.fontFor(text)   // labels carry usernames
                                     color: modelData.danger ? Style.danger : Style.textPrimary
                                 }
                             }
@@ -1054,7 +1061,7 @@ Page {
                 }
             }
 
-            Rectangle { width: parent.width; height: units.dp(1); color: "black" }
+            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
             // Featured/cover image: Rectangle.clip only clips to the bounding box, so the Image is masked against a rounded Rectangle for a true rounded crop.
             Item {
@@ -1248,7 +1255,7 @@ Page {
                 }
             }
 
-            Rectangle { width: parent.width; height: units.dp(1); color: "black" }
+            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
             // Narrow mode only: the right rail (below) owns these in wide mode.
             Column {
@@ -1313,7 +1320,7 @@ Page {
         id: sidePanelDivider
         z: 11
         anchors { top: parent.top; bottom: parent.bottom; right: sidePanel.left }
-        width: units.dp(2)
+        width: units.dp(1)
         visible: page.showSidePanel
         color: sidePanelDragArea.containsMouse || sidePanelDragArea.pressed ? Style.brand : Style.divider
     }

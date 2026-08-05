@@ -350,7 +350,8 @@ AbstractButton {
         z: 1000
         x: Math.min(root._moreBtnBottomRight.x - width, root._menuOverlayParent.width - width - Style.spacingXs)
         y: root._moreBtnBottomRight.y + Style.spacingXs
-        width: Math.min(units.gu(20), root.width - units.gu(2))
+        // Cap against the overlay, not the card: gu(20) truncated translated labels.
+        width: Math.min(units.gu(30), root._menuOverlayParent.width - Style.spacingM * 2)
         height: cardMenuCol.height
         radius: Style.cardRadius
         color: Style.surface
@@ -389,8 +390,12 @@ AbstractButton {
                             }
                             Label {
                                 anchors.verticalCenter: parent.verticalCenter
+                                // Bounded + elided so no translation can spill past the panel.
+                                width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
+                                elide: Text.ElideRight
                                 text: modelData.label || ""
                                 font.pixelSize: Style.fontSmall
+                                font.family: Style.fontFor(text)   // labels carry usernames
                                 color: modelData.danger ? Style.danger : Style.textPrimary
                             }
                         }

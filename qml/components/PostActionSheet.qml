@@ -491,11 +491,12 @@ Item {
             }
 
             // Separates utility actions (Save) from owner/moderation actions below.
+            // Full-width dp(1) hairline like every other divider; it used to be an
+            // inset dp(2) in lightGray, which read as a heavier rule than the rest.
             Rectangle {
-                width: parent.width - Style.spacingM * 2
-                anchors.horizontalCenter: parent.horizontalCenter
-                height: units.dp(2)
-                color: Style.lightGray
+                width: parent.width
+                height: units.dp(1)
+                color: Style.divider
                 visible: saveOfflineBtn.visible || saveVideoBtn.visible
             }
             Item { width: 1; height: Style.spacingS; visible: saveOfflineBtn.visible || saveVideoBtn.visible }

@@ -56,12 +56,28 @@ Item {
     property int subscribedRev: 0
     property bool subscriptionsLoaded: false
 
+    // Desktop anchors a dropdown under the header pill; a modal is slower to
+    // dismiss and hides the page you're choosing for. Touch keeps the sheet.
+    property Item anchorItem: null
+    readonly property bool asDropdown: Config.desktopMode && !!anchorItem
+    readonly property real dropWidth: units.gu(42)
+    property real _dropX: 0
+    property real _dropY: 0
+
     function open() {
         picker._closing = false
         closeGuard.stop()
         picker.visible = true
+        // mapToItem can't be a live binding, so resolve the anchor at open time.
+        if (picker.asDropdown) {
+            var p = picker.anchorItem.mapToItem(picker, 0, picker.anchorItem.height)
+            picker._dropX = Math.max(Style.spacingS,
+                                     Math.min(p.x, picker.width - picker.dropWidth - Style.spacingS))
+            picker._dropY = p.y + Style.spacingXs
+        }
+        sheet.opacity = 1; sheet.scale = 1
         cpBackdropFade.start()
-        cpSlide.start()
+        if (picker.asDropdown) cpDropIn.start(); else cpSlide.start()
         if (Session.isLoggedIn && !subscriptionsLoaded) _loadSubscriptions()
         // Geo-detected country opens expanded, unless the user already expanded something
         if (picker.detectedIndex > 0 && picker.expandedIndex === -1)
@@ -82,7 +98,7 @@ Item {
         if (picker._closing) return
         picker._closing = true
         cpBackdropFadeOut.start()
-        cpSlideOut.start()
+        if (picker.asDropdown) cpDropOut.start(); else cpSlideOut.start()
         closeGuard.restart()
     }
 
@@ -403,7 +419,9 @@ Item {
     Rectangle {
         id: cpBackdrop
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.4)
+        // A dropdown doesn't dim the page; the backdrop stays only to catch the
+        // click-outside and swallow wheel events.
+        color: picker.asDropdown ? "transparent" : Qt.rgba(0, 0, 0, 0.4)
         opacity: 0
         // enabled gate: see picker._closing
         MouseArea {
@@ -419,23 +437,47 @@ Item {
     Rectangle {
         id: sheet
         readonly property bool wide: Config.wideMode
-        // Centered + explicit width avoids mixing left/right/horizontalCenter, which QML warns on
-        anchors {
-            horizontalCenter: parent.horizontalCenter
-            bottom: parent.bottom
-            bottomMargin: sheet.wide ? units.gu(4) : 0
-        }
-        width: sheet.wide ? Math.min(parent.width - units.gu(4), units.gu(60)) : parent.width
-        height: Math.min(sheetContent.height + units.gu(4), picker.height * 0.82)
-        radius: units.gu(1)
+        // x/y rather than anchors: anchors can't be conditionally unset from a
+        // ternary in this codebase, and the two modes place the panel differently.
+        x: picker.asDropdown ? picker._dropX : (parent.width - width) / 2
+        y: picker.asDropdown ? picker._dropY
+                             : parent.height - height - (sheet.wide ? units.gu(4) : 0)
+        width: picker.asDropdown ? picker.dropWidth
+             : sheet.wide ? Math.min(parent.width - units.gu(4), units.gu(60))
+             : parent.width
+        // The sheet's gu(4) pads the drag handle and title; a dropdown has neither,
+        // so the same padding just left a dead band under the last row.
+        height: Math.min(sheetContent.height + (picker.asDropdown ? units.gu(1) : units.gu(4)),
+                         picker.asDropdown
+                           ? Math.max(units.gu(20), picker.height - picker._dropY - Style.spacingM)
+                           : picker.height * 0.82)
+        // Match the header dropdown in VideoDetailPage, not the sheet.
+        radius: picker.asDropdown ? Style.cardRadius : units.gu(1)
         color: Style.surface
+        // Without a dimmed backdrop the panel needs its own edge to sit on the page.
+        border.width: picker.asDropdown ? units.dp(1) : 0
+        border.color: Style.divider
         clip: true
+        transformOrigin: Item.TopLeft
 
         transform: Translate { id: cpTranslate; y: 0 }
         NumberAnimation { id: cpSlide;    target: cpTranslate; property: "y"; from: sheet.height + units.gu(4); to: 0;              duration: 300; easing.type: Easing.OutCubic }
         NumberAnimation { id: cpSlideOut; target: cpTranslate; property: "y"; to: sheet.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: picker.close() }
 
+        // Dropdowns snap open from their anchor; a 300ms slide would feel slow.
+        ParallelAnimation {
+            id: cpDropIn
+            NumberAnimation { target: sheet; property: "opacity"; from: 0; to: 1; duration: 120; easing.type: Easing.OutQuad }
+            NumberAnimation { target: sheet; property: "scale";   from: 0.97; to: 1; duration: 120; easing.type: Easing.OutQuad }
+        }
+        ParallelAnimation {
+            id: cpDropOut
+            onStopped: picker.close()
+            NumberAnimation { target: sheet; property: "opacity"; to: 0; duration: 100; easing.type: Easing.InQuad }
+        }
+
         Rectangle {
+            visible: !picker.asDropdown
             anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
             width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
             color: Style.lightGray
@@ -452,8 +494,11 @@ Item {
                 id: sheetContent
                 width: flickable.width
 
-                Item { width: 1; height: Style.spacingL }
+                // Title + close are modal furniture; a dropdown is labelled by the
+                // pill it hangs from and closes on click-outside or Escape.
+                Item { width: 1; height: Style.spacingL; visible: !picker.asDropdown }
                 Row {
+                    visible: !picker.asDropdown
                     width: parent.width - Style.spacingM * 2
                     x: Style.spacingM
                     Label {
@@ -470,7 +515,8 @@ Item {
                         Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: "close"; color: Style.textTitle }
                     }
                 }
-                Item { width: 1; height: Style.spacingM }
+                Item { width: 1; height: Style.spacingM; visible: !picker.asDropdown }
+                Item { width: 1; height: Style.spacingS;  visible: picker.asDropdown }
 
                 Repeater {
                     // Display order may differ from Config.sources when geo-detected; srcIndex is real index

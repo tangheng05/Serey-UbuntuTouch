@@ -178,7 +178,7 @@ Page {
             }
             AbstractButton {
                 width: parent.width
-                height: units.gu(6)
+                height: units.gu(5)     // match FormField, these read as fields
                 onClicked: PopupUtils.open(parentCountryDialog)
                 Rectangle {
                     anchors.fill: parent
@@ -209,7 +209,7 @@ Page {
             }
             AbstractButton {
                 width: parent.width
-                height: units.gu(6)
+                height: units.gu(5)     // match FormField, these read as fields
                 onClicked: page.categoryOptions.length > 0
                     ? PopupUtils.open(categoryDialog)
                     : Toast.show(Lang.tr("Category list not available yet."))

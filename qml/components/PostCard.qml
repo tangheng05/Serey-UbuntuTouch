@@ -38,10 +38,11 @@ Item {
         var items = [
             { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },
             { icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" },
-            { divider: true },
             { icon: root.isSaved ? "tick" : "save",
               label: root.isSaved ? Lang.tr("Remove from saved") : Lang.tr("Save for offline"),
-              action: "toggleSaved" }
+              action: "toggleSaved" },
+            // Content actions above, negative ones below; matches VideoCard.
+            { divider: true }
         ];
         if (root.isOwnPost) {
             items.push({ icon: "edit", label: Lang.tr("Edit post"), action: "edit" });
@@ -402,8 +403,9 @@ Item {
         z: 1000
         x: Math.min(root._moreBtnBottomRight.x - width, root._menuOverlayParent.width - width - Style.spacingXs)
         y: root._moreBtnBottomRight.y + Style.spacingXs
-        // Card sits in a narrower list column; cap width so it doesn't look mis-anchored
-        width: Math.min(units.gu(20), root.width - units.gu(2))
+        // Cap against the overlay, not the card: gu(20) truncated translated labels,
+        // and a right-anchored menu may extend past the card without looking wrong.
+        width: Math.min(units.gu(30), root._menuOverlayParent.width - Style.spacingM * 2)
         height: cardMenuCol.height
         radius: Style.cardRadius
         color: Style.surface
@@ -442,8 +444,12 @@ Item {
                             }
                             Label {
                                 anchors.verticalCenter: parent.verticalCenter
+                                // Bounded + elided so no translation can spill past the panel.
+                                width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
+                                elide: Text.ElideRight
                                 text: modelData.label || ""
                                 font.pixelSize: Style.fontSmall
+                                font.family: Style.fontFor(text)   // labels carry usernames
                                 color: modelData.danger ? Style.danger : Style.textPrimary
                             }
                         }

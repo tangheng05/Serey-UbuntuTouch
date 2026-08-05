@@ -75,6 +75,17 @@ MainView {
                               : currentTab === 1 ? newsStack.columns
                               : currentTab === 2 ? videoStack.columns
                               : settingsStack.columns
+    readonly property var activeStack: currentTab === 0 ? homeStack
+                                     : currentTab === 1 ? newsStack
+                                     : currentTab === 2 ? videoStack
+                                     : settingsStack
+    // My Feed draws the same iconFeed logo in its own header, and in split mode
+    // this header stays up, so the shortcut showed the logo twice and pointed at
+    // the page you were already on.
+    readonly property bool feedPageOpen: {
+        var p = activeStack ? activeStack.currentPage : null;
+        return !!(p && p.isFeedPage);
+    }
     readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3
     // Wide windows keep the rail inside pushed pages too: it's app chrome there.
     readonly property bool showNavBar: root.wideMode || activeColumns > 1 || activeDepth <= 1
@@ -524,18 +535,12 @@ MainView {
 
         center: AbstractButton {
             id: feedBtn
-            visible: Session.isLoggedIn
+            visible: Session.isLoggedIn && !root.feedPageOpen
             anchors.centerIn: parent
             // Tap target fills header height for comfort; icon keeps smaller visual size
             width: units.gu(6)
             height: width
-            onClicked: {
-                var stack = root.currentTab === 0 ? homeStack
-                          : root.currentTab === 1 ? newsStack
-                          : root.currentTab === 2 ? videoStack
-                          : settingsStack;
-                stack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
-            }
+            onClicked: root.activeStack.push(Qt.resolvedUrl("pages/FeedPage.qml"))
             Image {
                 anchors.centerIn: parent
                 width: root.wideMode ? units.gu(4.5) : units.gu(3.5)
@@ -674,7 +679,7 @@ MainView {
         Rectangle {
             id: accountPanelDivider
             anchors { top: parent.top; bottom: parent.bottom; right: accountStatusPanel.left }
-            width: units.dp(2)
+            width: units.dp(1)
             visible: accountStatusPanel.visible
             color: accountPanelDragArea.containsMouse || accountPanelDragArea.pressed ? Style.brand : Style.divider
         }
@@ -875,7 +880,7 @@ MainView {
         }
     }
 
-    CommunityPicker { id: communityPicker }
+    CommunityPicker { id: communityPicker; anchorItem: appHeader.communityButton }
     PostCommunityPicker { id: postCommunityPicker }
     PostActionSheet { }
     ShareSheet { }

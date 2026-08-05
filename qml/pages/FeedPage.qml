@@ -13,6 +13,9 @@ import "../services/BlockedUsers.js" as BlockedUsers
 Page {
     id: page
 
+    // Lets Main.qml hide its header shortcut to this page while it's open.
+    readonly property bool isFeedPage: true
+
     // Cards need swipe actions, so a fixed-cell GridView won't work; cap + center instead
     readonly property real maxContentWidth: units.gu(60)
 

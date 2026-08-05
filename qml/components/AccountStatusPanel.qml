@@ -70,11 +70,8 @@ Rectangle {
 
     color: Style.surface
 
-    Rectangle {
-        anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-        width: units.dp(2)
-        color: Style.divider
-    }
+    // No border here: Main.qml's accountPanelDivider is the single vertical line
+    // (drawing one on both sides doubled it, see PostDetailPage's sidePanel).
 
     Label {
         id: header

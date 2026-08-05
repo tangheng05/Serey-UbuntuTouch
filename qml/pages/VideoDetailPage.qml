@@ -84,11 +84,12 @@ Page {
             { icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" }
         ];
         if (page.canDownload) {
-            items.push({ divider: true });
             items.push({ icon: page.dlSaved ? "tick" : "save",
                          label: page.dlSaved ? Lang.tr("Remove download") : Lang.tr("Save video offline"),
                          action: "toggleDownload" });
         }
+        // The one divider in this menu: things you do with the video above,
+        // things you do against it below. Don't fence single items off.
         items.push({ divider: true });
         if (page.isOwn) {
             items.push({ icon: "edit", label: Lang.tr("Edit caption"), action: "editCaption" });
@@ -113,10 +114,11 @@ Page {
         else if (action === "report") PostActions.open(page.video, "video", 1);
     }
     // Flattened, keyboard-navigable rows for headerMenu, Block appended last.
+    // No divider: Block belongs with Hide/Report in the negative group.
     function headerMenuRows() {
         var items = page.headerMenuItems();
         if (!page.isOwn)
-            items.push({ divider: true }, { icon: "", label: Lang.tr("Block %1").arg(page.video.author || ""), danger: true, action: "block", custom: "block" });
+            items.push({ icon: "", label: Lang.tr("Block %1").arg(page.video.author || ""), danger: true, action: "block", custom: "block" });
         return items;
     }
     function headerMenuMove(delta) {
@@ -530,7 +532,8 @@ Page {
             z: 20
             // Anchored to the Row (not button): "..." is its last item, edges coincide
             anchors { top: videoHeaderActions.bottom; right: videoHeaderActions.right; topMargin: Style.spacingXs }
-            width: units.gu(24)
+            // gu(24) fit the English labels only; translations run longer.
+            width: units.gu(30)
             height: headerMenuCol.height
             radius: Style.cardRadius
             color: Style.surface
@@ -607,8 +610,12 @@ Page {
                                 }
                                 Label {
                                     anchors.verticalCenter: parent.verticalCenter
+                                    // Bounded + elided so no translation can spill past the panel.
+                                    width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
+                                    elide: Text.ElideRight
                                     text: modelData.label || ""
                                     font.pixelSize: Style.fontSmall
+                                    font.family: Style.fontFor(text)   // labels carry usernames
                                     color: modelData.danger ? Style.danger : Style.textPrimary
                                 }
                             }

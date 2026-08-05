@@ -49,95 +49,90 @@ Page {
         )
     }
 
+    // Built as a settings list, not a form on a blank page: full-bleed sections,
+    // full-width dividers, label column / control column. Same grammar as the
+    // settings list in the pane opposite.
     KeyboardAwareFlickable {
-        anchors.fill: parent
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        contentWidth: width
+        contentHeight: form.height
+        clip: true
 
         Column {
-            width: Math.min(parent.width - Style.spacingM * 2, units.gu(50))
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Style.spacingM
-            topPadding: Style.spacingL
+            id: form
+            width: parent.width
 
-            Label {
-                width: parent.width
-                text: Lang.tr("Change password")
-                font.pixelSize: Style.fontLarge
-                font.weight: Font.DemiBold
-                font.family: Style.fontFor(text)
-                color: Style.textTitle
-            }
+            SettingsSectionHeader { text: Lang.tr("Confirm it's you") }
 
-            Item { width: 1; height: Style.spacingXs }
-
-            Column {
-                width: parent.width
-                spacing: units.dp(4)
-
+            SettingsFormRow {
+                label: Lang.tr("Current password")
                 FormField {
                     id: currentPassField
                     width: parent.width
-                    placeholder: Lang.tr("Current password")
                     echoMode: TextInput.Password
                     onAccepted: newPassField.input.forceActiveFocus()
                 }
+            }
 
-                Label {
-                    anchors.right: parent.right
-                    text: Lang.tr("Forgot password?")
-                    font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFor(text)
-                    color: Style.brand
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: page.pageStack.push(Qt.resolvedUrl("ForgotPasswordPage.qml"),
-                                                       { prefillUsername: Session.username })
-                    }
+            SettingsRow {
+                label: Lang.tr("Forgot password?")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ForgotPasswordPage.qml"),
+                                               { prefillUsername: Session.username })
+            }
+
+            SettingsSectionHeader { text: Lang.tr("Choose a new password") }
+
+            SettingsFormRow {
+                label: Lang.tr("New password")
+                FormField {
+                    id: newPassField
+                    width: parent.width
+                    echoMode: TextInput.Password
+                    onAccepted: confirmPassField.input.forceActiveFocus()
                 }
             }
 
-            FormField {
-                id: newPassField
-                width: parent.width
-                placeholder: Lang.tr("New password")
-                echoMode: TextInput.Password
-                onAccepted: confirmPassField.input.forceActiveFocus()
+            SettingsFormRow {
+                label: Lang.tr("Requirements")
+                PasswordChecklist {
+                    width: parent.width
+                    password: newPassField.text
+                }
             }
 
-            FormField {
-                id: confirmPassField
-                width: parent.width
-                placeholder: Lang.tr("Confirm new password")
-                echoMode: TextInput.Password
-                onAccepted: page.submit()
+            SettingsFormRow {
+                label: Lang.tr("Confirm new password")
+                FormField {
+                    id: confirmPassField
+                    width: parent.width
+                    echoMode: TextInput.Password
+                    // Only complain once there's something to compare against.
+                    errorText: (confirmPassField.text.length > 0 &&
+                                newPassField.text !== confirmPassField.text)
+                               ? Lang.tr("Passwords do not match") : ""
+                    onAccepted: page.submit()
+                }
             }
 
-            Label {
-                width: parent.width
-                visible: confirmPassField.text.length > 0 &&
-                         newPassField.text !== confirmPassField.text
-                text: Lang.tr("Passwords do not match")
-                font.pixelSize: Style.fontSmall
-                font.family: Style.fontFor(text)
-                color: Style.danger
-            }
-
-            PasswordChecklist {
-                width: parent.width
-                password: newPassField.text
-            }
+            Item { width: 1; height: Style.spacingL }
 
             Label {
-                width: parent.width
-                visible: errorMsg.length > 0
-                text: errorMsg
+                x: Style.spacingM
+                width: parent.width - Style.spacingM * 2
+                visible: page.errorMsg.length > 0
+                text: page.errorMsg
                 font.pixelSize: Style.fontSmall
                 font.family: Style.fontFor(text)
-                color: Style.danger
+                color: Style.negative
                 wrapMode: Text.WordWrap
             }
 
+            Item { width: 1; height: Style.spacingS; visible: page.errorMsg.length > 0 }
+
             PrimaryButton {
-                width: parent.width
+                x: Style.spacingM
+                width: Math.min(parent.width - Style.spacingM * 2, units.gu(26))
                 text: Lang.tr("Change password")
                 busy: page.busy
                 enabled: page.canSubmit

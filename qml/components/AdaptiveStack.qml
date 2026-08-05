@@ -98,11 +98,12 @@ Item {
         PageStack { id: rootStack; anchors.fill: parent }
     }
 
-    // Draggable separator between panels; thicker than a hairline so it reads as grabbable
+    // Draggable separator between panels. Hairline like every other divider; the
+    // gu(1.5) MouseArea below plus the hover highlight carry the grabbable cue.
     Rectangle {
         id: paneDivider
         anchors { top: parent.top; bottom: parent.bottom; left: listPane.right }
-        width: units.dp(2)
+        width: units.dp(1)
         color: dragHandle.containsMouse || dragHandle.pressed ? Style.brand : Style.divider
         visible: root.split
     }

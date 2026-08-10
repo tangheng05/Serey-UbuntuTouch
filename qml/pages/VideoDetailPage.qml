@@ -348,15 +348,19 @@ Page {
         page.voteBusy = false;
         if (r.payout) page.payout = r.payout;
     }
-    function _voteFail(e) {
+    // wasRemove distinguishes "already voted" from "already removed": both say "already",
+    // but re-adding the vote after a removal is exactly backwards.
+    function _voteFail(e, wasRemove) {
         page.voteBusy = false;
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
         if (msg.indexOf("already") >= 0) {
+            if (wasRemove) return;   // the server agrees the vote is gone; our state matches
             if (!page.upvoted) { page.voteCount++; page.upvoted = true; page._voteCache(); }
             return;
         }
-        Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
+        Toast.error(Lang.tr(VoteService.friendlyError(e)));
     }
+    function _voteFailRemove(e) { page._voteFail(e, true); }
     function _sendUpvote(weight) {
         page.voteBusy = true;
         VoteService.upvote(Config.baseUrl, page.video.author, page.video.permlink, "post", weight, Session.token,
@@ -376,7 +380,7 @@ Page {
             page.voteBusy = true;
             VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
                 function (r) { page.upvoted = false; page.voteCount = Math.max(0, page.voteCount - 1); page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
-                page._voteFail);
+                page._voteFailRemove);
         } else if (!page.onChain) {
             // Off-chain (DB-only) video: plain one-tap like, no weight popover, matching fe-serey-web's simpleVote.
             page._sendUpvote(100);
@@ -393,7 +397,7 @@ Page {
         if (page.flagged) {
             VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
                 function (r) { page.flagged = false; page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
-                page._voteFail);
+                page._voteFailRemove);
         } else {
             VoteService.flag(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
                 function (r) {

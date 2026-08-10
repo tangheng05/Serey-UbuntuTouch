@@ -68,7 +68,7 @@ Page {
             },
             function (e) {
                 reel.busy = false;
-                Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
+                Toast.error(Lang.tr(VoteService.friendlyError(e)));
             });
     }
 
@@ -221,7 +221,7 @@ Page {
             function _revert(wasUp, wasFlag, prevVotes, e) {
                 reel.upvoted = wasUp; reel.flagged = wasFlag; reel.votes = prevVotes;
                 reel.busy = false; reel._vcache();
-                Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
+                Toast.error(Lang.tr(VoteService.friendlyError(e)));
             }
             // caller anchors the weight popover to the rail's vote button
             function toggleUpvote(caller) {

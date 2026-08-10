@@ -86,6 +86,7 @@ RowLayout {
     // returns (observed: a 24s remove-vote killing upvote on two unrelated posts).
     function _rebound() {
         bar.busy = false;
+        bar._replayTap = false;
     }
     onBusyChanged: if (!busy) bar._blockedNoticeShown = false
     onAuthorChanged: bar._rebound()
@@ -95,12 +96,21 @@ RowLayout {
     // to a post this bar no longer shows, so it must not write payout/flaggers into it.
     function _reqKey() { return bar.author + "/" + bar.permlink; }
     function _stale(key) { return key !== bar._reqKey(); }
+    // A tap that arrived mid-broadcast, replayed once this one lands.
+    property bool _replayTap: false
+    function _finishBusy() {
+        bar.busy = false;
+        if (bar._replayTap) {
+            bar._replayTap = false;
+            bar.doUpvote();
+        }
+    }
     // Reconcile server-confirmed fields; count isn't taken from r.voterCount, which lags the broadcast
     function _apply(r) {
-        bar.busy = false;
         bar.flaggers = r.flaggerCount;
         if (r.payout)
             bar.payout = r.payout;
+        bar._finishBusy();
     }
     // Snapshot / restore for optimistic rollback when an on-chain broadcast fails.
     function _snapshot() {
@@ -131,22 +141,46 @@ RowLayout {
     // Shared failure handler: undo the optimistic change, surface error unless it's a 401
     function _failReverting(e, snap) {
         bar.busy = false;
+        bar._replayTap = false;   // the state the queued tap assumed just got rolled back
         _rollback(snap);
         if (_isHandledAuthFailure(e))
             return;
-        Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
+        Toast.error(Lang.tr(VoteService.friendlyError(e)));
+    }
+    // "You have already removed vote" is the server agreeing the vote is gone, so our
+    // optimistic un-vote is right. Reverting it put the row back to blue with the old
+    // count, which is the opposite of what happened on chain.
+    function _failRemove(e, snap) {
+        var msg = (e && e.message) ? e.message.toLowerCase() : "";
+        if (!_isHandledAuthFailure(e) && msg.indexOf("already") >= 0) {
+            bar._cache();
+            bar._finishBusy();
+            return;
+        }
+        bar._failReverting(e, snap);
     }
     // "Already voted" means our optimistic upvote is already correct: keep it, no rollback
     function _failUpvote(e, snap) {
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
         if (!_isHandledAuthFailure(e) && msg.indexOf("already") >= 0) {
-            bar.busy = false;
+            bar._finishBusy();   // our optimistic upvote stands, so a queued undo is still valid
             return;
         }
         bar._failReverting(e, snap);
     }
 
     function doUpvote() {
+        // Tapping again during a broadcast almost always means "undo that". Refusing for the
+        // 20s+ a chain write can take reads as a broken button, so queue it and replay on
+        // completion. Only the direct remove path: replaying a first-time upvote would pop
+        // the weight popover long after the tap that asked for it.
+        if (Session.isLoggedIn && bar.busy) {
+            if (bar.upvoted && !bar._replayTap) {
+                bar._replayTap = true;
+                Toast.show(Lang.tr("Will apply once your current vote finishes."));
+            }
+            return;
+        }
         if (!_guard())
             return;
         if (bar.upvoted) {
@@ -172,7 +206,7 @@ RowLayout {
         var key = bar._reqKey();
         VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
             function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
-            function (e) { if (bar._stale(key)) return; bar._failReverting(e, snap); });
+            function (e) { if (bar._stale(key)) return; bar._failRemove(e, snap); });
     }
 
     // Optimistic upvote: count and toast immediately, broadcast runs in the background
@@ -203,7 +237,7 @@ RowLayout {
             bar.busy = true;
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
                 function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
-                function (e) { if (bar._stale(key)) return; bar._failReverting(e, snap); });
+                function (e) { if (bar._stale(key)) return; bar._failRemove(e, snap); });
         } else {
             // Optimistic flag; a flag clears any existing upvote.
             if (bar.upvoted) bar.votes = Math.max(0, bar.votes - 1);

@@ -34,6 +34,27 @@ function _norm(data) {
     };
 }
 
+// The chain rejects votes with raw C++ assert dumps. Turn the ones a user can act on into
+// plain sentences; callers wrap the result in Lang.tr().
+function friendlyError(e) {
+    var msg = (e && e.message) ? String(e.message) : "";
+    var low = msg.toLowerCase();
+    if (low.indexOf("voting power") >= 0 || low.indexOf("weight is too small") >= 0
+        || low.indexOf("dust") >= 0 || low.indexOf("steem power") >= 0)
+        return "Your voting power is used up. It refills over the next few hours.";
+    if (low.indexOf("bandwidth") >= 0 || low.indexOf("rate limit") >= 0)
+        return "You're voting faster than the network allows. Try again in a few minutes.";
+    if (low.indexOf("can only vote once every") >= 0 || low.indexOf("vote changed too many") >= 0)
+        return "You just changed this vote. Wait a moment before changing it again.";
+    // Http.js already words network failures and timeouts for humans
+    if (e && e.status === 0 && msg.length > 0)
+        return msg;
+    // A raw assert dump or an empty 5xx body says nothing useful either way
+    if (msg.length === 0 || low.indexOf("assert") >= 0 || (e && e.status >= 500))
+        return "Serey couldn't record that vote right now. Please try again.";
+    return msg;
+}
+
 function _send(baseUrl, path, body, token, onOk, onErr) {
     Http.post(baseUrl, path, body, token, function (data) {
         onOk(_norm(data));

@@ -110,6 +110,7 @@ var nl = {
     "Saved for offline use":                        "Opgeslagen voor offline gebruik",
     "Serey only, no votes or rewards.":             "Alleen Serey, geen stemmen of beloningen.",
     "Still sending your last vote...":                  "Je vorige stem wordt nog verstuurd...",
+    "Serey couldn't record that vote right now. Please try again.": "Serey kon je stem nu niet verwerken. Probeer het opnieuw.",
     "Thanks for your feedback!":                    "Bedankt voor je feedback!",
     "Thanks for your report":                       "Bedankt voor je melding",
     "Thanks for your vote!":                        "Bedankt voor je stem!",
@@ -229,6 +230,7 @@ var nl = {
     "Send exactly":                                     "Stuur precies",
     "Try again":                                        "Opnieuw proberen",
     "Waiting for payment…":                             "Wachten op betaling…",
+    "Will apply once your current vote finishes.":      "Wordt toegepast zodra je huidige stem klaar is.",
     "You already have a pending payment in %1. Complete it below, or let it expire to pay with another currency.": "U heeft al een openstaande betaling in %1. Rond deze hieronder af, of laat hem verlopen om met een andere valuta te betalen.",
     "You are signed in on %1 devices.":             "U bent aangemeld op %1 apparaten.",
     "You are signed in on this device only.":       "U bent alleen op dit apparaat aangemeld.",
@@ -435,6 +437,9 @@ var nl = {
     "Open full dashboard in browser":                   "Open volledig dashboard in browser",
     "just now":                                         "zojuist",
     "or":                                               "of",
+    "Your voting power is used up. It refills over the next few hours.": "Je stemkracht is op. Deze herstelt in de komende uren.",
+    "You're voting faster than the network allows. Try again in a few minutes.": "Je stemt sneller dan het netwerk toestaat. Probeer het over een paar minuten opnieuw.",
+    "You just changed this vote. Wait a moment before changing it again.": "Je hebt deze stem net gewijzigd. Wacht even voordat je dit opnieuw doet.",
     "…":                                                "…",
 
     // CMS / Manage your platform

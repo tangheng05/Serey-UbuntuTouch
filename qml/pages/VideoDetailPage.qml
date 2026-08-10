@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import QtQuick.Layouts 1.3
 import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
@@ -293,6 +294,11 @@ Page {
     function setFullscreen(on) {
         page.isFullscreen = on;
         webLoader.parent = on ? fsHost : stage;
+        // Reparenting drops focus. Hand it back to the player, which owns the shortcuts;
+        // only the native (.mov) player, which has none, falls back to the QML key handler.
+        var it = webLoader.item;
+        if (it && it.focusWeb) it.focusWeb();
+        else if (on) fsKeys.forceActiveFocus();
     }
 
     // Space-bar: starts playback or toggles pause. YouTube answers too now that it runs
@@ -1038,8 +1044,12 @@ Page {
                             item.embedUrl = page.embedSrc();
                         }
                         // Both WebView modes (<video> + YouTube iframe) can request fullscreen; the native player can't.
-                        if (!page.nativeMode)
+                        if (!page.nativeMode) {
                             item.fullscreenToggled.connect(page.setFullscreen);
+                            // Play was a click on the poster, so the shortcuts should work
+                            // straight away without a second click into the video.
+                            item.focusWeb();
+                        }
                     }
                     onStatusChanged: {
                         if (status === Loader.Error) {
@@ -1851,10 +1861,24 @@ Page {
     // Fullscreen host: setFullscreen() reparents the player Loader in here to fill the screen, above content and bottom sheets (z 1500).
     Item {
         id: fsHost
+        parent: (page.isFullscreen && Window.contentItem) ? Window.contentItem : page
         anchors.fill: parent
         z: 2000
         visible: page.isFullscreen
         Rectangle { anchors.fill: parent; color: "black" }
+
+        // Fallback only (native player): never given focus while a web player holds it,
+        // since taking it would disable that player's own shortcuts.
+        Item {
+            id: fsKeys
+            anchors.fill: parent
+            Keys.onPressed: {
+                if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
+                    page.setFullscreen(false);
+                    event.accepted = true;
+                }
+            }
+        }
 
         // Native way out: YouTube's own exit control only renders at some player sizes, and QtWebEngine never exits on Escape by itself.
         AbstractButton {

@@ -58,6 +58,10 @@ Item {
             "requestAnimationFrame(function(){b.style.opacity='';});}})();")
     }
 
+    // The wrapper handles the player shortcuts itself, so it must hold keyboard focus;
+    // anything that focuses a QML item instead silently kills Space/arrows/F.
+    function focusWeb() { wv.forceActiveFocus(); }
+
     // Toggle play/pause (reels tap, Space bar). window.P is the wrapper's player adapter,
     // present for both the <video> and YouTube-API wrappers.
     function togglePause() {
@@ -197,11 +201,21 @@ Item {
                'window.addEventListener("pointercancel",function(){drag=false;},true);' +
                'window.addEventListener("blur",function(){drag=false;});' +
                'pb.addEventListener("click",function(){if(P.paused()){P.play();}else{P.pause();}icon();poke();});' +
-               'fs.addEventListener("click",function(){if(document.fullscreenElement)' +
-               '{document.exitFullscreen();}else{document.documentElement.requestFullscreen();}});' +
-               // QtWebEngine does not exit fullscreen on Escape by itself
-               'window.addEventListener("keydown",function(e){if(e.key==="Escape"&&document.fullscreenElement)' +
-               '{e.preventDefault();document.exitFullscreen();}});' +
+               'fs.addEventListener("click",function(){fsToggle();});' +
+               // Once the user clicks the video, keys go to Chromium and never reach QML's
+               // handler, so the player shortcuts live here too. QtWebEngine also does not
+               // exit fullscreen on Escape by itself.
+               'function fsToggle(){if(document.fullscreenElement){document.exitFullscreen();}' +
+               'else{document.documentElement.requestFullscreen();}}' +
+               'window.addEventListener("keydown",function(e){var k=e.key;' +
+               'if(k==="Escape"){if(document.fullscreenElement){e.preventDefault();document.exitFullscreen();}return;}' +
+               'if(k===" "||k==="Spacebar"||k==="k"||k==="K"){' +
+               'if(P.paused()){P.play();}else{P.pause();}icon();poke();e.preventDefault();}' +
+               'else if(k==="ArrowLeft"||k==="j"||k==="J"){' +
+               'P.seek(Math.max(0,P.time()-(k==="ArrowLeft"?5:10)));upd();poke();e.preventDefault();}' +
+               'else if(k==="ArrowRight"||k==="l"||k==="L"){var d=P.dur()||0;' +
+               'P.seek(d?Math.min(d,P.time()+(k==="ArrowRight"?5:10)):P.time());upd();poke();e.preventDefault();}' +
+               'else if(k==="f"||k==="F"){fsToggle();e.preventDefault();}});' +
                'document.addEventListener("pointermove",poke);' +
                'document.addEventListener("pointerdown",poke);' +
                // One poll drives both time and the play/pause glyph; the YT API has no timeupdate event

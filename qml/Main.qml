@@ -40,8 +40,16 @@ MainView {
     }
 
     property int currentTab: 0
+    property int _lastTab: 0
     // No fade for Homepage: animating opacity over live Chromium recomposites every frame
     onCurrentTabChanged: {
+        // My Feed is a destination borrowed by whichever tab opened it, not that tab's own
+        // content; leaving would otherwise strand it there and hide the tab's list on return.
+        var prev = root._stackForTab(root._lastTab);
+        if (prev && prev.popMaster && prev.rootPage && prev.rootPage.isFeedPage)
+            prev.popMaster();
+        root._lastTab = currentTab;
+
         Config.currentTab = currentTab;
         _ensureTab(currentTab);
         if (currentTab === 0) {
@@ -75,6 +83,9 @@ MainView {
                               : currentTab === 1 ? newsStack.columns
                               : currentTab === 2 ? videoStack.columns
                               : settingsStack.columns
+    function _stackForTab(tab) {
+        return tab === 0 ? homeStack : tab === 1 ? newsStack : tab === 2 ? videoStack : settingsStack;
+    }
     readonly property var activeStack: currentTab === 0 ? homeStack
                                      : currentTab === 1 ? newsStack
                                      : currentTab === 2 ? videoStack

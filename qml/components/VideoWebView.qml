@@ -175,30 +175,40 @@ Item {
         return 'var bar=document.getElementById("bar"),trk=document.getElementById("track"),' +
                'fill=document.getElementById("fill"),knob=document.getElementById("knob"),' +
                'tl=document.getElementById("t"),pb=document.getElementById("pb"),' +
-               'fs=document.getElementById("fs"),drag=false,hideT=null;' +
+               'fs=document.getElementById("fs"),drag=false,pend=0,want=-1,hideT=null;' +
                'function f(s){s=Math.max(0,Math.floor(s||0));var m=Math.floor(s/60),x=s%60;' +
                'return m+":"+(x<10?"0":"")+x;}' +
-               'function upd(){var d=P.dur()||0,c=P.time()||0,p=(d&&isFinite(d))?c/d:0;' +
-               'if(!drag){fill.style.width=(p*100)+"%";knob.style.left=(p*100)+"%";}' +
+               // Leave the bar where the user put it while a deferred seek is outstanding
+               'function upd(){if(drag||want>=0)return;var d=P.dur()||0,c=P.time()||0,p=(d&&isFinite(d))?c/d:0;' +
+               'fill.style.width=(p*100)+"%";knob.style.left=(p*100)+"%";' +
                'tl.textContent=f(c)+" / "+f(isFinite(d)?d:0);}' +
                'function icon(){pb.innerHTML=P.paused()?PLAY:PAUSE;}' +
                'function poke(){bar.classList.remove("hide");clearTimeout(hideT);' +
                'hideT=setTimeout(function(){if(!P.paused()&&!drag)bar.classList.add("hide");},3000);}' +
-               'function seek(x){var b=trk.getBoundingClientRect();' +
-               'var p=Math.min(1,Math.max(0,(x-b.left)/b.width));' +
-               'fill.style.width=(p*100)+"%";knob.style.left=(p*100)+"%";' +
-               'var d=P.dur();if(d&&isFinite(d))P.seek(p*d);poke();}' +
+               'function pos(x){var b=trk.getBoundingClientRect();' +
+               'return Math.min(1,Math.max(0,(x-b.left)/b.width));}' +
+               // Paint only: a seek per pointermove makes the player re-buffer on every
+               // frame of the drag, which is what made scrubbing crawl on the phone.
+               'function paint(p){fill.style.width=(p*100)+"%";knob.style.left=(p*100)+"%";' +
+               'var d=P.dur();if(d&&isFinite(d))tl.textContent=f(p*d)+" / "+f(d);}' +
+               // Duration arrives a couple of seconds after load (YouTube reports it over
+               // postMessage), so an early scrub had nothing to multiply by and was dropped.
+               // Hold the fraction and apply it as soon as the duration shows up.
+               'function commit(p){var d=P.dur();' +
+               'if(d&&isFinite(d))P.seek(p*d);else want=p;' +
+               'poke();}' +
+               'function endDrag(){if(!drag)return;drag=false;commit(pend);}' +
                // Drag latch must be release-proof: QtWebEngine can drop pointerup after a tap
-               'trk.addEventListener("pointerdown",function(e){drag=true;' +
+               'trk.addEventListener("pointerdown",function(e){drag=true;pend=pos(e.clientX);' +
                'try{trk.setPointerCapture(e.pointerId);}catch(_){}' +
-               'seek(e.clientX);e.preventDefault();});' +
+               'paint(pend);poke();e.preventDefault();});' +
                'trk.addEventListener("pointermove",function(e){' +
                'if(!drag)return;' +
-               'if(e.buttons===0){drag=false;poke();return;}' +
-               'seek(e.clientX);});' +
-               'trk.addEventListener("lostpointercapture",function(){drag=false;});' +
-               'window.addEventListener("pointerup",function(){if(drag){drag=false;poke();}},true);' +
-               'window.addEventListener("pointercancel",function(){drag=false;},true);' +
+               'if(e.buttons===0){endDrag();return;}' +
+               'pend=pos(e.clientX);paint(pend);});' +
+               'trk.addEventListener("lostpointercapture",endDrag);' +
+               'window.addEventListener("pointerup",endDrag,true);' +
+               'window.addEventListener("pointercancel",function(){drag=false;poke();},true);' +
                'window.addEventListener("blur",function(){drag=false;});' +
                'pb.addEventListener("click",function(){if(P.paused()){P.play();}else{P.pause();}icon();poke();});' +
                'fs.addEventListener("click",function(){fsToggle();});' +
@@ -219,7 +229,9 @@ Item {
                'document.addEventListener("pointermove",poke);' +
                'document.addEventListener("pointerdown",poke);' +
                // One poll drives both time and the play/pause glyph; the YT API has no timeupdate event
-               'var was=null;setInterval(function(){upd();' +
+               'var was=null;setInterval(function(){' +
+               'if(want>=0){var wd=P.dur();if(wd&&isFinite(wd)){P.seek(want*wd);want=-1;}}' +
+               'upd();' +
                'var p=P.paused();if(p!==was){was=p;icon();poke();}},250);' +
                'icon();upd();poke();';
     }
@@ -278,7 +290,7 @@ Item {
                'if(typeof i.currentTime==="number"){st.t=i.currentTime;st.ts=Date.now();}' +
                'if(typeof i.duration==="number"&&i.duration>0)st.d=i.duration;' +
                'if(typeof i.playerState==="number")st.s=i.playerState;' +
-               'if(!live){live=true;L("live");console.log("__SEREY_READY__");}}});' +
+               'if(!live){live=true;console.log("__SEREY_READY__");}}});' +
                // The player registers its listener late, so keep announcing for a few seconds
                'var n=0,iv=setInterval(function(){post({event:"listening",id:1,channel:"widget"});' +
                'if(live||++n>24)clearInterval(iv);},250);' +
@@ -353,10 +365,9 @@ Item {
         var yid = directVideo ? "" : _ytId(embedUrl);
         if (directVideo)
             wv.loadHtml(_videoHtml(), _baseUrl());
-        else if (wrap && yid.length > 0) {
-            console.log("VideoWebView [yt] api player for " + yid);
+        else if (wrap && yid.length > 0)
             wv.loadHtml(_ytHtml(yid), _baseUrl());
-        } else if (wrap)
+        else if (wrap)
             wv.loadHtml(_iframeHtml(), _baseUrl());
         else
             wv.url = embedUrl;

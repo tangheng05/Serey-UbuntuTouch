@@ -1417,6 +1417,17 @@ Page {
             }
         }
 
+        // Keyboard focus ring; must live inside sidePanel, since anchors only reach a
+        // parent or sibling and the page-scope copy could never resolve the flick.
+        Rectangle {
+            anchors.fill: sidePanelFlick
+            visible: page.showSidePanel && sidePanelFlick.activeFocus
+            color: "transparent"
+            border.width: units.dp(2)
+            border.color: Style.brand
+            z: 12
+        }
+
         Flickable {
             id: sidePanelFlick
             anchors { top: sidePanelHeader.bottom; left: parent.left; right: parent.right; bottom: sideComposerBar.top }
@@ -1811,15 +1822,6 @@ Page {
         // Above sidePanelDivider's z:11, else the divider paints over this border's right edge.
         z: 12
     }
-    Rectangle {
-        anchors.fill: sidePanelFlick
-        visible: page.showSidePanel && sidePanelFlick.activeFocus
-        color: "transparent"
-        border.width: units.dp(2)
-        border.color: Style.brand
-        z: 12
-    }
-
     // Fullscreen host: setFullscreen() reparents the player Loader in here to fill the screen, above content and bottom sheets (z 1500).
     Item {
         id: fsHost

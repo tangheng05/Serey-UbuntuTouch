@@ -100,7 +100,10 @@ Item {
 
     // One shared exit: no target -> current context, exactly one -> take it without a modal.
     function _present(list) {
-        var full = picker._ownedEntries(list).concat(list);
+        var owned = picker._ownedEntries(list);
+        // Label the rest as a separate group only when there's a "Your platforms" section above it.
+        if (owned.length > 0 && list.length > 0) list[0].section = Lang.tr("Explore platforms");
+        var full = owned.concat(list);
         if (full.length === 0 || (full.length === 1 && !full[0].allowPost)) {
             var cb0 = picker._onChosen; picker._onChosen = null;
             if (cb0) cb0(null);

@@ -84,7 +84,7 @@ Item {
             var e = {
                 id: String(c.id),
                 name: c.title || "",
-                icon: Config.communityIcon(c.dns),
+                icon: c.icon,
                 allowPost: true,
                 videoAllowPost: !!c.videoAllowPost,
                 isParent: false,
@@ -574,9 +574,7 @@ Item {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: parent.width - units.gu(2.4) - units.gu(4.4) - Style.spacingM * 2
                                                - (rowOwnerBadge.visible ? rowOwnerBadge.width + Style.spacingM : 0)
-                                        text: rowSelectBtn.enabled ? modelData.name
-                                            : (picker.forVideo ? Lang.tr("%1 (video not allowed)").arg(modelData.name)
-                                                               : Lang.tr("%1 (posting not allowed)").arg(modelData.name))
+                                        text: modelData.name
                                         font.pixelSize: Style.fontRegular
                                         font.weight: row.isSelected ? Font.DemiBold : Font.Normal
                                         font.family: Style.fontFor(text)

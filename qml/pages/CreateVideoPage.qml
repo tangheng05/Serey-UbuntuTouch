@@ -26,7 +26,14 @@ Page {
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
-    readonly property bool hasCommunity: Config.communityId > 0
+    // Chosen in PostCommunityPicker before this page opens; unset = post into the browsed source
+    property var targetCommunity: null
+    readonly property int postCommunityId: page.targetCommunity ? Number(page.targetCommunity.id)
+                                                                 : Config.communityId
+    readonly property string postCommunityName: page.targetCommunity ? page.targetCommunity.name
+                                                                      : Config.communityName
+
+    readonly property bool hasCommunity: page.postCommunityId > 0
     readonly property bool canPublish: !page.submitting && !page.uploadingVideo
                                        && page.videoUrl.length > 0
                                        && titleField.text.trim().length > 0
@@ -104,8 +111,8 @@ Page {
             videoUrl: page.videoUrl,
             thumbUrl: page.thumbUrl,
             postToBlockchain: page.postToBlockchain,
-            communityId: Config.communityId,
-            communityName: Config.communityName
+            communityId: page.postCommunityId,
+            communityName: page.postCommunityName
         }, Session.token,
         function (data) {
             page.submitting = false;

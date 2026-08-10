@@ -1260,22 +1260,13 @@ Page {
                 CoinValue { visible: page.onChain && page.payout.length > 0; value: page.payout }
             }
 
-            Item { width: 1; height: Style.spacingM }
-
-            // Narrow only: here it separates the vote row from the comments header. In wide
-            // mode the description follows, and its own card already delimits it.
-            Rectangle {
-                visible: !Config.wideMode
-                width: parent.width; height: units.dp(1); color: Style.divider
-            }
-
             // Wide mode: description always visible here instead of behind the "...more" sheet
             Column {
                 visible: Config.wideMode
                 width: parent.width
                 spacing: Style.spacingM
 
-                Item { width: 1; height: Style.spacingM }
+                Item { width: 1; height: Style.spacingXs }
 
                 Label {
                     x: Style.spacingM
@@ -1310,9 +1301,6 @@ Page {
                     }
                 }
 
-                Item { width: 1; height: Style.spacingS }
-
-                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
             }
 
             Item { width: 1; height: Style.spacingS }

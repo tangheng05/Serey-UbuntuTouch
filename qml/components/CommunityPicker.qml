@@ -60,7 +60,7 @@ Item {
     // dismiss and hides the page you're choosing for. Touch keeps the sheet.
     property Item anchorItem: null
     readonly property bool asDropdown: Config.desktopMode && !!anchorItem
-    readonly property real dropWidth: units.gu(42)
+    readonly property real dropWidth: units.gu(50)
     property real _dropX: 0
     property real _dropY: 0
 
@@ -76,6 +76,9 @@ Item {
             picker._dropY = p.y + Style.spacingXs
         }
         sheet.opacity = 1; sheet.scale = 1
+        // A prior sheet-mode close leaves cpTranslate.y at its slide-out offset (cpDropIn never
+        // touches it), so a dropdown-mode open right after would render the panel pushed way down.
+        cpTranslate.y = 0
         cpBackdropFade.start()
         if (picker.asDropdown) cpDropIn.start(); else cpSlide.start()
         if (Session.isLoggedIn && !subscriptionsLoaded) _loadSubscriptions()
@@ -433,6 +436,21 @@ Item {
     }
     NumberAnimation { id: cpBackdropFade;    target: cpBackdrop; property: "opacity"; from: 0; to: 1;  duration: 200 }
     NumberAnimation { id: cpBackdropFadeOut; target: cpBackdrop; property: "opacity"; to: 0;            duration: 200 }
+
+    // Soft elevation so the dropdown reads as floating above the page (the full-width
+    // sheet already sits on a dimmed backdrop and doesn't need it).
+    DropShadow {
+        anchors.fill: sheet
+        visible: picker.asDropdown && sheet.opacity > 0
+        source: sheet
+        radius: 16
+        samples: 33
+        horizontalOffset: 0
+        verticalOffset: 6
+        color: Qt.rgba(0, 0, 0, 0.22)
+        transparentBorder: true
+        cached: true
+    }
 
     Rectangle {
         id: sheet
@@ -813,6 +831,7 @@ Item {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: parent.width - units.gu(5.5) - subBtn.width
                                                                - (hubBadge.visible ? hubBadge.width + Style.spacingM : 0)
+                                                               - (ownerBadge.visible ? ownerBadge.width + Style.spacingM : 0)
                                                                - Style.spacingM * 2
                                                         text: commBtn.commName
                                                         font.pixelSize: Style.fontRegular
@@ -830,7 +849,7 @@ Item {
                                                         width: hubLbl.width + units.gu(1.6)
                                                         height: units.gu(2.6)
                                                         radius: Style.pillRadius
-                                                        color: "#FCE7F3"
+                                                        color: Qt.rgba(Style.brand.r, Style.brand.g, Style.brand.b, 0.14)
 
                                                         Label {
                                                             id: hubLbl
@@ -838,6 +857,28 @@ Item {
                                                             text: "HUB"
                                                             font.pixelSize: Style.fontXSmall
                                                             font.weight: Font.Bold
+                                                            font.letterSpacing: units.dp(0.5)
+                                                            color: Style.brand
+                                                        }
+                                                    }
+
+                                                    // Owner badge: you manage this community.
+                                                    Rectangle {
+                                                        id: ownerBadge
+                                                        visible: !!Config.ownedCommunityIdSet[commBtn.commId]
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: ownerLbl.width + units.gu(1.6)
+                                                        height: units.gu(2.6)
+                                                        radius: Style.pillRadius
+                                                        color: "#FCE7F3"
+
+                                                        Label {
+                                                            id: ownerLbl
+                                                            anchors.centerIn: parent
+                                                            text: Lang.tr("Owner")
+                                                            font.pixelSize: Style.fontXSmall
+                                                            font.weight: Font.Bold
+                                                            font.family: Style.fontFor(text)
                                                             font.letterSpacing: units.dp(0.5)
                                                             color: "#DB2777"
                                                         }
@@ -949,12 +990,34 @@ Item {
                                                             Label {
                                                                 anchors.verticalCenter: parent.verticalCenter
                                                                 width: parent.width - units.gu(4.5) - childSubBtn.width - Style.spacingM * 2
+                                                                       - (childOwnerBadge.visible ? childOwnerBadge.width + Style.spacingM : 0)
                                                                 text: childBtn.cName
                                                                 font.pixelSize: Style.fontRegular
                                                                 font.weight: childBtn.cSelected ? Font.DemiBold : Font.Normal
                                                                 font.family: Style.fontFor(text)
                                                                 color: childBtn.cSelected ? Style.brand : Style.textPrimary
                                                                 elide: Text.ElideRight
+                                                            }
+
+                                                            // Owner badge: you manage this community.
+                                                            Rectangle {
+                                                                id: childOwnerBadge
+                                                                visible: !!Config.ownedCommunityIdSet[childBtn.cId]
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                width: childOwnerLbl.width + units.gu(1.6)
+                                                                height: units.gu(2.4)
+                                                                radius: Style.pillRadius
+                                                                color: "#FCE7F3"
+                                                                Label {
+                                                                    id: childOwnerLbl
+                                                                    anchors.centerIn: parent
+                                                                    text: Lang.tr("Owner")
+                                                                    font.pixelSize: Style.fontXSmall
+                                                                    font.weight: Font.Bold
+                                                                    font.family: Style.fontFor(text)
+                                                                    font.letterSpacing: units.dp(0.5)
+                                                                    color: "#DB2777"
+                                                                }
                                                             }
 
                                                             Rectangle {

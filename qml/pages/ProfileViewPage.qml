@@ -19,18 +19,17 @@ Page {
     readonly property real maxContentWidth: Config.wideMode ? units.gu(72) : units.gu(60)
 
     // `st` is mutated in place, so `rev` is bumped to make `cur*` bindings re-evaluate
-    property int tab: 0          // 0 posts, 1 gallery, 2 video
+    property int tab: 0          // 0 posts, 1 video
     property int rev: 0
     property var st: ({
         0: { offset: 0, loading: false, end: false, loaded: false },
-        1: { offset: 0, loading: false, end: false, loaded: false },
-        2: { offset: 0, loading: false, end: false, loaded: false }
+        1: { offset: 0, loading: false, end: false, loaded: false }
     })
 
     readonly property bool isSelf: Session.isLoggedIn && username === Session.username
     property bool isBlocked: false
     property bool blockLoading: false
-    readonly property var curModel: tab === 0 ? m0 : tab === 1 ? m1 : m2
+    readonly property var curModel: tab === 0 ? m0 : m2
     readonly property bool curLoading: rev >= 0 && st[tab].loading
     readonly property bool curEnd: rev >= 0 && st[tab].end
     readonly property bool curLoaded: rev >= 0 && st[tab].loaded
@@ -38,10 +37,9 @@ Page {
     header: Item { height: 0 }
 
     ListModel { id: m0; dynamicRoles: true }   // posts
-    ListModel { id: m1; dynamicRoles: true }   // gallery
     ListModel { id: m2; dynamicRoles: true }   // video
 
-    function modelFor(t) { return t === 0 ? m0 : t === 1 ? m1 : m2; }
+    function modelFor(t) { return t === 0 ? m0 : m2; }
 
     function loadProfile() {
         page.profileLoading = true;
@@ -122,9 +120,6 @@ Page {
         if (t === 0)
             PostService.listByAuthor(Config.baseUrl, username,
                 { limit: Config.pageSize, offset: s.offset }, Session.token, ok, err);
-        else if (t === 1)
-            PostService.listGalleryByAuthor(Config.baseUrl, username,
-                { limit: Config.pageSize, offset: s.offset }, Session.token, ok, err);
         else
             VideoService.listVideos(Config.baseUrl,
                 { author: username, limit: Config.pageSize, offset: s.offset }, Session.token, ok, err);
@@ -139,13 +134,32 @@ Page {
         loadTab(t);
     }
 
-    function openPost(p) { page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"), { author: p.author, permlink: p.permlink, title: p.title }); }
-    function openGallery(p) { page.pageStack.push(Qt.resolvedUrl("GalleryDetailPage.qml"), { author: p.author, permlink: p.permlink }); }
-    function openVideo(v) { page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v }); }
+    // Create-post shortcuts (own profile only): asks which community first (same picker the
+    // News/Video compose buttons use), then opens the matching editor and refreshes once saved.
+    function createContent(t, anchorBtn) {
+        page.selectTab(t);
+        createPicker.anchorItem = anchorBtn || null;
+        // Video has its own per-community permission; the picker checks it instead of blog's "allowPost".
+        createPicker.openFor(function (target) {
+            var props = target ? { targetCommunity: target } : {};
+            if (t === 1) {
+                var edv = page.pageStack.push(Qt.resolvedUrl("CreateVideoPage.qml"), props);
+                if (edv && edv.saved) edv.saved.connect(function () { page.refreshTab(t); });
+                return;
+            }
+            var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), props);
+            if (ed && ed.saved) ed.saved.connect(function () { page.refreshTab(t); });
+        }, t === 1);
+    }
+
+    // Opened from within Settings' narrow master/detail stack, not the wide News layout the
+    // related rail is designed for, so it's suppressed here same as DownloadedContentPage.
+    function openPost(p) { page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"), { author: p.author, permlink: p.permlink, title: p.title, allowSidePanel: false }); }
+    function openVideo(v) { page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v, allowSidePanel: false }); }
 
     // Remove a hidden post from whichever tab holds it (the action sheet is shared).
     function removeRow(permlink) {
-        var models = [m0, m1, m2];
+        var models = [m0, m2];
         for (var k = 0; k < models.length; k++) {
             var mdl = models[k];
             for (var i = 0; i < mdl.count; i++) {
@@ -159,13 +173,13 @@ Page {
         function onHideRequested(author, permlink) { page.removeRow(permlink); }
         function onPostDeleted(author, permlink) { page.removeRow(permlink); }
         function onCommentCountChanged(permlink, count) {
-            var models = [m0, m1, m2];
+            var models = [m0, m2];
             for (var k = 0; k < models.length; k++)
                 for (var i = 0; i < models[k].count; i++)
                     if (models[k].get(i).permlink === permlink) { models[k].setProperty(i, "comments", count); return; }
         }
         function onPostUpdated(author, permlink, title, body) {
-            var models = [m0, m1, m2];
+            var models = [m0, m2];
             for (var k = 0; k < models.length; k++) {
                 var mdl = models[k];
                 for (var i = 0; i < mdl.count; i++) {
@@ -183,8 +197,7 @@ Page {
         function onEditRequested(post) {
             if (!page.visible) return;
             var t = page.tab;
-            var url = t === 1 ? "CreateGalleryPostPage.qml" : "CreatePostPage.qml";
-            var ed = page.pageStack.push(Qt.resolvedUrl(url), { editPost: post });
+            var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), { editPost: post });
             if (ed && ed.saved) ed.saved.connect(function () { page.refreshTab(t); });
         }
     }
@@ -460,11 +473,93 @@ Page {
                     onClicked: page.toggleFollow()
                 }
 
+                Item { width: 1; height: Style.spacingM; visible: page.isSelf }
+
+                // Own-profile compose shortcuts: a dedicated section, not a tab-strip afterthought,
+                // so Blog/Video each get equal weight (matches FB/IG profile composers).
+                Column {
+                    id: createSection
+                    visible: page.isSelf
+                    width: parent.width - Style.spacingM * 2
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: Style.spacingS
+
+                    Label {
+                        text: Lang.tr("Create")
+                        font.pixelSize: Style.fontMedium
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                    }
+
+                    Row {
+                        width: parent.width
+                        spacing: Style.spacingS
+
+                        Repeater {
+                            model: [
+                                { icon: "stock_note", label: Lang.tr("Blog"),  tab: 0 },
+                                { icon: "camcorder",   label: Lang.tr("Video"), tab: 1 }
+                            ]
+                            delegate: AbstractButton {
+                                id: createTile
+                                width: (parent.width - Style.spacingS) / 2
+                                height: units.gu(11)
+                                onClicked: page.createContent(modelData.tab, createTile)
+
+                                Behavior on scale { NumberAnimation { duration: 100 } }
+                                scale: createTile.pressed ? 0.97 : 1
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: units.gu(1.6)
+                                    color: Style.surface
+                                    border.width: units.dp(1)
+                                    border.color: Style.divider
+                                }
+
+                                Icon {
+                                    anchors { top: parent.top; right: parent.right; margins: Style.spacingS }
+                                    width: units.gu(1.8); height: width
+                                    name: "next"
+                                    color: Style.textSecondary
+                                }
+
+                                Column {
+                                    anchors.centerIn: parent
+                                    spacing: Style.spacingXs
+
+                                    Rectangle {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: units.gu(4.4); height: width; radius: width / 2
+                                        color: Style.brand
+                                        Icon {
+                                            anchors.centerIn: parent
+                                            width: units.gu(2.4); height: width
+                                            name: modelData.icon
+                                            color: "white"
+                                        }
+                                    }
+
+                                    Label {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: modelData.label
+                                        font.pixelSize: Style.fontRegular
+                                        font.weight: Font.DemiBold
+                                        font.family: Style.fontFor(text)
+                                        color: Style.textPrimary
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Item { width: 1; height: Style.spacingM }
 
                 SectionTabs {
                     width: parent.width
-                    model: [Lang.tr("Posts"), Lang.tr("Gallery"), Lang.tr("Video")]
+                    model: [Lang.tr("Posts"), Lang.tr("Video")]
                     currentIndex: page.tab
                     onSelected: page.selectTab(index)
                 }
@@ -476,7 +571,7 @@ Page {
             width: list.width
             height: item ? item.implicitHeight : 0
             property var rowData: page.curModel.get(index)
-            sourceComponent: page.tab === 0 ? cPost : page.tab === 1 ? cGallery : cVideo
+            sourceComponent: page.tab === 0 ? cPost : cVideo
         }
 
         footer: Item {
@@ -490,9 +585,7 @@ Page {
             Label {
                 anchors.centerIn: parent
                 visible: page.curLoaded && page.curModel.count === 0 && !page.curLoading
-                text: page.tab === 0 ? Lang.tr("No posts yet")
-                    : page.tab === 1 ? Lang.tr("No gallery posts yet")
-                    : Lang.tr("No videos yet")
+                text: page.tab === 0 ? Lang.tr("No posts yet") : Lang.tr("No videos yet")
                 font.family: Style.fontFor(text)
                 color: Style.textSecondary
             }
@@ -524,17 +617,6 @@ Page {
         }
     }
     Component {
-        id: cGallery
-        GalleryCard {
-            width: parent ? parent.width : list.width
-            post: rowData
-            showFollow: false       // redundant on this user's own profile
-            onClicked: page.openGallery(rowData)
-            onMoreClicked: PostActions.open(rowData, "gallery")
-            onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
-        }
-    }
-    Component {
         id: cVideo
         VideoCard {
             width: parent ? parent.width : list.width
@@ -552,4 +634,7 @@ Page {
         overlay: true
         onClicked: page.pageStack.pop()
     }
+
+    // Own instance: the shell's picker is an id in Main.qml, which a pushed page can't reach.
+    PostCommunityPicker { id: createPicker }
 }

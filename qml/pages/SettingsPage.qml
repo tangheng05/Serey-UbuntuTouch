@@ -16,6 +16,19 @@ Page {
     // Caps content to a centered column on tablet/desktop; phone gets the full width
     readonly property real maxContentWidth: units.gu(60)
 
+    // Single source of truth for the language picker; add a row here to support a new language.
+    readonly property var languageOptions: [
+        { code: "en", label: "English" },
+        { code: "nl", label: "Dutch" }
+    ]
+    function languageLabelFor(code) {
+        for (var i = 0; i < page.languageOptions.length; i++)
+            if (page.languageOptions[i].code === code) return page.languageOptions[i].label
+        return code
+    }
+    // Desktop-only accordion state for the inline language row.
+    property bool langExpanded: false
+
     property bool searching: false
     property bool searchOpen: false
     property int searchGeneration: 0
@@ -587,13 +600,171 @@ Page {
                 }
             }
 
+            // Touch/phone: original modal picker.
             SettingsRow {
                 id: languageRow
+                visible: !Config.desktopMode
                 iconName: "language-chooser"
                 label: Lang.tr("Language")
-                valueText: Session.language === "nl" ? "Dutch" : "English"
+                valueText: page.languageLabelFor(Session.language)
                 showChevron: true
                 onClicked: PopupUtils.open(langDialog)
+            }
+
+            // Desktop: inline accordion row. Plain MouseArea + in-flow expand, no floating
+            // overlay/clip/transform stack (that combo silently ate clicks in the dropdown attempt).
+            Item {
+                id: languageRowDesktop
+                visible: Config.desktopMode
+                width: parent.width
+                height: units.gu(7)
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: langRowMouse.pressed ? Style.pressed : "transparent"
+                }
+                Icon {
+                    id: langRowIcon
+                    anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    width: units.gu(2.6); height: width
+                    name: "language-chooser"
+                    color: Style.textSecondary
+                }
+                Label {
+                    anchors { left: langRowIcon.right; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                    text: Lang.tr("Language")
+                    font.pixelSize: Style.fontRegular
+                    font.family: Style.fontFor(text)
+                    color: Style.textPrimary
+                }
+                Row {
+                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    spacing: Style.spacingS
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.languageLabelFor(Session.language)
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                    }
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2); height: width
+                        name: "next"
+                        color: Style.textSecondary
+                        rotation: page.langExpanded ? 90 : 0
+                        Behavior on rotation { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                    }
+                }
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: units.dp(1)
+                    color: Style.divider
+                    visible: !page.langExpanded
+                }
+                MouseArea {
+                    id: langRowMouse
+                    anchors.fill: parent
+                    onClicked: page.langExpanded = !page.langExpanded
+                }
+            }
+
+            // Expanding panel: English/Dutch options, pushed in-flow below the row.
+            Item {
+                id: langExpandPanel
+                visible: Config.desktopMode
+                width: parent.width
+                clip: true
+                height: page.langExpanded ? units.gu(12) : 0
+                Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+
+                Column {
+                    width: parent.width
+
+                    AbstractButton {
+                        id: enOptRow
+                        width: parent.width
+                        height: units.gu(6)
+                        onClicked: {
+                            page.langExpanded = false
+                            if (Session.language !== "en") {
+                                Session.setLanguage("en")
+                                Toast.show(Lang.tr("Language") + ": English")
+                            }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            color: enOptRow.pressed ? Style.pressed
+                                 : Session.language === "en" ? Style.iconBackground : "transparent"
+                        }
+                        Row {
+                            anchors { fill: parent; leftMargin: units.gu(6); rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - units.gu(2.4) - Style.spacingM
+                                text: "English"
+                                font.pixelSize: Style.fontRegular
+                                font.family: Style.fontFor(text)
+                                font.weight: Session.language === "en" ? Font.DemiBold : Font.Normal
+                                color: Session.language === "en" ? Style.brand : Style.textPrimary
+                            }
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2); height: width
+                                name: "tick"
+                                color: Style.brand
+                                visible: Session.language === "en"
+                            }
+                        }
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: units.dp(1); color: Style.divider
+                        }
+                    }
+
+                    AbstractButton {
+                        id: nlOptRow
+                        width: parent.width
+                        height: units.gu(6)
+                        onClicked: {
+                            page.langExpanded = false
+                            if (Session.language !== "nl") {
+                                Session.setLanguage("nl")
+                                Toast.show(Lang.tr("Language") + ": Dutch")
+                            }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            color: nlOptRow.pressed ? Style.pressed
+                                 : Session.language === "nl" ? Style.iconBackground : "transparent"
+                        }
+                        Row {
+                            anchors { fill: parent; leftMargin: units.gu(6); rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - units.gu(2.4) - Style.spacingM
+                                text: "Dutch"
+                                font.pixelSize: Style.fontRegular
+                                font.family: Style.fontFor(text)
+                                font.weight: Session.language === "nl" ? Font.DemiBold : Font.Normal
+                                color: Session.language === "nl" ? Style.brand : Style.textPrimary
+                            }
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2); height: width
+                                name: "tick"
+                                color: Style.brand
+                                visible: Session.language === "nl"
+                            }
+                        }
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: units.dp(1); color: Style.divider
+                        }
+                    }
+                }
             }
 
             Component {

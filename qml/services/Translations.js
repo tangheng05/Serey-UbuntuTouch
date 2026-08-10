@@ -553,6 +553,7 @@ var nl = {
     "Unknown device":                                    "Onbekend apparaat",
     "Other sessions":                                    "Andere sessies",
     "Other sessions terminated.":                        "Andere sessies beëindigd.",
+    "Owner":                                             "Eigenaar",
     "No other active sessions":                         "Geen andere actieve sessies",
     "Terminating…":                                      "Bezig met beëindigen…",
 

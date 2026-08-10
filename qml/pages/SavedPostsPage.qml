@@ -196,7 +196,7 @@ Page {
                           onTriggered: function () { SavedPosts.remove(modelData.permlink); } },
                         { iconName: "share", text: Lang.tr("Share"),
                           onTriggered: function () { Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink); } }
-                    ])
+                    ], moreBtn)
 
                     Column {
                         anchors.centerIn: parent

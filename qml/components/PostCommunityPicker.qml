@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
@@ -10,11 +11,18 @@ Item {
     visible: false
     z: 1500
 
+
     // Called back with the chosen target: { id, name, icon, allowPost, videoAllowPost }.
     property var _onChosen: null
     property var items: []           // [{ id, name, icon, allowPost, videoAllowPost, isParent }]
     property string selectedId: ""
     property bool loading: false
+    // Set by openFor(): video posting has its own per-community permission, so rows that don't
+    // allow it are shown (for browsing into their children) but can't be selected.
+    property bool forVideo: false
+    function _canPost(entry) { return !!entry && !!(picker.forVideo ? entry.videoAllowPost : entry.allowPost); }
+    // Marks rows for communities the signed-in user owns/manages with the "Owner" pill.
+    function _isOwned(entry) { return !!entry && !!entry.id && !!Config.ownedCommunityIdSet[entry.id]; }
     // True when `items` is the country list; only then can rows expand for children
     property bool topLevelIsCountries: false
     // country id (string) -> its fetched children, or undefined until expanded.
@@ -35,7 +43,7 @@ Item {
         for (var k in Config.communityById) {
             var c = Config.communityById[k];
             if (!c || c.dns !== dns) continue;
-            if (!c.allowPost) return null;
+            if (picker.forVideo ? !c.videoAllowPost : !c.allowPost) return null;
             return {
                 id: String(c.id),
                 name: c.title || Config.sources[0].name,
@@ -112,12 +120,17 @@ Item {
         for (var i = 0; i < comms.length; i++) {
             var m = comms[i];
             if (picker._isDeleted(m)) continue;
+            var id = String(m.id || m._id || "");
+            // list-by-parent-id doesn't reliably carry is_allow_post/video_is_allow_post for every
+            // row; Config.communityById (built from the full community tree) is the source of truth
+            // when it already knows this id, so cross-check it instead of trusting the raw fields blindly.
+            var known = Config.communityById[id];
             var entry = {
-                id: String(m.id || m._id || ""),
+                id: id,
                 name: m.title || m.name || "",
                 icon: m.icon_url || m.logo_url || m.profile_image || "",
-                allowPost: !!m.is_allow_post,
-                videoAllowPost: !!m.video_is_allow_post,
+                allowPost: known ? !!known.allowPost : !!m.is_allow_post,
+                videoAllowPost: known ? !!known.videoAllowPost : !!m.video_is_allow_post,
                 isParent: false,
                 isSuperhub: !!m.is_superhub
             };
@@ -127,77 +140,41 @@ Item {
         return out;
     }
 
+    // Always the same shape regardless of what you're currently browsing: Global + every country,
+    // each expandable into its own sub-communities. Whichever country is currently browsed gets
+    // auto-expanded so its communities are visible inline without an extra click.
     function _fetch() {
-        var apiId = Config.sources[Config.sourceIndex].id;
-        picker.topLevelIsCountries = (apiId === 0);
+        picker.topLevelIsCountries = true;
 
         // For Global, reuse curated Config.sources instead of the raw list-by-parent-id/1
-        if (picker.topLevelIsCountries) {
-            var out0 = [];
-            // Global itself first, when its backend record allows posting.
-            var globalEntry = picker._globalEntry();
-            if (globalEntry) {
-                out0.push(globalEntry);
-                picker._byId[globalEntry.id] = globalEntry;
-            }
-            for (var s = 1; s < Config.sources.length; s++) {
-                var src = Config.sources[s];
-                var entry = {
-                    id: String(src.id),
-                    name: src.name,
-                    icon: Config.communityIcon(src.dns),
-                    allowPost: !!Config.allowPostByDns[src.dns],
-                    videoAllowPost: !!Config.videoAllowPostByDns[src.dns],
-                    isParent: false
-                };
-                out0.push(entry);
-                picker._byId[entry.id] = entry;
-            }
-            // Browsing Global with no sub-community picked: pre-select the Global row
-            if (picker.selectedId.length === 0 && globalEntry)
-                picker.selectedId = globalEntry.id;
-            if (out0.length > 1) picker._autoExpandForSelection(out0);
-            picker._present(out0);
-            return;
+        var out0 = [];
+        // Global itself first, when its backend record allows posting.
+        var globalEntry = picker._globalEntry();
+        if (globalEntry) {
+            out0.push(globalEntry);
+            picker._byId[globalEntry.id] = globalEntry;
         }
-
-        picker.loading = true;
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", Config.baseUrl + "/community/list-by-parent-id/" + apiId);
-        xhr.setRequestHeader("Accept", "application/json");
-        xhr.timeout = 15000;
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState !== XMLHttpRequest.DONE) return;
-            picker.loading = false;
-            var comms = [];
-            try {
-                var d = JSON.parse(xhr.responseText);
-                comms = d.data || d.communities || d.results || [];
-            } catch (e) { }
-
-            // No children is not the end of it: the user may still own platforms elsewhere,
-            // so let _present() decide between callback and sheet.
-            var mapped = picker._mapCommunities(comms);
-            var out = [];
-            // The parent/source itself is only offered when it's directly postable.
-            if (Config.allowPostByDns[Config.communityDns]) {
-                var parentEntry = {
-                    id: String(Config.sources[Config.sourceIndex].id),
-                    name: Config.sources[Config.sourceIndex].name,
-                    icon: Config.communityIcon(Config.communityDns),
-                    allowPost: true,
-                    videoAllowPost: !!Config.videoAllowPostByDns[Config.communityDns],
-                    isParent: true
-                };
-                out.push(parentEntry);
-                picker._byId[parentEntry.id] = parentEntry;
-                // No sub-community active: pre-select the community being browsed
-                if (picker.selectedId.length === 0)
-                    picker.selectedId = parentEntry.id;
-            }
-            picker._present(out.concat(mapped));
-        };
-        xhr.send(null);
+        for (var s = 1; s < Config.sources.length; s++) {
+            var src = Config.sources[s];
+            var entry = {
+                id: String(src.id),
+                name: src.name,
+                icon: Config.communityIcon(src.dns),
+                allowPost: !!Config.allowPostByDns[src.dns],
+                videoAllowPost: !!Config.videoAllowPostByDns[src.dns],
+                isParent: false
+            };
+            out0.push(entry);
+            picker._byId[entry.id] = entry;
+        }
+        // Browsing Global with no sub-community picked: pre-select the Global row
+        if (picker.selectedId.length === 0 && globalEntry)
+            picker.selectedId = globalEntry.id;
+        if (out0.length > 1) {
+            picker._autoExpandForSelection(out0);
+            picker._autoExpandForOwnership(out0);
+        }
+        picker._present(out0);
     }
 
     // Fetches a country's own children into childCache, unless already cached
@@ -255,6 +232,27 @@ Item {
                 videoAllowPost: !!k.videoAllowPost,
                 isParent: false
             };
+        }
+    }
+
+    // Auto-expands the first top-level country that contains an owned community, so its "Owner"
+    // badge is visible right away instead of only after manually expanding every country.
+    function _autoExpandForOwnership(countryItems) {
+        if (picker.expandedId.length > 0) return;
+        var countryIds = {};
+        for (var i = 0; i < countryItems.length; i++) countryIds[countryItems[i].id] = true;
+        for (var ownedId in Config.ownedCommunityIdSet) {
+            var walk = String(ownedId);
+            var seen = {};
+            while (walk && !countryIds[walk] && !seen[walk]) {
+                seen[walk] = true;
+                walk = Config.parentCommunityById[walk];
+            }
+            if (walk && countryIds[walk]) {
+                picker.expandedId = walk;
+                picker._loadChildren(walk);
+                return;
+            }
         }
     }
 
@@ -317,10 +315,18 @@ Item {
             picker._callerBottom = p.y + picker.caller.height;
         }
         picker.visible = true;
+        // A prior sheet-mode close leaves pcpTranslate.y at its slide-out offset (pcpDropIn never
+        // touches it), so a dropdown-mode open right after would render the panel pushed way down.
+        pcpTranslate.y = 0;
         pcpBackdropFade.start();
-        pcpSlide.start();
+        if (picker.anchored) pcpDropIn.start(); else pcpSlide.start();
+        picker.forceActiveFocus();
     }
-    function closeAnimated() { pcpBackdropFadeOut.start(); pcpSlideOut.start(); }
+    function closeAnimated() {
+        pcpBackdropFadeOut.start();
+        if (picker.anchored) pcpDropOut.start(); else pcpSlideOut.start();
+    }
+    Keys.onEscapePressed: picker.closeAnimated()
 
     function _confirm() {
         var chosen = picker._byId[picker.selectedId] || null;
@@ -343,6 +349,21 @@ Item {
     }
     NumberAnimation { id: pcpBackdropFade;    target: pcpBackdrop; property: "opacity"; from: 0; to: 1; duration: 200 }
     NumberAnimation { id: pcpBackdropFadeOut; target: pcpBackdrop; property: "opacity"; to: 0;           duration: 200 }
+
+    // Soft elevation so the dropdown reads as floating above the page (the full-width
+    // sheet already sits on a dimmed backdrop and doesn't need it).
+    DropShadow {
+        anchors.fill: sheet
+        visible: picker.anchored && sheet.opacity > 0
+        source: sheet
+        radius: 16
+        samples: 33
+        horizontalOffset: 0
+        verticalOffset: 6
+        color: Qt.rgba(0, 0, 0, 0.22)
+        transparentBorder: true
+        cached: true
+    }
 
     Rectangle {
         id: sheet
@@ -367,12 +388,25 @@ Item {
         border.width: picker.anchored ? units.dp(1) : 0
         border.color: Style.divider
         clip: true
+        transformOrigin: Item.TopRight
 
         // Anchored panels rise a short hop from the button; the sheet slides its full height.
         readonly property real _slideFrom: picker.anchored ? units.gu(2) : sheet.height + units.gu(4)
         transform: Translate { id: pcpTranslate; y: 0 }
         NumberAnimation { id: pcpSlide;    target: pcpTranslate; property: "y"; from: sheet._slideFrom; to: 0;               duration: picker.anchored ? 160 : 300; easing.type: Easing.OutCubic }
         NumberAnimation { id: pcpSlideOut; target: pcpTranslate; property: "y"; to: sheet._slideFrom; duration: picker.anchored ? 140 : 250; easing.type: Easing.InCubic; onStopped: picker.visible = false }
+
+        // Dropdowns snap open from their anchor; a 300ms slide would feel slow.
+        ParallelAnimation {
+            id: pcpDropIn
+            NumberAnimation { target: sheet; property: "opacity"; from: 0; to: 1; duration: 120; easing.type: Easing.OutQuad }
+            NumberAnimation { target: sheet; property: "scale";   from: 0.97; to: 1; duration: 120; easing.type: Easing.OutQuad }
+        }
+        SequentialAnimation {
+            id: pcpDropOut
+            NumberAnimation { target: sheet; property: "opacity"; to: 0; duration: 100; easing.type: Easing.InQuad }
+            ScriptAction { script: picker.visible = false }
+        }
 
         Flickable {
             id: flickable
@@ -385,8 +419,32 @@ Item {
                 id: sheetContent
                 width: flickable.width
 
+                // Dropdown mode: anchored to the compose button, so a slim title suffices.
+                Row {
+                    visible: picker.anchored
+                    width: parent.width - Style.spacingM * 2
+                    x: Style.spacingM
+                    height: picker.anchored ? units.gu(5) : 0
+                    Label {
+                        width: parent.width - units.gu(3.5)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Lang.tr("Where should this post go?")
+                        font.pixelSize: Style.fontMedium
+                        font.weight: Font.DemiBold
+                        color: Style.textTitle
+                        elide: Text.ElideRight
+                    }
+                    AbstractButton {
+                        width: units.gu(3.5); height: units.gu(3.5)
+                        anchors.verticalCenter: parent.verticalCenter
+                        onClicked: picker.closeAnimated()
+                        Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "close"; color: Style.textSecondary }
+                    }
+                }
+
                 // Brand-tinted header band, distinct from the community switcher's plain header
                 Rectangle {
+                    visible: !picker.anchored
                     width: parent.width
                     height: headerCol.height + Style.spacingL * 2
                     color: Qt.rgba(Style.brand.r, Style.brand.g, Style.brand.b, 0.08)
@@ -475,9 +533,13 @@ Item {
                             readonly property int chevronW: rowCol.expandable ? units.gu(6) : 0
                             Component.onCompleted: picker._queueReveal(row, modelData.id)
 
-                            // Left zone (radio + icon + name) selects this row.
+                            // Left zone (radio + icon + name) selects this row; disabled (dimmed) when
+                            // this community doesn't allow the content type being posted.
                             AbstractButton {
+                                id: rowSelectBtn
                                 anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: row.chevronW }
+                                enabled: picker._canPost(modelData)
+                                opacity: enabled ? 1 : 0.45
                                 onClicked: picker.selectedId = modelData.id
 
                                 Row {
@@ -511,12 +573,36 @@ Item {
                                     Label {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: parent.width - units.gu(2.4) - units.gu(4.4) - Style.spacingM * 2
-                                        text: modelData.name
+                                               - (rowOwnerBadge.visible ? rowOwnerBadge.width + Style.spacingM : 0)
+                                        text: rowSelectBtn.enabled ? modelData.name
+                                            : (picker.forVideo ? Lang.tr("%1 (video not allowed)").arg(modelData.name)
+                                                               : Lang.tr("%1 (posting not allowed)").arg(modelData.name))
                                         font.pixelSize: Style.fontRegular
                                         font.weight: row.isSelected ? Font.DemiBold : Font.Normal
                                         font.family: Style.fontFor(text)
                                         color: row.isSelected ? Style.brand : Style.textPrimary
                                         elide: Text.ElideRight
+                                    }
+
+                                    // Owner badge: you manage this community (matches the browse picker).
+                                    Rectangle {
+                                        id: rowOwnerBadge
+                                        visible: picker._isOwned(modelData)
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: rowOwnerLbl.width + units.gu(1.6)
+                                        height: units.gu(2.4)
+                                        radius: Style.pillRadius
+                                        color: "#FCE7F3"
+                                        Label {
+                                            id: rowOwnerLbl
+                                            anchors.centerIn: parent
+                                            text: Lang.tr("Owner")
+                                            font.pixelSize: Style.fontXSmall
+                                            font.weight: Font.Bold
+                                            font.family: Style.fontFor(text)
+                                            font.letterSpacing: units.dp(0.5)
+                                            color: "#DB2777"
+                                        }
                                     }
                                 }
                             }
@@ -583,9 +669,13 @@ Item {
                                     readonly property int chevronW: childCol.hubExpandable ? units.gu(6) : 0
                                     Component.onCompleted: picker._queueReveal(childRow, modelData.id)
 
-                                    // Left zone selects this community.
+                                    // Left zone selects this community; disabled (dimmed) when it
+                                    // doesn't allow the content type being posted.
                                     AbstractButton {
+                                        id: childSelectBtn
                                         anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: childRow.chevronW }
+                                        enabled: picker._canPost(modelData)
+                                        opacity: enabled ? 1 : 0.45
                                         onClicked: picker.selectedId = modelData.id
 
                                         Row {
@@ -620,6 +710,7 @@ Item {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: parent.width - units.gu(2.2) - units.gu(3.8) - Style.spacingM * 2
                                                        - (childCol.isHub ? hubBadge.width + Style.spacingM : 0)
+                                                       - (childOwnerBadge.visible ? childOwnerBadge.width + Style.spacingM : 0)
                                                 text: modelData.name
                                                 font.pixelSize: Style.fontSmall
                                                 font.weight: childRow.isSelected ? Font.DemiBold : Font.Normal
@@ -636,7 +727,7 @@ Item {
                                                 width: hubLbl.width + units.gu(1.6)
                                                 height: units.gu(2.4)
                                                 radius: Style.pillRadius
-                                                color: "#FCE7F3"
+                                                color: Qt.rgba(Style.brand.r, Style.brand.g, Style.brand.b, 0.14)
                                                 Label {
                                                     id: hubLbl
                                                     anchors.centerIn: parent
@@ -644,6 +735,27 @@ Item {
                                                     font.pixelSize: Style.fontXSmall
                                                     font.weight: Font.Bold
                                                     font.family: Style.fontFamily
+                                                    font.letterSpacing: units.dp(0.5)
+                                                    color: Style.brand
+                                                }
+                                            }
+
+                                            // Owner badge: you manage this community (matches the browse picker).
+                                            Rectangle {
+                                                id: childOwnerBadge
+                                                visible: picker._isOwned(modelData)
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: childOwnerLbl.width + units.gu(1.6)
+                                                height: units.gu(2.4)
+                                                radius: Style.pillRadius
+                                                color: "#FCE7F3"
+                                                Label {
+                                                    id: childOwnerLbl
+                                                    anchors.centerIn: parent
+                                                    text: Lang.tr("Owner")
+                                                    font.pixelSize: Style.fontXSmall
+                                                    font.weight: Font.Bold
+                                                    font.family: Style.fontFor(text)
                                                     font.letterSpacing: units.dp(0.5)
                                                     color: "#DB2777"
                                                 }
@@ -692,6 +804,8 @@ Item {
                                         height: units.gu(6)
                                         readonly property string gcId: String(modelData.id || modelData._id || "")
                                         readonly property bool isSelected: picker.selectedId === gcRow.gcId
+                                        enabled: picker._canPost(modelData)
+                                        opacity: enabled ? 1 : 0.45
                                         onClicked: picker.selectedId = gcRow.gcId
                                         Component.onCompleted: picker._queueReveal(gcRow, gcRow.gcId)
 
@@ -726,12 +840,34 @@ Item {
                                             Label {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: parent.width - units.gu(2.2) - units.gu(3.4) - Style.spacingM * 2
+                                                       - (gcOwnerBadge.visible ? gcOwnerBadge.width + Style.spacingM : 0)
                                                 text: modelData.title || modelData.name || ""
                                                 font.pixelSize: Style.fontSmall
                                                 font.weight: gcRow.isSelected ? Font.DemiBold : Font.Normal
                                                 font.family: Style.fontFor(text)
                                                 color: gcRow.isSelected ? Style.brand : Style.textPrimary
                                                 elide: Text.ElideRight
+                                            }
+
+                                            // Owner badge: you manage this community (matches the browse picker).
+                                            Rectangle {
+                                                id: gcOwnerBadge
+                                                visible: !!Config.ownedCommunityIdSet[gcRow.gcId]
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: gcOwnerLbl.width + units.gu(1.6)
+                                                height: units.gu(2.2)
+                                                radius: Style.pillRadius
+                                                color: "#FCE7F3"
+                                                Label {
+                                                    id: gcOwnerLbl
+                                                    anchors.centerIn: parent
+                                                    text: Lang.tr("Owner")
+                                                    font.pixelSize: Style.fontXSmall
+                                                    font.weight: Font.Bold
+                                                    font.family: Style.fontFor(text)
+                                                    font.letterSpacing: units.dp(0.5)
+                                                    color: "#DB2777"
+                                                }
                                             }
                                         }
 
@@ -750,12 +886,22 @@ Item {
             }
         }
 
-        // Pinned so a long community list never buries the action.
+        // Pinned directly under the list so it's always flush against it, never floating below the card.
         Rectangle {
             id: footerBar
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
             height: continueBtn.height + Style.spacingM * 2
+            // Rounded to match the sheet's own corners (clip only masks to the bounding box, not the
+            // rounded shape, so a square-cornered footer would poke past the sheet's rounded bottom).
+            radius: sheet.radius
             color: Style.surface
+
+            // Squares the top back off so only the bottom corners stay rounded, matching the sheet.
+            Rectangle {
+                anchors { top: parent.top; left: parent.left; right: parent.right }
+                height: Math.min(parent.radius, parent.height / 2)
+                color: Style.surface
+            }
 
             // Swallow taps/scroll on the bar so nothing leaks to the page below.
             MouseArea { anchors.fill: parent; onWheel: wheel.accepted = true }
@@ -770,7 +916,7 @@ Item {
                 anchors { verticalCenter: parent.verticalCenter; horizontalCenter: parent.horizontalCenter }
                 width: parent.width - Style.spacingM * 2
                 height: units.gu(5.5)
-                enabled: picker.selectedId.length > 0
+                enabled: picker.selectedId.length > 0 && picker._canPost(picker._byId[picker.selectedId])
                 onClicked: picker._confirm()
 
                 Rectangle {

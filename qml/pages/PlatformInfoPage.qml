@@ -21,6 +21,7 @@ Page {
     property var categoryOptions: []   // [{ id, name }], community_category taxonomy
     property var countryOptions: []    // [{ id, name }], id is the UUID update-community-country needs
     property bool saving: false
+    property bool countryPickerOpen: false
 
     // Initial values captured on load; Save only sends what actually changed.
     property string _initialName: ""
@@ -179,7 +180,7 @@ Page {
             AbstractButton {
                 width: parent.width
                 height: units.gu(5)     // match FormField, these read as fields
-                onClicked: PopupUtils.open(parentCountryDialog)
+                onClicked: page.countryPickerOpen = true
                 Rectangle {
                     anchors.fill: parent
                     radius: Style.cardRadius
@@ -292,27 +293,129 @@ Page {
         }
     }
 
-    Component {
-        id: parentCountryDialog
-        Dialog {
-            id: dlg
-            title: Lang.tr("Parent Country")
-            Repeater {
-                model: page.countryOptions
-                delegate: Button {
-                    width: parent.width
+    // Full-screen scrollable sheet: a Dialog+Repeater grows to fit every country with no
+    // scroll clip, so the list runs off-screen. A ListView bounded to the page is draggable
+    // AND wheel/trackpad-scrollable.
+    Rectangle {
+        visible: page.countryPickerOpen
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        color: Style.surface
+        z: 10
+
+        MouseArea { anchors.fill: parent }
+
+        Item {
+            id: countryPickerHeader
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: units.gu(7)
+
+            AbstractButton {
+                id: countryPickerBack
+                anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                width: units.gu(6)
+                onClicked: page.countryPickerOpen = false
+                Icon {
+                    anchors.centerIn: parent
+                    name: "back"
+                    width: units.gu(2.5); height: width
+                    color: Style.textPrimary
+                }
+            }
+            Rectangle {
+                anchors {
+                    left: countryPickerBack.right
+                    right: parent.right; rightMargin: Style.spacingM
+                    verticalCenter: parent.verticalCenter
+                }
+                height: units.gu(4.5)
+                radius: Style.cardRadius
+                color: "transparent"
+                border.width: units.dp(1)
+                border.color: countrySearchField.activeFocus ? Style.brand : Style.divider
+
+                TextInput {
+                    id: countrySearchField
+                    anchors {
+                        left: parent.left; leftMargin: Style.spacingM
+                        right: parent.right; rightMargin: Style.spacingM
+                        verticalCenter: parent.verticalCenter
+                    }
+                    font.family: Style.fontFamily
+                    font.pixelSize: Style.fontRegular
+                    color: Style.textPrimary
+                    inputMethodHints: Qt.ImhNoPredictiveText
+                }
+                Label {
+                    anchors { left: countrySearchField.left; verticalCenter: parent.verticalCenter }
+                    visible: countrySearchField.text.length === 0
+                    text: Lang.tr("Search countries")
+                    color: Style.textSecondary
+                    font.pixelSize: Style.fontRegular
+                    font.family: Style.fontFor(text)
+                }
+            }
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                height: units.dp(1)
+                color: Style.divider
+            }
+        }
+
+        ListView {
+            anchors { top: countryPickerHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+            bottomMargin: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
+            clip: true
+            model: {
+                var q = countrySearchField.text.toLowerCase()
+                if (q.length === 0) return page.countryOptions
+                var out = []
+                for (var i = 0; i < page.countryOptions.length; i++)
+                    if (page.countryOptions[i].name.toLowerCase().indexOf(q) >= 0)
+                        out.push(page.countryOptions[i])
+                return out
+            }
+            delegate: Item {
+                width: ListView.view.width
+                height: units.gu(6)
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: countryRowTap.pressed ? Style.pressed : "transparent"
+                }
+                Label {
+                    anchors {
+                        left: parent.left; leftMargin: Style.spacingM
+                        right: countryRowTick.left; rightMargin: Style.spacingS
+                        verticalCenter: parent.verticalCenter
+                    }
                     text: modelData.name
-                    color: page.parentCountryId === modelData.id ? Style.brand : Style.iconBackground
+                    elide: Text.ElideRight
+                    font.pixelSize: Style.fontRegular
+                    font.family: Style.fontFor(text)
+                    color: Style.textPrimary
+                }
+                Icon {
+                    id: countryRowTick
+                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    visible: page.parentCountryId === modelData.id
+                    name: "tick"
+                    width: units.gu(2.5); height: width
+                    color: Style.success
+                }
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: units.dp(1)
+                    color: Style.divider
+                }
+                MouseArea {
+                    id: countryRowTap
+                    anchors.fill: parent
                     onClicked: {
                         page.parentCountryId = modelData.id
                         page.parentCountryName = modelData.name
-                        PopupUtils.close(dlg)
+                        page.countryPickerOpen = false
                     }
                 }
-            }
-            Button {
-                text: Lang.tr("Cancel")
-                onClicked: PopupUtils.close(dlg)
             }
         }
     }

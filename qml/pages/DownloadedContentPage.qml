@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 import Lomiri.Components.Popups 1.3
 import "../Theme"
@@ -16,7 +17,6 @@ Page {
     }
 
     property int tabIndex: 0
-    property string _pendingRemoveVideo: ""
     property string _pendingRemoveArticle: ""
     readonly property real maxContentWidth: units.gu(100)
 
@@ -24,24 +24,6 @@ Page {
     property Item keyboardFocusItem: tabIndex === 0 ? videoList : articleList
     function _focusActiveList() { (tabIndex === 0 ? videoList : articleList).forceActiveFocus(); }
     onVisibleChanged: if (visible) _focusActiveList()
-
-    Component {
-        id: removeVideoDialog
-        Dialog {
-            id: rvdlg
-            title: Lang.tr("Remove download?")
-            text: Lang.tr("This video will no longer be available offline.")
-            Button {
-                text: Lang.tr("Remove")
-                color: Style.danger
-                onClicked: { PopupUtils.close(rvdlg); Downloads.remove(page._pendingRemoveVideo); }
-            }
-            Button {
-                text: Lang.tr("Cancel")
-                onClicked: PopupUtils.close(rvdlg)
-            }
-        }
-    }
 
     Component {
         id: removeArticleDialog
@@ -137,13 +119,30 @@ Page {
                 id: videoCard
                 width: parent.width
                 video: modelData
-                compactMenu: false
+                // Same compact anchored dropdown as the blog cards (default compactMenu); this
+                // page just swaps in its own Remove/Share actions instead of the generic ones.
+                function menuItems() {
+                    return [
+                        { icon: "delete", label: Lang.tr("Remove"), danger: true, action: "remove" },
+                        { icon: "share", label: Lang.tr("Share"), action: "share" }
+                    ];
+                }
+                function runMenuAction(action) {
+                    if (action === "remove") Downloads.remove(modelData.permlink);
+                    else if (action === "share") Share.open("https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink);
+                }
                 // Settings already owns the third column here; no rail on the detail page
                 onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
                     { video: modelData, allowSidePanel: false })
                 onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                     { username: modelData.author })
-                onMoreClicked: { page._pendingRemoveVideo = modelData.permlink || ""; PopupUtils.open(removeVideoDialog); }
+                // Phone width: compactMenu is off there, so "..." falls back to this bottom sheet.
+                onMoreClicked: actionSheet.show([
+                    { iconName: "delete", text: Lang.tr("Remove"), danger: true,
+                      onTriggered: function () { Downloads.remove(modelData.permlink); } },
+                    { iconName: "share", text: Lang.tr("Share"),
+                      onTriggered: function () { Share.open("https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink); } }
+                ], videoCard)
             }
         }
     }
@@ -172,11 +171,23 @@ Page {
         }
 
         delegate: ListItem {
+            id: articleItem
             width: articleList.width
             height: articleRow.height + Style.spacingM * 2
             onClicked: page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
                 { author: modelData.author, permlink: modelData.permlink,
                   title: modelData.title, preloadedPost: modelData, allowSidePanel: false })
+
+            // Same compact anchored dropdown as the video row/blog cards, rather than the full
+            // ActionBottomSheet (which is the phone/touch fallback for those too).
+            property bool menuOpen: false
+            // cardMenu reparents onto the window while open, so force-close it before recycling
+            Component.onDestruction: articleItem.menuOpen = false
+            // Reparent onto the window while open so the menu isn't clipped by the list row.
+            readonly property Item _menuOverlayParent: (articleItem.menuOpen && articleItem.Window.window)
+                ? articleItem.Window.window.contentItem : articleItem
+            readonly property point _moreBtnBottomRight: (articleItem.menuOpen && moreBtn)
+                ? moreBtn.mapToItem(articleItem._menuOverlayParent, moreBtn.width, moreBtn.height) : Qt.point(0, 0)
 
             // HIG polarity: LEADING = negative (red trash), TRAILING = positive.
             leadingActions: ListItemActions {
@@ -293,12 +304,17 @@ Page {
                     id: moreBtn
                     anchors.verticalCenter: parent.verticalCenter
                     width: units.gu(3.5); height: units.gu(3.5)
-                    onClicked: actionSheet.show([
-                        { iconName: "delete", text: Lang.tr("Remove"), danger: true,
-                          onTriggered: function () { SavedPosts.remove(modelData.permlink); } },
-                        { iconName: "share", text: Lang.tr("Share"),
-                          onTriggered: function () { Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink); } }
-                    ])
+                    // Desktop: compact anchored dropdown, same as the video row. Phone/tablet
+                    // (compactMenu off there too): fall back to the full bottom sheet.
+                    onClicked: {
+                        if (Config.desktopMode) { articleItem.menuOpen = !articleItem.menuOpen; return; }
+                        actionSheet.show([
+                            { iconName: "delete", text: Lang.tr("Remove"), danger: true,
+                              onTriggered: function () { SavedPosts.remove(modelData.permlink); } },
+                            { iconName: "share", text: Lang.tr("Share"),
+                              onTriggered: function () { Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink); } }
+                        ], moreBtn);
+                    }
 
                     Column {
                         anchors.centerIn: parent
@@ -310,6 +326,85 @@ Page {
                                 radius: width / 2
                                 color: Style.textSecondary
                                 anchors.horizontalCenter: parent.horizontalCenter
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Dismiss on outside click; fills the whole window while open once reparented
+            MouseArea {
+                parent: articleItem._menuOverlayParent
+                visible: articleItem.menuOpen
+                z: 999
+                anchors.fill: parent
+                onClicked: articleItem.menuOpen = false
+            }
+
+            Rectangle {
+                id: articleCardMenu
+                parent: articleItem._menuOverlayParent
+                visible: articleItem.menuOpen
+                z: 1000
+                x: Math.min(articleItem._moreBtnBottomRight.x - width, articleItem._menuOverlayParent.width - width - Style.spacingXs)
+                y: articleItem._moreBtnBottomRight.y + Style.spacingXs
+                width: Math.min(units.gu(30), articleItem._menuOverlayParent.width - Style.spacingM * 2)
+                height: articleCardMenuCol.height
+                radius: Style.cardRadius
+                color: Style.surface
+                border.width: units.dp(1)
+                border.color: Style.divider
+
+                Column {
+                    id: articleCardMenuCol
+                    width: parent.width
+
+                    AbstractButton {
+                        width: articleCardMenuCol.width
+                        height: units.gu(5.5)
+                        onClicked: { articleItem.menuOpen = false; SavedPosts.remove(modelData.permlink); }
+                        Row {
+                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2.2); height: width
+                                name: "delete"
+                                color: Style.danger
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
+                                elide: Text.ElideRight
+                                text: Lang.tr("Remove")
+                                font.pixelSize: Style.fontSmall
+                                color: Style.danger
+                            }
+                        }
+                    }
+                    AbstractButton {
+                        width: articleCardMenuCol.width
+                        height: units.gu(5.5)
+                        onClicked: {
+                            articleItem.menuOpen = false;
+                            Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink);
+                        }
+                        Row {
+                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2.2); height: width
+                                name: "share"
+                                color: Style.textPrimary
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
+                                elide: Text.ElideRight
+                                text: Lang.tr("Share")
+                                font.pixelSize: Style.fontSmall
+                                color: Style.textPrimary
                             }
                         }
                     }

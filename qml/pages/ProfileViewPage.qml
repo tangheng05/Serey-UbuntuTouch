@@ -138,8 +138,10 @@ Page {
     // News/Video compose buttons use), then opens the matching editor and refreshes once saved.
     function createContent(t, anchorBtn) {
         page.selectTab(t);
-        createPicker.anchorItem = anchorBtn || null;
         // Video has its own per-community permission; the picker checks it instead of blog's "allowPost".
+        createPicker.forVideo = (t === 1);
+        // Anchored dropdown only on true desktop; tablet and phone both get the centred modal/sheet
+        // (only passing a caller makes the picker anchor, so tablet/phone get null -> modal).
         createPicker.openFor(function (target) {
             var props = target ? { targetCommunity: target } : {};
             if (t === 1) {
@@ -149,7 +151,7 @@ Page {
             }
             var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), props);
             if (ed && ed.saved) ed.saved.connect(function () { page.refreshTab(t); });
-        }, t === 1);
+        }, Config.desktopMode ? anchorBtn : null);
     }
 
     // Opened from within Settings' narrow master/detail stack, not the wide News layout the

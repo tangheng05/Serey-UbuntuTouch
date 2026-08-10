@@ -68,8 +68,33 @@ RowLayout {
             bar.requireLogin();
             return false;
         }
-        return !bar.busy;
+        // An on-chain broadcast can take 20s+; without a word the button reads as broken.
+        // Once per busy period, so repeated taps don't stack toasts.
+        if (bar.busy) {
+            if (!bar._blockedNoticeShown) {
+                bar._blockedNoticeShown = true;
+                Toast.show(Lang.tr("Still sending your last vote..."));
+            }
+            return false;
+        }
+        return true;
     }
+    property bool _blockedNoticeShown: false
+
+    // A ListView recycles this bar onto another row mid-request. `busy` is imperative state
+    // that must not ride along, or the new row's button is dead until the old post's vote
+    // returns (observed: a 24s remove-vote killing upvote on two unrelated posts).
+    function _rebound() {
+        bar.busy = false;
+    }
+    onBusyChanged: if (!busy) bar._blockedNoticeShown = false
+    onAuthorChanged: bar._rebound()
+    onPermlinkChanged: bar._rebound()
+
+    // Identifies the post a request was sent for; a reply arriving after recycling belongs
+    // to a post this bar no longer shows, so it must not write payout/flaggers into it.
+    function _reqKey() { return bar.author + "/" + bar.permlink; }
+    function _stale(key) { return key !== bar._reqKey(); }
     // Reconcile server-confirmed fields; count isn't taken from r.voterCount, which lags the broadcast
     function _apply(r) {
         bar.busy = false;
@@ -144,9 +169,10 @@ RowLayout {
         bar._cache();
         Toast.show(Lang.tr("Vote removed"));
         bar.busy = true;
+        var key = bar._reqKey();
         VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-            function (r) { _apply(r); bar._cache(); },
-            function (e) { bar._failReverting(e, snap); });
+            function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
+            function (e) { if (bar._stale(key)) return; bar._failReverting(e, snap); });
     }
 
     // Optimistic upvote: count and toast immediately, broadcast runs in the background
@@ -158,15 +184,17 @@ RowLayout {
         bar._cache();
         Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Thanks for your vote!"));
         bar.busy = true;
+        var key = bar._reqKey();
         VoteService.upvote(Config.baseUrl, author, permlink, voteType, weight, Session.token,
-            function (r) { _apply(r); bar._cache(); },
-            function (e) { bar._failUpvote(e, snap); });
+            function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
+            function (e) { if (bar._stale(key)) return; bar._failUpvote(e, snap); });
     }
 
     function doFlag() {
         if (!allowFlag || !_guard())
             return;
         var snap = _snapshot();
+        var key = bar._reqKey();
         if (bar.flagged) {
             // Optimistic un-flag.
             bar.flagged = false;
@@ -174,8 +202,8 @@ RowLayout {
             Toast.show(Lang.tr("Vote removed"));
             bar.busy = true;
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { _apply(r); bar._cache(); },
-                function (e) { bar._failReverting(e, snap); });
+                function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
+                function (e) { if (bar._stale(key)) return; bar._failReverting(e, snap); });
         } else {
             // Optimistic flag; a flag clears any existing upvote.
             if (bar.upvoted) bar.votes = Math.max(0, bar.votes - 1);
@@ -185,8 +213,8 @@ RowLayout {
             Toast.show(Lang.tr("Thanks for your feedback!"));
             bar.busy = true;
             VoteService.flag(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { _apply(r); bar._cache(); },
-                function (e) { bar._failReverting(e, snap); });
+                function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
+                function (e) { if (bar._stale(key)) return; bar._failReverting(e, snap); });
         }
     }
 
@@ -195,6 +223,9 @@ RowLayout {
         id: upvoteBtn
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: upRow.implicitWidth
+        // Dimmed while the broadcast is out: taps are refused, and a solid button lies about that
+        opacity: bar.busy ? 0.45 : 1
+        Behavior on opacity { NumberAnimation { duration: 120 } }
         onClicked: bar.doUpvote()
         Rectangle {
             anchors.fill: parent
@@ -272,6 +303,8 @@ RowLayout {
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: downRow.implicitWidth
         visible: bar.allowFlag
+        opacity: bar.busy ? 0.45 : 1
+        Behavior on opacity { NumberAnimation { duration: 120 } }
         onClicked: bar.doFlag()
         Rectangle {
             anchors.fill: parent

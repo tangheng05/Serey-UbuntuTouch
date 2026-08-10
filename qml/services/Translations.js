@@ -109,6 +109,7 @@ var nl = {
     "Save video offline":                           "Video offline opslaan",
     "Saved for offline use":                        "Opgeslagen voor offline gebruik",
     "Serey only, no votes or rewards.":             "Alleen Serey, geen stemmen of beloningen.",
+    "Still sending your last vote...":                  "Je vorige stem wordt nog verstuurd...",
     "Thanks for your feedback!":                    "Bedankt voor je feedback!",
     "Thanks for your report":                       "Bedankt voor je melding",
     "Thanks for your vote!":                        "Bedankt voor je stem!",

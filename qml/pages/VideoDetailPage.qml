@@ -33,13 +33,6 @@ Page {
     property bool upvoted:    false
     property bool flagged:    false
     property bool voteBusy:   false
-    onVoteBusyChanged: voteBusy ? voteBusyWatchdog.restart() : voteBusyWatchdog.stop()
-    Timer {
-        id: voteBusyWatchdog
-        interval: 16000   // past Http.js's 15s timeout the flag has leaked and the buttons are dead
-        onTriggered: console.log("[vote] STUCK(video): voteBusy still true after 16s "
-                                 + page.video.author + "/" + page.video.permlink)
-    }
     property string payout:   ""
     // Off-chain videos skip the vote-weight popover/award (see doUpvote)
     readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
@@ -377,12 +370,8 @@ Page {
     // caller = the button to anchor the weight popover to; keyboard activation has none,
     // so it falls back to the inline vote button.
     function doUpvote(caller) {
-        console.log("[vote] tap up(video) " + page.video.author + "/" + page.video.permlink
-                    + " upvoted=" + page.upvoted + " flagged=" + page.flagged
-                    + " busy=" + page.voteBusy + " onChain=" + page.onChain);
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
-        // The vote buttons are `enabled: !page.voteBusy`, so a stuck flag makes them dead
-        if (page.voteBusy) { console.log("[vote] blocked(video): busy"); return; }
+        if (page.voteBusy) return;
         if (page.upvoted) {
             page.voteBusy = true;
             VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
@@ -398,11 +387,8 @@ Page {
         }
     }
     function doFlag() {
-        console.log("[vote] tap down(video) " + page.video.author + "/" + page.video.permlink
-                    + " upvoted=" + page.upvoted + " flagged=" + page.flagged
-                    + " busy=" + page.voteBusy);
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
-        if (page.voteBusy) { console.log("[vote] blocked(video): busy"); return; }
+        if (page.voteBusy) return;
         page.voteBusy = true;
         if (page.flagged) {
             VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,

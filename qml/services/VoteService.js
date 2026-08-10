@@ -35,19 +35,9 @@ function _norm(data) {
 }
 
 function _send(baseUrl, path, body, token, onOk, onErr) {
-    var t0 = Date.now();
-    var what = path + " " + body.author + "/" + body.permlink
-             + " type=" + (body.vote_type || "post")
-             + (body.weight !== undefined ? " w=" + body.weight : "");
-    console.log("[vote] -> " + what);
     Http.post(baseUrl, path, body, token, function (data) {
-        console.log("[vote] OK " + path + " in " + (Date.now() - t0) + "ms");
         onOk(_norm(data));
-    }, function (e) {
-        console.log("[vote] FAIL " + path + " in " + (Date.now() - t0) + "ms"
-                    + " status=" + (e && e.status) + " msg=" + (e && e.message));
-        onErr(e);
-    });
+    }, onErr);
 }
 
 function upvote(baseUrl, author, permlink, voteType, weight, token, onOk, onErr) {

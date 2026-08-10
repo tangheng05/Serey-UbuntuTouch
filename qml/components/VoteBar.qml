@@ -64,7 +64,6 @@ RowLayout {
 
     function _guard() {
         if (!Session.isLoggedIn) {
-            console.log("[vote] blocked: not logged in " + bar.author + "/" + bar.permlink);
             Toast.error(Lang.tr("Please log in first."));
             bar.requireLogin();
             return false;
@@ -72,8 +71,6 @@ RowLayout {
         // An on-chain broadcast can take 20s+; without a word the button reads as broken.
         // Once per busy period, so repeated taps don't stack toasts.
         if (bar.busy) {
-            console.log("[vote] blocked: busy, previous request still in flight "
-                        + bar.author + "/" + bar.permlink);
             if (!bar._blockedNoticeShown) {
                 bar._blockedNoticeShown = true;
                 Toast.show(Lang.tr("Still sending your last vote..."));
@@ -150,10 +147,6 @@ RowLayout {
     }
 
     function doUpvote() {
-        console.log("[vote] tap up " + bar.author + "/" + bar.permlink
-                    + " upvoted=" + bar.upvoted + " flagged=" + bar.flagged
-                    + " busy=" + bar.busy + " onChain=" + bar.onChain
-                    + " type=" + bar.voteType);
         if (!_guard())
             return;
         if (bar.upvoted) {
@@ -198,10 +191,6 @@ RowLayout {
     }
 
     function doFlag() {
-        console.log("[vote] tap down " + bar.author + "/" + bar.permlink
-                    + " upvoted=" + bar.upvoted + " flagged=" + bar.flagged
-                    + " busy=" + bar.busy + " allowFlag=" + bar.allowFlag
-                    + " type=" + bar.voteType);
         if (!allowFlag || !_guard())
             return;
         var snap = _snapshot();

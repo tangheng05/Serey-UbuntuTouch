@@ -49,15 +49,62 @@ Item {
         return null;
     }
 
-    // Entry point: shows the picker only if the source has sub-communities, else calls back immediately
-    function openFor(onChosen) {
+    // Entry point: shows the picker only when there is a real choice, else calls back
+    // immediately. `callerItem` (optional) anchors the panel to the button that opened it
+    // on desktop, instead of a centred modal.
+    function openFor(onChosen, callerItem) {
         picker._onChosen = onChosen;
+        picker.caller = callerItem || null;
         picker.selectedId = Config.selectedSubCommunity ? String(Config.selectedSubCommunity.id) : "";
         picker.childCache = ({});
         picker.expandedId = "";
         picker.expandedHubId = "";
         picker._byId = ({});
         picker._fetch();
+    }
+
+    // Communities the user owns live anywhere in the tree, so browsing a different branch
+    // would otherwise hide them; an owner may post to their own community regardless.
+    function _ownedEntries(list) {
+        var seen = {};
+        for (var i = 0; i < list.length; i++) seen[list[i].id] = true;
+        var out = [];
+        var set = Config.ownedCommunityIdSet || ({});
+        for (var id in set) {
+            var c = Config.communityById[String(id)];
+            if (!c || seen[String(c.id)]) continue;
+            var e = {
+                id: String(c.id),
+                name: c.title || "",
+                icon: Config.communityIcon(c.dns),
+                allowPost: true,
+                videoAllowPost: !!c.videoAllowPost,
+                isParent: false,
+                expandable: false,
+                // Caption rides on the first row of the group only
+                section: out.length === 0 ? Lang.tr("Your platforms") : ""
+            };
+            out.push(e);
+            picker._byId[e.id] = e;
+        }
+        return out;
+    }
+
+    // One shared exit: no target -> current context, exactly one -> take it without a modal.
+    function _present(list) {
+        var full = picker._ownedEntries(list).concat(list);
+        if (full.length === 0 || (full.length === 1 && !full[0].allowPost)) {
+            var cb0 = picker._onChosen; picker._onChosen = null;
+            if (cb0) cb0(null);
+            return;
+        }
+        if (full.length === 1) {
+            var cb1 = picker._onChosen; picker._onChosen = null;
+            if (cb1) cb1(full[0]);
+            return;
+        }
+        picker.items = full;
+        picker._open();
     }
 
     function _mapCommunities(comms) {
@@ -106,17 +153,11 @@ Item {
                 out0.push(entry);
                 picker._byId[entry.id] = entry;
             }
-            if (out0.length === 0) {
-                var cbG = picker._onChosen; picker._onChosen = null;
-                if (cbG) cbG(null);
-                return;
-            }
             // Browsing Global with no sub-community picked: pre-select the Global row
             if (picker.selectedId.length === 0 && globalEntry)
                 picker.selectedId = globalEntry.id;
-            picker.items = out0;
-            picker._autoExpandForSelection(out0);
-            picker._open();
+            if (out0.length > 1) picker._autoExpandForSelection(out0);
+            picker._present(out0);
             return;
         }
 
@@ -134,14 +175,9 @@ Item {
                 comms = d.data || d.communities || d.results || [];
             } catch (e) { }
 
+            // No children is not the end of it: the user may still own platforms elsewhere,
+            // so let _present() decide between callback and sheet.
             var mapped = picker._mapCommunities(comms);
-            if (mapped.length === 0) {
-                // Nothing to choose between; post straight into the current context.
-                var cb = picker._onChosen; picker._onChosen = null;
-                if (cb) cb(null);
-                return;
-            }
-
             var out = [];
             // The parent/source itself is only offered when it's directly postable.
             if (Config.allowPostByDns[Config.communityDns]) {
@@ -159,8 +195,7 @@ Item {
                 if (picker.selectedId.length === 0)
                     picker.selectedId = parentEntry.id;
             }
-            picker.items = out.concat(mapped);
-            picker._open();
+            picker._present(out.concat(mapped));
         };
         xhr.send(null);
     }
@@ -242,7 +277,45 @@ Item {
         }
     }
 
+    // The button that opened us, when the caller wants the panel anchored to it (desktop).
+    property Item caller: null
+    property real _callerCx: 0
+    property real _callerTop: 0
+    property real _callerBottom: 0
+    readonly property bool anchored: Config.wideMode && caller !== null
+
+    // The pre-selected row can sit far below the fold once its country auto-expands, so
+    // scroll it into view. Rows announce themselves as they are created (children arrive
+    // lazily); only the one matching _revealId acts, and only once.
+    property string _revealId: ""
+    property var _revealTarget: null
+    function _queueReveal(item, id) {
+        if (picker._revealId === "" || picker._revealId !== String(id)) return;
+        picker._revealTarget = item;
+        revealTimer.restart();
+    }
+    Timer {
+        id: revealTimer
+        interval: 60   // let the expanded rows lay out before measuring
+        onTriggered: {
+            var it = picker._revealTarget;
+            picker._revealTarget = null;
+            picker._revealId = "";
+            if (!it) return;
+            var y = it.mapToItem(sheetContent, 0, 0).y;
+            var max = Math.max(0, flickable.contentHeight - flickable.height);
+            flickable.contentY = Math.max(0, Math.min(max, y - flickable.height / 2 + it.height / 2));
+        }
+    }
+
     function _open() {
+        picker._revealId = picker.selectedId;
+        if (picker.caller) {
+            var p = picker.caller.mapToItem(picker, 0, 0);
+            picker._callerCx = p.x + picker.caller.width / 2;
+            picker._callerTop = p.y;
+            picker._callerBottom = p.y + picker.caller.height;
+        }
         picker.visible = true;
         pcpBackdropFade.start();
         pcpSlide.start();
@@ -259,7 +332,8 @@ Item {
     Rectangle {
         id: pcpBackdrop
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.4)
+        // Anchored to a button it is a dropdown, not a modal: catch clicks, don't dim the app.
+        color: picker.anchored ? "transparent" : Qt.rgba(0, 0, 0, 0.4)
         opacity: 0
         MouseArea {
             anchors.fill: parent
@@ -273,20 +347,32 @@ Item {
     Rectangle {
         id: sheet
         readonly property bool wide: Config.wideMode
-        anchors {
-            horizontalCenter: parent.horizontalCenter
-            bottom: parent.bottom
-            bottomMargin: sheet.wide ? units.gu(4) : 0
-        }
-        width: sheet.wide ? Math.min(parent.width - units.gu(4), units.gu(50)) : parent.width
+        readonly property real _margin: units.gu(1)
+        // x/y instead of anchors: three placements (phone sheet, centred panel, anchored
+        // drop-up) can't be expressed by toggling anchors off (see the AnchorChanges gotcha).
+        width: sheet.wide ? Math.min(picker.width - units.gu(4), units.gu(50)) : picker.width
         height: Math.min(sheetContent.height + footerBar.height + units.gu(1), picker.height * 0.82)
+        x: picker.anchored
+           ? Math.max(_margin, Math.min(picker.width - width - _margin, picker._callerCx - width / 2))
+           : (picker.width - width) / 2
+        // Drops UP above the button when there is room, else falls below it.
+        y: picker.anchored
+           ? (picker._callerTop - height - _margin >= _margin
+              ? picker._callerTop - height - _margin
+              : Math.min(picker.height - height - _margin, picker._callerBottom + _margin))
+           : picker.height - height - (sheet.wide ? units.gu(4) : 0)
         radius: units.gu(1)
         color: Style.surface
+        // Undimmed background needs an edge of its own to read as a floating panel
+        border.width: picker.anchored ? units.dp(1) : 0
+        border.color: Style.divider
         clip: true
 
+        // Anchored panels rise a short hop from the button; the sheet slides its full height.
+        readonly property real _slideFrom: picker.anchored ? units.gu(2) : sheet.height + units.gu(4)
         transform: Translate { id: pcpTranslate; y: 0 }
-        NumberAnimation { id: pcpSlide;    target: pcpTranslate; property: "y"; from: sheet.height + units.gu(4); to: 0;             duration: 300; easing.type: Easing.OutCubic }
-        NumberAnimation { id: pcpSlideOut; target: pcpTranslate; property: "y"; to: sheet.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: picker.visible = false }
+        NumberAnimation { id: pcpSlide;    target: pcpTranslate; property: "y"; from: sheet._slideFrom; to: 0;               duration: picker.anchored ? 160 : 300; easing.type: Easing.OutCubic }
+        NumberAnimation { id: pcpSlideOut; target: pcpTranslate; property: "y"; to: sheet._slideFrom; duration: picker.anchored ? 140 : 250; easing.type: Easing.InCubic; onStopped: picker.visible = false }
 
         Flickable {
             id: flickable
@@ -317,8 +403,11 @@ Item {
                         anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
                         spacing: Style.spacingS
 
+                        // A dropdown is already tied to its button; it needs neither the
+                        // big glyph nor the explainer that a full-screen sheet does.
                         Rectangle {
                             anchors.horizontalCenter: parent.horizontalCenter
+                            visible: !picker.anchored
                             width: units.gu(5.5); height: width; radius: width / 2
                             color: Style.brand
                             Icon {
@@ -339,6 +428,7 @@ Item {
                         Label {
                             width: parent.width - Style.spacingM * 4
                             anchors.horizontalCenter: parent.horizontalCenter
+                            visible: !picker.anchored
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.WordWrap
                             text: Lang.tr("Pick the community this post will publish into. Your current browsing view won't change.")
@@ -361,12 +451,29 @@ Item {
                         readonly property bool isExpanded: picker.expandedId === modelData.id
                         readonly property var children: picker.childCache[modelData.id] || []
 
+                        // Group caption, carried by the first row of a section only
+                        Item {
+                            width: parent.width
+                            visible: !!modelData.section
+                            height: visible ? sectionLbl.height + Style.spacingM : 0
+                            Label {
+                                id: sectionLbl
+                                x: Style.spacingM
+                                anchors.bottom: parent.bottom
+                                text: modelData.section || ""
+                                font.pixelSize: Style.fontSmall
+                                font.weight: Font.DemiBold
+                                color: Style.textSecondary
+                            }
+                        }
+
                         Item {
                             id: row
                             width: parent.width
                             height: units.gu(7)
                             readonly property bool isSelected: picker.selectedId === modelData.id
                             readonly property int chevronW: rowCol.expandable ? units.gu(6) : 0
+                            Component.onCompleted: picker._queueReveal(row, modelData.id)
 
                             // Left zone (radio + icon + name) selects this row.
                             AbstractButton {
@@ -474,6 +581,7 @@ Item {
                                     height: units.gu(6.5)
                                     readonly property bool isSelected: picker.selectedId === modelData.id
                                     readonly property int chevronW: childCol.hubExpandable ? units.gu(6) : 0
+                                    Component.onCompleted: picker._queueReveal(childRow, modelData.id)
 
                                     // Left zone selects this community.
                                     AbstractButton {
@@ -585,6 +693,7 @@ Item {
                                         readonly property string gcId: String(modelData.id || modelData._id || "")
                                         readonly property bool isSelected: picker.selectedId === gcRow.gcId
                                         onClicked: picker.selectedId = gcRow.gcId
+                                        Component.onCompleted: picker._queueReveal(gcRow, gcRow.gcId)
 
                                         Row {
                                             anchors { fill: parent; leftMargin: Style.spacingM + units.gu(6.4); rightMargin: Style.spacingM }

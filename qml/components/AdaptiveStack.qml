@@ -27,7 +27,7 @@ Item {
     readonly property int columns: split ? 2 : 1
 
     // PageStack-compatible surface: the root page counts as depth 1.
-    readonly property int depth: (rootStack.depth > 0 ? 1 : 0) + _detailCount
+    readonly property int depth: rootStack.depth + _detailCount
     readonly property var currentPage: _detailCount > 0 ? detailStack.currentPage
                                                         : rootStack.currentPage
     // The tab's master/root page, regardless of what's in the detail column.
@@ -54,6 +54,25 @@ Item {
         return detailStack.push(pageUrl, props);
     }
 
+    // A destination, not a detail: takes over the LEADING column (Lomiri's
+    // addPageToCurrentColumn) and keeps the detail column for its own pushes. Without
+    // this, a page that is itself master-detail (My Feed) splits inside the detail
+    // column and you get two unrelated list columns side by side.
+    function pushMaster(pageUrl, properties) {
+        if (rootStack.depth === 0)
+            return push(pageUrl, properties);
+        while (detailStack.depth > 0) detailStack.pop();   // its selection, not ours
+        var pg = rootStack.push(pageUrl, properties || {});
+        // Lomiri sets pageStack to rootStack; re-point it so the page's pushes land in detail.
+        if (pg) pg.pageStack = root;
+        return pg;
+    }
+    // Leaving a destination drops the detail it opened along with it.
+    function popMaster() {
+        while (detailStack.depth > 0) detailStack.pop();
+        if (rootStack.depth > 1) rootStack.pop();
+    }
+
     function pop() {
         if (_detailCount > 0) detailStack.pop();
         else if (rootStack.depth > 1) rootStack.pop();
@@ -72,22 +91,22 @@ Item {
         if (!p) return;
         (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
     }
-    // Only the visible, split stack reacts; defer to `_ownsKeyboardNav` pages (e.g. My Feed)
+    // Only the visible, split stack reacts.
     Connections {
         target: Nav
         function onFocusMaster() {
-            if (!(root.visible && root.split)) return;
-            var d = detailStack.currentPage;
-            if (d && d._ownsKeyboardNav) return;
-            root.focusMaster();
+            if (root.visible && root.split) root.focusMaster();
         }
         function onFocusDetail() {
-            if (!(root.visible && root.split && root._detailCount > 0)) return;
-            var d = detailStack.currentPage;
-            if (d && d._ownsKeyboardNav) return;
-            root.focusDetail();
+            if (root.visible && root.split && root._detailCount > 0) root.focusDetail();
         }
     }
+
+    // A destination in the leading column names its own detail placeholder.
+    readonly property string _emptyIcon: (rootStack.currentPage && rootStack.currentPage.emptyDetailIconName)
+                                         ? rootStack.currentPage.emptyDetailIconName : emptyDetailIconName
+    readonly property string _emptyMessage: (rootStack.currentPage && rootStack.currentPage.emptyDetailMessage)
+                                            ? rootStack.currentPage.emptyDetailMessage : emptyDetailMessage
 
     Item {
         id: listPane
@@ -137,17 +156,17 @@ Item {
             Column {
                 anchors.centerIn: parent
                 spacing: units.gu(1)
-                visible: root.split && root._detailCount === 0 && root.emptyDetailMessage !== ""
+                visible: root.split && root._detailCount === 0 && root._emptyMessage !== ""
                 Icon {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: units.gu(6); height: width
-                    name: root.emptyDetailIconName
+                    name: root._emptyIcon
                     color: Style.textSecondary
                     opacity: 0.5
                 }
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: root.emptyDetailMessage
+                    text: root._emptyMessage
                     color: Style.textSecondary
                 }
             }

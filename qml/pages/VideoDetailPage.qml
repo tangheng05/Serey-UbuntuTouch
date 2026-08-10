@@ -295,14 +295,13 @@ Page {
         webLoader.parent = on ? fsHost : stage;
     }
 
-    // Space-bar: starts playback or toggles pause; cross-origin embeds ignore this
+    // Space-bar: starts playback or toggles pause. YouTube answers too now that it runs
+    // through the IFrame API; other embeds (TikTok/Facebook) stay cross-origin and ignore it.
     function togglePlayPause() {
         if (!page.playing) { page.startPlay(); return; }
         var it = webLoader.item;
-        if (!it) return;
-        if (page.nativeMode || page.webVideoMode)
+        if (it && typeof it.togglePause === "function")
             it.togglePause();
-        // else: cross-origin embed (YouTube) can't be controlled from outside.
     }
 
     // Native (.mov) player failed: retry via Chromium's <video> before falling back to the system handler.
@@ -1292,7 +1291,12 @@ Page {
 
             Item { width: 1; height: Style.spacingM }
 
-            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+            // Narrow only: here it separates the vote row from the comments header. In wide
+            // mode the description follows, and its own card already delimits it.
+            Rectangle {
+                visible: !Config.wideMode
+                width: parent.width; height: units.dp(1); color: Style.divider
+            }
 
             // Wide mode: description always visible here instead of behind the "...more" sheet
             Column {
@@ -1397,7 +1401,8 @@ Page {
         id: sidePanelDivider
         z: 11
         anchors { top: parent.top; bottom: parent.bottom; right: sidePanel.left }
-        width: units.dp(2)
+        // Hairline, same as PostDetailPage's splitter; the gu(1.5) drag area below is the grab target
+        width: units.dp(1)
         visible: page.showSidePanel
         color: sidePanelDragArea.containsMouse || sidePanelDragArea.pressed ? Style.brand : Style.divider
     }
@@ -1850,6 +1855,25 @@ Page {
         z: 2000
         visible: page.isFullscreen
         Rectangle { anchors.fill: parent; color: "black" }
+
+        // Native way out: YouTube's own exit control only renders at some player sizes, and QtWebEngine never exits on Escape by itself.
+        AbstractButton {
+            anchors { left: parent.left; top: parent.top; margins: units.gu(1.5) }
+            width: units.gu(5); height: width
+            z: 10
+            onClicked: page.setFullscreen(false)
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: Qt.rgba(0, 0, 0, 0.55)
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.5); height: width
+                    name: "view-restore"
+                    color: "white"
+                }
+            }
+        }
     }
 
     Item {

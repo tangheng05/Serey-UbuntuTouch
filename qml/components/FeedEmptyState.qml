@@ -10,7 +10,8 @@ Item {
 
     // Emitted after a subscribe, so the feed can refetch.
     signal followed()
-    signal writePostRequested()
+    // Carries the button so the community picker can anchor its dropdown to it on desktop.
+    signal writePostRequested(var caller)
     // Card tapped outside the Subscribe pill: open that platform.
     signal communityRequested(var community)
 
@@ -159,7 +160,7 @@ Item {
                 anchors { verticalCenter: parent.verticalCenter; horizontalCenter: parent.horizontalCenter }
                 width: Math.min(parent.width - Style.spacingL * 2, units.gu(50))
                 text: Lang.tr("Write your first post")
-                onClicked: root.writePostRequested()
+                onClicked: root.writePostRequested(footerBtn)
             }
         }
     }

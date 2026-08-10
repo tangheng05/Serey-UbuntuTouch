@@ -19,15 +19,20 @@ Page {
     // Cards need swipe actions, so a fixed-cell GridView won't work; cap + center instead
     readonly property real maxContentWidth: units.gu(60)
 
-    // Wide: split-pane master-detail; narrow: full-screen push. Keyed on page's OWN width.
-    readonly property bool wide: width >= Config.convergenceBreakpoint
-    readonly property real listPaneW: units.gu(40)
+    // A destination, not a detail: Main pushes this with pushMaster(), so it owns the
+    // leading column and its own pushes go to the tab's detail column. No private split.
+    readonly property string emptyDetailIconName: "stock_note"
+    readonly property string emptyDetailMessage: Lang.tr("Select a post to read")
+    readonly property bool splitOpen: !!(page.pageStack && page.pageStack.columns > 1)
 
-    // Own split: services keyboard-focus signals itself (see _ownsKeyboardNav).
-    property bool _ownsKeyboardNav: page.wide && innerDetail.depth > 0
     property Item keyboardFocusItem: list
+    // Leaving the feed closes the article it opened beside it, in one step.
+    function closeFeed() {
+        if (page.pageStack.popMaster) page.pageStack.popMaster();
+        else page.pageStack.pop();
+    }
     // Row cursor needs keyNavigationFocus, which requires a focus REASON (see NewsPage).
-    function _focusFeedList() {
+    function focusListKeyNav() {
         if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0;
         var it = list.currentItem;
         if (!it) { list.forceActiveFocus(); return; }
@@ -35,28 +40,16 @@ Page {
         it.focus = false;
         it.forceActiveFocus(Qt.TabFocusReason);
     }
-    function _focusFeedDetail() {
-        var p = innerDetail.currentPage;
-        if (p) (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
-    }
-    Connections {
-        target: Nav
-        function onFocusMaster() { if (page.visible && page._ownsKeyboardNav) page._focusFeedList(); }
-        function onFocusDetail() { if (page.visible && page._ownsKeyboardNav) page._focusFeedDetail(); }
-    }
 
-    // Tracks which row's detail is open in the split-pane (wide) layout so the master list can highlight it.
+    // Tracks which row's detail is open in the split layout so the list can highlight it.
     property string openPermlink: ""
+    // Feed sits at stack depth 2; anything deeper is the article beside it.
+    readonly property int stackDepth: page.pageStack ? page.pageStack.depth : 0
+    onStackDepthChanged: if (stackDepth <= 2) page.openPermlink = ""
 
-    // Routes a card tap; replaces current detail so picking another item swaps it.
+    // Routes a card tap; the stack replaces the current detail so picking another swaps it.
     function openDetail(url, props) {
-        // Push first: popping to depth 0 would trigger the onDepthChanged reset above.
-        if (page.wide) {
-            while (innerDetail.depth > 0) innerDetail.pop();
-            innerDetail.push(url, props);
-        } else {
-            page.pageStack.push(url, props);
-        }
+        page.pageStack.push(url, props);
         page.openPermlink = (props && props.permlink) || (props && props.video && props.video.permlink) || "";
     }
 
@@ -107,7 +100,7 @@ Page {
 
         BackButton {
             anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            onClicked: page.pageStack.pop()
+            onClicked: page.closeFeed()
         }
 
         Row {
@@ -552,8 +545,8 @@ Page {
         id: list
         // Horizontal via x/width (not anchors) so wide<->narrow switch is a plain binding.
         anchors { top: topBar.bottom; bottom: parent.bottom }
-        width: page.wide ? page.listPaneW : Math.min(parent.width, page.maxContentWidth)
-        x: page.wide ? 0 : Math.max(0, (parent.width - width) / 2)
+        width: Math.min(parent.width, page.maxContentWidth)
+        x: Math.max(0, (parent.width - width) / 2)
         clip: true
         // Right arrow steps into the open article's reading pane (split windows).
         Keys.onRightPressed: Nav.focusDetail()
@@ -581,7 +574,7 @@ Page {
             property var postData: feedModel.get(index)
             readonly property bool isVideo: postData && postData._kind === "video"
             // Dark-greys the row whose article is currently open in the detail pane (wide layout only).
-            color: (page.wide && page.openPermlink !== "" && postData && postData.permlink === page.openPermlink)
+            color: (page.splitOpen && page.openPermlink !== "" && postData && postData.permlink === page.openPermlink)
                 ? Style.iconBackground : Style.surface
 
             // Lomiri ListItem emits clicked() on Enter when key-nav focused (see NewsPage).
@@ -738,39 +731,6 @@ Page {
         }
     }
 
-    // Detail panel (split mode only): renders beside the list, News-style master-detail.
-    Rectangle {
-        id: feedDivider
-        visible: page.wide
-        anchors { top: topBar.bottom; bottom: parent.bottom }
-        x: list.width
-        width: units.dp(1)
-        color: Style.divider
-    }
-    Item {
-        id: detailPane
-        visible: page.wide
-        anchors { top: topBar.bottom; bottom: parent.bottom; left: feedDivider.right; right: parent.right }
-
-        // Opaque panel background (Pages are transparent) + empty placeholder.
-        Rectangle {
-            anchors.fill: parent
-            color: Style.surface
-            EmptyState {
-                anchors.fill: parent
-                visible: innerDetail.depth === 0
-                iconName: "stock_note"
-                message: Lang.tr("Select a post to read")
-            }
-        }
-        // Clears the highlighted row once the detail pane's back button empties this stack.
-        PageStack {
-            id: innerDetail
-            anchors.fill: parent
-            onDepthChanged: if (depth === 0) page.openPermlink = ""
-        }
-    }
-
     LoadingState {
         anchors.fill: list
         visible: page.loading && feedModel.count === 0
@@ -784,7 +744,7 @@ Page {
     // Empty + logged in = follows nobody; offer the fix instead of a dead end.
     FeedEmptyState {
         anchors { top: topBar.bottom; bottom: parent.bottom; left: parent.left; right: parent.right }
-        leadingWidth: page.wide ? list.width : 0
+        leadingWidth: 0
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
                  && Session.isLoggedIn
         // Coalesces a burst of follows into one refetch (refresh() drops overlapping calls).
@@ -795,7 +755,7 @@ Page {
                 var props = target ? { targetCommunity: target } : {};
                 var ed = page.pageStack.push(Qt.resolvedUrl("CreatePostPage.qml"), props);
                 if (ed && ed.saved) ed.saved.connect(function () { page.refresh(); });
-            });
+            }, caller);
         }
         // Same as picking the platform from the community pill.
         onCommunityRequested: {
@@ -803,7 +763,7 @@ Page {
                 Toast.show(Lang.tr("That platform isn't available right now."));
                 return;
             }
-            if (page.pageStack && page.pageStack.depth > 1) page.pageStack.pop();
+            if (page.pageStack && page.pageStack.depth > 1) page.closeFeed();
             Nav.goToTab(0);
         }
     }

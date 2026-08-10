@@ -82,8 +82,10 @@ MainView {
     // My Feed draws the same iconFeed logo in its own header, and in split mode
     // this header stays up, so the shortcut showed the logo twice and pointed at
     // the page you were already on.
+    // rootPage, not currentPage: the feed holds the leading column while an article
+    // it opened is the current page.
     readonly property bool feedPageOpen: {
-        var p = activeStack ? activeStack.currentPage : null;
+        var p = activeStack ? activeStack.rootPage : null;
         return !!(p && p.isFeedPage);
     }
     readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3
@@ -513,7 +515,7 @@ MainView {
                 settingsStack.pop();
             while (homeStack.depth > 1)
                 homeStack.pop();
-            homeStack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
+            homeStack.pushMaster(Qt.resolvedUrl("pages/FeedPage.qml"));
         }
         // Invite link opened in-app: redeem it natively on the Homepage tab.
         function onRedeemInvite(code) {
@@ -540,7 +542,8 @@ MainView {
             // Tap target fills header height for comfort; icon keeps smaller visual size
             width: units.gu(6)
             height: width
-            onClicked: root.activeStack.push(Qt.resolvedUrl("pages/FeedPage.qml"))
+            // Destination, not a detail: it takes the leading column and opens posts beside itself.
+            onClicked: root.activeStack.pushMaster(Qt.resolvedUrl("pages/FeedPage.qml"))
             Image {
                 anchors.centerIn: parent
                 width: root.wideMode ? units.gu(4.5) : units.gu(3.5)
@@ -575,7 +578,7 @@ MainView {
                                 if (isNew && np.showLatest) np.showLatest();
                                 else if (np.reload) np.reload();
                             });
-                    });
+                    }, composeBtn);
                 }
                 Rectangle {
                     anchors.fill: parent

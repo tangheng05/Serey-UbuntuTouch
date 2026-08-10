@@ -130,7 +130,9 @@ RowLayout {
             // Comments and off-chain posts: simple one-tap like, no weight popover
             bar._sendUpvote(100);
         } else {
-            PopupUtils.open(voteWeightDialog);
+            // Anchored to the button, so the post stays visible while you pick a weight
+            var p = PopupUtils.open(Qt.resolvedUrl("VoteWeightPopover.qml"), upvoteBtn);
+            if (p) p.accepted.connect(bar._sendUpvote);
         }
     }
 
@@ -161,86 +163,6 @@ RowLayout {
             function (e) { bar._failUpvote(e, snap); });
     }
 
-    Component {
-        id: voteWeightDialog
-        Dialog {
-            id: dialog
-            title: Lang.tr("Vote Weight")
-
-            property int selectedWeight: 100
-
-            Label {
-                width: parent.width
-                text: dialog.selectedWeight + "%"
-                font.pixelSize: Style.fontTitle
-                font.weight: Font.Bold
-                color: Style.brand
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Slider {
-                id: weightSlider
-                width: parent.width
-                minimumValue: 1
-                maximumValue: 100
-                value: 100
-                live: true
-                onValueChanged: dialog.selectedWeight = Math.round(value)
-
-                function formatValue(v) { return Math.round(v) + "%" }
-            }
-
-            Row {
-                width: parent.width
-                spacing: Style.spacingS
-
-                Repeater {
-                    model: [25, 50, 75, 100]
-                    delegate: AbstractButton {
-                        width: (parent.width - Style.spacingS * 3) / 4
-                        height: units.gu(4)
-                        onClicked: {
-                            weightSlider.value = modelData;
-                            dialog.selectedWeight = modelData;
-                        }
-
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: Style.cardRadius
-                            color: dialog.selectedWeight === modelData ? Style.brand : Style.iconBackground
-                        }
-                        Label {
-                            anchors.centerIn: parent
-                            text: modelData + "%"
-                            font.pixelSize: Style.fontSmall
-                            font.weight: Font.DemiBold
-                            color: dialog.selectedWeight === modelData ? Style.textOnBrand : Style.textPrimary
-                        }
-                    }
-                }
-            }
-
-            Row {
-                width: parent.width
-                spacing: Style.spacingM
-
-                Button {
-                    width: (parent.width - Style.spacingM) / 2
-                    text: Lang.tr("Cancel")
-                    onClicked: PopupUtils.close(dialog)
-                }
-                Button {
-                    width: (parent.width - Style.spacingM) / 2
-                    text: Lang.tr("Vote")
-                    color: Style.brand
-                    onClicked: {
-                        PopupUtils.close(dialog);
-                        bar._sendUpvote(dialog.selectedWeight);
-                    }
-                }
-            }
-        }
-    }
     function doFlag() {
         if (!allowFlag || !_guard())
             return;

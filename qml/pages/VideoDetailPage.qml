@@ -367,7 +367,9 @@ Page {
                 Toast.success(Lang.tr("Thanks for your vote!"));
             }, page._voteFail);
     }
-    function doUpvote() {
+    // caller = the button to anchor the weight popover to; keyboard activation has none,
+    // so it falls back to the inline vote button.
+    function doUpvote(caller) {
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
         if (page.voteBusy) return;
         if (page.upvoted) {
@@ -379,7 +381,9 @@ Page {
             // Off-chain (DB-only) video: plain one-tap like, no weight popover, matching fe-serey-web's simpleVote.
             page._sendUpvote(100);
         } else {
-            PopupUtils.open(voteWeightDialog);
+            var p = PopupUtils.open(Qt.resolvedUrl("../components/VoteWeightPopover.qml"),
+                                    caller || videoUpvoteBtn);
+            if (p) p.accepted.connect(page._sendUpvote);
         }
     }
     function doFlag() {
@@ -397,50 +401,6 @@ Page {
                     page.flagged = true; page.upvoted = false;
                     page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Thanks for your feedback!"));
                 }, page._voteFail);
-        }
-    }
-
-    Component {
-        id: voteWeightDialog
-        Dialog {
-            id: vwDlg
-            title: Lang.tr("Vote Weight")
-            property int selectedWeight: 100
-            Label {
-                width: parent.width
-                text: vwDlg.selectedWeight + "%"
-                font.pixelSize: Style.fontTitle
-                font.weight: Font.Bold
-                color: Style.brand
-                horizontalAlignment: Text.AlignHCenter
-            }
-            Slider {
-                id: vwSlider
-                width: parent.width
-                minimumValue: 1; maximumValue: 100; value: 100; live: true
-                onValueChanged: vwDlg.selectedWeight = Math.round(value)
-                function formatValue(v) { return Math.round(v) + "%" }
-            }
-            Row {
-                width: parent.width
-                spacing: Style.spacingS
-                Repeater {
-                    model: [25, 50, 75, 100]
-                    delegate: AbstractButton {
-                        width: (parent.width - Style.spacingS * 3) / 4
-                        height: units.gu(4)
-                        onClicked: { vwSlider.value = modelData; vwDlg.selectedWeight = modelData; }
-                        Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: vwDlg.selectedWeight === modelData ? Style.brand : Style.iconBackground }
-                        Label { anchors.centerIn: parent; text: modelData + "%"; font.pixelSize: Style.fontSmall; font.weight: Font.DemiBold; color: vwDlg.selectedWeight === modelData ? Style.textOnBrand : Style.textPrimary }
-                    }
-                }
-            }
-            Row {
-                width: parent.width
-                spacing: Style.spacingM
-                Button { width: (parent.width - Style.spacingM) / 2; text: Lang.tr("Cancel"); onClicked: PopupUtils.close(vwDlg) }
-                Button { width: (parent.width - Style.spacingM) / 2; text: Lang.tr("Vote"); color: Style.brand; onClicked: { PopupUtils.close(vwDlg); page._sendUpvote(vwDlg.selectedWeight); } }
-            }
         }
     }
 
@@ -1251,10 +1211,11 @@ Page {
                 spacing: Style.spacingS
 
                 AbstractButton {
+                    id: videoUpvoteBtn
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: upvoteInner.implicitWidth + Style.spacingM
                     enabled: !page.voteBusy
-                    onClicked: page.doUpvote()
+                    onClicked: page.doUpvote(videoUpvoteBtn)
                     Row {
                         id: upvoteInner
                         anchors.centerIn: parent
@@ -1612,10 +1573,11 @@ Page {
                     spacing: Style.spacingS
 
                     AbstractButton {
+                        id: panelUpvoteBtn
                         Layout.preferredHeight: units.gu(4.5)
                         Layout.preferredWidth: panelUpvoteInner.implicitWidth + Style.spacingM
                         enabled: !page.voteBusy
-                        onClicked: page.doUpvote()
+                        onClicked: page.doUpvote(panelUpvoteBtn)
                         Rectangle {
                             anchors.fill: parent
                             radius: Style.cardRadius

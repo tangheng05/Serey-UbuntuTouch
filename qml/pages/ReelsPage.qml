@@ -72,50 +72,6 @@ Page {
             });
     }
 
-    Component {
-        id: voteWeightDialog
-        Dialog {
-            id: vwDlg
-            title: Lang.tr("Vote Weight")
-            property int selectedWeight: 100
-            Label {
-                width: parent.width
-                text: vwDlg.selectedWeight + "%"
-                font.pixelSize: Style.fontTitle
-                font.weight: Font.Bold
-                color: Style.brand
-                horizontalAlignment: Text.AlignHCenter
-            }
-            Slider {
-                id: vwSlider
-                width: parent.width
-                minimumValue: 1; maximumValue: 100; value: 100; live: true
-                onValueChanged: vwDlg.selectedWeight = Math.round(value)
-                function formatValue(v) { return Math.round(v) + "%" }
-            }
-            Row {
-                width: parent.width
-                spacing: Style.spacingS
-                Repeater {
-                    model: [25, 50, 75, 100]
-                    delegate: AbstractButton {
-                        width: (parent.width - Style.spacingS * 3) / 4
-                        height: units.gu(4)
-                        onClicked: { vwSlider.value = modelData; vwDlg.selectedWeight = modelData; }
-                        Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: vwDlg.selectedWeight === modelData ? Style.brand : Style.iconBackground }
-                        Label { anchors.centerIn: parent; text: modelData + "%"; font.pixelSize: Style.fontSmall; font.weight: Font.DemiBold; color: vwDlg.selectedWeight === modelData ? Style.textOnBrand : Style.textPrimary }
-                    }
-                }
-            }
-            Row {
-                width: parent.width
-                spacing: Style.spacingM
-                Button { width: (parent.width - Style.spacingM) / 2; text: Lang.tr("Cancel"); onClicked: PopupUtils.close(vwDlg) }
-                Button { width: (parent.width - Style.spacingM) / 2; text: Lang.tr("Vote"); color: Style.brand; onClicked: { PopupUtils.close(vwDlg); page._sendUpvote(vwDlg.selectedWeight); } }
-            }
-        }
-    }
-
     header: Item { height: 0 }
 
     Component.onCompleted: load()
@@ -267,7 +223,8 @@ Page {
                 reel.busy = false; reel._vcache();
                 Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
             }
-            function toggleUpvote() {
+            // caller anchors the weight popover to the rail's vote button
+            function toggleUpvote(caller) {
                 if (!_vguard()) return;
                 if (reel.upvoted) {
                     var wasUp = reel.upvoted, wasFlag = reel.flagged, prevVotes = reel.votes;
@@ -280,7 +237,8 @@ Page {
                     page._voteReel     = reel;
                     page._voteAuthor   = modelData.author   || "";
                     page._votePermlink = modelData.permlink || "";
-                    PopupUtils.open(voteWeightDialog);
+                    var p = PopupUtils.open(Qt.resolvedUrl("../components/VoteWeightPopover.qml"), caller);
+                    if (p) p.accepted.connect(page._sendUpvote);
                 }
             }
             function toggleFlag() {
@@ -495,9 +453,10 @@ Page {
                     spacing: units.gu(0.5)
 
                     AbstractButton {
+                        id: reelUpvoteBtn
                         width: units.gu(7); height: units.gu(7)
                         enabled: !reel.busy
-                        onClicked: reel.toggleUpvote()
+                        onClicked: reel.toggleUpvote(reelUpvoteBtn)
                         Column {
                             anchors.centerIn: parent
                             spacing: units.dp(2)

@@ -25,6 +25,10 @@ Page {
     // Caps the title/author/action-row block on wide windows
     readonly property real maxContentWidth: units.gu(60)
     property bool playing: false
+    // Opening a related video pushes another copy of this page and leaves this one alive
+    // underneath, still playing. Drop the player when the page is covered: it stops the
+    // audio and keeps a second Chromium view from coexisting with the new one.
+    onVisibleChanged: if (!visible) page.playing = false
     property bool nativeMode: false     // QtMultimedia (efficient, mp4/webm/m4v)
     property bool webVideoMode: false   // Chromium HTML5 <video> (mov / native fallback)
     property bool isFullscreen: false   // player reparented to fill the whole screen

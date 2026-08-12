@@ -156,7 +156,9 @@ Item {
         x: sheet.docked ? sheet.dockRect.x : (parent.width - width) / 2
         y: sheet.docked ? sheet.dockRect.y : (parent.height - sheet.kbHeight - height)
         width: sheet.docked ? sheet.dockRect.width : Math.min(parent.width, Config.sheetMaxWidth)
-        height: sheet.docked ? sheet.dockRect.height
+        // Docked still yields to the on-screen keyboard: a wide tablet has one, and the
+        // composer sits at the panel's bottom edge.
+        height: sheet.docked ? Math.max(units.gu(10), sheet.dockRect.height - sheet.kbHeight)
                              : Math.min(sheet.height * 0.72, sheet.height - sheet.kbHeight - units.gu(2))
         color: Style.surface
         // Docked, it's a right rail flush with the window edge, like VideoDetailPage's side panel.

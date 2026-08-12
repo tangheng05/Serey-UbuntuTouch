@@ -7,6 +7,7 @@ import "../components"
 import "../services/VideoService.js" as VideoService
 import "../services/VoteService.js" as VoteService
 import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/BlockedUsers.js" as BlockedUsers
 
 Page {
     id: page
@@ -74,7 +75,9 @@ Page {
 
     // Wide windows: center a portrait stage and put the rail (and the comments panel) next to it.
     // Full-width delegates left the video floating between black bars with the rail on the window edge.
-    readonly property bool wideReels: Config.wideMode
+    // Desktop only, like VideoDetailPage's side panel: a tablet split has no room for the
+    // rail and the reel, so it keeps the phone layout with the modal comment sheet.
+    readonly property bool wideReels: Config.desktopMode
     readonly property real railWidth: units.gu(7)
     readonly property real reelGap: Style.spacingS
     // Same width and drag-to-resize behaviour as VideoDetailPage's side panel, so the two
@@ -209,11 +212,22 @@ Page {
         var params = { limit: 50, offset: 0 };
         if (Config.communityId > 0)
             params.community_id = Config.communityId;
+        else
+            params.exclude_home = 1;   // Global feed hides the Cambodia community + children
         VideoService.listVideos(Config.baseUrl, params, Session.token,
             function (result) {
                 if (!page) return;          // popped mid-load, page destroyed
+                // Same filters as the shelf that launched us (VideoPage._applyRows), so the
+                // startIndex we were handed still points at the reel the reader tapped.
+                var hidden = HiddenPosts.loadAll();
+                var blocked = BlockedUsers.loadAll();
+                var seen = {};
                 page.reels = result.filter(function (v) {
-                    return v.platform === "SEREY" && (v.videoLink || "").length > 0;
+                    var pl = v.permlink || "";
+                    if (v.platform !== "SEREY" || (v.videoLink || "").length === 0) return false;
+                    if (hidden[pl] || blocked[v.author || ""] || seen[pl]) return false;
+                    seen[pl] = true;
+                    return true;
                 });
                 if (page.reels.length > 0) {
                     var idx = Math.max(0, Math.min(page.startIndex, page.reels.length - 1));
@@ -248,6 +262,30 @@ Page {
             pager.positionViewAtIndex(keep, ListView.Beginning);
             pager.currentIndex = keep;
         }
+        // Hiding, deleting or blocking from the reel's own menu has to take the reel off
+        // screen; the list pages behind us already drop it.
+        function onHideRequested(author, permlink) {
+            page._dropReels(function (v) { return (v.permlink || "") === permlink; });
+        }
+        function onPostDeleted(author, permlink) {
+            page._dropReels(function (v) { return (v.permlink || "") === permlink; });
+        }
+        function onUserBlocked(username) {
+            page._dropReels(function (v) { return (v.author || "") === username; });
+        }
+    }
+
+    function _dropReels(matches) {
+        var rows = [];
+        for (var i = 0; i < page.reels.length; i++)
+            if (!matches(page.reels[i])) rows.push(page.reels[i]);
+        if (rows.length === page.reels.length) return;
+        var keep = Math.min(pager.currentIndex, Math.max(0, rows.length - 1));
+        page.reels = rows;
+        if (rows.length === 0) return;
+        pager.positionViewAtIndex(keep, ListView.Beginning);
+        pager.currentIndex = keep;
+        page.syncDockedPanel();
     }
 
     // Reel the comment sheet is currently open for
@@ -311,7 +349,9 @@ Page {
             height: units.gu(12)
             visible: !page.loading && page.reels.length > 0
             Column {
-                anchors.centerIn: parent
+                // Centered on the video column, not the window: the footer belongs to the reel.
+                anchors.verticalCenter: parent.verticalCenter
+                x: page.stageX + (page.stageWidth - width) / 2
                 spacing: units.dp(4)
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter

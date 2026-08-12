@@ -13,7 +13,11 @@ Item {
     // Keep the outgoing transfer referenced until ContentHub picks it up.
     property var activeTransfer: null
 
-    // Wide mode's dropdown has no room for the peer grid, so "Share via…" opens it as a dialog.
+    // Anchored dropdown on desktop, full bottom sheet everywhere else. Same rule as the
+    // cards' compactMenu: a tablet is touch-first, so it gets sheets, not dropdowns.
+    readonly property bool compactMenu: Config.desktopMode
+
+    // The dropdown has no room for the peer grid, so "Share via…" opens it as a dialog.
     property bool peerDialogOpen: false
 
     function sendToPeer(peer) {
@@ -25,20 +29,20 @@ Item {
 
     onVisibleChanged: {
         if (!visible) sheet.peerDialogOpen = false;
-        if (visible && !Config.wideMode) { backdropFade.start(); slideIn.start(); }
+        if (visible && !sheet.compactMenu) { backdropFade.start(); slideIn.start(); }
     }
 
     function closeSheet() {
-        if (Config.wideMode) { Share.close(); return; }
+        if (sheet.compactMenu) { Share.close(); return; }
         backdropFadeOut.start();
         slideOut.start();
     }
 
     Component { id: linkItemComp; ContentItem {} }
 
-    // --- Wide mode: compact dropdown ---
+    // --- Desktop: compact dropdown ---
     Item {
-        visible: Config.wideMode
+        visible: sheet.compactMenu
         anchors.fill: parent
 
         MouseArea {
@@ -65,9 +69,16 @@ Item {
                 ? Math.max(Style.spacingM, Math.min(parent.width - dropdown.dropW - Style.spacingM,
                     dropdown._anchorPos.x + dropdown._anchor.width - dropdown.dropW))
                 : (parent.width - dropdown.dropW) / 2
-            y: dropdown._anchorPos
-                ? dropdown._anchorPos.y + Style.spacingXs
-                : (parent.height - dropdown.height) / 2
+            // Below the button, but flipped above it when there's no room (the reels rail
+            // sits near the bottom edge, where dropping down ran the menu off screen).
+            y: {
+                if (!dropdown._anchorPos) return (parent.height - dropdown.height) / 2;
+                var below = dropdown._anchorPos.y + Style.spacingXs;
+                if (below + dropdown.height <= parent.height - Style.spacingM) return below;
+                var above = dropdown._anchorPos.y - dropdown._anchor.height
+                            - dropdown.height - Style.spacingXs;
+                return Math.max(Style.spacingM, above);
+            }
             width: dropW
             height: dropCol.height
             radius: units.dp(8)
@@ -183,9 +194,9 @@ Item {
         }
     }
 
-    // --- Wide mode: ContentHub peers, as a dialog the dropdown has no room for ---
+    // --- Desktop: ContentHub peers, as a dialog the dropdown has no room for ---
     Rectangle {
-        visible: Config.wideMode && sheet.peerDialogOpen
+        visible: sheet.compactMenu && sheet.peerDialogOpen
         anchors.centerIn: parent
         width: Math.min(parent.width - Style.spacingL * 2, units.gu(60))
         height: Math.min(parent.height - Style.spacingL * 2, units.gu(50))
@@ -228,7 +239,7 @@ Item {
                 contentType: ContentType.Links
                 handler: ContentHandler.Share
                 showTitle: false
-                visible: sheet.visible && Config.wideMode && sheet.peerDialogOpen
+                visible: sheet.visible && sheet.compactMenu && sheet.peerDialogOpen
                 onPeerSelected: {
                     sheet.sendToPeer(peer);
                     sheet.peerDialogOpen = false;
@@ -239,9 +250,9 @@ Item {
         }
     }
 
-    // --- Narrow mode: full bottom sheet ---
+    // --- Phone and tablet: full bottom sheet ---
     Item {
-        visible: !Config.wideMode
+        visible: !sheet.compactMenu
         anchors.fill: parent
 
         Rectangle {
@@ -294,7 +305,7 @@ Item {
                     contentType: ContentType.Links
                     handler: ContentHandler.Share
                     showTitle: false
-                    visible: sheet.visible && !Config.wideMode
+                    visible: sheet.visible && !sheet.compactMenu
                     onPeerSelected: {
                         sheet.sendToPeer(peer);
                         sheet.closeSheet();

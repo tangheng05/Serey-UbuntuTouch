@@ -334,7 +334,8 @@ Page {
 
                 Item {
                     width: units.gu(4.5); height: width
-                    anchors.bottom: parent.bottom
+                    // Level with username, not title
+                    anchors.top: parent.top
 
                     Rectangle {
                         anchors.fill: parent

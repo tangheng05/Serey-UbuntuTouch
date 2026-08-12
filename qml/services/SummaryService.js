@@ -1,11 +1,12 @@
 .pragma library
 .import "Http.js" as Http
 
-// AI TL;DR; server caches per author/permlink/language, bullets always English
-function summarize(baseUrl, post, token, onOk, onErr) {
+// AI TL;DR; server caches per author/permlink/language
+function summarize(baseUrl, post, token, lang, onOk, onErr) {
     var body = {
         author: post.author || "",
-        permlink: post.permlink || ""
+        permlink: post.permlink || "",
+        language: lang || "en"
     };
     Http.post(baseUrl, "/serey-web/summarize-post", body, token, function (data) {
         var d = (data && data.data) || {};

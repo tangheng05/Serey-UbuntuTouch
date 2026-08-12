@@ -445,12 +445,14 @@ Page {
                 }
             }
         }
+    }
 
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: units.dp(1)
-            color: Style.divider
-        }
+    // Sibling of catBar, not a child (Flickable children stretch to contentWidth)
+    Rectangle {
+        anchors { left: catBar.left; right: catBar.right; bottom: catBar.bottom }
+        visible: catBar.showBar
+        height: units.dp(1)
+        color: Style.divider
     }
 
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).

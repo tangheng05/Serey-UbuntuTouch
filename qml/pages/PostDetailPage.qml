@@ -23,6 +23,8 @@ Page {
 
     // Passed in when opened from Saved Articles, so it renders instantly offline
     property var preloadedPost: null
+    // Hides votes/SEREY value/comments, skips live fetch
+    property bool offlineMode: false
 
     property var post: null
     property var comments: []
@@ -411,7 +413,7 @@ Page {
         page.summaryMinutes = page._localReadMinutes(page.post.body);
         page.summaryLoading = true;
         page.summaryError = "";
-        SummaryService.summarize(Config.baseUrl, page.post, Session.token,
+        SummaryService.summarize(Config.baseUrl, page.post, Session.token, Session.language,
             function (res) {
                 // Generation can take seconds; the reader may have closed the page by now.
                 if (!page) return;
@@ -510,6 +512,7 @@ Page {
     }
 
     function load() {
+        if (page.offlineMode) return;   // offline
         page.loading = true;
         page.errorMsg = "";
         PostService.detail(Config.baseUrl, author, permlink, Session.token,
@@ -791,7 +794,7 @@ Page {
         }
         // Before load(), not after it: the seed carries community and category, so the rail
         // fills from cache while the article is still in flight.
-        page.loadRelated();
+        if (!page.offlineMode) page.loadRelated();
         load();
     }
 
@@ -1257,9 +1260,10 @@ Page {
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-            // Narrow mode only: the right rail (below) owns these in wide mode.
+            // Narrow mode only; hidden offline
             Column {
                 id: commentsColumn
+                visible: !page.offlineMode
                 parent: page.showSidePanel ? sidePanelCol : contentCol
                 width: page.showSidePanel ? parent.width : parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: page.showSidePanel ? undefined : parent.horizontalCenter
@@ -1519,9 +1523,10 @@ Page {
                     }
                 }
 
-                // Native home for the vote bar: sits above comments whenever the panel is shown.
+                // Hidden offline
                 VoteBar {
                     id: detailVoteBar
+                    visible: !page.offlineMode
                     parent: page.showSidePanel ? sidePanelCol : footerCol
                     width: page.showSidePanel ? parent.width : parent.width - Style.spacingM * 2
                     anchors.horizontalCenter: page.showSidePanel ? undefined : parent.horizontalCenter

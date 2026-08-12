@@ -3,6 +3,8 @@
 // Dutch translations keyed by the English source strings (matching Lang.tr() call sites); missing keys fall back to English.
 var nl = {
     "%1 blocked":                                   "%1 geblokkeerd",
+    "%1 (posting not allowed)":                         "%1 (posten niet toegestaan)",
+    "%1 (video not allowed)":                           "%1 (video niet toegestaan)",
     "%1 replies":                                       "%1 reacties",
     "%1 sessions terminated.":                      "%1 sessies beëindigd.",
     "%1 unblocked":                                 "%1 gedeblokkeerd",
@@ -55,6 +57,7 @@ var nl = {
     "Confirm new password":                             "Nieuw wachtwoord bevestigen",
     "Confirm password":                                 "Wachtwoord bevestigen",
     "Continue":                                         "Doorgaan",
+    "Create":                                            "Maken",
     "Copied ✓":                                         "Gekopieerd ✓",
     "Copy key":                                         "Sleutel kopiëren",
     "Copy link":                                    "Kopieer link",
@@ -607,6 +610,7 @@ var nl = {
     "Create account with Monero":                       "Account aanmaken met Monero",
     "Create my account":                                "Mijn account aanmaken",
     "Downloading video…":                               "Video downloaden…",
+    "Downloading… %1%":                                 "Downloaden… %1%",
     "Downloading…":                                     "Downloaden…",
     "Edit menu item":                                   "Menu-item bewerken",
     "Enter your invite code to get a free account. No email, no payment.": "Voer uw uitnodigingscode in voor een gratis account. Geen e-mail, geen betaling.",

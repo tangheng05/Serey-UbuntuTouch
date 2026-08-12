@@ -1,5 +1,6 @@
 import QtQuick 2.7
 import QtQuick.Window 2.2
+import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import Lomiri.Components.Popups 1.3
 import "../Theme"
@@ -20,9 +21,10 @@ Page {
     property string _pendingRemoveArticle: ""
     readonly property real maxContentWidth: units.gu(100)
 
-    // Keyboard nav: active list owns arrow focus; Left/Escape returns to settings list
-    property Item keyboardFocusItem: tabIndex === 0 ? videoList : articleList
-    function _focusActiveList() { (tabIndex === 0 ? videoList : articleList).forceActiveFocus(); }
+    // Grid on desktop, list otherwise
+    readonly property Item _activeVideoList: Config.desktopMode ? videoGrid : videoList
+    property Item keyboardFocusItem: tabIndex === 0 ? _activeVideoList : articleList
+    function _focusActiveList() { (tabIndex === 0 ? _activeVideoList : articleList).forceActiveFocus(); }
     onVisibleChanged: if (visible) _focusActiveList()
 
     Component {
@@ -57,7 +59,7 @@ Page {
         anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
         width: Math.min(parent.width, page.maxContentWidth)
         clip: true
-        visible: page.tabIndex === 0
+        visible: page.tabIndex === 0 && !Config.desktopMode
         model: Downloads.items
         cacheBuffer: units.gu(16)
         // Left/Escape return to the settings list; Up at top climbs to the strip.
@@ -131,9 +133,9 @@ Page {
                     if (action === "remove") Downloads.remove(modelData.permlink);
                     else if (action === "share") Share.open("https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink);
                 }
-                // Settings already owns the third column here; no rail on the detail page
+                // No rail, offline mode
                 onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
-                    { video: modelData, allowSidePanel: false })
+                    { video: modelData, allowSidePanel: false, offlineMode: true })
                 onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                     { username: modelData.author })
                 // Phone width: compactMenu is off there, so "..." falls back to this bottom sheet.
@@ -147,8 +149,138 @@ Page {
         }
     }
 
+    // Desktop: thumbnail gallery
+    GridView {
+        id: videoGrid
+        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
+        topMargin: Style.spacingM
+        clip: true
+        visible: page.tabIndex === 0 && Config.desktopMode
+        model: Downloads.items
+        cacheBuffer: units.gu(40)
+        readonly property int _columns: 2
+        cellWidth: width / _columns
+        cellHeight: (cellWidth - Style.spacingL) * 0.56 + units.gu(9.5)
+        Keys.onLeftPressed: Nav.focusMaster()
+        Keys.onEscapePressed: Nav.focusMaster()
+
+        delegate: Item {
+            width: videoGrid.cellWidth
+            height: videoGrid.cellHeight
+
+            AbstractButton {
+                id: tileBtn
+                anchors.fill: parent
+                anchors.margins: Style.spacingM
+                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
+                    { video: modelData, allowSidePanel: false, offlineMode: true })
+
+                Column {
+                    anchors.fill: parent
+                    spacing: Style.spacingS
+
+                    Item {
+                        id: thumbBox
+                        width: parent.width
+                        height: width * 0.56
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Style.thumbRadius
+                            color: Style.iconBackground
+                        }
+                        // Rounded via OpacityMask
+                        Image {
+                            id: thumbImg
+                            anchors.fill: parent
+                            source: modelData.localThumb || modelData.thumbnail || ""
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            sourceSize.width: units.gu(45)
+                            visible: false
+                        }
+                        Rectangle {
+                            id: thumbMask
+                            anchors.fill: parent
+                            radius: Style.thumbRadius
+                            visible: false
+                        }
+                        OpacityMask {
+                            anchors.fill: parent
+                            source: thumbImg
+                            maskSource: thumbMask
+                        }
+                    }
+
+                    Label {
+                        width: parent.width
+                        text: modelData.title || ""
+                        font.pixelSize: Style.fontRegular
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                    }
+
+                    // Display-only, no profile link
+                    Row {
+                        width: parent.width
+                        spacing: Style.spacingXs
+
+                        Item {
+                            id: authorAvatar
+                            width: units.gu(2.8); height: width
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: width / 2
+                                color: Style.avatarTint(modelData.author || "")
+                                visible: (modelData.authorImage || "") === ""
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: (modelData.author || "?").charAt(0).toUpperCase()
+                                    font.pixelSize: Style.fontXSmall
+                                    font.bold: true
+                                    color: Style.brand
+                                }
+                            }
+                            CircleImage {
+                                anchors.fill: parent
+                                source: modelData.authorImage || ""
+                                decode: units.gu(6)
+                                visible: (modelData.authorImage || "") !== ""
+                            }
+                        }
+
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - authorAvatar.width - Style.spacingXs
+                            text: modelData.author || ""
+                            font.pixelSize: Style.fontSmall
+                            color: Style.textSecondary
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+            }
+
+            // Remove action
+            AbstractButton {
+                anchors { top: parent.top; right: parent.right; margins: Style.spacingM * 1.5 }
+                width: units.gu(3.2); height: width
+                onClicked: Downloads.remove(modelData.permlink)
+                Rectangle { anchors.fill: parent; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.55) }
+                Icon { anchors.centerIn: parent; width: units.gu(1.8); height: width; name: "delete"; color: "white" }
+            }
+        }
+    }
+
     EmptyState {
-        anchors.fill: videoList
+        anchors.fill: page._activeVideoList
         visible: page.tabIndex === 0 && Downloads.items.length === 0
         iconName: "save"
         message: Lang.tr("No downloaded videos yet")
@@ -176,7 +308,7 @@ Page {
             height: articleRow.height + Style.spacingM * 2
             onClicked: page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
                 { author: modelData.author, permlink: modelData.permlink,
-                  title: modelData.title, preloadedPost: modelData, allowSidePanel: false })
+                  title: modelData.title, preloadedPost: modelData, allowSidePanel: false, offlineMode: true })
 
             // Same compact anchored dropdown as the video row/blog cards, rather than the full
             // ActionBottomSheet (which is the phone/touch fallback for those too).

@@ -157,8 +157,15 @@ QtObject {
         // Grab the poster too, so the thumbnail shows offline.
         store._saveThumb(pv, permlink);
 
+        // Throttled to every 5%
+        var lastToastPct = -1;
         dl.progress.connect(function (pct) {
             if (_active[permlink]) { _active[permlink].progress = pct; store.rev++; }
+            var rounded = Math.round(pct);
+            if (rounded !== lastToastPct && (rounded - lastToastPct >= 5 || rounded >= 100)) {
+                lastToastPct = rounded;
+                Toast.show(Lang.tr("Downloading… %1%").arg(rounded));
+            }
         });
         dl.finished.connect(function (path) {
             var vm = pv;
@@ -184,7 +191,7 @@ QtObject {
             Toast.error("Download failed.");
         });
 
-        Toast.show("Downloading…");
+        Toast.show(Lang.tr("Downloading…"));
         dl.start(url);
     }
 

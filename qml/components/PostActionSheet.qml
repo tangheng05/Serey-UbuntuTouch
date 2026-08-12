@@ -480,7 +480,7 @@ Item {
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
-                        Label { text: saveVideoBtn._busy ? Lang.tr("Downloading…")
+                        Label { text: saveVideoBtn._busy ? Lang.tr("Downloading… %1%").arg(Math.round((saveVideoBtn._active && saveVideoBtn._active.progress) || 0))
                                       : (saveVideoBtn._saved ? Lang.tr("Remove download") : Lang.tr("Save video offline"))
                                 font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
                         Label { text: saveVideoBtn._saved ? Lang.tr("Available offline")

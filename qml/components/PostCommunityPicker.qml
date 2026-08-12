@@ -16,6 +16,8 @@ Item {
     property var _onChosen: null
     property var items: []           // [{ id, name, icon, allowPost, videoAllowPost, isParent }]
     property string selectedId: ""
+    // Clicked entry (drives Continue)
+    property var selectedEntry: null
     property bool loading: false
     // Set by openFor(): video posting has its own per-community permission, so rows that don't
     // allow it are shown (for browsing into their children) but can't be selected.
@@ -64,6 +66,7 @@ Item {
         picker._onChosen = onChosen;
         picker.caller = callerItem || null;
         picker.selectedId = Config.selectedSubCommunity ? String(Config.selectedSubCommunity.id) : "";
+        picker.selectedEntry = null;
         picker.childCache = ({});
         picker.expandedId = "";
         picker.expandedHubId = "";
@@ -171,8 +174,10 @@ Item {
             picker._byId[entry.id] = entry;
         }
         // Browsing Global with no sub-community picked: pre-select the Global row
-        if (picker.selectedId.length === 0 && globalEntry)
+        if (picker.selectedId.length === 0 && globalEntry) {
             picker.selectedId = globalEntry.id;
+            picker.selectedEntry = globalEntry;
+        }
         if (out0.length > 1) {
             picker._autoExpandForSelection(out0);
             picker._autoExpandForOwnership(out0);
@@ -332,7 +337,7 @@ Item {
     Keys.onEscapePressed: picker.closeAnimated()
 
     function _confirm() {
-        var chosen = picker._byId[picker.selectedId] || null;
+        var chosen = picker.selectedEntry || null;
         var cb = picker._onChosen; picker._onChosen = null;
         picker.closeAnimated();
         if (cb) cb(chosen);
@@ -543,7 +548,7 @@ Item {
                                 anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: row.chevronW }
                                 enabled: picker._canPost(modelData)
                                 opacity: enabled ? 1 : 0.45
-                                onClicked: picker.selectedId = modelData.id
+                                onClicked: { picker.selectedId = modelData.id; picker.selectedEntry = modelData; }
 
                                 Row {
                                     anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
@@ -577,7 +582,9 @@ Item {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: parent.width - units.gu(2.4) - units.gu(4.4) - Style.spacingM * 2
                                                - (rowOwnerBadge.visible ? rowOwnerBadge.width + Style.spacingM : 0)
-                                        text: modelData.name
+                                        text: picker._canPost(modelData) ? modelData.name
+                                            : (picker.forVideo ? Lang.tr("%1 (video not allowed)").arg(modelData.name)
+                                                               : Lang.tr("%1 (posting not allowed)").arg(modelData.name))
                                         font.pixelSize: Style.fontRegular
                                         font.weight: row.isSelected ? Font.DemiBold : Font.Normal
                                         font.family: Style.fontFor(text)
@@ -677,7 +684,7 @@ Item {
                                         anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: childRow.chevronW }
                                         enabled: picker._canPost(modelData)
                                         opacity: enabled ? 1 : 0.45
-                                        onClicked: picker.selectedId = modelData.id
+                                        onClicked: { picker.selectedId = modelData.id; picker.selectedEntry = modelData; }
 
                                         Row {
                                             anchors { fill: parent; leftMargin: Style.spacingM + units.gu(3.2); rightMargin: Style.spacingM }
@@ -712,7 +719,9 @@ Item {
                                                 width: parent.width - units.gu(2.2) - units.gu(3.8) - Style.spacingM * 2
                                                        - (childCol.isHub ? hubBadge.width + Style.spacingM : 0)
                                                        - (childOwnerBadge.visible ? childOwnerBadge.width + Style.spacingM : 0)
-                                                text: modelData.name
+                                                text: picker._canPost(modelData) ? modelData.name
+                                            : (picker.forVideo ? Lang.tr("%1 (video not allowed)").arg(modelData.name)
+                                                               : Lang.tr("%1 (posting not allowed)").arg(modelData.name))
                                                 font.pixelSize: Style.fontSmall
                                                 font.weight: childRow.isSelected ? Font.DemiBold : Font.Normal
                                                 font.family: Style.fontFor(text)
@@ -807,7 +816,8 @@ Item {
                                         readonly property bool isSelected: picker.selectedId === gcRow.gcId
                                         enabled: picker._canPost(modelData)
                                         opacity: enabled ? 1 : 0.45
-                                        onClicked: picker.selectedId = gcRow.gcId
+                                        // Normalized via _toggleHub()
+                                        onClicked: { picker.selectedId = gcRow.gcId; picker.selectedEntry = picker._byId[gcRow.gcId] || modelData; }
                                         Component.onCompleted: picker._queueReveal(gcRow, gcRow.gcId)
 
                                         Row {
@@ -917,7 +927,7 @@ Item {
                 anchors { verticalCenter: parent.verticalCenter; horizontalCenter: parent.horizontalCenter }
                 width: parent.width - Style.spacingM * 2
                 height: units.gu(5.5)
-                enabled: picker.selectedId.length > 0 && picker._canPost(picker._byId[picker.selectedId])
+                enabled: picker._canPost(picker.selectedEntry)
                 onClicked: picker._confirm()
 
                 Rectangle {

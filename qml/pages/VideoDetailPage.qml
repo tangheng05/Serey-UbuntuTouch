@@ -20,6 +20,8 @@ Page {
     id: page
 
     property var video: ({})
+    // Hides votes/SEREY value/comments, skips live fetch
+    property bool offlineMode: false
     // Caps the title/author/action-row block on wide windows
     readonly property real maxContentWidth: units.gu(60)
     property bool playing: false
@@ -86,7 +88,8 @@ Page {
         ];
         if (page.canDownload) {
             items.push({ icon: page.dlSaved ? "tick" : "save",
-                         label: page.dlSaved ? Lang.tr("Remove download") : Lang.tr("Save video offline"),
+                         label: page.dlBusy ? Lang.tr("Downloading… %1%").arg(page.dlPct)
+                              : (page.dlSaved ? Lang.tr("Remove download") : Lang.tr("Save video offline")),
                          action: "toggleDownload" });
         }
         // The one divider in this menu: things you do with the video above,
@@ -449,10 +452,20 @@ Page {
                 Icon {
                     anchors.centerIn: parent
                     width: units.gu(2.2); height: width
+                    visible: !page.dlBusy
                     // Same save/tick pair the "..." menu and action sheet use; a
                     // bookmark glyph here read as a different action than the row below it.
                     name: page.dlSaved ? "tick" : "save"
                     color: page.dlSaved ? Style.brand : Style.textPrimary
+                }
+                // Live progress
+                Label {
+                    anchors.centerIn: parent
+                    visible: page.dlBusy
+                    text: page.dlPct + "%"
+                    font.pixelSize: Style.fontXSmall
+                    font.weight: Font.DemiBold
+                    color: Style.textSecondary
                 }
             }
 
@@ -617,6 +630,7 @@ Page {
     }
 
     function loadComments() {
+        if (page.offlineMode) return;   // offline
         PostService.detail(Config.baseUrl, video.author, video.permlink, Session.token,
             function (result) {
                 if (!result) return;   // empty/failed detail fetch, keep current state
@@ -754,7 +768,7 @@ Page {
 
     function _initVideoState() {
         page.isFollowing = false;
-        if (Session.isLoggedIn && video.author && video.author !== Session.username) {
+        if (!page.offlineMode && Session.isLoggedIn && video.author && video.author !== Session.username) {
             FollowService.status(Config.baseUrl, Session.username, video.author,
                 function (following) { page.isFollowing = following; },
                 function (err) { /* keep false */ });
@@ -1169,10 +1183,10 @@ Page {
                     }
                 }
 
-                // Follow sits beside the name, outside authorRow (its MouseArea would swallow the tap)
+                // Hidden offline
                 AbstractButton {
                     id: followBtn
-                    visible: (page.video.author || "") !== "" && page.video.author !== Session.username
+                    visible: !page.offlineMode && (page.video.author || "") !== "" && page.video.author !== Session.username
                     anchors { left: authorRow.right; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: followInner.implicitWidth + Style.spacingM * 2
                     height: units.gu(4)
@@ -1206,9 +1220,9 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Vote row (video actions); Share/Download in header, Follow on author row above
+            // Hidden offline
             RowLayout {
-                visible: !page.showSidePanel
+                visible: !page.showSidePanel && !page.offlineMode
                 x: Style.spacingM
                 width: parent.width - Style.spacingM * 2
                 height: units.gu(4.5)
@@ -1309,9 +1323,9 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Comments header opens the sheet; wide mode shows the panel's list instead
+            // Hidden offline
             AbstractButton {
-                visible: !page.showSidePanel
+                visible: !page.showSidePanel && !page.offlineMode
                 width: parent.width
                 height: units.gu(5)
                 onClicked: page.commentSheetOpen = true

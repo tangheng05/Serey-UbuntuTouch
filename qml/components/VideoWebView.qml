@@ -214,6 +214,10 @@ Item {
                'pend=pos(e.clientX);paint(pend);});' +
                'trk.addEventListener("lostpointercapture",endDrag);' +
                'window.addEventListener("pointerup",endDrag,true);' +
+               // touchend is a separate pipeline from pointer events: when QtWebEngine drops
+               // the pointerup, this still arrives and the drag still commits.
+               'window.addEventListener("touchend",endDrag,true);' +
+               'window.addEventListener("touchcancel",endDrag,true);' +
                'window.addEventListener("pointercancel",function(){drag=false;poke();},true);' +
                'window.addEventListener("blur",function(){drag=false;});' +
                'pb.addEventListener("click",function(){if(P.paused()){P.play();}else{P.pause();}icon();poke();});' +
@@ -369,6 +373,10 @@ Item {
                (controls ? _controlsHtml() : '') +
                '<script>(function(){var v=document.querySelector("video");' +
                'var PLAY=' + JSON.stringify(_svgPlay) + ',PAUSE=' + JSON.stringify(_svgPause) + ';' +
+               // Frames decode after a seek but the layer can keep presenting the old one, so
+               // the bar moves and the picture doesn't. Same opacity nudge as the thaw timer.
+               'v.addEventListener("seeked",function(){v.style.opacity="0.999";' +
+               'requestAnimationFrame(function(){v.style.opacity="";});});' +
                'var P={play:function(){v.play();},pause:function(){v.pause();},' +
                'paused:function(){return v.paused;},time:function(){return v.currentTime;},' +
                'dur:function(){return v.duration;},' +

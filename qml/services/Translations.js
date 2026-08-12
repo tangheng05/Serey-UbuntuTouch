@@ -278,6 +278,7 @@ var nl = {
     "Reels":                                            "Reels",
     "Read more":                                        "Meer lezen",
     "Related":                                          "Gerelateerd",
+    "Related videos":                                   "Gerelateerde video's",
     "Remove":                                           "Verwijderen",
     "Remove download?":                                 "Download verwijderen?",
     "Remove from saved":                                "Verwijderen uit opgeslagen",

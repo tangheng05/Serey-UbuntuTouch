@@ -847,8 +847,8 @@ Page {
     // network only when that isn't enough. It used to be the 3 newest videos site-wide,
     // which is why an unrelated Khmer upload sat under a Russian post.
     function _loadMoreVideos() {
-        // Only desktop renders the rail; elsewhere this would be a request nobody sees
-        if (!page.allowSidePanel || !Config.desktopMode) return;
+        // Narrow mode shows these below comments now too; offline still skips it
+        if (!page.allowSidePanel) return;
         var me = page.video || {};
         var cat = page._topicOf(me);
         var hidden = HiddenPosts.loadAll();
@@ -1169,7 +1169,7 @@ Page {
 
                 AbstractButton {
                     id: moreBtn
-                    visible: !Config.wideMode
+                    visible: !Config.wideMode && !page.offlineMode
                     anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: moreLabel.implicitWidth
                     height: units.gu(4)
@@ -1279,9 +1279,9 @@ Page {
                 CoinValue { visible: page.onChain && page.payout.length > 0; value: page.payout }
             }
 
-            // Wide mode: description always visible here instead of behind the "...more" sheet
+            // Inline, not behind "...more"
             Column {
-                visible: Config.wideMode
+                visible: Config.wideMode || page.offlineMode
                 width: parent.width
                 spacing: Style.spacingM
 
@@ -1363,6 +1363,37 @@ Page {
                         width: units.gu(1.6); height: width
                         name: "next"
                         color: Style.textSecondary
+                    }
+                }
+            }
+
+            // Phone only; tablet has no room and wide mode has the side panel instead
+            Column {
+                visible: !page.showSidePanel && !Config.tabletMode && page.moreVideos.length > 0
+                width: parent.width
+                spacing: Style.spacingS
+
+                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+                Item { width: 1; height: Style.spacingXs }
+
+                Label {
+                    x: Style.spacingM
+                    text: Lang.tr("Related videos")
+                    font.pixelSize: Style.fontMedium
+                    font.weight: Font.DemiBold
+                    color: Style.textPrimary
+                }
+
+                // Same card the Video feed itself uses, not a compact row
+                Repeater {
+                    model: page.moreVideos
+                    delegate: VideoCard {
+                        width: parent.width
+                        video: modelData
+                        onClicked: page.openRelatedVideo(modelData)
+                        onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                            { username: modelData.author })
+                        onMoreClicked: PostActions.open(modelData, "video")
                     }
                 }
             }

@@ -109,6 +109,8 @@ Item {
     function startReply(c) { sheet.replyTarget = c; composer.forceActiveFocus(); }
 
     function submit() {
+        // Enter bypasses the Send button's enabled state, so a fast double tap posted twice.
+        if (sheet.posting) return;
         var text = composer.text.trim();
         if (text.length === 0) return;
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }

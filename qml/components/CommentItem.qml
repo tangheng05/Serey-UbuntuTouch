@@ -178,7 +178,10 @@ Item {
                 visible: item.menuOpen
                 z: 10
                 anchors { top: moreButton.bottom; right: moreButton.right; topMargin: Style.spacingXs }
-                width: units.gu(16)
+                // Grows for the confirm row: gu(16) fits "Cancel"/"Delete" but not
+                // "Annuleren"/"Verwijderen", which ran into each other.
+                width: Math.min(item.width, Math.max(units.gu(16),
+                       cancelLabel.implicitWidth + confirmDeleteLabel.implicitWidth + Style.spacingM * 3))
                 height: item.confirmingDelete ? confirmCol.height : menuCol.height
                 radius: Style.cardRadius
                 color: Style.surface
@@ -232,12 +235,29 @@ Item {
                         AbstractButton {
                             width: parent.width / 2; height: units.gu(5)
                             onClicked: { item.menuOpen = false; item.confirmingDelete = false; }
-                            Label { anchors.centerIn: parent; text: Lang.tr("Cancel"); color: Style.textSecondary }
+                            Label {
+                                id: cancelLabel
+                                anchors.centerIn: parent
+                                width: Math.min(implicitWidth, parent.width - Style.spacingS)
+                                elide: Text.ElideRight
+                                horizontalAlignment: Text.AlignHCenter
+                                text: Lang.tr("Cancel")
+                                color: Style.textSecondary
+                            }
                         }
                         AbstractButton {
                             width: parent.width / 2; height: units.gu(5)
                             onClicked: { item.menuOpen = false; item.confirmingDelete = false; item.doDelete(); }
-                            Label { anchors.centerIn: parent; text: Lang.tr("Delete"); color: Style.danger; font.weight: Font.DemiBold }
+                            Label {
+                                id: confirmDeleteLabel
+                                anchors.centerIn: parent
+                                width: Math.min(implicitWidth, parent.width - Style.spacingS)
+                                elide: Text.ElideRight
+                                horizontalAlignment: Text.AlignHCenter
+                                text: Lang.tr("Delete")
+                                color: Style.danger
+                                font.weight: Font.DemiBold
+                            }
                         }
                     }
                 }

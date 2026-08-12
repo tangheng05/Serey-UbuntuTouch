@@ -667,6 +667,8 @@ Page {
     }
 
     function submitComment() {
+        // Enter bypasses the Send button's enabled state, so a fast double tap posted twice.
+        if (page.posting) return;
         var text = composer.text.trim();
         if (text.length === 0)
             return;

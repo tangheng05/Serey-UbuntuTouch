@@ -179,7 +179,14 @@ Item {
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
                     elide: Text.ElideRight
-                    MouseArea { anchors.fill: parent; onClicked: root.authorClicked(); onPressAndHold: root.moreClicked() }
+                    // Label stretches to fill the header, so tap only the painted name, not the blank space after it
+                    MouseArea {
+                        anchors.left: parent.left
+                        height: parent.height
+                        width: Math.min(parent.width, parent.implicitWidth)
+                        onClicked: root.authorClicked()
+                        onPressAndHold: root.moreClicked()
+                    }
                 }
                 Row {
                     spacing: Style.spacingS

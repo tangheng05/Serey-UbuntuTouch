@@ -47,11 +47,16 @@ Item {
             height: units.gu(3)
             onClicked: root.expanded = !root.expanded
 
+            // Bounded by the toggle, not free-floating: a long translation used to run
+            // straight under "Inklappen" on a phone.
             Row {
-                anchors.verticalCenter: parent.verticalCenter
+                id: metaRow
+                anchors { left: parent.left; right: toggleRow.left; rightMargin: Style.spacingS
+                          verticalCenter: parent.verticalCenter }
                 spacing: Style.spacingXs
 
                 Icon {
+                    id: clockIcon
                     anchors.verticalCenter: parent.verticalCenter
                     width: units.gu(1.8); height: width
                     name: "clock"
@@ -60,12 +65,17 @@ Item {
                 // Fixed phrase: promises how long the SUMMARY takes, not the article
                 Label {
                     anchors.verticalCenter: parent.verticalCenter
+                    // The phrase yields first; the reading time is short and worth keeping whole.
+                    width: Math.max(0, metaRow.width - clockIcon.width - metaRow.spacing
+                                       - (readLabel.visible ? readLabel.implicitWidth + metaRow.spacing : 0))
+                    elide: Text.ElideRight
                     text: Lang.tr("This article in one minute")
                     font.pixelSize: Style.fontSmall
                     font.family: Style.fontFor(text)
                     color: Style.brand
                 }
                 Label {
+                    id: readLabel
                     anchors.verticalCenter: parent.verticalCenter
                     visible: root.readMinutes > 0
                     text: Lang.tr("· %1 min read").arg(root.readMinutes)
@@ -77,6 +87,7 @@ Item {
 
             // Word plus chevron: the chevron alone doesn't read as "tap me".
             Row {
+                id: toggleRow
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 spacing: Style.spacingXs
 

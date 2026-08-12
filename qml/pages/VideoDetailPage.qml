@@ -634,6 +634,7 @@ Page {
         PostService.detail(Config.baseUrl, video.author, video.permlink, Session.token,
             function (result) {
                 if (!result) return;   // empty/failed detail fetch, keep current state
+                if (!page) return;     // popped while the fetch was in flight
                 var replies, serverCount, voters, me2;
                 replies = result.replies || [];
                 page.comments = replies;

@@ -2,6 +2,7 @@ import QtQuick 2.7
 import QtQuick.Window 2.2
 import QtWebEngine 1.10
 import Lomiri.Components 1.3
+import "../Session"
 
 Item {
     id: root
@@ -74,7 +75,8 @@ Item {
         }
     }
 
-    readonly property string mobileUA: "Mozilla/5.0 (Linux; Android 13; Pixel 3a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    // Single source: the profile sets the header, the user script has to match it.
+    readonly property string mobileUA: VideoProfile.mobileUA
 
     onEmbedUrlChanged: _load()
     onWrapChanged: _load()
@@ -84,17 +86,12 @@ Item {
     onCssScaleChanged: _load()   // sizes are baked into the wrapper HTML
     Component.onCompleted: _load()
 
-    // Off-the-record: unlike the Homepage profile, video doesn't need persistent login
-    WebEngineProfile {
-        id: videoProfile
-        httpUserAgent: root.mobileUA
-        offTheRecord: true
-    }
-
     WebEngineView {
         id: wv
         anchors.fill: parent
-        profile: videoProfile
+        // Shared singleton, not a per-view profile: its disk cache is the difference
+        // between re-watching a reel instantly and refetching the whole file.
+        profile: VideoProfile
 
         // Autoplay without a user gesture (our overlay tap is the gesture); local-file access lets an offline file:// <video> load from its wrapper.
         settings.playbackRequiresUserGesture: false
@@ -175,11 +172,13 @@ Item {
         return 'var bar=document.getElementById("bar"),trk=document.getElementById("track"),' +
                'fill=document.getElementById("fill"),knob=document.getElementById("knob"),' +
                'tl=document.getElementById("t"),pb=document.getElementById("pb"),' +
-               'fs=document.getElementById("fs"),drag=false,pend=0,want=-1,hideT=null;' +
+               'fs=document.getElementById("fs"),drag=false,pend=0,want=-1,hideT=null,' +
+               // pendT = seconds a committed seek asked for, pendN = ticks left to keep asking
+               'pendT=-1,pendN=0;' +
                'function f(s){s=Math.max(0,Math.floor(s||0));var m=Math.floor(s/60),x=s%60;' +
                'return m+":"+(x<10?"0":"")+x;}' +
                // Leave the bar where the user put it while a deferred seek is outstanding
-               'function upd(){if(drag||want>=0)return;var d=P.dur()||0,c=P.time()||0,p=(d&&isFinite(d))?c/d:0;' +
+               'function upd(){if(drag||want>=0||pendT>=0)return;var d=P.dur()||0,c=P.time()||0,p=(d&&isFinite(d))?c/d:0;' +
                'fill.style.width=(p*100)+"%";knob.style.left=(p*100)+"%";' +
                'tl.textContent=f(c)+" / "+f(isFinite(d)?d:0);}' +
                'function icon(){pb.innerHTML=P.paused()?PLAY:PAUSE;}' +
@@ -194,8 +193,15 @@ Item {
                // Duration arrives a couple of seconds after load (YouTube reports it over
                // postMessage), so an early scrub had nothing to multiply by and was dropped.
                // Hold the fraction and apply it as soon as the duration shows up.
+               // A seek on a still-loading file can be swallowed (the moov tail arrives late on
+               // Serey MP4s), so remember the target and keep re-asking until the player lands
+               // on it or we give up, instead of snapping the bar back.
+               // Paint the target immediately: upd() is muted until the seek lands, so without
+               // this a keyboard skip would show nothing until the player caught up.
+               'function jump(t){P.seek(t);pendT=t;pendN=12;' +
+               'var d=P.dur();if(d&&isFinite(d))paint(t/d);}' +
                'function commit(p){var d=P.dur();' +
-               'if(d&&isFinite(d))P.seek(p*d);else want=p;' +
+               'if(d&&isFinite(d))jump(p*d);else want=p;' +
                'poke();}' +
                'function endDrag(){if(!drag)return;drag=false;commit(pend);}' +
                // Drag latch must be release-proof: QtWebEngine can drop pointerup after a tap
@@ -222,18 +228,34 @@ Item {
                'if(k===" "||k==="Spacebar"||k==="k"||k==="K"){' +
                'if(P.paused()){P.play();}else{P.pause();}icon();poke();e.preventDefault();}' +
                'else if(k==="ArrowLeft"||k==="j"||k==="J"){' +
-               'P.seek(Math.max(0,P.time()-(k==="ArrowLeft"?5:10)));upd();poke();e.preventDefault();}' +
+               'jump(Math.max(0,P.time()-(k==="ArrowLeft"?5:10)));upd();poke();e.preventDefault();}' +
                'else if(k==="ArrowRight"||k==="l"||k==="L"){var d=P.dur()||0;' +
-               'P.seek(d?Math.min(d,P.time()+(k==="ArrowRight"?5:10)):P.time());upd();poke();e.preventDefault();}' +
+               'jump(d?Math.min(d,P.time()+(k==="ArrowRight"?5:10)):P.time());upd();poke();e.preventDefault();}' +
                'else if(k==="f"||k==="F"){fsToggle();e.preventDefault();}});' +
                'document.addEventListener("pointermove",poke);' +
                'document.addEventListener("pointerdown",poke);' +
                // One poll drives both time and the play/pause glyph; the YT API has no timeupdate event
                'var was=null;setInterval(function(){' +
-               'if(want>=0){var wd=P.dur();if(wd&&isFinite(wd)){P.seek(want*wd);want=-1;}}' +
+               'if(want>=0){var wd=P.dur();if(wd&&isFinite(wd)){var wt=want*wd;P.seek(wt);want=-1;pendT=wt;pendN=12;}}' +
+               'if(pendT>=0){if(Math.abs((P.time()||0)-pendT)<1.5||pendN--<=0)pendT=-1;else P.seek(pendT);}' +
                'upd();' +
                'var p=P.paused();if(p!==was){was=p;icon();poke();}},250);' +
                'icon();upd();poke();';
+    }
+
+    // Warm the next clip from inside the live page. A hidden preload="metadata" video
+    // makes the media stack fetch what a cold start waits on, above all the moov atom at
+    // the tail of a non-faststart Serey MP4, into the profile's shared disk cache. No
+    // second WebEngineView, which is what trips the dual-Chromium crash, and no decode.
+    function prewarm(url) {
+        if (!root.ready || !url || url.length === 0) return;
+        wv.runJavaScript(
+            '(function(u){try{' +
+            'if(window.__sereyWarm===u)return;window.__sereyWarm=u;' +
+            'var old=document.getElementById("warm");if(old)old.parentNode.removeChild(old);' +
+            'var p=document.createElement("video");p.id="warm";p.preload="metadata";' +
+            'p.muted=true;p.style.display="none";p.src=u;document.body.appendChild(p);' +
+            '}catch(e){}})(' + JSON.stringify(url) + ');');
     }
 
     function _ytId(url) {
@@ -349,7 +371,16 @@ Item {
                'var PLAY=' + JSON.stringify(_svgPlay) + ',PAUSE=' + JSON.stringify(_svgPause) + ';' +
                'var P={play:function(){v.play();},pause:function(){v.pause();},' +
                'paused:function(){return v.paused;},time:function(){return v.currentTime;},' +
-               'dur:function(){return v.duration;},seek:function(t){v.currentTime=t;}};window.P=P;' +
+               'dur:function(){return v.duration;},' +
+               // Before metadata lands, assigning currentTime only sets the default start
+               // position: the bar moved and the video didn't, which is the first-scrub bug.
+               // Defer to loadedmetadata, and clamp into a seekable range when there is one.
+               'seek:function(t){try{' +
+               'if(v.readyState<1){v.addEventListener("loadedmetadata",function h(){' +
+               'v.removeEventListener("loadedmetadata",h);try{v.currentTime=t;}catch(_){}});return;}' +
+               'var sk=v.seekable;if(sk&&sk.length){' +
+               't=Math.max(sk.start(0),Math.min(sk.end(sk.length-1)-0.1,t));}' +
+               'v.currentTime=t;}catch(_){}}};window.P=P;' +
                'function r(){console.log("__SEREY_READY__");}' +
                'v.addEventListener("loadeddata",r);v.addEventListener("playing",r);' +
                (controls ? _controlsJs() : '') +

@@ -401,11 +401,34 @@ Page {
         page.summaryLoading = false;
         page.summaryRequested = false;
         page.summaryMinutes = page.post ? page._localReadMinutes(page.post.body) : 0;
+        page._prefetchSummary();
     }
 
-    // Fired on first expand, not on page load. The endpoint allows 30 summaries per
-    // 10 minutes per reader, and requesting one for every article opened (expanded or
-    // not) exhausted that in a browsing session; every drawer after it opened empty.
+    // Opening the article asks for a summary that already exists (cache_only never
+    // reaches the AI service, and rides its own rate limit). Expanding the drawer
+    // then costs nothing for every article that has been summarized before.
+    function _prefetchSummary() {
+        if (!page.post || !page.post.author || !page.post.permlink) return;
+        var permlink = page.post.permlink;
+        SummaryService.summarize(Config.baseUrl, page.post, Session.token, Session.language, true,
+            function (res) {
+                // Guard the late reply: the reader may have moved to another article,
+                // or asked for the real thing in the meantime.
+                if (!page || !page.post || page.post.permlink !== permlink) return;
+                if (page.summaryRequested || page.summaryLoading) return;
+                if (!res.bullets || res.bullets.length === 0) return;
+                page.summaryBullets = res.bullets;
+                page.summaryMinutes = res.readMinutes;
+                page.summaryRequested = true;
+            },
+            // Nothing cached, or the lookup failed: the on-expand request still stands.
+            function () {});
+    }
+
+    // The paid generation is still spent only on a reader who expands the drawer: a
+    // request per article opened exhausted the 30-per-10-minutes budget in one browsing
+    // session, and every drawer after that opened empty. Prefetch above is cache-only
+    // for exactly that reason.
     function _loadSummary(force) {
         if (!page.post || !page.post.body) return;
         if (page.summaryLoading || (page.summaryRequested && !force)) return;
@@ -413,7 +436,9 @@ Page {
         page.summaryMinutes = page._localReadMinutes(page.post.body);
         page.summaryLoading = true;
         page.summaryError = "";
-        SummaryService.summarize(Config.baseUrl, page.post, Session.token, Session.language,
+        // Bullets follow the app language; the server falls back to English when it
+        // has no translation and the article is too old to pay for one.
+        SummaryService.summarize(Config.baseUrl, page.post, Session.token, Session.language, false,
             function (res) {
                 // Generation can take seconds; the reader may have closed the page by now.
                 if (!page) return;

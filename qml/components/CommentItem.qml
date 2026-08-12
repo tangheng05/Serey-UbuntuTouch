@@ -133,7 +133,13 @@ Item {
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
                     elide: Text.ElideRight
-                    MouseArea { anchors.fill: parent; onClicked: item.authorClicked(c.author || "") }
+                    // Label stretches to fill the byline, so tap only the painted name, not the blank space after it
+                    MouseArea {
+                        anchors.left: parent.left
+                        height: parent.height
+                        width: Math.min(parent.width, parent.implicitWidth)
+                        onClicked: item.authorClicked(c.author || "")
+                    }
                 }
                 Label {
                     Layout.preferredWidth: implicitWidth

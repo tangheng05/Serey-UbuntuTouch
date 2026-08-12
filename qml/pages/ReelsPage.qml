@@ -6,6 +6,7 @@ import "../Session"
 import "../components"
 import "../services/VideoService.js" as VideoService
 import "../services/VoteService.js" as VoteService
+import "../services/HiddenPosts.js" as HiddenPosts
 
 Page {
     id: page
@@ -13,11 +14,22 @@ Page {
     // Keyboard equivalent of swipe-between-reels
     focus: true
     Keys.onPressed: (event) => {
-        if (event.key === Qt.Key_Down || event.key === Qt.Key_PageDown) {
+        if (event.key === Qt.Key_Escape && page.menuOpen) {
+            page.menuOpen = false;
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Escape && !page.wideReels && commentSheet.visible) {
+            commentSheet.close();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Down || event.key === Qt.Key_PageDown) {
             pager.incrementCurrentIndex();
             event.accepted = true;
         } else if (event.key === Qt.Key_Up || event.key === Qt.Key_PageUp) {
             pager.decrementCurrentIndex();
+            event.accepted = true;
+        // Same as every other detail page: hand focus back to the list on the left.
+        // Wide mode never closes the docked panel here, since nothing could reopen it.
+        } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) {
+            Nav.focusMaster();
             event.accepted = true;
         }
     }
@@ -26,6 +38,11 @@ Page {
     property bool loading: true
     property string errorMsg: ""
     property int startIndex: 0
+
+    // Pushed into the detail column, the list keeps focus by app convention (Right steps in).
+    // Reels are arrow-driven, so the opener asks for focus here instead.
+    property bool focusOnOpen: false
+    property Item keyboardFocusItem: page
 
     // Pending vote, set by the delegate before opening the weight dialog.
     property var    _voteReel:    null
@@ -55,6 +72,112 @@ Page {
         return t.replace(/\n{3,}/g, "\n\n").trim();
     }
 
+    // Wide windows: center a portrait stage and put the rail (and the comments panel) next to it.
+    // Full-width delegates left the video floating between black bars with the rail on the window edge.
+    readonly property bool wideReels: Config.wideMode
+    readonly property real railWidth: units.gu(7)
+    readonly property real reelGap: Style.spacingS
+    // Same width and drag-to-resize behaviour as VideoDetailPage's side panel, so the two
+    // rails match. Always on when wide: it's furniture, not a popup.
+    property real commentsPanelWidth: units.gu(34)
+    readonly property real _minCommentsW: units.gu(26)
+    readonly property real _maxCommentsW: Math.max(_minCommentsW,
+        Math.min(page.width * 0.5, page.width - units.gu(40)))
+    readonly property real commentsWidth: page.wideReels
+        ? Math.max(_minCommentsW, Math.min(_maxCommentsW, page.commentsPanelWidth)) : 0
+    readonly property var currentReel: (pager.currentIndex >= 0 && pager.currentIndex < page.reels.length)
+        ? page.reels[pager.currentIndex] : null
+    // Space left for the video once the rail is docked; the stage centers inside it.
+    readonly property real stageArea: page.width - page.commentsWidth
+    readonly property real stageWidth: {
+        if (!page.wideReels) return page.width;
+        var taken = page.railWidth + page.reelGap + Style.spacingM * 2;
+        // Reels are shot 9:16, so height is what limits the column on a desktop window.
+        return Math.max(units.gu(20), Math.min(page.height * 9 / 16, page.stageArea - taken));
+    }
+    readonly property real stageX: {
+        if (!page.wideReels) return 0;
+        var group = page.stageWidth + page.reelGap + page.railWidth;
+        return Math.max(Style.spacingM, (page.stageArea - group) / 2);
+    }
+
+    // One clip ahead only: enough to cover a swipe, cheap enough not to hog the radio.
+    function nextReelUrl(i) {
+        var n = i + 1;
+        if (n < 0 || n >= page.reels.length) return "";
+        return page.reels[n].videoLink || "";
+    }
+
+    // Wide: the rail is docked and permanent, so a swipe reloads it for the new reel
+    // instead of opening/closing it.
+    function syncDockedPanel() {
+        if (!page.wideReels) return;
+        var v = page.currentReel;
+        if (!v) return;
+        if (commentSheet.visible && commentSheet.permlink === (v.permlink || "")) return;
+        page._commentSheetPermlink = v.permlink || "";
+        commentSheet.open(v.author || "", v.permlink || "");
+    }
+    onWideReelsChanged: {
+        if (page.wideReels) page.syncDockedPanel();
+        else if (commentSheet.visible) commentSheet.close();
+    }
+
+    // Desktop gets the anchored dropdown the cards use; phone/tablet keep the full bottom sheet.
+    property var _menuVideo: null
+    property bool menuOpen: false
+    // Button rect in page coords: the menu opens beside the rail, so it needs the left edge and the bottom.
+    property point _menuAnchorTL: Qt.point(0, 0)
+    property point _menuAnchorBR: Qt.point(0, 0)
+
+    function openReelMenu(video, btn) {
+        if (!Config.desktopMode) { PostActions.open(video, "video"); return; }
+        page._menuVideo = video;
+        page._menuAnchorTL = btn.mapToItem(page, 0, 0);
+        page._menuAnchorBR = btn.mapToItem(page, btn.width, btn.height);
+        page.menuOpen = true;
+    }
+
+    function reelMenuItems() {
+        var v = page._menuVideo || {};
+        var own = Session.isLoggedIn && !!v.author && v.author === Session.username;
+        var saved = (Downloads.rev, Downloads.isSaved(v.permlink || ""));
+        var items = [];
+        // Reels are Serey-hosted only (see load()), so videoLink is always a direct file
+        if ((v.videoLink || "").length > 0) {
+            items.push({ icon: saved ? "tick" : "save",
+                         label: saved ? Lang.tr("Remove download") : Lang.tr("Save video offline"),
+                         action: "toggleDownload" });
+            items.push({ divider: true });
+        }
+        if (own) {
+            items.push({ icon: "edit", label: Lang.tr("Edit caption"), action: "editCaption" });
+            items.push({ icon: "delete", label: Lang.tr("Delete video"), danger: true, action: "delete" });
+        } else {
+            items.push({ icon: "close", label: Lang.tr("Hide this video"), action: "hide" });
+            items.push({ icon: "dialog-warning-symbolic", label: Lang.tr("Report video"), action: "report" });
+        }
+        return items;
+    }
+
+    function runReelMenuAction(action) {
+        var v = page._menuVideo;
+        if (!v) return;
+        if (action === "toggleDownload") {
+            var pl = v.permlink || "";
+            if (Downloads.isSaved(pl)) { Downloads.remove(pl); return; }
+            Downloads.start(v, v.videoLink || "");
+            Toast.show(Lang.tr("Downloading video…"));
+        }
+        else if (action === "editCaption") PostActions.open(v, "video", 4);
+        else if (action === "delete") PostActions.open(v, "video", 2);
+        else if (action === "hide") {
+            HiddenPosts.hide(v.permlink || "");
+            PostActions.hideRequested(v.author || "", v.permlink || "");
+        }
+        else if (action === "report") PostActions.open(v, "video", 1);
+    }
+
     function _sendUpvote(weight) {
         var reel = page._voteReel;
         if (!reel) return;
@@ -74,7 +197,11 @@ Page {
 
     header: Item { height: 0 }
 
-    Component.onCompleted: load()
+    Component.onCompleted: {
+        load();
+        // After the push settles, else the detail stack hands focus back to the list.
+        if (page.focusOnOpen) Qt.callLater(function () { page.forceActiveFocus(); });
+    }
 
     function load() {
         page.loading = true;
@@ -94,6 +221,7 @@ Page {
                     pager.currentIndex = idx;
                 }
                 page.loading = false;
+                page.syncDockedPanel();
             },
             function (err) {
                 if (!page) return;
@@ -169,6 +297,13 @@ Page {
         // Pre-creates neighbouring delegates so posters decode ahead of scroll (only the current reel mounts a WebView).
         cacheBuffer: pager.height
         clip: true
+
+        // Menu and comments belong to one reel; swiping away would leave them on the old video
+        onCurrentIndexChanged: {
+            page.menuOpen = false;
+            if (page.wideReels) page.syncDockedPanel();
+            else if (commentSheet.visible) commentSheet.close();
+        }
 
         // End-of-feed hint: dragging up past the last reel reveals this, then the pager snaps back (StrictlyEnforceRange keeps the last reel in range).
         footer: Item {
@@ -260,9 +395,19 @@ Page {
                 }
             }
 
+            // Geometry-only: the video column everything else anchors to. Full width on a phone,
+            // a centered portrait column on a wide window.
+            Item {
+                id: stage
+                x: page.stageX
+                y: 0
+                width: page.stageWidth
+                height: reel.height
+            }
+
             // Stays mounted under the player, which fades in once loaded, so the WebView's initial blank frame never shows.
             Image {
-                anchors.fill: parent
+                anchors.fill: stage
                 source: modelData.thumbnail || ""
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
@@ -270,9 +415,18 @@ Page {
                 sourceSize.width: pager.width > units.gu(70) ? units.gu(90) : units.gu(50)
             }
 
+            // Warm the next clip once this one is actually playing, so the prefetch never
+            // competes with the video the reader is waiting on.
+            Timer {
+                interval: 1500
+                running: reel.current && playerLoader.item !== null && playerLoader.item.ready
+                         && page.nextReelUrl(index) !== ""
+                onTriggered: if (playerLoader.item) playerLoader.item.prewarm(page.nextReelUrl(index))
+            }
+
             Loader {
                 id: playerLoader
-                anchors.fill: parent
+                anchors.fill: stage
                 active: current
                 sourceComponent: playerComp
                 onLoaded: item.embedUrl = modelData.videoLink
@@ -283,7 +437,7 @@ Page {
 
             // Tap-to-pause overlay sits above the video but below the action rail and caption so taps on those still reach their targets.
             MouseArea {
-                anchors.fill: parent
+                anchors.fill: stage
                 z: 1
                 onClicked: {
                     if (playerLoader.item) {
@@ -297,7 +451,7 @@ Page {
             // Brief play/pause icon flash on tap.
             Rectangle {
                 id: pauseIcon
-                anchors.centerIn: parent
+                anchors.centerIn: stage
                 z: 2
                 width: units.gu(8); height: width
                 radius: width / 2
@@ -318,7 +472,7 @@ Page {
             }
 
             Rectangle {
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                anchors { left: stage.left; right: stage.right; bottom: stage.bottom }
                 height: units.gu(14)
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: "transparent" }
@@ -327,8 +481,11 @@ Page {
             }
             // Caption uses Lomiri author treatment (avatar disc + name), mirroring VideoCard's author row, not a bare TikTok @handle.
             Row {
-                anchors { left: parent.left; right: actionRail.left; bottom: parent.bottom
-                          leftMargin: Style.spacingM; rightMargin: Style.spacingS; bottomMargin: Style.spacingM }
+                // Right margin, not an anchor to the rail: on a wide window the rail is outside the stage.
+                anchors { left: stage.left; right: stage.right; bottom: stage.bottom
+                          leftMargin: Style.spacingM
+                          rightMargin: page.wideReels ? Style.spacingM : (page.railWidth + Style.spacingS)
+                          bottomMargin: Style.spacingM }
                 spacing: Style.spacingS
                 z: 3 // above the tap-to-pause overlay (z:1) and pause icon (z:2)
 
@@ -439,12 +596,15 @@ Page {
             // Comment/share open in the system browser; a second WebView over this live reel would trip the dual-Chromium crash.
             Rectangle {
                 id: actionRail
-                anchors { right: parent.right; rightMargin: Style.spacingS
-                          bottom: parent.bottom; bottomMargin: units.gu(3) }
-                width: units.gu(7)
+                // Beside the stage on a wide window, overlaid on the video on a phone.
+                x: page.wideReels ? (stage.x + stage.width + page.reelGap)
+                                  : (stage.x + stage.width - width - Style.spacingS)
+                anchors { bottom: stage.bottom; bottomMargin: units.gu(3) }
+                width: page.railWidth
                 height: railCol.height + units.gu(2)
                 radius: units.gu(2)
-                color: Qt.rgba(0, 0, 0, 0.4)
+                // The scrim only earns its keep over the video; beside it, it's a grey smudge on black.
+                color: page.wideReels ? "transparent" : Qt.rgba(0, 0, 0, 0.4)
                 z: 5
 
                 Column {
@@ -490,6 +650,9 @@ Page {
                     }
 
                     AbstractButton {
+                        // Wide windows keep the comments panel open beside the reel, so there's
+                        // nothing for this button to open.
+                        visible: !page.wideReels
                         width: units.gu(7); height: units.gu(7)
                         onClicked: {
                             page._commentSheetPermlink = modelData.permlink || "";
@@ -515,9 +678,11 @@ Page {
                     }
 
                     AbstractButton {
+                        id: reelShareBtn
                         width: units.gu(7); height: units.gu(7)
                         onClicked: Share.open(
-                            "https://serey.io/video-component/watch?author=" + (modelData.author || "") + "&permalink=" + (modelData.permlink || ""))
+                            "https://serey.io/video-component/watch?author=" + (modelData.author || "") + "&permalink=" + (modelData.permlink || ""),
+                            reelShareBtn)
                         Icon {
                             anchors.centerIn: parent
                             width: units.gu(3.4); height: width
@@ -527,8 +692,9 @@ Page {
                     }
 
                     AbstractButton {
+                        id: reelMoreBtn
                         width: units.gu(7); height: units.gu(7)
-                        onClicked: PostActions.open(modelData, "video")
+                        onClicked: page.openReelMenu(modelData, reelMoreBtn)
                         Column {
                             anchors.centerIn: parent
                             spacing: units.dp(3)
@@ -546,6 +712,119 @@ Page {
                 }
             }
         }
+    }
+
+    // Dismiss the dropdown on outside click; above the docked panel (z 2000), which the
+    // wide-mode "..." lives in, else the menu would open behind it.
+    MouseArea {
+        anchors.fill: parent
+        visible: page.menuOpen
+        z: 2400
+        onClicked: page.menuOpen = false
+    }
+
+    // Compact anchored dropdown, same shape as VideoCard's cardMenu
+    Rectangle {
+        id: reelMenu
+        visible: page.menuOpen
+        z: 2500
+        // Opens beside the rail, bottom-aligned with the "..." button, so it never covers the buttons it belongs to.
+        x: Math.max(Style.spacingXs, page._menuAnchorTL.x - width - Style.spacingS)
+        y: Math.max(Style.spacingXs,
+                    Math.min(page._menuAnchorBR.y - height, page.height - height - Style.spacingXs))
+        width: Math.min(units.gu(30), page.width - Style.spacingM * 2)
+        height: reelMenuCol.height
+        radius: Style.cardRadius
+        color: Style.surface
+        border.width: units.dp(1)
+        border.color: Style.divider
+
+        Column {
+            id: reelMenuCol
+            width: parent.width
+
+            Repeater {
+                // {divider:true} | {icon, label, danger, action}
+                model: page.reelMenuItems()
+                delegate: Item {
+                    width: reelMenuCol.width
+                    height: modelData.divider ? units.dp(1) : units.gu(5.5)
+
+                    Rectangle {
+                        visible: !!modelData.divider
+                        anchors.fill: parent
+                        color: Style.divider
+                    }
+
+                    AbstractButton {
+                        visible: !modelData.divider
+                        anchors.fill: parent
+                        onClicked: { page.menuOpen = false; page.runReelMenuAction(modelData.action); }
+                        Row {
+                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2.2); height: width
+                                name: modelData.icon || ""
+                                color: modelData.danger ? Style.danger : Style.textPrimary
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
+                                elide: Text.ElideRight
+                                text: modelData.label || ""
+                                font.pixelSize: Style.fontSmall
+                                font.family: Style.fontFor(text)
+                                color: modelData.danger ? Style.danger : Style.textPrimary
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Block: no "block" glyph in the Suru set, so draw one (same as VideoCard/PostCard)
+            Rectangle { visible: !reelMenu._isOwn; width: parent.width; height: units.dp(1); color: Style.divider }
+            AbstractButton {
+                visible: !reelMenu._isOwn
+                width: parent.width
+                height: units.gu(5.5)
+                onClicked: { page.menuOpen = false; PostActions.open(page._menuVideo, "video", 3); }
+                Row {
+                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingM
+                    Item {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2.2); height: width
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: units.dp(1.5)
+                            border.color: Style.danger
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: parent.width * 0.7; height: units.dp(1.5)
+                            color: Style.danger
+                            rotation: 45
+                        }
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
+                        elide: Text.ElideRight
+                        text: Lang.tr("Block %1").arg(page._menuVideo ? (page._menuVideo.author || "") : "")
+                        font.pixelSize: Style.fontSmall
+                        font.family: Style.fontFor(text)
+                        color: Style.danger
+                    }
+                }
+            }
+        }
+
+        readonly property bool _isOwn: page._menuVideo && Session.isLoggedIn
+                                       && page._menuVideo.author === Session.username
     }
 
     // Mouse-wheel equivalent of swipe/keyboard reel navigation
@@ -575,14 +854,49 @@ Page {
     }
 
     // In-app comment thread (no WebView, safe to overlay the live reel player).
-    CommentsSheet { id: commentSheet }
+    // Wide windows dock it beside the rail instead of covering the reel with a modal.
+    CommentsSheet {
+        id: commentSheet
+        docked: page.wideReels
+        // Flush right rail, full height: the same shape as the video detail side panel.
+        dockRect: Qt.rect(page.width - page.commentsWidth, 0, page.commentsWidth, page.height)
+    }
+
+    // Splitter: hairline that lights up on hover, with a wider invisible grab strip over it.
+    // Above the panel's own z 2000, else the rail paints over both.
+    Rectangle {
+        visible: page.wideReels
+        anchors { top: parent.top; bottom: parent.bottom }
+        x: page.width - page.commentsWidth - width
+        width: units.dp(1)
+        z: 2050
+        color: (commentsDragArea.containsMouse || commentsDragArea.pressed) ? Style.brand : Style.divider
+    }
+    MouseArea {
+        id: commentsDragArea
+        visible: page.wideReels
+        anchors { top: parent.top; bottom: parent.bottom }
+        x: page.width - page.commentsWidth - width / 2
+        width: units.gu(1.5)
+        z: 2051
+        hoverEnabled: true
+        preventStealing: true
+        cursorShape: Qt.SplitHCursor
+        onPositionChanged: {
+            if (!pressed) return;
+            var pagePointX = mapToItem(page, mouse.x, 0).x;
+            page.commentsPanelWidth = Math.max(page._minCommentsW,
+                Math.min(page._maxCommentsW, page.width - pagePointX));
+        }
+    }
 
     // Full-description bottom sheet, opened from a reel's "more" tap
     Item {
         id: descSheet
         anchors.fill: parent
         visible: page.descSheetOpen
-        z: 1500
+        // Above the docked comments panel (z 2000): it's a modal, it shouldn't be clipped by the rail.
+        z: 2100
         onVisibleChanged: if (visible) { descBdFade.start(); descSlideAnim.start(); }
         function closeAnimated() { descBdFadeOut.start(); descSlideOut.start(); }
 
@@ -685,14 +999,29 @@ Page {
         }
     }
 
+    // The rail only becomes visible once a reel exists to load comments for, so hold its
+    // space with the panel background: otherwise the whole window is black while loading
+    // and the splitter floats over nothing.
+    Rectangle {
+        visible: page.wideReels && !commentSheet.visible
+        x: page.width - page.commentsWidth
+        width: page.commentsWidth
+        anchors { top: parent.top; bottom: parent.bottom }
+        z: 1900
+        color: Style.surface
+    }
+
+    // Centered on the video column, not the window: the rail is not part of the stage.
     ActivityIndicator {
-        anchors.centerIn: parent
+        anchors.verticalCenter: parent.verticalCenter
+        x: (page.stageArea - width) / 2
         running: page.loading
         visible: running
     }
 
     EmptyState {
-        anchors.fill: parent
+        anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
+        width: page.stageArea
         visible: !page.loading && page.reels.length === 0
         iconName: "camcorder"
         message: page.errorMsg !== "" ? page.errorMsg : Lang.tr("No reels yet")

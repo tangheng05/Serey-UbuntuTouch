@@ -309,6 +309,7 @@ var nl = {
     "Set your email and password":                      "Stel uw e-mail en wachtwoord in",
     "Settings":                                         "Instellingen",
     "Share":                                            "Delen",
+    "Share via…":                                       "Delen via…",
     "Show less":                                        "Minder tonen",
     "Sign in to your Serey account":                    "Inloggen bij uw Serey-account",
     "Sign up":                                          "Aanmelden",

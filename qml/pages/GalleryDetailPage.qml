@@ -202,15 +202,14 @@ Page {
             id: contentCol
             width: scroll.width
 
-            AbstractButton {
+            Item {
                 width: parent.width
                 height: units.gu(6)
-                onClicked: page.openProfile()
 
                 Row {
-                    anchors.fill: parent
-                    anchors.leftMargin: Style.spacingM
-                    anchors.rightMargin: Style.spacingM
+                    id: authorRow
+                    // No right anchor: the row hugs the avatar + name, so the dead space beside it doesn't open the profile.
+                    anchors { left: parent.left; top: parent.top; bottom: parent.bottom; leftMargin: Style.spacingM }
                     spacing: Style.spacingS
 
                     CircleImage {
@@ -250,6 +249,12 @@ Page {
                             color: Style.textSecondary
                         }
                     }
+                }
+
+                MouseArea {
+                    anchors { left: authorRow.left; top: parent.top; bottom: parent.bottom }
+                    width: authorRow.width
+                    onClicked: page.openProfile()
                 }
             }
 

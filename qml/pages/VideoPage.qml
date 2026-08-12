@@ -391,7 +391,10 @@ Page {
                     delegate: AbstractButton {
                         width: reelsGrid.cellWidth
                         height: reelsGrid.cellHeight
-                        onClicked: page.pageStack.push(Qt.resolvedUrl("ReelsPage.qml"), { startIndex: index })
+                        // focusOnOpen: reels are driven by arrow keys, so leaving focus on
+                        // this grid would make the first keypress scroll the list instead.
+                        onClicked: page.pageStack.push(Qt.resolvedUrl("ReelsPage.qml"),
+                                                       { startIndex: index, focusOnOpen: true })
                         readonly property int rowIndex: index % reelsShelf.reelsRows
                         readonly property int colIndex: Math.floor(index / reelsShelf.reelsRows)
 

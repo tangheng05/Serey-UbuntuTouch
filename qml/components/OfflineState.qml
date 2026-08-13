@@ -52,7 +52,7 @@ Item {
         Image {
             anchors.horizontalCenter: parent.horizontalCenter
             width: units.gu(6); height: width
-            source: Qt.resolvedUrl("../../assets/no-connection.png")
+            source: Qt.resolvedUrl(Style.dark ? "../../assets/no-connection-dark.png" : "../../assets/no-connection.png")
             fillMode: Image.PreserveAspectFit
             sourceSize.width: units.gu(12)
             asynchronous: true

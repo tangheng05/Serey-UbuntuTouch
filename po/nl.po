@@ -160,8 +160,8 @@ msgstr "Kon reactie niet verwijderen."
 msgid "Couldn't delete the post."
 msgstr "Kon het bericht niet verwijderen."
 
-msgid "Couldn't load reels."
-msgstr "Kon reels niet laden."
+msgid "Couldn't load Serey Shorts."
+msgstr "Kon Serey Shorts niet laden."
 
 msgid "Couldn't post comment."
 msgstr "Kon reactie niet plaatsen."
@@ -484,8 +484,8 @@ msgstr "Geen berichten in %1"
 msgid "No posts yet"
 msgstr "Nog geen berichten"
 
-msgid "No reels yet"
-msgstr "Nog geen reels"
+msgid "No Serey Shorts yet"
+msgstr "Nog geen Serey Shorts"
 
 msgid "No saved articles yet"
 msgstr "Nog geen opgeslagen artikelen"
@@ -619,8 +619,8 @@ msgstr "Trek om te vernieuwen"
 msgid "Read this article without a connection"
 msgstr "Lees dit artikel zonder verbinding"
 
-msgid "Reels"
-msgstr "Reels"
+msgid "Serey Shorts"
+msgstr "Serey Shorts"
 
 msgid "Remove"
 msgstr "Verwijderen"

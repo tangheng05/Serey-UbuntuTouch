@@ -40,6 +40,9 @@ AbstractButton {
     readonly property bool _isYouTube: v.platform === "YOUTUBE" && root._youtubeId.length > 0
     readonly property bool _canDownload: root._remoteUrl.length > 0 || root._isYouTube
     readonly property bool _dlSaved: (Downloads.rev, Downloads.isSaved(v.permlink || ""))
+    // this card's in-flight download
+    readonly property var _dlActive: (Downloads.rev, Downloads.activeFor(v.permlink || ""))
+    readonly property bool _dlBusy: !!root._dlActive || root._ytExtracting
     property bool _ytExtracting: false
 
     function toggleDownload() {
@@ -48,7 +51,6 @@ AbstractButton {
         if (root._dlSaved) { Downloads.remove(pl); return; }
         if (root._remoteUrl.length > 0) {
             Downloads.start(v, root._remoteUrl);
-            Toast.show(Lang.tr("Downloading video…"));
             return;
         }
         if (root._isYouTube) {
@@ -58,7 +60,6 @@ AbstractButton {
                 root._ytExtracting = false;
                 if (result && result.url) {
                     Downloads.start(v, result.url);
-                    Toast.show(Lang.tr("Downloading video…"));
                 } else {
                     Toast.error(Lang.tr("This YouTube video can't be downloaded."));
                 }
@@ -295,8 +296,22 @@ AbstractButton {
                 width: units.gu(3.5); height: units.gu(3.5)
                 onClicked: root.compactMenu ? (root.menuOpen = !root.menuOpen) : root.moreClicked()
 
+                // dots -> progress ring while downloading
+                CircularProgress {
+                    anchors.centerIn: parent
+                    visible: !!root._dlActive
+                    value: root._dlActive ? root._dlActive.progress : 0
+                }
+
+                ActivityIndicator {
+                    anchors.centerIn: parent
+                    visible: root._ytExtracting
+                    running: root._ytExtracting
+                }
+
                 Column {
                     anchors.centerIn: parent
+                    visible: !root._dlBusy
                     spacing: units.dp(3)
                     Repeater {
                         model: 3

@@ -9,6 +9,9 @@ Item {
     property bool singleColumnUntilPushed: false
     // Never enter master-detail: root fills the tab, every push covers full-screen
     property bool neverSplit: false
+    // page-level override of neverSplit
+    readonly property var _neverSplitOverride: rootStack.currentPage ? rootStack.currentPage.neverSplitOverride : undefined
+    readonly property bool _effectiveNeverSplit: _neverSplitOverride !== undefined ? _neverSplitOverride : root.neverSplit
     property string emptyDetailIconName: ""
     property string emptyDetailMessage: ""
 
@@ -22,7 +25,7 @@ Item {
     readonly property int _detailCount: Math.max(0, detailStack.depth - 1)
 
     // Split on Config.wideMode, not own width: reading `width` here caused a binding loop
-    readonly property bool split: !neverSplit && Config.wideMode
+    readonly property bool split: !_effectiveNeverSplit && Config.wideMode
                                   && (!singleColumnUntilPushed || _detailCount > 0)
     readonly property int columns: split ? 2 : 1
 

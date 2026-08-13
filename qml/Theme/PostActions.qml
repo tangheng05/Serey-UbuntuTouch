@@ -7,6 +7,9 @@ QtObject {
     // What kind of content the menu opened for ("blog"|"gallery"|"video"); drives owner actions like hiding Edit for video.
     property string kind: "blog"
 
+    // fires on every open(), even a re-open while already visible
+    signal opened()
+
     signal hideRequested(string author, string permlink)
     signal editRequested(var post)
     signal postDeleted(string author, string permlink)
@@ -25,6 +28,7 @@ QtObject {
         kind = postKind || "blog";
         startStep = atStep || 0;
         visible = true;
+        opened();
     }
     function close() {
         visible = false;

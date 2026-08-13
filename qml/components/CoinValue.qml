@@ -8,14 +8,14 @@ Rectangle {
     property string value: ""
 
     visible: value.length > 0
-    implicitWidth: row.width + Style.spacingM
+    implicitWidth: row.width + Style.spacingS * 2
     implicitHeight: units.gu(3)
     radius: Style.pillRadius
     color: Style.iconBackground
 
     Row {
         id: row
-        anchors.centerIn: parent
+        anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
         spacing: Style.spacingXs
 
         Image {
@@ -31,6 +31,9 @@ Rectangle {
         }
         Label {
             anchors.verticalCenter: parent.verticalCenter
+            // elide, don't overflow-clip
+            width: Math.min(implicitWidth, units.gu(14))
+            elide: Text.ElideRight
             text: coin.value
             font.pixelSize: Style.fontSmall
             font.weight: Font.DemiBold

@@ -111,6 +111,8 @@ Item {
                     // byline instead of a stray value pinned to the far edge of a narrow column.
                     Layout.fillWidth: true
                     Layout.maximumWidth: item.compact ? implicitWidth : Number.POSITIVE_INFINITY
+                    // stops RowLayout shrinking the name below readable size
+                    Layout.minimumWidth: Math.min(implicitWidth, units.gu(8))
                     text: c.author || ""
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold

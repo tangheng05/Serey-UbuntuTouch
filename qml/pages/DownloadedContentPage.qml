@@ -57,9 +57,103 @@ Page {
         onFocusList: page._focusActiveList()
     }
 
+    // live in-flight downloads
+    readonly property var _activeDownloads: (Downloads.rev, Downloads.activeList())
+
+    Column {
+        id: downloadingSection
+        anchors { top: tabs.bottom; left: parent.left; right: parent.right }
+        visible: page.tabIndex === 0 && page._activeDownloads.length > 0
+        // collapse height when hidden
+        height: visible ? implicitHeight : 0
+
+        Label {
+            x: Style.spacingM
+            topPadding: Style.spacingS
+            bottomPadding: Style.spacingXs
+            text: Lang.tr("DOWNLOADING")
+            font.pixelSize: Style.fontSmall
+            font.weight: Font.Bold
+            color: Style.textSecondary
+        }
+
+        Repeater {
+            model: page._activeDownloads
+            delegate: Item {
+                width: downloadingSection.width
+                height: units.gu(7)
+
+                Row {
+                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
+                              leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingM
+
+                    Rectangle {
+                        width: units.gu(6); height: units.gu(4.2)
+                        radius: Style.thumbRadius
+                        color: Style.iconBackground
+                        clip: true
+                        anchors.verticalCenter: parent.verticalCenter
+                        Image {
+                            anchors.fill: parent
+                            source: modelData.localThumb || modelData.thumbnail || ""
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            sourceSize.width: units.gu(12)
+                        }
+                    }
+
+                    Column {
+                        width: parent.width - units.gu(6) - Style.spacingM * 2 - progressLabel.width
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: units.dp(3)
+
+                        Label {
+                            width: parent.width
+                            text: modelData.title || Lang.tr("Video")
+                            font.pixelSize: Style.fontRegular
+                            font.family: Style.fontFor(text)
+                            color: Style.textPrimary
+                            elide: Text.ElideRight
+                        }
+
+                        Rectangle {
+                            width: parent.width
+                            height: units.dp(4)
+                            radius: height / 2
+                            color: Style.divider
+                            Rectangle {
+                                anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                                width: parent.width * Math.max(0, Math.min(100, modelData.progress)) / 100
+                                radius: height / 2
+                                color: Style.brand
+                                Behavior on width { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                            }
+                        }
+                    }
+
+                    Label {
+                        id: progressLabel
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Math.round(modelData.progress) + "%"
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.DemiBold
+                        color: Style.textSecondary
+                    }
+                }
+
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: units.dp(1)
+                    color: Style.divider
+                }
+            }
+        }
+    }
+
     ListView {
         id: videoList
-        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        anchors { top: downloadingSection.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
         width: Math.min(parent.width, page.maxContentWidth)
         clip: true
         visible: page.tabIndex === 0 && !Config.desktopMode
@@ -156,7 +250,7 @@ Page {
     // Desktop: thumbnail gallery
     GridView {
         id: videoGrid
-        anchors { top: tabs.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        anchors { top: downloadingSection.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
         width: Math.min(parent.width, page.maxContentWidth)
         topMargin: Style.spacingM
         clip: true

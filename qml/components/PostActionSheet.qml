@@ -77,7 +77,10 @@ Item {
         var busy = (step === 1 && reporting) || (step === 2 && deleting)
                 || (step === 3 && blocking) || (step === 4 && savingCaption);
         if (event.key === Qt.Key_Escape) {
-            if (!busy) { if (step === 0) closeSheet(); else step = 0; }
+            if (!busy) {
+                if (step === 0 || sheet.openedDirectly) closeSheet();
+                else step = 0;
+            }
             event.accepted = true;
         } else if (step === 4) {
             // Text-entry step: trap Tab between the two fields so focus can't tunnel to the page
@@ -121,17 +124,32 @@ Item {
                 try { if (_prevFocus.visible) _prevFocus.forceActiveFocus(); } catch (e) { /* item destroyed since */ }
                 _prevFocus = null;
             }
-        } else {
-            step = PostActions.startStep;
-            backdropFade.start();
-            if (sheetRect.wide) { sheetFadeIn.start(); sheetScaleIn.start(); }
-            else sheetSlide.start();
-            // Guard on !reportTypesLoading too, so reopening before the first fetch resolves doesn't fire a duplicate concurrent request.
-            if (!reportTypesLoaded && !reportTypesLoading) _loadReportTypes();
-            _prevFocus = Window.activeFocusItem;
-            sheet.forceActiveFocus();
-            Qt.callLater(_rebuildNav);
         }
+    }
+
+    // shows the sheet on PostActions.opened(), not just onVisibleChanged
+    property int _openEpoch: 0
+    property int _pendingCloseEpoch: -1
+
+    function _showSheet() {
+        // stale close animations no longer count
+        sheet._openEpoch++;
+        step = PostActions.startStep;
+        // seed fields for direct-entry edit
+        if (step === 4) sheet._seedCaptionFields();
+        backdropFade.start();
+        if (sheetRect.wide) { sheetFadeIn.start(); sheetScaleIn.start(); }
+        else sheetSlide.start();
+        // avoids a duplicate concurrent fetch
+        if (!reportTypesLoaded && !reportTypesLoading) _loadReportTypes();
+        _prevFocus = Window.activeFocusItem;
+        sheet.forceActiveFocus();
+        Qt.callLater(_rebuildNav);
+    }
+
+    Connections {
+        target: PostActions
+        function onOpened() { sheet._showSheet(); }
     }
 
     function _loadReportTypes() {
@@ -153,6 +171,8 @@ Item {
     }
 
     function closeSheet() {
+        // marks this as the current close, so a superseded one can't wipe a fresh open
+        sheet._pendingCloseEpoch = sheet._openEpoch;
         backdropFadeOut.start();
         if (sheetRect.wide) sheetFadeOut.start();
         else sheetSlideOut.start();
@@ -226,6 +246,12 @@ Item {
         return out.join("");
     }
 
+    function _seedCaptionFields() {
+        var p = PostActions.post;
+        captionTitleField.text = (p && p.title) || "";
+        captionDescField.text = sheet._htmlToPlain((p && p.body) || "");
+    }
+
     // Update a video post's caption in place by reusing the create-or-update endpoint with the existing permlink; other fields resent unchanged.
     function doSaveCaption() {
         var p = PostActions.post;
@@ -289,7 +315,6 @@ Item {
         var direct = sheet._videoRemoteUrl(p);
         if (direct.length > 0) {
             Downloads.start(p, direct);
-            Toast.show(Lang.tr("Downloading video…"));
             sheet.closeSheet();
             return;
         }
@@ -301,7 +326,6 @@ Item {
                 saveVideoBtn._extracting = false;
                 if (result && result.url) {
                     Downloads.start(p, result.url);
-                    Toast.show(Lang.tr("Downloading video…"));
                 } else {
                     Toast.error(Lang.tr("This YouTube video can't be downloaded."));
                 }
@@ -360,14 +384,16 @@ Item {
         // Phone: slides up from the bottom.
         transform: Translate { id: sheetTranslate; y: sheetRect.wide ? 0 : sheetTranslate.y }
         NumberAnimation { id: sheetSlide; target: sheetTranslate; property: "y"; from: sheetRect.height + units.gu(4); to: 0; duration: 300; easing.type: Easing.OutCubic }
-        NumberAnimation { id: sheetSlideOut; target: sheetTranslate; property: "y"; to: sheetRect.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: PostActions.close() }
+        NumberAnimation { id: sheetSlideOut; target: sheetTranslate; property: "y"; to: sheetRect.height + units.gu(4); duration: 250; easing.type: Easing.InCubic
+            onStopped: if (sheet._pendingCloseEpoch === sheet._openEpoch) PostActions.close() }
 
         // Desktop: fades and scales in centered, like a standard modal dialog.
         scale: 1
         opacity: 1
         NumberAnimation { id: sheetFadeIn; target: sheetRect; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
         NumberAnimation { id: sheetScaleIn; target: sheetRect; property: "scale"; from: 0.94; to: 1; duration: 200; easing.type: Easing.OutQuad }
-        NumberAnimation { id: sheetFadeOut; target: sheetRect; property: "opacity"; to: 0; duration: 150; easing.type: Easing.InQuad; onStopped: PostActions.close() }
+        NumberAnimation { id: sheetFadeOut; target: sheetRect; property: "opacity"; to: 0; duration: 150; easing.type: Easing.InQuad
+            onStopped: if (sheet._pendingCloseEpoch === sheet._openEpoch) PostActions.close() }
 
         Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
 
@@ -534,9 +560,7 @@ Item {
                 width: parent.width; height: units.gu(8)
                 visible: sheet.isOwn && PostActions.kind === "video"
                 onClicked: {
-                    var p = PostActions.post;
-                    captionTitleField.text = (p && p.title) || "";
-                    captionDescField.text = sheet._htmlToPlain((p && p.body) || "");
+                    sheet._seedCaptionFields();
                     sheet.step = 4;
                 }
                 Row {
@@ -947,7 +971,8 @@ Item {
                     anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: units.gu(3.5); height: units.gu(3.5)
                     enabled: !sheet.savingCaption
-                    onClicked: sheet.step = 0
+                    // direct-entry: back means close
+                    onClicked: sheet.openedDirectly ? sheet.closeSheet() : (sheet.step = 0)
                     Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "back"; color: Style.textPrimary }
                 }
 

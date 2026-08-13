@@ -165,9 +165,12 @@ Page {
     // Keyboard: Right enters side panel, Down/Up walk related/vote/downvote/composer
     function focusSidePanel() {
         if (!page.showSidePanel) return;
+        page._sidePanelFocusRing = true;
         sidePanelFlick.forceActiveFocus();
         page.sidePanelIndex = 0;
     }
+    // keyboard nav only, not for taps
+    property bool _sidePanelFocusRing: false
     property int sidePanelIndex: -1
     readonly property int _voteUpIdx: page.moreVideos.length
     readonly property int _voteDownIdx: page.moreVideos.length + 1
@@ -1494,7 +1497,7 @@ Page {
         // parent or sibling and the page-scope copy could never resolve the flick.
         Rectangle {
             anchors.fill: sidePanelFlick
-            visible: page.showSidePanel && sidePanelFlick.activeFocus
+            visible: page.showSidePanel && sidePanelFlick.activeFocus && page._sidePanelFocusRing
             color: "transparent"
             border.width: units.dp(2)
             border.color: Style.brand
@@ -1771,7 +1774,7 @@ Page {
         MouseArea {
             anchors.fill: sidePanelFlick
             propagateComposedEvents: true
-            onPressed: { sidePanelFlick.forceActiveFocus(); mouse.accepted = false; }
+            onPressed: { page._sidePanelFocusRing = false; sidePanelFlick.forceActiveFocus(); mouse.accepted = false; }
         }
 
         // Sticky comment composer, pinned to the bottom of the panel.
@@ -1858,6 +1861,7 @@ Page {
                         Keys.onUpPressed: {
                             if (page.showSidePanel) {
                                 page.sidePanelIndex = page._voteDownIdx;
+                                page._sidePanelFocusRing = true;
                                 sidePanelFlick.forceActiveFocus();
                                 sidePanelFlick._revealSelected();
                             }

@@ -50,11 +50,6 @@ Page {
     property string _voteAuthor:  ""
     property string _votePermlink: ""
 
-    // Full-description sheet, set by whichever reel's "more" was tapped
-    property string _descTitle: ""
-    property string _descBody: ""
-    property bool descSheetOpen: false
-
     // One-line plain-text preview of an HTML description
     function _descPreview(body) {
         var t = (body || "");
@@ -170,7 +165,6 @@ Page {
             var pl = v.permlink || "";
             if (Downloads.isSaved(pl)) { Downloads.remove(pl); return; }
             Downloads.start(v, v.videoLink || "");
-            Toast.show(Lang.tr("Downloading video…"));
         }
         else if (action === "editCaption") PostActions.open(v, "video", 4);
         else if (action === "delete") PostActions.open(v, "video", 2);
@@ -240,7 +234,7 @@ Page {
             function (err) {
                 if (!page) return;
                 page.loading = false;
-                page.errorMsg = (err && err.message) ? err.message : Lang.tr("Couldn't load reels.");
+                page.errorMsg = (err && err.message) ? err.message : Lang.tr("Couldn't load Serey Shorts.");
             });
     }
 
@@ -363,7 +357,7 @@ Page {
                 }
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: Lang.tr("No more reels for now")
+                    text: Lang.tr("No more Serey Shorts for now")
                     color: Qt.rgba(1, 1, 1, 0.6)
                     font.pixelSize: Style.fontSmall
                     font.family: Style.fontFor(text)
@@ -376,6 +370,8 @@ Page {
             width: pager.width
             height: pager.height
             readonly property bool current: ListView.isCurrentItem
+            // caption expands over the video, not a modal
+            property bool descExpanded: false
 
             // Vote state prefers the session cache (reflects votes cast this session), falling back to the voters list the API returned.
             readonly property var _vc: VoteService.getCached(modelData.author || "", modelData.permlink || "")
@@ -513,9 +509,11 @@ Page {
 
             Rectangle {
                 anchors { left: stage.left; right: stage.right; bottom: stage.bottom }
-                height: units.gu(14)
+                height: reel.descExpanded ? Math.min(stage.height * 0.7, captionCol.height + units.gu(6)) : units.gu(14)
+                Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: "transparent" }
+                    GradientStop { position: reel.descExpanded ? 0.25 : 0.0; color: Qt.rgba(0, 0, 0, 0.6) }
                     GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.6) }
                 }
             }
@@ -557,6 +555,7 @@ Page {
                 }
 
                 Column {
+                    id: captionCol
                     width: parent.width - units.gu(4.5) - Style.spacingS
                     anchors.bottom: parent.bottom
                     spacing: units.dp(3)
@@ -594,10 +593,11 @@ Page {
                         elide: Text.ElideRight
                     }
 
+                    // collapsed: one-line preview + "more"
                     Row {
                         width: parent.width
                         spacing: units.dp(4)
-                        visible: page._descPreview(modelData.body || "").length > 0
+                        visible: !reel.descExpanded && page._descPreview(modelData.body || "").length > 0
 
                         Label {
                             id: descPreviewLabel
@@ -616,14 +616,47 @@ Page {
                             visible: descPreviewLabel.truncated
                             width: moreLabelText.implicitWidth
                             height: moreLabelText.implicitHeight
-                            onClicked: {
-                                page._descTitle = modelData.title || "";
-                                page._descBody = modelData.body || "";
-                                page.descSheetOpen = true;
-                            }
+                            onClicked: reel.descExpanded = true
                             Label {
                                 id: moreLabelText
                                 text: Lang.tr("more")
+                                color: "white"
+                                font.pixelSize: Style.fontSmall
+                                font.weight: Font.DemiBold
+                            }
+                        }
+                    }
+
+                    // Expanded: full caption, scrollable if it runs long, still overlaid on the video.
+                    Column {
+                        width: parent.width
+                        visible: reel.descExpanded
+                        spacing: units.dp(4)
+
+                        Flickable {
+                            width: parent.width
+                            height: Math.min(expandedBodyLabel.implicitHeight, stage.height * 0.5)
+                            contentWidth: width
+                            contentHeight: expandedBodyLabel.implicitHeight
+                            clip: true
+                            Label {
+                                id: expandedBodyLabel
+                                width: parent.width
+                                text: page._descFull(modelData.body || "")
+                                color: Qt.rgba(1, 1, 1, 0.85)
+                                font.pixelSize: Style.fontSmall
+                                font.family: Style.fontFor(text)
+                                wrapMode: Text.Wrap
+                            }
+                        }
+
+                        AbstractButton {
+                            width: lessLabelText.implicitWidth
+                            height: lessLabelText.implicitHeight
+                            onClicked: reel.descExpanded = false
+                            Label {
+                                id: lessLabelText
+                                text: Lang.tr("less")
                                 color: "white"
                                 font.pixelSize: Style.fontSmall
                                 font.weight: Font.DemiBold
@@ -930,115 +963,6 @@ Page {
         }
     }
 
-    // Full-description bottom sheet, opened from a reel's "more" tap
-    Item {
-        id: descSheet
-        anchors.fill: parent
-        visible: page.descSheetOpen
-        // Above the docked comments panel (z 2000): it's a modal, it shouldn't be clipped by the rail.
-        z: 2100
-        onVisibleChanged: if (visible) { descBdFade.start(); descSlideAnim.start(); }
-        function closeAnimated() { descBdFadeOut.start(); descSlideOut.start(); }
-
-        Rectangle {
-            id: descBd
-            anchors.fill: parent
-            color: Qt.rgba(0, 0, 0, 0.4)
-            opacity: 0
-            MouseArea { anchors.fill: parent; onClicked: descSheet.closeAnimated() }
-        }
-        NumberAnimation { id: descBdFade; target: descBd; property: "opacity"; from: 0; to: 1; duration: 200 }
-        NumberAnimation { id: descBdFadeOut; target: descBd; property: "opacity"; to: 0; duration: 200 }
-
-        Rectangle {
-            id: descSheetRect
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: Math.min(descCol.height + units.gu(4), parent.height * 0.75)
-            radius: units.gu(1)
-            color: Style.surface
-            clip: true
-            transform: Translate { id: descSlideT; y: 0 }
-            NumberAnimation { id: descSlideAnim; target: descSlideT; property: "y"; from: descSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }
-            NumberAnimation { id: descSlideOut; target: descSlideT; property: "y"; to: descSheetRect.height; duration: 250; easing.type: Easing.InCubic; onStopped: page.descSheetOpen = false }
-
-            Rectangle {
-                anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
-                width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
-                color: Style.lightGray
-            }
-
-            Item {
-                id: descHeader
-                anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
-                height: units.gu(5)
-
-                Label {
-                    anchors.centerIn: parent
-                    text: Lang.tr("Description")
-                    font.pixelSize: Style.fontMedium
-                    font.weight: Font.DemiBold
-                    color: Style.textPrimary
-                }
-
-                AbstractButton {
-                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    width: units.gu(3.5); height: units.gu(3.5)
-                    onClicked: descSheet.closeAnimated()
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2.5); height: width
-                        name: "close"
-                        color: Style.textPrimary
-                    }
-                }
-            }
-
-            Rectangle {
-                id: descDivider
-                anchors { top: descHeader.bottom; left: parent.left; right: parent.right }
-                height: units.dp(1); color: Style.divider
-            }
-
-            Flickable {
-                anchors { top: descDivider.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
-                contentWidth: width
-                contentHeight: descCol.height
-                clip: true
-
-                Column {
-                    id: descCol
-                    width: parent.width
-                    spacing: Style.spacingM
-
-                    Item { width: 1; height: Style.spacingS }
-
-                    Label {
-                        width: parent.width - Style.spacingM * 2
-                        x: Style.spacingM
-                        text: page._descTitle
-                        font.pixelSize: Style.fontLarge
-                        font.weight: Font.DemiBold
-                        font.family: Style.fontFor(text)
-                        color: Style.textPrimary
-                        wrapMode: Text.Wrap
-                    }
-
-                    Label {
-                        width: parent.width - Style.spacingM * 2
-                        x: Style.spacingM
-                        text: page._descFull(page._descBody)
-                        font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFor(text)
-                        color: Style.textPrimary
-                        wrapMode: Text.Wrap
-                    }
-
-                    Item { width: 1; height: Style.spacingL }
-                }
-            }
-        }
-    }
-
     // The rail only becomes visible once a reel exists to load comments for, so hold its
     // space with the panel background: otherwise the whole window is black while loading
     // and the splitter floats over nothing.
@@ -1064,6 +988,6 @@ Page {
         width: page.stageArea
         visible: !page.loading && page.reels.length === 0
         iconName: "camcorder"
-        message: page.errorMsg !== "" ? page.errorMsg : Lang.tr("No reels yet")
+        message: page.errorMsg !== "" ? page.errorMsg : Lang.tr("No Serey Shorts yet")
     }
 }

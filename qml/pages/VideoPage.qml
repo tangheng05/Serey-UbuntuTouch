@@ -360,7 +360,7 @@ Page {
                         }
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: Lang.tr("Reels")
+                            text: Lang.tr("Serey Shorts")
                             font.pixelSize: Style.fontRegular
                             font.weight: Font.DemiBold
                             color: Style.textPrimary

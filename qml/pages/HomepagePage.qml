@@ -17,6 +17,9 @@ Page {
     // Zero-height header: the global AppHeader is the real top bar.
     header: Item { height: 0 }
 
+    // never split
+    readonly property bool neverSplitOverride: true
+
     // Keyboard parity on arrival (see NewsPage): hand focus to web view when shown
     property Item keyboardFocusItem: webApp
     onVisibleChanged: if (visible) webApp.forceActiveFocus()

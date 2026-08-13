@@ -288,7 +288,8 @@ Item {
     property real _callerCx: 0
     property real _callerTop: 0
     property real _callerBottom: 0
-    readonly property bool anchored: Config.wideMode && caller !== null
+    // desktop only, tablet falls back to modal
+    readonly property bool anchored: Config.desktopMode && caller !== null
 
     // The pre-selected row can sit far below the fold once its country auto-expands, so
     // scroll it into view. Rows announce themselves as they are created (children arrive
@@ -375,7 +376,8 @@ Item {
 
     Rectangle {
         id: sheet
-        readonly property bool wide: Config.wideMode
+        // desktop only, was wideMode (broke tablet)
+        readonly property bool wide: Config.desktopMode
         readonly property real _margin: units.gu(1)
         // x/y instead of anchors: three placements (phone sheet, centred panel, anchored
         // drop-up) can't be expressed by toggling anchors off (see the AnchorChanges gotcha).
@@ -582,9 +584,8 @@ Item {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: parent.width - units.gu(2.4) - units.gu(4.4) - Style.spacingM * 2
                                                - (rowOwnerBadge.visible ? rowOwnerBadge.width + Style.spacingM : 0)
-                                        text: picker._canPost(modelData) ? modelData.name
-                                            : (picker.forVideo ? Lang.tr("%1 (video not allowed)").arg(modelData.name)
-                                                               : Lang.tr("%1 (posting not allowed)").arg(modelData.name))
+                                        // dimmed state already says "can't post"
+                                        text: modelData.name
                                         font.pixelSize: Style.fontRegular
                                         font.weight: row.isSelected ? Font.DemiBold : Font.Normal
                                         font.family: Style.fontFor(text)
@@ -719,9 +720,8 @@ Item {
                                                 width: parent.width - units.gu(2.2) - units.gu(3.8) - Style.spacingM * 2
                                                        - (childCol.isHub ? hubBadge.width + Style.spacingM : 0)
                                                        - (childOwnerBadge.visible ? childOwnerBadge.width + Style.spacingM : 0)
-                                                text: picker._canPost(modelData) ? modelData.name
-                                            : (picker.forVideo ? Lang.tr("%1 (video not allowed)").arg(modelData.name)
-                                                               : Lang.tr("%1 (posting not allowed)").arg(modelData.name))
+                                                // dimmed state already says "can't post"
+                                                text: modelData.name
                                                 font.pixelSize: Style.fontSmall
                                                 font.weight: childRow.isSelected ? Font.DemiBold : Font.Normal
                                                 font.family: Style.fontFor(text)

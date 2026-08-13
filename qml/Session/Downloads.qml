@@ -112,6 +112,17 @@ QtObject {
         return _active[permlink] || null;
     }
 
+    // active downloads snapshot
+    function activeList() {
+        var out = [];
+        for (var permlink in _active) {
+            var a = _active[permlink];
+            out.push({ permlink: permlink, title: a.title || "", thumbnail: a.thumbnail || "",
+                       localThumb: a.localThumb || "", progress: a.progress || 0 });
+        }
+        return out;
+    }
+
     function _downloaderComponent() {
         if (_comp === null)
             _comp = Qt.createComponent(Qt.resolvedUrl("../components/VideoDownloader.qml"));
@@ -151,21 +162,15 @@ QtObject {
         var dl = comp.createObject(store, { url: url, title: pv.title || "Serey video" });
         if (!dl) { Toast.error("Couldn't start download."); return; }
 
-        _active[permlink] = { progress: 0, downloader: dl };
+        _active[permlink] = { progress: 0, downloader: dl, title: pv.title || "", thumbnail: pv.thumbnail || "" };
         store.rev++;
 
         // Grab the poster too, so the thumbnail shows offline.
         store._saveThumb(pv, permlink);
 
-        // Throttled to every 5%
-        var lastToastPct = -1;
+        // no per-percent toast spam
         dl.progress.connect(function (pct) {
             if (_active[permlink]) { _active[permlink].progress = pct; store.rev++; }
-            var rounded = Math.round(pct);
-            if (rounded !== lastToastPct && (rounded - lastToastPct >= 5 || rounded >= 100)) {
-                lastToastPct = rounded;
-                Toast.show(Lang.tr("Downloading… %1%").arg(rounded));
-            }
         });
         dl.finished.connect(function (path) {
             var vm = pv;
@@ -191,7 +196,8 @@ QtObject {
             Toast.error("Download failed.");
         });
 
-        Toast.show(Lang.tr("Downloading…"));
+        // one-off started toast
+        Toast.show(Lang.tr("Downloading video…"));
         dl.start(url);
     }
 

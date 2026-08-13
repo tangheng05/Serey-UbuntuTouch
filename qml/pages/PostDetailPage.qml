@@ -835,9 +835,12 @@ Page {
     // Right steps into side panel; Down/Up walk related posts, upvote, downvote, composer
     function focusSidePanel() {
         if (!page.showSidePanel) return;
+        page._sidePanelFocusRing = true;
         sidePanelFlick.forceActiveFocus();
         page.sidePanelIndex = 0;
     }
+    // keyboard nav only, not for taps
+    property bool _sidePanelFocusRing: false
 
     // Highlighted item while the panel owns arrow-key focus; -1 = none (composer has focus instead).
     property int sidePanelIndex: -1
@@ -902,7 +905,8 @@ Page {
 
     // Resizable via the drag handle below; clamped so the article column always keeps a sane minimum width.
     property real sidePanelWidth: units.gu(34)
-    readonly property real _minSidePanelW: units.gu(26)
+    // was 26gu, too tight for the vote bar content
+    readonly property real _minSidePanelW: units.gu(30)
     readonly property real _maxSidePanelW: Math.max(_minSidePanelW, Math.min(page.width * 0.5, page.width - units.gu(40)))
     readonly property real _sidePanelW: Math.max(_minSidePanelW, Math.min(_maxSidePanelW, sidePanelWidth))
 
@@ -1285,8 +1289,6 @@ Page {
                 }
             }
 
-            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
-
             // Narrow mode only; hidden offline
             Column {
                 id: commentsColumn
@@ -1401,7 +1403,7 @@ Page {
         // parent or sibling and the page-scope copy could never resolve the flick.
         Rectangle {
             anchors.fill: sidePanelFlick
-            visible: page.showSidePanel && sidePanelFlick.activeFocus
+            visible: page.showSidePanel && sidePanelFlick.activeFocus && page._sidePanelFocusRing
             color: "transparent"
             border.width: units.dp(2)
             border.color: Style.brand
@@ -1535,7 +1537,8 @@ Page {
                                 }
                             }
                             Label {
-                                width: parent.width - units.gu(6.5) - Style.spacingS
+                                // guards against negative width
+                                width: Math.max(units.gu(4), parent.width - units.gu(6.5) - Style.spacingS)
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: modelData.title || ""
                                 font.pixelSize: Style.fontSmall
@@ -1555,7 +1558,8 @@ Page {
                     id: detailVoteBar
                     visible: !page.offlineMode
                     parent: page.showSidePanel ? sidePanelCol : footerCol
-                    width: page.showSidePanel ? parent.width : parent.width - Style.spacingM * 2
+                    // small right margin for the SEREY pill
+                    width: page.showSidePanel ? parent.width - Style.spacingS : parent.width - Style.spacingM * 2
                     anchors.horizontalCenter: page.showSidePanel ? undefined : parent.horizontalCenter
                     author: page.author
                     permlink: page.permlink
@@ -1591,7 +1595,7 @@ Page {
         MouseArea {
             anchors.fill: sidePanelFlick
             propagateComposedEvents: true
-            onPressed: { sidePanelFlick.forceActiveFocus(); mouse.accepted = false; }
+            onPressed: { page._sidePanelFocusRing = false; sidePanelFlick.forceActiveFocus(); mouse.accepted = false; }
         }
 
         // Sticky comment composer, pinned to the bottom of the panel.
@@ -1683,6 +1687,7 @@ Page {
                         Keys.onUpPressed: {
                             if (page.showSidePanel) {
                                 page.sidePanelIndex = page._voteDownIdx;
+                                page._sidePanelFocusRing = true;
                                 sidePanelFlick.forceActiveFocus();
                                 sidePanelFlick._revealSelected();
                             }

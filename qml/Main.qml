@@ -589,7 +589,8 @@ MainView {
                                 if (isNew && np.showLatest) np.showLatest();
                                 else if (np.reload) np.reload();
                             });
-                    }, composeBtn);
+                    // desktop only: anchors the dropdown
+                    }, root.desktopMode ? composeBtn : null);
                 }
                 Rectangle {
                     anchors.fill: parent

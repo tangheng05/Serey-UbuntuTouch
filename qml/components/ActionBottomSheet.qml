@@ -140,7 +140,10 @@ Item {
                         anchors.fill: parent
                         onClicked: {
                             sheet.hide();
-                            if (modelData.onTriggered) modelData.onTriggered();
+                            // Read the handler off the source array, not modelData: a JS-array
+                            // model round-trips through QVariantMap, which drops function values.
+                            var item = sheet.model[index];
+                            if (item && item.onTriggered) item.onTriggered();
                         }
                     }
                     Row {

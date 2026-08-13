@@ -186,12 +186,45 @@ Item {
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in to report.")); return; }
         var p = PostActions.post;
         if (!p) return;
-        // Backend expects the post id; fall back to permlink only if present.
-        var postId = (p.id !== undefined && p.id !== null) ? p.id : (p.permlink || "");
-        if (postId === "" || postId === null || postId === undefined) {
+        // report_posts.post_id is a UUID column. A blog's `id` IS that uuid, but a video's
+        // is the youtube_components row (an integer), which the insert rejects with a 500.
+        // Newer API builds send the post uuid as post_id; older ones don't, so fall back to
+        // resolving it from author+permlink before reporting.
+        var postId = String(p.postId || "");
+        if (!sheet._isUuid(postId) && sheet._isUuid(String(p.id || ""))) postId = String(p.id);
+
+        if (sheet._isUuid(postId)) {
+            sheet._sendReport(postId, typeId, typeName);
+            return;
+        }
+        var author = p.author || p.username || "";
+        var permlink = p.permlink || "";
+        if (author === "" || permlink === "") {
             Toast.error(Lang.tr("Failed to submit report."));
             return;
         }
+        sheet.reporting = true;
+        PostService.detail(Config.baseUrl, author, permlink, Session.token,
+            function (result) {
+                var uuid = (result && result.post) ? String(result.post.id || "") : "";
+                if (!sheet._isUuid(uuid)) {
+                    sheet.reporting = false;
+                    Toast.error(Lang.tr("Failed to submit report."));
+                    return;
+                }
+                sheet._sendReport(uuid, typeId, typeName);
+            },
+            function (err) {
+                sheet.reporting = false;
+                Toast.error((err && err.message) ? err.message : Lang.tr("Failed to submit report."));
+            });
+    }
+
+    function _isUuid(v) {
+        return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(v || "");
+    }
+
+    function _sendReport(postId, typeId, typeName) {
         sheet.reporting = true;
         ReportService.submitReport(Config.baseUrl, Session.token,
             postId, typeId, typeName || "Report",

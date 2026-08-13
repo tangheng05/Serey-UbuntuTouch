@@ -67,15 +67,17 @@ Page {
         // collapse height when hidden
         height: visible ? implicitHeight : 0
 
+        Item { width: 1; height: Style.spacingS }
+
         Label {
             x: Style.spacingM
-            topPadding: Style.spacingS
-            bottomPadding: Style.spacingXs
             text: Lang.tr("DOWNLOADING")
             font.pixelSize: Style.fontSmall
             font.weight: Font.Bold
             color: Style.textSecondary
         }
+
+        Item { width: 1; height: Style.spacingXs }
 
         Repeater {
             model: page._activeDownloads

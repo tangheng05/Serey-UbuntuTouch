@@ -177,6 +177,9 @@ function toVideo(raw) {
     raw = raw || {};
     return {
         id: raw.id,
+        // A video's `id` is the youtube_components row (an integer); post-keyed actions
+        // like report-post need the post UUID, which the API sends as post_id.
+        postId: raw.post_id || "",
         author: raw.username || raw.author || "",
         permlink: raw.permlink || "",
         title: raw.title || "(untitled)",

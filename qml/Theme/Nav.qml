@@ -36,5 +36,8 @@ QtObject {
     // Deep link: invite URL opened inside app; Main pushes RedeemInvitePage prefilled
     signal redeemInvite(string code)
 
+    // Any offline panel can offer the on-device library without knowing its own stack
+    signal openLibrary()
+
     function home() { goToTab(0); }
 }

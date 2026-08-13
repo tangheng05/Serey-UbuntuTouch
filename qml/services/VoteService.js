@@ -55,10 +55,15 @@ function friendlyError(e) {
     return msg;
 }
 
+// A vote is signed and broadcast to the chain server-side, which regularly outlives the
+// default 15s HTTP wait. Timing out at 15s reported a failure (and rolled the button back)
+// for votes that were still landing, so these get a broadcast-sized wait of their own.
+var BROADCAST_TIMEOUT = 45000;
+
 function _send(baseUrl, path, body, token, onOk, onErr) {
     Http.post(baseUrl, path, body, token, function (data) {
         onOk(_norm(data));
-    }, onErr);
+    }, onErr, BROADCAST_TIMEOUT);
 }
 
 function upvote(baseUrl, author, permlink, voteType, weight, token, onOk, onErr) {

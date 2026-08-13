@@ -45,6 +45,8 @@ Page {
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     // Set while replying to a specific comment rather than the post itself; cleared after posting or via the composer's Cancel.
     property var replyTarget: null
+    // Set while editing one of your own comments: the same composer, in edit mode.
+    property var editTarget: null
     // Desktop-only "•••" dropdown in the header (see moreHeaderBtn).
     property bool headerMenuOpen: false
     // Keyboard nav within headerMenu: -1 = nothing highlighted yet.
@@ -582,6 +584,8 @@ Page {
                         page.commentCount = saved.comments || 0;
                         page._parseBody();
                         page.errorMsg = "";
+                        // Reading the stored copy IS offline mode: no comments, no related rail
+                        page.offlineMode = true;
                     } else {
                         page.errorMsg = err.message;
                     }
@@ -657,6 +661,7 @@ Page {
     }
 
     function startReply(comment) {
+        page.editTarget = null;
         page.replyTarget = comment;
         composer.forceActiveFocus();
         Qt.inputMethod.show();
@@ -664,6 +669,20 @@ Page {
 
     function cancelReply() {
         page.replyTarget = null;
+    }
+
+    // Edit runs through the docked composer, pre-filled, instead of a second field in the row.
+    function startEdit(comment) {
+        page.replyTarget = null;
+        page.editTarget = comment;
+        composer.text = comment.body || "";
+        composer.forceActiveFocus();
+        Qt.inputMethod.show();
+    }
+
+    function cancelEdit() {
+        page.editTarget = null;
+        composer.text = "";
     }
 
     function submitComment() {
@@ -675,6 +694,15 @@ Page {
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
             page.pushLogin();
+            return;
+        }
+        // Same box, same Send: an edit updates instead of posting a new comment.
+        if (page.editTarget) {
+            var edited = page.editTarget;
+            page.editTarget = null;
+            composer.text = "";
+            page.editComment(edited.permlink, text,
+                             edited.parentAuthor || "", edited.parentPermlink || "");
             return;
         }
         var target = page.replyTarget;
@@ -728,8 +756,12 @@ Page {
     // --- Body HTML -> {type: "text"|"image", content} blocks -----------------
     ListModel { id: bodyModel }
 
+    // Set by _parseBody: the article carries its own images, so the auto cover would duplicate one.
+    property bool _bodyHasOwnImage: false
+
     function _parseBody() {
         bodyModel.clear();
+        page._bodyHasOwnImage = false;
         if (!page.post)
             return;
         var html = page.post.body || "";
@@ -749,13 +781,16 @@ Page {
         }
         if (remaining) pieces.push({ type: "html", content: remaining });
 
-        var featuredSrc = page.post.thumbnail || "";
+        // The cover is auto-derived (often a re-upload of the article's own header image, so
+        // the URLs differ and no string compare can pair them) and it was drawn on top of a
+        // body that already carries that picture. An article with its own images doesn't need
+        // it: the cover only stands in when the body has none at all.
         var seenImages = {};
         for (var i = 0; i < pieces.length; i++) {
             var piece = pieces[i];
             if (piece.type === "image") {
-                if (piece.content === featuredSrc) continue;
-                if (seenImages[piece.content]) continue;
+                if (seenImages[piece.content]) continue;   // container tag + inner <img> = same src twice
+                page._bodyHasOwnImage = true;
                 seenImages[piece.content] = true;
                 bodyModel.append({ type: "image", content: piece.content, links: "[]" });
             } else {
@@ -1099,7 +1134,7 @@ Page {
                 width: parent.width - Style.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: visible ? width * 0.6 : 0
-                visible: page.post && (page.post.thumbnail || "") !== ""
+                visible: page.post && (page.post.thumbnail || "") !== "" && !page._bodyHasOwnImage
 
                 Rectangle {
                     anchors.fill: parent
@@ -1333,7 +1368,7 @@ Page {
                             compact: page.showSidePanel
                             comment: modelData
                             onDeleted: page.removeComment(permlink)
-                            onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
+                            onEditRequested: page.startEdit(comment)
                             onReplyRequested: page.startReply(comment)
                             onAuthorClicked: page.openProfile(author)
                         }
@@ -1619,6 +1654,9 @@ Page {
 
             Column {
                 id: composerArea
+                // Hidden offline, like the comment list it posts into: a stored copy has no
+                // comments loaded, so a live box here posts into something you can't see.
+                visible: !page.offlineMode
                 parent: page.showSidePanel ? sideComposerBar : footerCol
                 x: page.showSidePanel ? Style.spacingS : 0
                 y: page.showSidePanel ? Style.spacingS : 0
@@ -1627,19 +1665,20 @@ Page {
                 spacing: units.dp(4)
 
                 Row {
-                    visible: page.replyTarget !== null
+                    visible: page.replyTarget !== null || page.editTarget !== null
                     width: parent.width
                     spacing: Style.spacingS
 
                     Label {
-                        text: page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                        text: page.editTarget ? Lang.tr("Editing your comment")
+                            : page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
                     AbstractButton {
                         width: cancelLabel.implicitWidth
                         height: cancelLabel.implicitHeight
-                        onClicked: page.cancelReply()
+                        onClicked: page.editTarget ? page.cancelEdit() : page.cancelReply()
                         Label {
                             id: cancelLabel
                             text: Lang.tr("Cancel")
@@ -1673,9 +1712,9 @@ Page {
                             color: Style.textPrimary
                         }
                         hasClearButton: false
-                        placeholderText: Session.isLoggedIn
-                            ? Lang.tr("Post a comment…")
-                            : Lang.tr("Log in to comment…")
+                        placeholderText: !Session.isLoggedIn ? Lang.tr("Log in to comment…")
+                                       : page.editTarget ? Lang.tr("Edit your comment…")
+                                                         : Lang.tr("Post a comment…")
                         font.family: Style.fontFor(text)
                         font.pixelSize: Style.fontRegular
                         onAccepted: page.submitComment()

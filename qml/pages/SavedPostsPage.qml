@@ -114,7 +114,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: Lang.tr("Share")
+                        text: Lang.tr("Share…")
                         onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
                     }
                 ]
@@ -130,7 +130,7 @@ Page {
                         onTriggered: SavedPosts.remove(modelData.permlink)
                     }
                     Action {
-                        iconName: "share"; text: Lang.tr("Share")
+                        iconName: "share"; text: Lang.tr("Share…")
                         onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
                     }
                 }
@@ -194,7 +194,7 @@ Page {
                     onClicked: actionSheet.show([
                         { iconName: "delete", text: Lang.tr("Remove"), danger: true,
                           onTriggered: function () { SavedPosts.remove(modelData.permlink); } },
-                        { iconName: "share", text: Lang.tr("Share"),
+                        { iconName: "share", text: Lang.tr("Share…"),
                           onTriggered: function () { Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink); } }
                     ], moreBtn)
 

@@ -186,7 +186,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: Lang.tr("Share")
+                        text: Lang.tr("Share…")
                         onTriggered: {
                             var vm = galleryModel.get(index);
                             if (vm) Share.open("https://serey.io/authors/" + vm.author + "/" + vm.permlink);

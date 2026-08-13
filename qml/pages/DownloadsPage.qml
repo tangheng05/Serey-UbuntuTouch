@@ -107,7 +107,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: Lang.tr("Share")
+                        text: Lang.tr("Share…")
                         onTriggered: Share.open(
                             "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
                     }

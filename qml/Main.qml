@@ -86,6 +86,14 @@ MainView {
     function _stackForTab(tab) {
         return tab === 0 ? homeStack : tab === 1 ? newsStack : tab === 2 ? videoStack : settingsStack;
     }
+    // Offline shortcut to what's on the device; opens on whichever tab asked for it.
+    function openLibrary() {
+        var stack = root.activeStack;
+        if (!stack) return;
+        var cur = stack.currentPage;
+        if (cur && cur.isLibraryPage) return;
+        stack.push(Qt.resolvedUrl("pages/DownloadedContentPage.qml"));
+    }
     readonly property var activeStack: currentTab === 0 ? homeStack
                                      : currentTab === 1 ? newsStack
                                      : currentTab === 2 ? videoStack
@@ -99,6 +107,11 @@ MainView {
         var p = activeStack ? activeStack.rootPage : null;
         return !!(p && p.isFeedPage);
     }
+    // The library list, or a downloaded video / saved article opened from it (offlineMode).
+    readonly property bool _onDeviceContent: {
+        var p = activeStack ? activeStack.currentPage : null;
+        return !!(p && (p.isLibraryPage || p.offlineMode));
+    }
     readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3
     // Wide windows keep the rail inside pushed pages too: it's app chrome there.
     readonly property bool showNavBar: root.wideMode || activeColumns > 1 || activeDepth <= 1
@@ -111,6 +124,9 @@ MainView {
             Session.clear();
             Toast.error(Lang.tr("Your session expired. Please log in again."));
         });
+
+        // Every request doubles as a reachability sample, so the whole app knows it's offline.
+        Http.setNetworkStatusHandler(function (reachable) { Net.report(reachable); });
 
         // Needed immediately: the header pill icons and can-post gates read it.
         _loadCommunities();
@@ -247,6 +263,26 @@ MainView {
                 root._applyGeoSource();
             },
             function (err) { /* keep globe fallback */ });
+    }
+
+    // Launched offline, every startup fetch failed silently and nothing ever asked again:
+    // the picker kept only its three seeded rows ("No platforms found" under a country) and
+    // the composer had no post targets. Pick up whatever is still missing once we're back.
+    Connections {
+        target: Net
+        function onOnlineChanged() {
+            if (!Net.online) return;
+            if (!root._communitiesLoaded) root._loadCommunities();
+            if (Config.detectedCountryCode === "")
+                GeoService.detectCountry(
+                    function (code) { Config.detectedCountryCode = code; root._applyGeoSource(); },
+                    function () { /* no hint; Global stays selected */ });
+            // Cheap and idempotent, and both no-op when logged out.
+            if (root.startupSettled) {
+                root._syncBlockedUsers();
+                root._syncOwnedCommunities();
+            }
+        }
     }
 
     // After create/delete: refresh now, then again past the server's 60s cache TTL
@@ -528,6 +564,8 @@ MainView {
                 homeStack.pop();
             homeStack.pushMaster(Qt.resolvedUrl("pages/FeedPage.qml"));
         }
+        // An offline panel asked for the on-device library.
+        function onOpenLibrary() { root.openLibrary(); }
         // Invite link opened in-app: redeem it natively on the Homepage tab.
         function onRedeemInvite(code) {
             root.currentTab = 0;
@@ -650,11 +688,24 @@ MainView {
             bottom: (root.showNavBar && !root.wideMode) ? navBar.top : parent.bottom
         }
 
+        // Zero-height while online, so the stacks below keep one fixed anchor either way.
+        OfflineBanner {
+            id: offlineBanner
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            z: 1
+            // The Homepage draws its own offline panel, and anything opened from the device
+            // (the library, a downloaded video, a saved article) is already the offline
+            // answer: saying "you're offline" on top of it is just noise.
+            suppressed: (root.currentTab === 0 && homeStack.depth <= 1) || root._onDeviceContent
+            onOpenLibrary: root.openLibrary()
+        }
+
         AdaptiveStack {
             id: homeStack
             // The web app is the panel, never split; sub-pages cover it full-screen instead
             neverSplit: true
             anchors.fill: parent
+            anchors.topMargin: offlineBanner.height
             visible: root.currentTab === 0
             Component.onCompleted: push(Qt.resolvedUrl("pages/HomepagePage.qml"))
         }
@@ -664,6 +715,7 @@ MainView {
             emptyDetailIconName: "stock_note"
             emptyDetailMessage: Lang.tr("Select a post to read")
             anchors.fill: parent
+            anchors.topMargin: offlineBanner.height
             visible: root.currentTab === 1
         }
         AdaptiveStack {
@@ -671,13 +723,14 @@ MainView {
             emptyDetailIconName: "camcorder"
             emptyDetailMessage: Lang.tr("Select a video to watch")
             anchors.fill: parent
+            anchors.topMargin: offlineBanner.height
             visible: root.currentTab === 2
         }
         AdaptiveStack {
             id: settingsStack
             emptyDetailIconName: "settings"
             emptyDetailMessage: Lang.tr("Select a setting")
-            anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: accountPanelDivider.visible ? accountPanelDivider.left : parent.right }
+            anchors { top: parent.top; topMargin: offlineBanner.height; bottom: parent.bottom; left: parent.left; right: accountPanelDivider.visible ? accountPanelDivider.left : parent.right }
             visible: root.currentTab === 3
         }
 
@@ -692,7 +745,7 @@ MainView {
 
         Rectangle {
             id: accountPanelDivider
-            anchors { top: parent.top; bottom: parent.bottom; right: accountStatusPanel.left }
+            anchors { top: parent.top; topMargin: offlineBanner.height; bottom: parent.bottom; right: accountStatusPanel.left }
             width: units.dp(1)
             visible: accountStatusPanel.visible
             color: accountPanelDragArea.containsMouse || accountPanelDragArea.pressed ? Style.brand : Style.divider
@@ -700,7 +753,7 @@ MainView {
         MouseArea {
             id: accountPanelDragArea
             visible: accountStatusPanel.visible
-            anchors { top: parent.top; bottom: parent.bottom }
+            anchors { top: parent.top; topMargin: offlineBanner.height; bottom: parent.bottom }
             x: accountPanelDivider.x - width / 2
             width: units.gu(1.5)
             hoverEnabled: true
@@ -716,7 +769,7 @@ MainView {
         // Account status rail (outside settingsStack's own split)
         AccountStatusPanel {
             id: accountStatusPanel
-            anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
+            anchors { top: parent.top; topMargin: offlineBanner.height; bottom: parent.bottom; right: parent.right }
             width: body._showAccountPanel ? body._accountPanelW : 0
             visible: body._showAccountPanel
             profile: settingsStack.rootPage ? settingsStack.rootPage.profile : null

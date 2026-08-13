@@ -29,34 +29,17 @@ Item {
                                       && (c.permlink || "").length > 0
     property bool menuOpen: false
     property bool confirmingDelete: false
-    property bool editing: false
-    property string editText: ""
-    property bool saving: false
 
     signal deleted(string permlink)
-    signal edited(string permlink, string newBody, string parentAuthor, string parentPermlink)
     signal replyRequested(var comment)
+    // Editing runs in the host's own comment box, the same one Reply uses: a second text
+    // field inside the row was easy to mistake for the composer, and it pushed the
+    // like/reply rail onto a line of its own under Save/Cancel.
+    signal editRequested(var comment)
     signal authorClicked(string author)
 
-    function startEdit() {
-        item.editText = c.body || "";
-        item.editing = true;
-    }
-
-    function cancelEdit() {
-        item.editing = false;
-    }
-
-    function saveEdit() {
-        var text = item.editText.trim();
-        if (text.length === 0)
-            return;
-        // Emit only. CommentItem is Loader-instantiated for nested replies, where JS module imports resolve to null, so the host page's handler makes the server call.
-        item.editing = false;
-        item.edited(c.permlink, text, c.parentAuthor || "", c.parentPermlink || "");
-    }
-
-    // Optimistic delete; same Loader/null-import reason as saveEdit for why the host page's onDeleted handler does the actual call.
+    // Optimistic delete; CommentItem is Loader-instantiated for nested replies, where JS
+    // module imports resolve to null, so the host page's onDeleted handler does the actual call.
     function doDelete() {
         item.deleted(c.permlink);
     }
@@ -195,7 +178,7 @@ Item {
 
                     AbstractButton {
                         width: parent.width; height: units.gu(5)
-                        onClicked: { item.menuOpen = false; item.startEdit(); }
+                        onClicked: { item.menuOpen = false; item.editRequested(c); }
                         Label {
                             anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                             text: Lang.tr("Edit")
@@ -266,7 +249,6 @@ Item {
 
         Label {
             id: bodyLabel
-            visible: !item.editing
             width: parent.width - x - Style.wrapSafeMargin
             x: item._bodyIndent
             text: c.body || ""
@@ -282,7 +264,7 @@ Item {
 
         AbstractButton {
             // truncated goes false once expanded, so bodyExpanded carries the "Show less" state
-            visible: !item.editing && (bodyLabel.truncated || item.bodyExpanded)
+            visible: bodyLabel.truncated || item.bodyExpanded
             x: item._bodyIndent
             width: readMoreLabel.implicitWidth
             height: units.gu(2.75)
@@ -294,50 +276,6 @@ Item {
                 font.pixelSize: Style.fontSmall
                 font.weight: Font.DemiBold
                 color: Style.brand
-            }
-        }
-
-        Column {
-            visible: item.editing
-            width: parent.width - item._bodyIndent
-            x: item._bodyIndent
-            spacing: Style.spacingXs
-
-            TextArea {
-                id: editField
-                width: parent.width
-                text: item.editText
-                font.pixelSize: Style.fontRegular
-                wrapMode: Text.Wrap
-                onTextChanged: item.editText = text
-            }
-            Row {
-                spacing: Style.spacingS
-
-                AbstractButton {
-                    width: saveLabel.implicitWidth + Style.spacingM * 2
-                    height: units.gu(3.5)
-                    enabled: !item.saving && item.editText.trim().length > 0
-                    onClicked: item.saveEdit()
-                    Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: parent.enabled ? Style.brand : Style.iconBackground }
-                    Label {
-                        id: saveLabel
-                        anchors.centerIn: parent
-                        text: item.saving ? Lang.tr("Saving…") : Lang.tr("Save")
-                        color: Style.textOnBrand
-                    }
-                }
-                AbstractButton {
-                    width: cancelEditLabel.implicitWidth + Style.spacingM * 2
-                    height: units.gu(3.5)
-                    onClicked: item.cancelEdit()
-                    Label {
-                        id: cancelEditLabel
-                        anchors.centerIn: parent
-                        text: Lang.tr("Cancel")
-                        color: Style.textSecondary
-                    }
-                }
             }
         }
 

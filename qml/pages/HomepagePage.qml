@@ -57,6 +57,28 @@ Page {
         }
     }
 
+    // The site failing to load is the offline signal; cover it with the native panel
+    // rather than let Chromium's own error page through.
+    Rectangle {
+        id: offlineCover
+        anchors.fill: parent
+        visible: webApp.loadFailed
+        color: Style.surface
+
+        OfflineState {
+            anchors.fill: parent
+            onRetry: webApp.reload()
+        }
+    }
+
+    // Walk back into coverage and the site comes back on its own; the cover hides the reload.
+    Timer {
+        interval: 20000
+        repeat: true
+        running: offlineCover.visible && Config.currentTab === 0
+        onTriggered: webApp.reload()
+    }
+
     // After a confirmed payment, reload the site so it reflects the new plan.
     Connections {
         target: Payments

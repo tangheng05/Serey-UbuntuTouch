@@ -185,14 +185,17 @@ Page {
         var reel = page._voteReel;
         if (!reel) return;
         reel.busy = true;
+        var applyVote = function () {
+            if (!reel.upvoted) reel.votes = reel.votes + 1;
+            reel.upvoted = true; reel.flagged = false; reel.busy = false;
+            VoteService._updateCache(page._voteAuthor, page._votePermlink, true, false, reel.votes, "");
+            Toast.success(Lang.tr("Thanks for your vote!"));
+        };
         VoteService.upvote(Config.baseUrl, page._voteAuthor, page._votePermlink, "post", weight, Session.token,
-            function (r) {
-                if (!reel.upvoted) reel.votes = reel.votes + 1;
-                reel.upvoted = true; reel.flagged = false; reel.busy = false;
-                VoteService._updateCache(page._voteAuthor, page._votePermlink, true, false, reel.votes, "");
-                Toast.success(Lang.tr("Thanks for your vote!"));
-            },
+            function (r) { applyVote(); },
             function (e) {
+                // A timeout means we stopped waiting, not that the chain refused it.
+                if (e && e.timeout) { applyVote(); return; }
                 reel.busy = false;
                 Toast.error(Lang.tr(VoteService.friendlyError(e)));
             });
@@ -394,6 +397,9 @@ Page {
             }
             // Optimistic: flip icon/count immediately since the async broadcast lags a couple seconds, revert only if the request fails.
             function _revert(wasUp, wasFlag, prevVotes, e) {
+                // A timeout means we stopped waiting, not that the chain refused it; keep the
+                // optimistic state rather than reverting a vote that is still landing.
+                if (e && e.timeout) { reel.busy = false; return; }
                 reel.upvoted = wasUp; reel.flagged = wasFlag; reel.votes = prevVotes;
                 reel.busy = false; reel._vcache();
                 Toast.error(Lang.tr(VoteService.friendlyError(e)));

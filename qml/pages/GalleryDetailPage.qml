@@ -23,6 +23,8 @@ Page {
     property bool posting: false
     property string errorMsg: ""
     property var replyTarget: null
+    // Set while editing one of your own comments: the same composer, in edit mode.
+    property var editTarget: null
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
     readonly property var imgs: post && post.images ? post.images : []
@@ -116,6 +118,7 @@ Page {
     }
 
     function startReply(comment) {
+        page.editTarget = null;
         page.replyTarget = comment;
         composer.forceActiveFocus();
         Qt.inputMethod.show();
@@ -123,6 +126,20 @@ Page {
 
     function cancelReply() {
         page.replyTarget = null;
+    }
+
+    // Edit runs through the composer, pre-filled, instead of a second field in the row.
+    function startEdit(comment) {
+        page.replyTarget = null;
+        page.editTarget = comment;
+        composer.text = comment.body || "";
+        composer.forceActiveFocus();
+        Qt.inputMethod.show();
+    }
+
+    function cancelEdit() {
+        page.editTarget = null;
+        composer.text = "";
     }
 
     function _appendReply(list, parentPermlink, reply) {
@@ -148,6 +165,15 @@ Page {
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
             page.pushLogin();
+            return;
+        }
+        // Same box, same Send: an edit updates instead of posting a new comment.
+        if (page.editTarget) {
+            var edited = page.editTarget;
+            page.editTarget = null;
+            composer.text = "";
+            page.editComment(edited.permlink, text,
+                             edited.parentAuthor || "", edited.parentPermlink || "");
             return;
         }
         var target = page.replyTarget;
@@ -337,7 +363,7 @@ Page {
                     width: contentCol.width
                     comment: modelData
                     onDeleted: page.removeComment(permlink)
-                    onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
+                    onEditRequested: page.startEdit(comment)
                     onReplyRequested: page.startReply(comment)
                     onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: author })
                 }
@@ -399,20 +425,21 @@ Page {
         }
 
         Row {
-            visible: page.replyTarget !== null
+            visible: page.replyTarget !== null || page.editTarget !== null
             width: parent.width - Style.spacingM * 2
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.spacingS
 
             Label {
-                text: page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                text: page.editTarget ? Lang.tr("Editing your comment")
+                    : page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
             }
             AbstractButton {
                 width: cancelLabel.implicitWidth
                 height: cancelLabel.implicitHeight
-                onClicked: page.cancelReply()
+                onClicked: page.editTarget ? page.cancelEdit() : page.cancelReply()
                 Label {
                     id: cancelLabel
                     text: Lang.tr("Cancel")
@@ -439,9 +466,9 @@ Page {
                     color: Style.textPrimary
                 }
                 hasClearButton: false
-                placeholderText: Session.isLoggedIn
-                    ? Lang.tr("Post a comment…")
-                    : Lang.tr("Log in to comment…")
+                placeholderText: !Session.isLoggedIn ? Lang.tr("Log in to comment…")
+                               : page.editTarget ? Lang.tr("Edit your comment…")
+                                                 : Lang.tr("Post a comment…")
                 font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontRegular
                 onAccepted: page.submitComment()

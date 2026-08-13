@@ -66,6 +66,9 @@ AbstractButton {
         }
     }
 
+    // The "..." button, so a sheet opened from this card's menu drops under it.
+    readonly property alias menuAnchor: moreBtn
+
     function menuItems() {
         var items = [];
         if (root._canDownload) {

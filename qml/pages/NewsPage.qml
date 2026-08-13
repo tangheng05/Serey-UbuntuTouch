@@ -286,6 +286,8 @@ Page {
 
     function loadMore() {
         if (loading || endReached) return;
+        // Offline: every page request would just fail, and parking at the end retries forever.
+        if (!Net.online) return;
         loading = true;
         errorMsg = "";
         var epoch = page.reqEpoch;
@@ -598,10 +600,10 @@ Page {
                     },
                     Action {
                         iconName: "share"
-                        text: Lang.tr("Share")
+                        text: Lang.tr("Share…")
                         onTriggered: {
                             var p = feedModel.get(index)
-                            if (p) Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink)
+                            if (p) Share.open("https://serey.io/authors/" + p.author + "/" + p.permlink, card.menuAnchor)
                         }
                     }
                 ]
@@ -653,6 +655,17 @@ Page {
         anchors.fill: list
         visible: page.loading && feedModel.count === 0
     }
+    // Paging is blocked while offline; pick it up again as soon as the network is back.
+    Connections {
+        target: Net
+        function onOnlineChanged() {
+            if (!Net.online) return;
+            if (feedModel.count === 0) page.reload();
+            else if (!page.loading && !page.endReached && list.atYEnd) page.loadMore();
+        }
+    }
+
+    // ErrorState carries the offline panel itself, so this covers both cases.
     ErrorState {
         anchors.fill: list
         visible: page.errorMsg !== "" && feedModel.count === 0

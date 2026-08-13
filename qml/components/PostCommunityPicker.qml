@@ -200,6 +200,9 @@ Item {
         xhr.onreadystatechange = function () {
             if (xhr.readyState !== XMLHttpRequest.DONE) return;
             if (picker.childLoadingId === id) picker.childLoadingId = "";
+            // Offline the request "returns" nothing; caching that as "no children" left the
+            // row empty for the rest of the session, so a failure stays uncached and retries.
+            if (xhr.status < 200 || xhr.status >= 300) { if (onDone) onDone([]); return; }
             var comms = [];
             try {
                 var d = JSON.parse(xhr.responseText);
@@ -653,6 +656,25 @@ Item {
                                 text: Lang.tr("No communities found")
                                 font.pixelSize: Style.fontSmall
                                 color: Style.textSecondary
+                            }
+                        }
+
+                        // Fetch failed, so nothing is cached: say so and let the row retry,
+                        // rather than leaving an expanded row that is simply blank.
+                        Item {
+                            visible: rowCol.isExpanded && picker.childLoadingId !== modelData.id
+                                     && picker.childCache[modelData.id] === undefined
+                            width: parent.width; height: units.gu(5)
+                            Label {
+                                anchors.centerIn: parent
+                                text: Net.online ? Lang.tr("Couldn't load. Tap to try again.")
+                                                 : Lang.tr("You're offline. Tap to try again.")
+                                font.pixelSize: Style.fontSmall
+                                color: Style.textSecondary
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: picker._loadChildren(modelData.id)
                             }
                         }
 

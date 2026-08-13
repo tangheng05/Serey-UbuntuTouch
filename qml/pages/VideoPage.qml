@@ -198,6 +198,8 @@ Page {
 
     function loadMore() {
         if (loading || endReached) return;
+        // Offline: every page request would just fail, and parking at the end retries forever.
+        if (!Net.online) return;
         // Page 0 is the shared list+reels fetch; only deeper pages come through here.
         if (page.offset === 0) { _fetchInitial(false); return; }
         loading = true;
@@ -522,10 +524,10 @@ Page {
                         },
                         Action {
                             iconName: "share"
-                            text: Lang.tr("Share")
+                            text: Lang.tr("Share…")
                             onTriggered: {
                                 var vm = feedModel.get(index);
-                                if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
+                                if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink, card.menuAnchor);
                             }
                         }
                     ]
@@ -585,6 +587,17 @@ Page {
         variant: "video"
         visible: page.loading && feedModel.count === 0
     }
+    // Paging is blocked while offline; pick it up again as soon as the network is back.
+    Connections {
+        target: Net
+        function onOnlineChanged() {
+            if (!Net.online) return;
+            if (feedModel.count === 0) page.reload();
+            else if (!page.loading && !page.endReached && list.atYEnd) page.loadMore();
+        }
+    }
+
+    // ErrorState carries the offline panel itself, so this covers both cases.
     ErrorState {
         anchors.fill: list
         visible: page.errorMsg !== "" && feedModel.count === 0

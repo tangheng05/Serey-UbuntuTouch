@@ -10,6 +10,8 @@ FocusScope {
 
     property string url: ""
     property bool loading: true
+    // The site didn't load at all (no network, DNS, server down) - the shell shows its own panel
+    property bool loadFailed: false
     property string communityId: ""
     property string communityName: ""
     property string apiBaseV1: Config.baseUrlV1
@@ -165,6 +167,7 @@ FocusScope {
         onLoadingChanged: {
             if (loadRequest.status === WebEngineLoadRequest.LoadSucceededStatus) {
                 webAppView.loading = false;
+                webAppView.loadFailed = false;
                 webAppView._pageReady = true;
                 webAppView._injectBridge();
                 webAppView._injectProfiler();
@@ -177,6 +180,8 @@ FocusScope {
             } else if (loadRequest.status === WebEngineLoadRequest.LoadFailedStatus) {
                 webAppView.loading = false;
                 webAppView._pageReady = false;
+                // -3 is ERR_ABORTED: our own Stripe/invite intercepts cancel a nav, that's not a failure.
+                webAppView.loadFailed = loadRequest.errorCode !== -3;
                 webAppView._log("full load FAILED: " + loadRequest.errorString
                                 + " (" + loadRequest.url + ")");
             }

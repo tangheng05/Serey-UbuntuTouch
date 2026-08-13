@@ -4,6 +4,11 @@
 var _onUnauthorized = null;
 function setUnauthorizedHandler(fn) { _onUnauthorized = fn; }
 
+// Every request outcome doubles as a reachability sample; Main.qml pipes this into Theme/Net.
+var _onNetworkStatus = null;
+function setNetworkStatusHandler(fn) { _onNetworkStatus = fn; }
+function _reportNet(reachable) { if (_onNetworkStatus) _onNetworkStatus(reachable); }
+
 function buildQuery(params) {
     if (!params)
         return "";
@@ -17,7 +22,7 @@ function buildQuery(params) {
     return parts.length ? "?" + parts.join("&") : "";
 }
 
-function send(method, url, token, bodyObj, onOk, onErr) {
+function send(method, url, token, bodyObj, onOk, onErr, timeoutMs) {
     var xhr = new XMLHttpRequest();
     xhr.open(method, url);
     xhr.setRequestHeader("Accept", "application/json");
@@ -27,9 +32,12 @@ function send(method, url, token, bodyObj, onOk, onErr) {
         xhr.setRequestHeader("Authorization", "Bearer " + token);
 
     // Without a timeout a stalled mobile request never resolves, leaving the caller's `loading` flag stuck true and permanently blocking pagination.
-    xhr.timeout = 15000;
+    // Callers doing an on-chain write pass a longer one: a broadcast outlives the default wait.
+    xhr.timeout = timeoutMs || 15000;
     xhr.ontimeout = function () {
-        onErr({ status: 0, message: "Request timed out. Check your connection." });
+        _reportNet(false);
+        // `timeout: true` lets a caller tell "we stopped waiting" apart from "it failed".
+        onErr({ status: 0, timeout: true, message: "Request timed out. Check your connection." });
     };
 
     xhr.onreadystatechange = function () {
@@ -37,9 +45,11 @@ function send(method, url, token, bodyObj, onOk, onErr) {
             return;
 
         if (xhr.status === 0) {
+            _reportNet(false);
             onErr({ status: 0, message: "Network error. Check your connection." });
             return;
         }
+        _reportNet(true);
 
         var data = null;
         try {
@@ -70,8 +80,8 @@ function get(baseUrl, path, params, token, onOk, onErr) {
     return send("GET", baseUrl + path + buildQuery(params), token, null, onOk, onErr);
 }
 
-function post(baseUrl, path, bodyObj, token, onOk, onErr) {
-    return send("POST", baseUrl + path, token, bodyObj || {}, onOk, onErr);
+function post(baseUrl, path, bodyObj, token, onOk, onErr, timeoutMs) {
+    return send("POST", baseUrl + path, token, bodyObj || {}, onOk, onErr, timeoutMs);
 }
 
 function postForm(baseUrl, path, formBody, token, onOk, onErr) {

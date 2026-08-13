@@ -20,13 +20,25 @@ AbstractButton {
         border.color: Style.brand
         Behavior on color { ColorAnimation { duration: 120 } }
 
-        Label {
+        Row {
             anchors.centerIn: parent
-            text: root.text
-            font.pixelSize: Style.fontMedium
-            font.weight: Font.DemiBold
-            font.family: Style.fontFor(text)
-            color: Style.brand
+            spacing: Style.spacingS
+
+            ActivityIndicator {
+                anchors.verticalCenter: parent.verticalCenter
+                running: root.busy
+                visible: root.busy
+                implicitWidth: units.gu(2.5)
+                implicitHeight: units.gu(2.5)
+            }
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.text
+                font.pixelSize: Style.fontMedium
+                font.weight: Font.DemiBold
+                font.family: Style.fontFor(text)
+                color: Style.brand
+            }
         }
     }
 }

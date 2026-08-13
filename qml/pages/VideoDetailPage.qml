@@ -58,6 +58,8 @@ Page {
     property int commentCount: video ? (video.comments || 0) : 0
     property bool posting: false
     property var replyTarget: null
+    // Set while editing one of your own comments: the same composer, in edit mode.
+    property var editTarget: null
     // On-screen-keyboard height; the comment composer rides above it.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
@@ -359,6 +361,9 @@ Page {
     // but re-adding the vote after a removal is exactly backwards.
     function _voteFail(e, wasRemove) {
         page.voteBusy = false;
+        // A timeout means we stopped waiting, not that the chain refused it. This page applies
+        // vote state on the response, so say it's still going rather than claim it failed.
+        if (e && e.timeout) { Toast.show(Lang.tr("Your vote is still being sent.")); return; }
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
         if (msg.indexOf("already") >= 0) {
             if (wasRemove) return;   // the server agrees the vote is gone; our state matches
@@ -726,11 +731,26 @@ Page {
     }
 
     function startReply(comment) {
+        page.editTarget = null;
         page.replyTarget = comment;
         (page.showSidePanel ? panelComposer : composer).forceActiveFocus();
         Qt.inputMethod.show();
     }
     function cancelReply() { page.replyTarget = null; }
+
+    // Edit runs through the composer, pre-filled, instead of a second field in the row.
+    function startEdit(comment) {
+        page.replyTarget = null;
+        page.editTarget = comment;
+        var box = page.showSidePanel ? panelComposer : composer;
+        box.text = comment.body || "";
+        box.forceActiveFocus();
+        Qt.inputMethod.show();
+    }
+    function cancelEdit() {
+        page.editTarget = null;
+        (page.showSidePanel ? panelComposer : composer).text = "";
+    }
 
     function submitComment() {
         // Enter bypasses the Send button's enabled state, so a fast double tap posted twice.
@@ -741,6 +761,15 @@ Page {
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
             page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"));
+            return;
+        }
+        // Same box, same Send: an edit updates instead of posting a new comment.
+        if (page.editTarget) {
+            var edited = page.editTarget;
+            page.editTarget = null;
+            activeComposer.text = "";
+            page.editComment(edited.permlink, text,
+                             edited.parentAuthor || "", edited.parentPermlink || "");
             return;
         }
         var target = page.replyTarget;
@@ -1729,7 +1758,7 @@ Page {
                             compact: true
                             comment: modelData
                             onDeleted: page.removeComment(permlink)
-                            onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
+                            onEditRequested: page.startEdit(comment)
                             onReplyRequested: page.startReply(comment)
                             onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: author })
                         }
@@ -1773,19 +1802,20 @@ Page {
                 spacing: units.dp(4)
 
                 Row {
-                    visible: page.replyTarget !== null
+                    visible: page.replyTarget !== null || page.editTarget !== null
                     width: parent.width
                     spacing: Style.spacingS
 
                     Label {
-                        text: page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                        text: page.editTarget ? Lang.tr("Editing your comment")
+                            : page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
                     AbstractButton {
                         width: panelCancelLabel.implicitWidth
                         height: panelCancelLabel.implicitHeight
-                        onClicked: page.cancelReply()
+                        onClicked: page.editTarget ? page.cancelEdit() : page.cancelReply()
                         Label {
                             id: panelCancelLabel
                             text: Lang.tr("Cancel")
@@ -1818,7 +1848,9 @@ Page {
                             color: Style.textPrimary
                         }
                         hasClearButton: false
-                        placeholderText: Session.isLoggedIn ? Lang.tr("Post a comment…") : Lang.tr("Log in to comment…")
+                        placeholderText: !Session.isLoggedIn ? Lang.tr("Log in to comment…")
+                                       : page.editTarget ? Lang.tr("Edit your comment…")
+                                                         : Lang.tr("Post a comment…")
                         font.family: Style.fontFor(text)
                         font.pixelSize: Style.fontRegular
                         onAccepted: page.submitComment()
@@ -1999,7 +2031,7 @@ Page {
                             width: cmtCol.width
                             comment: modelData
                             onDeleted: page.removeComment(permlink)
-                            onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
+                            onEditRequested: page.startEdit(comment)
                             onReplyRequested: page.startReply(comment)
                         }
                     }
@@ -2018,21 +2050,22 @@ Page {
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
                 Row {
-                    visible: page.replyTarget !== null
+                    visible: page.replyTarget !== null || page.editTarget !== null
                     width: parent.width - Style.spacingM * 2
                     x: Style.spacingM
                     spacing: Style.spacingS
                     Item { width: 1; height: units.gu(3) }
 
                     Label {
-                        text: page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                        text: page.editTarget ? Lang.tr("Editing your comment")
+                            : page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
                     AbstractButton {
                         width: cmtCancelLabel.implicitWidth
                         height: cmtCancelLabel.implicitHeight
-                        onClicked: page.cancelReply()
+                        onClicked: page.editTarget ? page.cancelEdit() : page.cancelReply()
                         Label {
                             id: cmtCancelLabel
                             text: Lang.tr("Cancel")
@@ -2061,7 +2094,9 @@ Page {
                             color: Style.textPrimary
                         }
                         hasClearButton: false
-                        placeholderText: Session.isLoggedIn ? Lang.tr("Post a comment…") : Lang.tr("Log in to comment…")
+                        placeholderText: !Session.isLoggedIn ? Lang.tr("Log in to comment…")
+                                       : page.editTarget ? Lang.tr("Edit your comment…")
+                                                         : Lang.tr("Post a comment…")
                         font.family: Style.fontFor(text)
                         font.pixelSize: Style.fontRegular
                         onAccepted: page.submitComment()

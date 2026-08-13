@@ -34,6 +34,9 @@ Item {
     property bool compactMenu: Config.desktopMode
     property bool menuOpen: false
 
+    // The "..." button, so a sheet opened from this card's menu drops under it.
+    readonly property alias menuAnchor: moreBtn
+
     function menuItems() {
         var items = [
             { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },

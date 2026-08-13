@@ -331,16 +331,25 @@ Item {
             picker.loadingIndex = -1
         }
 
+        // Offline, every request "returns" an empty list. Caching that left the row stuck on
+        // "No platforms found" for the rest of the session, so a failure stays uncached and
+        // the next expand tries again.
+        function _abandon() { picker.loadingIndex = -1 }
+        function _ok(xhr) { return xhr.status >= 200 && xhr.status < 300 }
+
         if (srcIndex === 0) {
             // Global: fetch both Netherlands (99) and US (26) and combine
             var regionalIds = []
             for (var ri = 1; ri < Config.sources.length; ri++)
                 regionalIds.push(Config.sources[ri].id)
             var allComms = [], pending = regionalIds.length
+            var anyRegionalFailed = false
 
             function _onRegionalDone() {
                 pending--
                 if (pending > 0) return
+                // Don't cache a network failure as "Global has no platforms".
+                if (anyRegionalFailed && allComms.length === 0) { _abandon(); return }
                 if (allComms.length === 0) { _store(0, []); return }
                 var xhrCat = new XMLHttpRequest()
                 xhrCat.open("GET", Config.baseUrl + "/community/categories/list?limit=100")
@@ -348,6 +357,7 @@ Item {
                 xhrCat.timeout = 15000
                 xhrCat.onreadystatechange = function () {
                     if (xhrCat.readyState !== XMLHttpRequest.DONE) return
+                    if (!_ok(xhrCat)) { _abandon(); return }
                     var cats = []
                     try {
                         var arr = _parseCategoryList(JSON.parse(xhrCat.responseText))
@@ -368,7 +378,8 @@ Item {
                     xhr.timeout = 15000
                     xhr.onreadystatechange = function () {
                         if (xhr.readyState !== XMLHttpRequest.DONE) return
-                        try {
+                        if (!_ok(xhr)) { anyRegionalFailed = true }
+                        else try {
                             var d = JSON.parse(xhr.responseText)
                             var comms = d.data || d.communities || d.results || []
                             for (var c = 0; c < comms.length; c++) allComms.push(comms[c])
@@ -387,6 +398,7 @@ Item {
             xhrP.timeout = 15000
             xhrP.onreadystatechange = function () {
                 if (xhrP.readyState !== XMLHttpRequest.DONE) return
+                if (!_ok(xhrP)) { _abandon(); return }
                 var sourceComms = []
                 try {
                     var d = JSON.parse(xhrP.responseText)
@@ -402,6 +414,7 @@ Item {
                 xhrC.timeout = 15000
                 xhrC.onreadystatechange = function () {
                     if (xhrC.readyState !== XMLHttpRequest.DONE) return
+                    if (!_ok(xhrC)) { _abandon(); return }
                     var cats = []
                     try {
                         var arr = _parseCategoryList(JSON.parse(xhrC.responseText))
@@ -669,6 +682,24 @@ Item {
                                     text: Lang.tr("No platforms found")
                                     font.pixelSize: Style.fontSmall
                                     color: Style.textSecondary
+                                }
+                            }
+
+                            // Fetch failed, so nothing is cached: say so and let the row retry,
+                            // rather than leaving an expanded row that is simply blank.
+                            Item {
+                                visible: picker.cache[sourceCol.srcIndex] === undefined
+                                width: parent.width; height: units.gu(5)
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: Net.online ? Lang.tr("Couldn't load. Tap to try again.")
+                                                     : Lang.tr("You're offline. Tap to try again.")
+                                    font.pixelSize: Style.fontSmall
+                                    color: Style.textSecondary
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: picker._fetch(sourceCol.srcIndex)
                                 }
                             }
 

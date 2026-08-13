@@ -244,8 +244,16 @@ Page {
         visible: running
     }
 
+    // Load failure (offline included) gets the app-wide error/offline panel.
+    ErrorState {
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        visible: page.gate === "error"
+        message: page.gateError
+        onRetry: page.checkGate()
+    }
+
     Column {
-        visible: page.gate === "noplan" || page.gate === "error"
+        visible: page.gate === "noplan"
         anchors.centerIn: parent
         // Convergence: cap the width so the CTA doesn't stretch on desktop.
         width: Math.min(parent.width - Style.spacingL * 2, units.gu(45))
@@ -253,22 +261,20 @@ Page {
 
         Icon {
             anchors.horizontalCenter: parent.horizontalCenter
-            name: page.gate === "noplan" ? "system-lock-screen" : "dialog-warning-symbolic"
+            name: "system-lock-screen"
             width: units.gu(6); height: width
             color: Style.textSecondary
         }
         Label {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
-            text: page.gate === "noplan" ? Lang.tr("Subscription required")
-                                         : Lang.tr("Something went wrong.")
+            text: Lang.tr("Subscription required")
             font.pixelSize: Style.fontLarge
             font.weight: Font.DemiBold
             font.family: Style.fontFor(text)
             color: Style.textTitle
         }
         Label {
-            visible: page.gate === "noplan"
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
@@ -277,28 +283,12 @@ Page {
             font.family: Style.fontFor(text)
             color: Style.textSecondary
         }
-        Label {
-            visible: page.gate === "error"
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            text: page.gateError
-            font.pixelSize: Style.fontRegular
-            font.family: Style.fontFor(text)
-            color: Style.textSecondary
-        }
         PrimaryButton {
-            visible: page.gate === "noplan"
             text: Lang.tr("View plans")
             onClicked: {
                 page.pageStack.pop();
                 Nav.goToTab(0);
             }
-        }
-        SecondaryButton {
-            visible: page.gate === "error"
-            text: Lang.tr("Retry")
-            onClicked: page.checkGate()
         }
     }
 

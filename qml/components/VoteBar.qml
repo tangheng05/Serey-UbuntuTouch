@@ -68,6 +68,11 @@ RowLayout {
             bar.requireLogin();
             return false;
         }
+        // Offline, the vote would sit out the whole broadcast timeout with the button dimmed.
+        if (!Net.online) {
+            Toast.error(Lang.tr("You're offline. Try again once you're back on a network."));
+            return false;
+        }
         // An on-chain broadcast can take 20s+; without a word the button reads as broken.
         // Once per busy period, so repeated taps don't stack toasts.
         if (bar.busy) {
@@ -140,6 +145,10 @@ RowLayout {
     }
     // Shared failure handler: undo the optimistic change, surface error unless it's a 401
     function _failReverting(e, snap) {
+        // A timeout means we stopped waiting, not that the vote was refused: the chain
+        // broadcast is usually still landing. Rolling back and shouting about it was the
+        // "couldn't record that vote" toast users saw for votes that went through.
+        if (e && e.timeout) { bar._finishBusy(); return; }
         bar.busy = false;
         bar._replayTap = false;   // the state the queued tap assumed just got rolled back
         _rollback(snap);
@@ -394,10 +403,11 @@ RowLayout {
     }
 
     AbstractButton {
+        id: shareBtn
         visible: bar.showShare && bar.shareUrl.length > 0
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: units.gu(3)
-        onClicked: Share.open(bar.shareUrl)
+        onClicked: Share.open(bar.shareUrl, shareBtn)
         Icon {
             anchors.centerIn: parent
             width: units.gu(2.5); height: width

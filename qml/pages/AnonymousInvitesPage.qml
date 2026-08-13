@@ -248,7 +248,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: Lang.tr("Share")
+                        text: Lang.tr("Share…")
                         onTriggered: page.shareCode(modelData.code)
                     }
                 ]

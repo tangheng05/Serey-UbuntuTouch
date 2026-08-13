@@ -10,6 +10,9 @@ import "../components"
 Page {
     id: page
 
+    // Lets the offline banner/panel avoid pushing a second copy of the library.
+    readonly property bool isLibraryPage: true
+
     header: PageHeader {
         title: Lang.tr("Downloaded Content")
         leadingActionBar.actions: [
@@ -110,9 +113,10 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: Lang.tr("Share")
+                        text: Lang.tr("Share…")
                         onTriggered: Share.open(
-                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
+                            "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink,
+                            videoCard.menuAnchor)
                     }
                 ]
             }
@@ -126,12 +130,12 @@ Page {
                 function menuItems() {
                     return [
                         { icon: "delete", label: Lang.tr("Remove"), danger: true, action: "remove" },
-                        { icon: "share", label: Lang.tr("Share"), action: "share" }
+                        { icon: "share", label: Lang.tr("Share…"), action: "share" }
                     ];
                 }
                 function runMenuAction(action) {
                     if (action === "remove") Downloads.remove(modelData.permlink);
-                    else if (action === "share") Share.open("https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink);
+                    else if (action === "share") Share.open("https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink, videoCard.menuAnchor);
                 }
                 // No rail, offline mode
                 onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
@@ -142,8 +146,8 @@ Page {
                 onMoreClicked: actionSheet.show([
                     { iconName: "delete", text: Lang.tr("Remove"), danger: true,
                       onTriggered: function () { Downloads.remove(modelData.permlink); } },
-                    { iconName: "share", text: Lang.tr("Share"),
-                      onTriggered: function () { Share.open("https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink); } }
+                    { iconName: "share", text: Lang.tr("Share…"),
+                      onTriggered: function () { Share.open("https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink, videoCard.menuAnchor); } }
                 ], videoCard)
             }
         }
@@ -357,8 +361,8 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: Lang.tr("Share")
-                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
+                        text: Lang.tr("Share…")
+                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink, moreBtn)
                     }
                 ]
             }
@@ -375,8 +379,8 @@ Page {
                         onTriggered: SavedPosts.remove(modelData.permlink)
                     }
                     Action {
-                        iconName: "share"; text: Lang.tr("Share")
-                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
+                        iconName: "share"; text: Lang.tr("Share…")
+                        onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink, moreBtn)
                     }
                 }
             }
@@ -443,8 +447,8 @@ Page {
                         actionSheet.show([
                             { iconName: "delete", text: Lang.tr("Remove"), danger: true,
                               onTriggered: function () { SavedPosts.remove(modelData.permlink); } },
-                            { iconName: "share", text: Lang.tr("Share"),
-                              onTriggered: function () { Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink); } }
+                            { iconName: "share", text: Lang.tr("Share…"),
+                              onTriggered: function () { Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink, moreBtn); } }
                         ], moreBtn);
                     }
 
@@ -519,7 +523,7 @@ Page {
                         height: units.gu(5.5)
                         onClicked: {
                             articleItem.menuOpen = false;
-                            Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink);
+                            Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink, moreBtn);
                         }
                         Row {
                             anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
@@ -534,7 +538,7 @@ Page {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
                                 elide: Text.ElideRight
-                                text: Lang.tr("Share")
+                                text: Lang.tr("Share…")
                                 font.pixelSize: Style.fontSmall
                                 color: Style.textPrimary
                             }

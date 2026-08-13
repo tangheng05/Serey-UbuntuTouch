@@ -17,6 +17,8 @@ Item {
     property bool loading: false
     property bool posting: false
     property var replyTarget: null
+    // Set while editing one of your own comments: the same composer, in edit mode.
+    property var editTarget: null
 
     // Docked mode: a side panel the caller positions (wide-window reels) instead of a
     // modal bottom sheet, so it sits beside the video rather than on top of it.
@@ -29,7 +31,7 @@ Item {
 
     function open(a, p) {
         sheet.author = a; sheet.permlink = p;
-        sheet.comments = []; sheet.replyTarget = null; composer.text = "";
+        sheet.comments = []; sheet.replyTarget = null; sheet.editTarget = null; composer.text = "";
         sheet.visible = true;
         if (sheet.docked) panel.panelOff = 0;
         else { backdropFade.start(); panelAnim.to = 0; panelAnim.start(); }
@@ -106,7 +108,15 @@ Item {
                 Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update comment."));
             });
     }
-    function startReply(c) { sheet.replyTarget = c; composer.forceActiveFocus(); }
+    function startReply(c) { sheet.editTarget = null; sheet.replyTarget = c; composer.forceActiveFocus(); }
+    // Edit runs through this composer, pre-filled, instead of a second field in the row.
+    function startEdit(c) {
+        sheet.replyTarget = null;
+        sheet.editTarget = c;
+        composer.text = c.body || "";
+        composer.forceActiveFocus();
+    }
+    function cancelEdit() { sheet.editTarget = null; composer.text = ""; }
 
     function submit() {
         // Enter bypasses the Send button's enabled state, so a fast double tap posted twice.
@@ -114,6 +124,15 @@ Item {
         var text = composer.text.trim();
         if (text.length === 0) return;
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
+        // Same box, same Send: an edit updates instead of posting a new comment.
+        if (sheet.editTarget) {
+            var edited = sheet.editTarget;
+            sheet.editTarget = null;
+            composer.text = "";
+            sheet.editComment(edited.permlink, text,
+                              edited.parentAuthor || "", edited.parentPermlink || "");
+            return;
+        }
         var target = sheet.replyTarget;
         var pa = target ? target.author : sheet.author;
         var pp = target ? target.permlink : sheet.permlink;
@@ -239,7 +258,7 @@ Item {
                     comment: modelData
                     topLevel: true
                     onDeleted: sheet.removeComment(permlink)
-                    onEdited: sheet.editComment(permlink, newBody, parentAuthor, parentPermlink)
+                    onEditRequested: sheet.startEdit(comment)
                     onReplyRequested: sheet.startReply(comment)
                 }
             }
@@ -276,7 +295,7 @@ Item {
 
             // "Replying to @x  Cancel", the same treatment as the video composers
             Row {
-                visible: sheet.replyTarget !== null
+                visible: sheet.replyTarget !== null || sheet.editTarget !== null
                 x: Style.spacingS
                 width: parent.width - Style.spacingS * 2
                 height: visible ? units.gu(3) : 0
@@ -284,7 +303,8 @@ Item {
 
                 Label {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: Lang.tr("Replying to @%1").arg(sheet.replyTarget ? sheet.replyTarget.author : "")
+                    text: sheet.editTarget ? Lang.tr("Editing your comment")
+                        : Lang.tr("Replying to @%1").arg(sheet.replyTarget ? sheet.replyTarget.author : "")
                     font.pixelSize: Style.fontSmall
                     font.family: Style.fontFor(text)
                     color: Style.textSecondary
@@ -293,7 +313,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     width: cancelReplyLabel.implicitWidth
                     height: cancelReplyLabel.implicitHeight
-                    onClicked: sheet.replyTarget = null
+                    onClicked: sheet.editTarget ? sheet.cancelEdit() : (sheet.replyTarget = null)
                     Label {
                         id: cancelReplyLabel
                         text: Lang.tr("Cancel")
@@ -333,7 +353,9 @@ Item {
                         color: Style.textPrimary
                     }
                     hasClearButton: false
-                    placeholderText: Session.isLoggedIn ? Lang.tr("Post a comment…") : Lang.tr("Log in to comment…")
+                    placeholderText: !Session.isLoggedIn ? Lang.tr("Log in to comment…")
+                                   : sheet.editTarget ? Lang.tr("Edit your comment…")
+                                                      : Lang.tr("Post a comment…")
                     font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     onAccepted: sheet.submit()

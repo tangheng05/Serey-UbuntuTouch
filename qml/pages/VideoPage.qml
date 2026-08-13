@@ -600,6 +600,7 @@ Page {
     // ErrorState carries the offline panel itself, so this covers both cases.
     ErrorState {
         anchors.fill: list
+        autoRetry: false   // the Net handler above already reloads and resumes paging
         visible: page.errorMsg !== "" && feedModel.count === 0
         message: page.errorMsg
         onRetry: page.reload()

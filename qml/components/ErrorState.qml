@@ -12,6 +12,20 @@ Item {
     readonly property bool offline: !Net.online
     signal retry()
 
+    // Coming back online only swapped the offline copy for the stale server message and then
+    // waited for a tap. Re-run the page's fetch instead, deferred if the panel is off screen.
+    // Feeds reload themselves (they also resume paging), so they opt out to avoid a double fetch.
+    property bool autoRetry: true
+    property bool _retryPending: false
+    onVisibleChanged: if (visible && root._retryPending) { root._retryPending = false; root.retry(); }
+    Connections {
+        target: Net
+        function onOnlineChanged() {
+            if (!Net.online || !root.autoRetry) return;
+            if (root.visible) root.retry(); else root._retryPending = true;
+        }
+    }
+
     // The one offline surface, inherited by every page that already shows an error.
     OfflineState {
         anchors.fill: parent

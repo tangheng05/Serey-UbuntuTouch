@@ -49,11 +49,20 @@ Item {
         width: Math.min(parent.width - Style.spacingL * 2, units.gu(45))
         spacing: Style.spacingM
 
-        Icon {
+        Image {
             anchors.horizontalCenter: parent.horizontalCenter
             width: units.gu(6); height: width
-            name: "info"
-            color: Style.textSecondary
+            source: Qt.resolvedUrl("../../assets/no-connection.png")
+            fillMode: Image.PreserveAspectFit
+            sourceSize.width: units.gu(12)
+            asynchronous: true
+
+            // gentle breathing loop
+            SequentialAnimation on scale {
+                loops: Animation.Infinite
+                NumberAnimation { from: 1.0; to: 1.12; duration: 900; easing.type: Easing.InOutQuad }
+                NumberAnimation { from: 1.12; to: 1.0; duration: 900; easing.type: Easing.InOutQuad }
+            }
         }
 
         Label {

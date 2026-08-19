@@ -347,7 +347,7 @@ Page {
                 }
                 Label {
                     anchors { left: countrySearchField.left; verticalCenter: parent.verticalCenter }
-                    visible: countrySearchField.text.length === 0
+                    visible: countrySearchField.text.length === 0 && !countrySearchField.inputMethodComposing
                     text: Lang.tr("Search countries")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular

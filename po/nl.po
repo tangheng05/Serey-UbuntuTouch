@@ -208,6 +208,9 @@ msgstr "Huidig wachtwoord"
 msgid "Date"
 msgstr "Datum"
 
+msgid "DD-MM-YYYY"
+msgstr "DD-MM-JJJJ"
+
 msgid "Date of birth"
 msgstr "Geboortedatum"
 
@@ -248,7 +251,7 @@ msgid "Edit Post"
 msgstr "Bericht bewerken"
 
 msgid "Edit cover"
-msgstr "Omslag bewerken"
+msgstr "Achtergrond foto veranderen"
 
 msgid "Edit post"
 msgstr "Bericht bewerken"
@@ -776,7 +779,7 @@ msgid "Unblocking…"
 msgstr "Deblokkeren…"
 
 msgid "Unfollowed"
-msgstr "Gevolgd gestopt"
+msgstr "Gestopt met volgen"
 
 msgid "Unsubscribed"
 msgstr "Afgemeld"
@@ -873,9 +876,6 @@ msgstr "Schrijf een bijschrift..."
 
 msgid "Write your article here..."
 msgstr "Schrijf hier uw artikel..."
-
-msgid "YYYY-MM-DD"
-msgstr "JJJJ-MM-DD"
 
 msgid "You have %1 new notifications"
 msgstr "U heeft %1 nieuwe meldingen"

@@ -1,6 +1,5 @@
 import QtQuick 2.7
 import QtQuick.Window 2.2
-import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
@@ -142,54 +141,10 @@ AbstractButton {
             width: parent.width
             height: width * 0.56
 
-            Rectangle {
-                id: thumbBg
-                anchors.fill: parent
-                radius: Style.thumbRadius
-                color: Style.iconBackground
-            }
-
-            // Double-buffered like PostCard's cover: hidden loader fetches while thumbImg keeps last frame
-            Image {
-                id: thumbLoader
+            RoundedThumb {
                 anchors.fill: parent
                 source: v.localThumb || v.thumbnail || ""
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                // HIG scaling: snap the decode size to a breakpoint instead of `width * N` so the image isn't re-rasterized on every width change.
-                sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
-                visible: false
-                onStatusChanged: {
-                    if (status === Image.Ready) thumbImg.source = source;
-                    else if (status === Image.Error || String(source).length === 0) thumbImg.source = "";
-                }
-            }
-            Image {
-                id: thumbImg
-                anchors.fill: parent
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                sourceSize.width: thumbLoader.sourceSize.width
-                visible: false
-                // Fade fully out while replacing a stale frame; a dimmed ghost read as wrong thumbnail
-                readonly property bool transitioning:
-                    thumbLoader.status === Image.Loading && status === Image.Ready
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-                opacity: status === Image.Ready ? (transitioning ? 0.0 : 1.0) : 0.0
-            }
-
-            Rectangle {
-                id: thumbMask
-                anchors.fill: parent
-                radius: Style.thumbRadius
-                visible: false
-            }
-
-            OpacityMask {
-                anchors.fill: parent
-                source: thumbImg
-                maskSource: thumbMask
-                opacity: thumbImg.opacity
+                decodeWidth: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
             }
 
             Rectangle {

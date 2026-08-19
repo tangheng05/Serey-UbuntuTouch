@@ -88,7 +88,12 @@ Item {
                     verticalCenter: parent.verticalCenter
                 }
                 text: root.placeholder
-                visible: input.text.length === 0
+                // `text` excludes preedit, so while Maliit is composing a word the
+                // field looks empty and the placeholder draws under the composing
+                // text. A physical keyboard commits each key, which is why this only
+                // shows on device and not in the desktop simulator. Same guard as
+                // MultilineField.
+                visible: input.text.length === 0 && !input.inputMethodComposing
                 elide: Text.ElideRight
                 font.pixelSize: Style.fontRegular
                 font.family: Style.fontFor(text)

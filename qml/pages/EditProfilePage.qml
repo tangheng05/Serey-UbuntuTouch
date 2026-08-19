@@ -38,9 +38,43 @@ Page {
             lastField.text = initial.lastName || "";
             bioField.text = initial.bio || "";
             emailField.text = initial.email || "";
-            dobField.text = initial.dob || "";
+            dobField.text = page.dobToDisplay(initial.dob);
             genderId = initial.gender === "Male" ? 1 : (initial.gender === "Female" ? 2 : 0);
         }
+    }
+
+    // The API stores dob as a DATEONLY (YYYY-MM-DD); the field shows DD-MM-YYYY.
+    function dobToDisplay(iso) {
+        var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+        return m ? (m[3] + "-" + m[2] + "-" + m[1]) : "";
+    }
+
+    // Dashes are typed in for the user (01092005 -> 01-09-2005). An input mask
+    // would do this too, but a masked field is never empty, so it could never
+    // fall back to the placeholder.
+    function formatDob() {
+        var raw = dobField.text.replace(/\D/g, "").substring(0, 8);
+        var out = raw.length > 4 ? raw.substring(0, 2) + "-" + raw.substring(2, 4) + "-" + raw.substring(4)
+                : raw.length > 2 ? raw.substring(0, 2) + "-" + raw.substring(2)
+                : raw;
+        if (out === dobField.text) return;
+        // Re-anchor the caret at the end only when it was already there, so
+        // editing mid-string doesn't jump.
+        var atEnd = dobField.input.cursorPosition >= dobField.text.length;
+        dobField.text = out;
+        if (atEnd) dobField.input.cursorPosition = out.length;
+    }
+
+    // "" for an empty field, null when the text isn't a real DD-MM-YYYY date.
+    function dobToIso(txt) {
+        var raw = (txt || "").replace(/\D/g, "");
+        if (raw.length === 0) return "";
+        if (raw.length !== 8) return null;
+        var d = parseInt(raw.substring(0, 2), 10), mo = parseInt(raw.substring(2, 4), 10),
+            y = parseInt(raw.substring(4), 10);
+        var dt = new Date(y, mo - 1, d);
+        if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+        return raw.substring(4) + "-" + raw.substring(2, 4) + "-" + raw.substring(0, 2);
     }
 
     function fail(err) { busy = false; uploading = false; coverUploading = false; page.errorMsg = err.message; }
@@ -85,13 +119,18 @@ Page {
             errorMsg = Lang.tr("Please enter a valid email address.");
             return;
         }
+        var dobIso = dobToIso(dobField.text);
+        if (dobIso === null) {
+            errorMsg = Lang.tr("Please enter your date of birth as DD-MM-YYYY.");
+            return;
+        }
         busy = true;
         AccountService.updateUserDetail(Config.baseUrl, Session.token, {
             firstname: firstField.text,
             lastname: lastField.text,
             email: emailField.text,
             gender_id: page.genderId || undefined,
-            dob: dobField.text,
+            dob: dobIso,
             bio: bioField.text
         }, function () {
             busy = false;
@@ -320,8 +359,12 @@ Page {
             FormField {
                 id: dobField
                 width: parent.width
-                placeholder: Lang.tr("YYYY-MM-DD")
-                inputMethodHints: Qt.ImhDate
+                placeholder: Lang.tr("DD-MM-YYYY")
+                inputMethodHints: Qt.ImhDigitsOnly | Qt.ImhNoPredictiveText
+                Connections {
+                    target: dobField.input
+                    onTextChanged: page.formatDob()
+                }
             }
 
             Label {

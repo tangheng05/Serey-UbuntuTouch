@@ -460,7 +460,7 @@ Page {
                             font.pixelSize: Style.fontRegular
                             font.family: Style.fontFor(text)
                             color: Style.textSecondary
-                            visible: banField.text.length === 0
+                            visible: banField.text.length === 0 && !banField.inputMethodComposing
                         }
                     }
                     AbstractButton {

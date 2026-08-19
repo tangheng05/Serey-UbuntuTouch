@@ -1,7 +1,6 @@
 import QtQuick 2.7
 import QtQuick.Window 2.2
 import QtQuick.Layouts 1.3
-import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
@@ -269,57 +268,11 @@ Item {
             x: Style.spacingM
             height: visible ? width * 0.56 : 0
 
-            // Rectangle.clip only clips to the bounding box, so the Image is masked against a rounded Rectangle instead for a true rounded crop.
-            Rectangle {
-                anchors.fill: parent
-                radius: Style.thumbRadius
-                color: Style.iconBackground
-            }
-            // Double-buffered cover: coverLoader (hidden) fetches while coverImg keeps last-good frame
-            Image {
-                id: coverLoader
+            RoundedThumb {
                 anchors.fill: parent
                 source: p.thumbnail || ""
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                autoTransform: true     // honour EXIF orientation
-                // Snap decode size to a breakpoint instead of tracking width, which re-rasterized on every resize
-                sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
-                visible: false
-                onStatusChanged: {
-                    if (status === Image.Ready) {
-                        coverImg.source = source;
-                    } else if (status === Image.Error || String(source).length === 0) {
-                        // Unloadable or removed cover: don't keep showing the previous article's image
-                        coverImg.source = "";
-                    }
-                }
-            }
-            Image {
-                id: coverImg
-                anchors.fill: parent
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
                 autoTransform: true
-                sourceSize.width: coverLoader.sourceSize.width
-                visible: false
-                // Fade the stale frame fully out; a dimmed ghost read as the wrong thumbnail
-                readonly property bool transitioning:
-                    coverLoader.status === Image.Loading && status === Image.Ready
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-                opacity: status === Image.Ready ? (transitioning ? 0.0 : 1.0) : 0.0
-            }
-            Rectangle {
-                id: coverMask
-                anchors.fill: parent
-                radius: Style.thumbRadius
-                visible: false
-            }
-            OpacityMask {
-                anchors.fill: parent
-                source: coverImg
-                maskSource: coverMask
-                opacity: coverImg.opacity
+                decodeWidth: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
             }
 
             Rectangle {

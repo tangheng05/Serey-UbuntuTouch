@@ -252,7 +252,7 @@ Page {
                             font.pixelSize: Style.fontRegular
                             font.family: Style.fontFor(text)
                             color: Style.textSecondary
-                            visible: searchField.text.length === 0
+                            visible: searchField.text.length === 0 && !searchField.inputMethodComposing
                         }
                     }
                 }

@@ -1271,6 +1271,8 @@ Page {
                                     onLinkActivated: Qt.openUrlExternally(link)
                                     // Fresh press resets the flag so a deliberate long-press is never blocked
                                     onActiveFocusChanged: if (activeFocus) bodyTxt._scrolledSinceFocus = false
+                                    // Words currently selected, so the haptic ticks per word rather than per character.
+                                    property int _selWords: 0
                                     // Caret visible only while selected, gating the native Copy popover; always-on left an idle blue cursor while reading.
                                     onSelectedTextChanged: {
                                         // Stray if scroller is moving, or scrolled recently during this press
@@ -1282,6 +1284,17 @@ Page {
                                             return;
                                         }
                                         cursorVisible = (selectedText.length > 0);
+                                        bodyTxt._tickSelection();
+                                    }
+                                    // A tick as the selection lands on a word and each time it grows by one, the way
+                                    // the handles feel elsewhere. Per character would buzz continuously while dragging.
+                                    function _tickSelection() {
+                                        var t = selectedText.replace(/^\s+|\s+$/g, "");
+                                        var words = t.length > 0 ? t.split(/\s+/).length : 0;
+                                        if (words === bodyTxt._selWords) return;
+                                        // Growing only: releasing or shrinking back shouldn't buzz.
+                                        if (words > bodyTxt._selWords) Haptics.play();
+                                        bodyTxt._selWords = words;
                                     }
                                     onCursorVisibleChanged: if (!cursorVisible && selectedText.length > 0) cursorVisible = true
                                 }

@@ -620,18 +620,20 @@ Page {
     // Offline shows the Homepage's panel over the whole list, cached rows and all, so the
     // offline face of the app is the same everywhere (opaque, or rows read through it).
     Rectangle {
+        id: offlineCover
         anchors.fill: list
-        // Fades rather than pops: the switch lands mid-scroll, and a hard cut over a feed the
-        // user was reading reads as a glitch.
-        opacity: !Net.online ? 1 : 0
-        visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
+        // The backdrop cuts in hard: cross-fading it let the feed show through the panel for
+        // the whole animation, which looked like a rendering fault. Only the panel's own
+        // content fades, so the feed is gone the instant we know we're offline.
+        visible: !Net.online
         color: Style.surface
         z: 2
         // Swallow taps so the list can't be scrolled or opened behind the panel.
         MouseArea { anchors.fill: parent }
         OfflineState {
             anchors.fill: parent
+            opacity: offlineCover.visible ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
             onRetry: page.reload()
         }
     }

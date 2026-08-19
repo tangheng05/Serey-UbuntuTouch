@@ -49,15 +49,16 @@ Item {
         width: Math.min(parent.width - Style.spacingL * 2, units.gu(45))
         spacing: Style.spacingM
 
-        // Animated GIF, not a video: QtMultimedia would hand playback to media-hub, whose
-        // AppArmor profile can't read our own files (see VideoDetailPage.startPlay).
+        // Animated WebP, not a video: QtMultimedia would hand playback to media-hub, whose
+        // AppArmor profile can't read our own files (see VideoDetailPage.startPlay). WebP over
+        // GIF for the 8-bit alpha: GIF's 1-bit transparency left the circle's edge jagged.
         // Transparent outside the circle, so it needs no theme variant.
         AnimatedImage {
             anchors.horizontalCenter: parent.horizontalCenter
             // Big enough to read as an illustration, not an icon; capped so it stays
             // sane in the narrow detail panel of a split window.
             width: Math.min(parent.width * 0.62, units.gu(24)); height: width
-            source: Qt.resolvedUrl("../../assets/offline-camp.gif")
+            source: Qt.resolvedUrl("../../assets/offline-camp.webp")
             fillMode: Image.PreserveAspectFit
             // The file is already close to its drawn size; no sourceSize, or every frame
             // would be rescaled on the way out of the decoder.

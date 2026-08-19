@@ -51,6 +51,11 @@ MainView {
         root._lastTab = currentTab;
 
         Config.currentTab = currentTab;
+        // The network can die while a tab just sits there (nothing requests, nothing fails),
+        // so arriving on a feed used to show cached rows until the watchdog caught up. Ask
+        // straight away: with no network at all this fails instantly and the panel is up
+        // before the first frame of the list.
+        if (currentTab !== 0) Net.probe();
         _ensureTab(currentTab);
         if (currentTab === 0) {
             tabFadeIn.stop();

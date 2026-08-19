@@ -13,8 +13,8 @@ Item {
     readonly property var c: comment ? comment : ({})
     readonly property var replies: c.replies || []
     property int depth: 0
-    // Nested replies start collapsed so a deep thread doesn't eagerly instantiate
-    property bool repliesExpanded: depth < 1
+    // always expanded, no collapse toggle
+    property bool repliesExpanded: true
     property bool topLevel: true
     // Rail density: the desktop side panel is ~gu(34) wide, so the body drops the
     // avatar indent, margins tighten, and long comments clamp behind "Read more".
@@ -285,10 +285,9 @@ Item {
         }
 
         Row {
-            // Rail: sits under the body on the same left edge, where the eye already is.
-            // Wide column: stays right-aligned, clear of the reading measure. Positioned
-            // with x, not a conditional anchor, which QML can't reset from a binding.
-            x: item.compact ? item._bodyIndent : Math.max(0, parent.width - width)
+            id: voteReplyRow
+            // Rail (compact): left edge, under the body. Everywhere else: right-aligned.
+            x: item.compact ? item._bodyIndent : parent.width - voteReplyRow.width
             spacing: Style.spacingM
 
             VoteBar {
@@ -318,53 +317,14 @@ Item {
 
             AbstractButton {
                 anchors.verticalCenter: parent.verticalCenter
-                width: replyRow.implicitWidth
+                width: units.gu(3.5)
                 height: units.gu(3.5)
                 onClicked: item.replyRequested(c)
 
-                Row {
-                    id: replyRow
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.spacingXs
-                    Icon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: units.gu(2.2); height: width
-                        name: "message"
-                        color: Style.textSecondary
-                    }
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Lang.tr("Reply")
-                        font.pixelSize: Style.fontSmall
-                        color: Style.textSecondary
-                    }
-                }
-            }
-        }
-
-        AbstractButton {
-            visible: item.replies.length > 0
-            x: item._bodyIndent
-            width: toggleLabel.implicitWidth
-            height: units.gu(3)
-            onClicked: item.repliesExpanded = !item.repliesExpanded
-
-            Row {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.spacingXs
-                Label {
-                    id: toggleLabel
-                    text: item.repliesExpanded
-                        ? Lang.tr("Hide replies")
-                        : Lang.tr("%1 replies").arg(item.replies.length)
-                    font.pixelSize: Style.fontSmall
-                    font.weight: Font.DemiBold
-                    color: Style.textSecondary
-                }
                 Icon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: units.gu(1.6); height: width
-                    name: item.repliesExpanded ? "up" : "down"
+                    anchors.centerIn: parent
+                    width: units.gu(2.2); height: width
+                    name: "mail-reply"
                     color: Style.textSecondary
                 }
             }
@@ -397,7 +357,7 @@ Item {
                 function forwardSignals(loaderItem) {
                     if (!loaderItem) return;
                     loaderItem.deleted.connect(function(permlink) { item.deleted(permlink) })
-                    loaderItem.edited.connect(function(permlink, newBody, pa, pp) { item.edited(permlink, newBody, pa, pp) })
+                    loaderItem.editRequested.connect(function(c) { item.editRequested(c) })
                     loaderItem.replyRequested.connect(function(c) { item.replyRequested(c) })
                     loaderItem.authorClicked.connect(function(author) { item.authorClicked(author) })
                 }

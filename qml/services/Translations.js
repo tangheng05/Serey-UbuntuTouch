@@ -28,7 +28,7 @@ var nl = {
     "Articles":                                         "Artikelen",
     "Available offline":                                "Beschikbaar offline",
     "Back":                                             "Terug",
-    "Background notifications":                         "Achtergrondmeldingen",
+    "Background notifications":                         "Pushmeldingen",
     "Bio":                                              "Bio",
     "Block":                                            "Blokkeren",
     "Block %1":                                         "%1 blokkeren",
@@ -546,6 +546,8 @@ var nl = {
     "Subscribe to platforms to see their posts in your feed.": "Abonneer u op platforms om artikelen in uw feed te zien.",
     "Write your first post":                            "Schrijf je eerste artikel",
     "That platform isn't available right now.":         "Dat platform is momenteel niet beschikbaar.",
+    "This platform doesn't allow posting. Choose another.": "Dit platform staat posten niet toe. Kies een ander platform.",
+    "This platform doesn't allow video uploads. Choose another.": "Dit platform staat video-uploads niet toe. Kies een ander platform.",
     "Couldn't subscribe. Try again.":                   "Abonneren mislukt. Probeer het opnieuw.",
     "Couldn't unsubscribe. Try again.":                 "Afmelden mislukt. Probeer het opnieuw.",
 

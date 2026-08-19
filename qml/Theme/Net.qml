@@ -25,24 +25,45 @@ Item {
     }
 
     // Any HTTP answer proves connectivity, so the status code itself doesn't matter.
+    property var _probeXhr: null
     function probe() {
         if (net.forceOffline || net._probing) return;
         net._probing = true;
         var xhr = new XMLHttpRequest();
-        // A HEAD against the API answers in well under a second on any live connection, so
-        // this only has to outlast a slow handshake. Every second here is a second the app
-        // keeps spinning before it admits it's offline.
-        xhr.timeout = 4000;
-        xhr.ontimeout = function () { net._probing = false; net._reachable = false; };
+        net._probeXhr = xhr;
         xhr.onreadystatechange = function () {
             if (xhr.readyState !== XMLHttpRequest.DONE) return;
+            probeTimeout.stop();
             net._probing = false;
+            net._probeXhr = null;
             net._reachable = xhr.status !== 0;
         };
         try {
             xhr.open("HEAD", Config.baseUrl);
             xhr.send();
+            probeTimeout.restart();
         } catch (e) {
+            net._probing = false;
+            net._probeXhr = null;
+            net._reachable = false;
+        }
+    }
+
+    // QML's XMLHttpRequest ignores its own `timeout` when the connection stalls rather than
+    // being refused (measured against an unroutable host: no ontimeout in 30s, so a probe hung
+    // forever, _probing stayed true, and every later probe no-opped - the app never noticed it
+    // was offline). Time the probe here instead. A HEAD answers in well under a second on any
+    // live connection, so this only has to outlast a slow handshake.
+    Timer {
+        id: probeTimeout
+        interval: 3000
+        repeat: false
+        onTriggered: {
+            if (!net._probing) return;
+            if (net._probeXhr) {
+                try { net._probeXhr.abort(); } catch (e) { }
+                net._probeXhr = null;
+            }
             net._probing = false;
             net._reachable = false;
         }
@@ -63,7 +84,7 @@ Item {
     // in well under a second on a live link, so a slow-but-alive network is left alone and only
     // a real outage flips us offline early.
     Timer {
-        interval: 3000
+        interval: 1200
         repeat: true
         running: net.pending > 0 && net._reachable && !net.forceOffline
         onTriggered: net.probe()

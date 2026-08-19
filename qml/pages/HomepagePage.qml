@@ -65,7 +65,10 @@ Page {
     Rectangle {
         id: offlineCover
         anchors.fill: parent
-        visible: webApp.loadFailed
+        // Matches the News/Video covers: fade in rather than cut.
+        opacity: webApp.loadFailed ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
         color: Style.surface
 
         OfflineState {

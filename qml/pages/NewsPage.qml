@@ -689,7 +689,11 @@ Page {
     // offline face of the app is the same everywhere (opaque, or rows read through it).
     Rectangle {
         anchors.fill: list
-        visible: !Net.online
+        // Fades rather than pops: the switch lands mid-scroll, and a hard cut over a feed the
+        // user was reading reads as a glitch.
+        opacity: !Net.online ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
         color: Style.surface
         z: 2
         // Swallow taps so the list can't be scrolled or opened behind the panel.

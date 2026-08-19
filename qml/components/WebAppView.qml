@@ -169,6 +169,10 @@ FocusScope {
                 webAppView.loading = false;
                 webAppView.loadFailed = false;
                 webAppView._pageReady = true;
+                // Don't claim we're back purely on a load succeeding: Chromium can serve the
+                // page from its disk cache while still offline, which flipped Net online and
+                // hid the offline panel until the next probe. Verify against the API instead.
+                if (!Net.online) Net.probe();
                 webAppView._injectBridge();
                 webAppView._injectProfiler();
                 webAppView._log("full load succeeded after "
@@ -182,6 +186,10 @@ FocusScope {
                 webAppView._pageReady = false;
                 // -3 is ERR_ABORTED: our own Stripe/invite intercepts cancel a nav, that's not a failure.
                 webAppView.loadFailed = loadRequest.errorCode !== -3;
+                // Chromium hits the dead network long before any of our XHRs time out. Without
+                // this, Net still believed it was online, and switching to News/Video showed a
+                // screenful of cached cards before the offline panel caught up.
+                if (webAppView.loadFailed) Net.report(false);
                 webAppView._log("full load FAILED: " + loadRequest.errorString
                                 + " (" + loadRequest.url + ")");
             }

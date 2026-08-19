@@ -29,21 +29,6 @@ Item {
         onTriggered: root.checking = false
     }
 
-    function _articles() {
-        return articleCount === 1 ? Lang.tr("1 article")
-                                  : Lang.tr("%1 articles").arg(articleCount);
-    }
-    function _videos() {
-        return videoCount === 1 ? Lang.tr("1 video")
-                                : Lang.tr("%1 videos").arg(videoCount);
-    }
-    // Only name the kinds that are actually there, so "0 videos" never shows up.
-    function _inventory() {
-        if (articleCount > 0 && videoCount > 0)
-            return Lang.tr("%1 and %2").arg(_articles()).arg(_videos());
-        return articleCount > 0 ? _articles() : _videos();
-    }
-
     Column {
         anchors.centerIn: parent
         width: Math.min(parent.width - Style.spacingL * 2, units.gu(45))
@@ -55,9 +40,10 @@ Item {
         // Transparent outside the circle, so it needs no theme variant.
         AnimatedImage {
             anchors.horizontalCenter: parent.horizontalCenter
-            // Big enough to read as an illustration, not an icon; capped so it stays
-            // sane in the narrow detail panel of a split window.
-            width: Math.min(parent.width * 0.62, units.gu(24)); height: width
+            // Big enough to read as an illustration, not an icon; capped so it stays sane in
+            // the narrow detail panel of a split window, and so the 480px asset is never
+            // stretched past its own resolution.
+            width: Math.min(parent.width * 0.78, units.gu(26)); height: width
             source: Qt.resolvedUrl("../../assets/offline-camp.webp")
             fillMode: Image.PreserveAspectFit
             // The file is already close to its drawn size; no sourceSize, or every frame
@@ -66,6 +52,10 @@ Item {
             // Nothing decodes while the panel is off-screen.
             playing: root.visible
         }
+
+        // Sets the headline down off the illustration; Column spacing alone read as cramped
+        // once the image grew.
+        Item { width: 1; height: Style.spacingM }
 
         Label {
             width: parent.width
@@ -78,19 +68,6 @@ Item {
             font.weight: Font.DemiBold
             font.family: Style.fontFor(text)
             color: Style.textPrimary
-        }
-
-        Label {
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            text: root.hasContent
-                  ? Lang.tr("You have %1 on this device.").arg(root._inventory())
-                    + " " + Lang.tr("They stay with you, even without a connection.")
-                  : Lang.tr("Check your connection and try again.")
-            font.pixelSize: Style.fontSmall
-            font.family: Style.fontFor(text)
-            color: Style.textSecondary
         }
 
         Item { width: 1; height: Style.spacingS }

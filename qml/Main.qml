@@ -112,11 +112,6 @@ MainView {
         var p = activeStack ? activeStack.rootPage : null;
         return !!(p && p.isFeedPage);
     }
-    // The library list, or a downloaded video / saved article opened from it (offlineMode).
-    readonly property bool _onDeviceContent: {
-        var p = activeStack ? activeStack.currentPage : null;
-        return !!(p && (p.isLibraryPage || p.offlineMode));
-    }
     readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3
     // Wide windows keep the rail inside pushed pages too: it's app chrome there.
     readonly property bool showNavBar: root.wideMode || activeColumns > 1 || activeDepth <= 1
@@ -718,24 +713,11 @@ MainView {
             bottom: (root.showNavBar && !root.wideMode) ? navBar.top : parent.bottom
         }
 
-        // Zero-height while online, so the stacks below keep one fixed anchor either way.
-        OfflineBanner {
-            id: offlineBanner
-            anchors { top: parent.top; left: parent.left; right: parent.right }
-            z: 1
-            // The Homepage draws its own offline panel, and anything opened from the device
-            // (the library, a downloaded video, a saved article) is already the offline
-            // answer: saying "you're offline" on top of it is just noise.
-            suppressed: (root.currentTab === 0 && homeStack.depth <= 1) || root._onDeviceContent
-            onOpenLibrary: root.openLibrary()
-        }
-
         AdaptiveStack {
             id: homeStack
             // The web app is the panel, never split; sub-pages cover it full-screen instead
             neverSplit: true
             anchors.fill: parent
-            anchors.topMargin: offlineBanner.height
             visible: root.currentTab === 0
             Component.onCompleted: push(Qt.resolvedUrl("pages/HomepagePage.qml"))
         }
@@ -745,7 +727,6 @@ MainView {
             emptyDetailIconName: "stock_note"
             emptyDetailMessage: Lang.tr("Select a post to read")
             anchors.fill: parent
-            anchors.topMargin: offlineBanner.height
             visible: root.currentTab === 1
         }
         AdaptiveStack {
@@ -753,14 +734,13 @@ MainView {
             emptyDetailIconName: "camcorder"
             emptyDetailMessage: Lang.tr("Select a video to watch")
             anchors.fill: parent
-            anchors.topMargin: offlineBanner.height
             visible: root.currentTab === 2
         }
         AdaptiveStack {
             id: settingsStack
             emptyDetailIconName: "settings"
             emptyDetailMessage: Lang.tr("Select a setting")
-            anchors { top: parent.top; topMargin: offlineBanner.height; bottom: parent.bottom; left: parent.left; right: accountPanelDivider.visible ? accountPanelDivider.left : parent.right }
+            anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: accountPanelDivider.visible ? accountPanelDivider.left : parent.right }
             visible: root.currentTab === 3
         }
 
@@ -775,7 +755,7 @@ MainView {
 
         Rectangle {
             id: accountPanelDivider
-            anchors { top: parent.top; topMargin: offlineBanner.height; bottom: parent.bottom; right: accountStatusPanel.left }
+            anchors { top: parent.top; bottom: parent.bottom; right: accountStatusPanel.left }
             width: units.dp(1)
             visible: accountStatusPanel.visible
             color: accountPanelDragArea.containsMouse || accountPanelDragArea.pressed ? Style.brand : Style.divider
@@ -783,7 +763,7 @@ MainView {
         MouseArea {
             id: accountPanelDragArea
             visible: accountStatusPanel.visible
-            anchors { top: parent.top; topMargin: offlineBanner.height; bottom: parent.bottom }
+            anchors { top: parent.top; bottom: parent.bottom }
             x: accountPanelDivider.x - width / 2
             width: units.gu(1.5)
             hoverEnabled: true
@@ -799,7 +779,7 @@ MainView {
         // Account status rail (outside settingsStack's own split)
         AccountStatusPanel {
             id: accountStatusPanel
-            anchors { top: parent.top; topMargin: offlineBanner.height; bottom: parent.bottom; right: parent.right }
+            anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
             width: body._showAccountPanel ? body._accountPanelW : 0
             visible: body._showAccountPanel
             profile: settingsStack.rootPage ? settingsStack.rootPage.profile : null

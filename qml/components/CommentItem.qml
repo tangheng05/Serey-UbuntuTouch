@@ -27,7 +27,10 @@ Item {
     readonly property bool canModify: Session.isLoggedIn
                                       && c.author === Session.username
                                       && (c.permlink || "").length > 0
-    property bool menuOpen: false
+    // Keyed to the singleton so opening one comment's menu closes any other on the page.
+    readonly property string _menuKey: (c.permlink || "") + "@" + (c.author || "")
+    readonly property bool menuOpen: item._menuKey !== "@" && CommentMenu.openKey === item._menuKey
+    function _closeMenu() { CommentMenu.openKey = ""; }
     property bool confirmingDelete: false
 
     signal deleted(string permlink)
@@ -141,7 +144,7 @@ Item {
                 visible: item.canModify
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 width: units.gu(3); height: units.gu(3)
-                onClicked: item.menuOpen = !item.menuOpen
+                onClicked: CommentMenu.openKey = item.menuOpen ? "" : item._menuKey
 
                 Column {
                     anchors.centerIn: parent
@@ -180,7 +183,7 @@ Item {
 
                     AbstractButton {
                         width: parent.width; height: units.gu(5)
-                        onClicked: { item.menuOpen = false; item.editRequested(c); }
+                        onClicked: { item._closeMenu(); item.editRequested(c); }
                         Label {
                             anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                             text: Lang.tr("Edit")
@@ -219,7 +222,7 @@ Item {
                         width: parent.width
                         AbstractButton {
                             width: parent.width / 2; height: units.gu(5)
-                            onClicked: { item.menuOpen = false; item.confirmingDelete = false; }
+                            onClicked: { item._closeMenu(); item.confirmingDelete = false; }
                             Label {
                                 id: cancelLabel
                                 anchors.centerIn: parent
@@ -232,7 +235,7 @@ Item {
                         }
                         AbstractButton {
                             width: parent.width / 2; height: units.gu(5)
-                            onClicked: { item.menuOpen = false; item.confirmingDelete = false; item.doDelete(); }
+                            onClicked: { item._closeMenu(); item.confirmingDelete = false; item.doDelete(); }
                             Label {
                                 id: confirmDeleteLabel
                                 anchors.centerIn: parent

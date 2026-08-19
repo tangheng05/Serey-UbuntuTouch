@@ -47,15 +47,12 @@ Item {
     // Drops soft-deleted rows the backend still returns in these list endpoints.
     function _isDeleted(m) { return !!(m.deleted || m.deleted_at || m.is_deleted); }
 
-    // Source id 0 is a filter sentinel; resolve the real postable "Global" community from the cache
+    // always shown, dimmed if not allowed
     function _globalEntry() {
         var dns = Config.sources[0].dns;
         for (var k in Config.communityById) {
             var c = Config.communityById[k];
             if (!c || c.dns !== dns) continue;
-            // Blog: no post permission means no row at all (Global can't be expanded into).
-            // Video: keep the row and let _canPost grey it, so the list matches the blog's shape.
-            if (!picker.forVideo && !c.allowPost) return null;
             return {
                 id: String(c.id),
                 name: c.title || Config.sources[0].name,
@@ -75,7 +72,9 @@ Item {
     function openFor(onChosen, callerItem) {
         picker._onChosen = onChosen;
         picker.caller = callerItem || null;
-        picker.selectedId = Config.selectedSubCommunity ? String(Config.selectedSubCommunity.id) : "";
+        // active source
+        picker.selectedId = Config.selectedSubCommunity ? String(Config.selectedSubCommunity.id)
+                           : (Config.sourceIndex > 0 ? String(Config.sources[Config.sourceIndex].id) : "");
         picker.selectedEntry = null;
         picker.childCache = ({});
         picker.expandedId = "";
@@ -116,8 +115,7 @@ Item {
     // One shared exit: no target -> current context, exactly one -> take it without a modal.
     function _present(list) {
         var owned = picker._ownedEntries(list);
-        // _fetch already captions its layers; only an unsectioned list needs a divider from
-        // the "Your platforms" group above it.
+        // divider only if unsectioned
         if (owned.length > 0 && list.length > 0 && !list[0].section)
             list[0].section = Lang.tr("Explore platforms");
         var full = owned.concat(list);
@@ -190,42 +188,52 @@ Item {
             out0.push(entry);
             picker._byId[entry.id] = entry;
         }
-        // The row for whatever is being browsed (Global's own row when that's the source).
-        var browsed = Config.sources[Config.sourceIndex];
-        var browsedId = browsed ? String(browsed.id) : "";
-        var current = null;
-        for (var b = 0; b < out0.length; b++)
-            if (out0[b].id === browsedId) { current = out0[b]; break; }
-        if (!current) current = globalEntry;
-
-        // No sub-community picked: pre-select the browsed row, so the sheet opens on the
-        // community you're already in rather than defaulting to Global every time.
-        if (picker.selectedId.length === 0 && current) {
-            picker.selectedId = current.id;
-            picker.selectedEntry = current;
+        // layer 2: browsed sub-community's top-level country, else source, else Global
+        var activeId = "";
+        if (Config.selectedSubCommunity) {
+            var anc = String(Config.selectedSubCommunity.id), guard = 0;
+            while (Config.parentCommunityById[anc] !== undefined && guard++ < 12)
+                anc = Config.parentCommunityById[anc];
+            if (picker._byId[anc]) activeId = anc;
+        }
+        if (!activeId) {
+            activeId = Config.sourceIndex > 0 ? String(Config.sources[Config.sourceIndex].id)
+                     : (globalEntry ? globalEntry.id : "");
         }
 
-        // Three layers: your own platforms (added in _present), then the country you're
-        // browsing, expanded so its communities are right there, then every other country.
-        if (current) {
+        var ordered = out0;
+        var activeEntry = picker._byId[activeId] || null;
+        if (activeEntry) {
             var rest = [];
-            for (var r = 0; r < out0.length; r++)
-                if (out0[r] !== current) rest.push(out0[r]);
-            current.section = Lang.tr("Where you're browsing");
-            if (rest.length > 0) rest[0].section = Lang.tr("Explore platforms");
-            out0 = [current].concat(rest);
-            if (current.expandable !== false) {
-                picker.expandedId = current.id;
-                picker._loadChildren(current.id);
+            for (var k = 0; k < out0.length; k++)
+                if (out0[k] !== activeEntry) rest.push(out0[k]);
+            activeEntry.section = Lang.tr("Where you're browsing");
+            if (rest.length > 0) rest[0].section = Lang.tr("Other countries");
+            ordered = [activeEntry].concat(rest);
+            // no sub-communities to expand into
+            if (activeEntry.expandable !== false) {
+                picker.expandedId = activeId;
+                picker._loadChildren(activeId);
             }
         }
 
-        picker._syncSelectedEntry();
-        if (out0.length > 1) {
-            picker._autoExpandForSelection(out0);
-            picker._autoExpandForOwnership(out0);
+        // No sub-community picked: prefer the browsed layer-2 row, else geo, else Global.
+        if (picker.selectedId.length === 0) {
+            var geoIdx = Config.indexForCountryCode(Config.detectedCountryCode);
+            var geoEntry = geoIdx > 0 ? picker._byId[String(Config.sources[geoIdx].id)] : null;
+            var fallback = (activeEntry && picker._canPost(activeEntry)) ? activeEntry
+                         : (geoEntry && picker._canPost(geoEntry)) ? geoEntry : globalEntry;
+            if (fallback) {
+                picker.selectedId = fallback.id;
+                picker.selectedEntry = fallback;
+            }
         }
-        picker._present(out0);
+        picker._syncSelectedEntry();
+        if (ordered.length > 1) {
+            picker._autoExpandForSelection(ordered);
+            picker._autoExpandForOwnership(ordered);
+        }
+        picker._present(ordered);
     }
 
     // Fetches a country's own children into childCache, unless already cached
@@ -331,7 +339,12 @@ Item {
             (function (countryId) {
                 picker._loadChildren(countryId, function (kids) {
                     for (var k = 0; k < kids.length; k++) {
-                        if (kids[k].id === target) { picker.expandedId = countryId; return; }
+                        if (kids[k].id === target) {
+                            picker.expandedId = countryId;
+                            // lazy entry
+                            if (!picker.selectedEntry) picker.selectedEntry = kids[k];
+                            return;
+                        }
                     }
                 });
             })(countryItems[j].id);
@@ -577,8 +590,7 @@ Item {
                             visible: !picker.anchored
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.WordWrap
-                            text: picker.forVideo ? Lang.tr("Pick the community this video will publish into. Your current browsing view won't change.")
-                                                  : Lang.tr("Pick the community this post will publish into. Your current browsing view won't change.")
+                            text: Lang.tr("Choose the platform that you want to post in")
                             font.pixelSize: Style.fontSmall
                             color: Style.textSecondary
                         }

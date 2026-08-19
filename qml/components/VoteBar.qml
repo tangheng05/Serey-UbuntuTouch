@@ -425,7 +425,7 @@ RowLayout {
     }
 
     // gap after the pill, non-compact mode
-    Item { visible: !bar.compact; width: Style.spacingM; height: 1 }
+    Item { visible: !bar.compact; width: Style.spacingXs; height: 1 }
 
     // Compact mode: soak up leftover width instead of letting the pill stretch flush to the edge
     Item { visible: bar.compact; Layout.fillWidth: true }

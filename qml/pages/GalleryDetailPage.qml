@@ -228,6 +228,13 @@ Page {
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
+        // closes open comment menu on outside tap
+        MouseArea {
+            width: scroll.contentWidth; height: scroll.contentHeight
+            enabled: CommentMenu.openKey !== ""
+            onClicked: CommentMenu.openKey = ""
+        }
+
         Column {
             id: contentCol
             width: scroll.width

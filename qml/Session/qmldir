@@ -4,3 +4,4 @@ singleton SavedPosts 1.0 SavedPosts.qml
 singleton FeedCache 1.0 FeedCache.qml
 singleton Lang 1.0 Lang.qml
 singleton VideoProfile 1.0 VideoProfile.qml
+singleton CommentMenu 1.0 CommentMenu.qml

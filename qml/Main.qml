@@ -634,6 +634,7 @@ MainView {
                 onClicked: {
                     // Target the News master page (not whatever's open in the detail column).
                     var np = newsStack.rootPage;
+                    // pin post mode
                     postCommunityPicker.forVideo = false;
                     postCommunityPicker.openFor(function (target) {
                         var props = target ? { targetCommunity: target } : {};
@@ -664,8 +665,7 @@ MainView {
                 KeyTapArea { onActivated: composeBtn.clicked() }
             }
 
-            // Upload video (Video tab only). Always shown: the picker below lists only the
-            // communities that allow video posting, so the browsed source's permission no longer gates it.
+            // always shown; picker gates video permission
             AbstractButton {
                 id: uploadBtn
                 visible: Session.isLoggedIn && root.currentTab === 2
@@ -677,6 +677,7 @@ MainView {
                     var vp = videoStack.rootPage;
                     postCommunityPicker.forVideo = true;
                     postCommunityPicker.openFor(function (target) {
+                        postCommunityPicker.forVideo = false;
                         var props = target ? { targetCommunity: target } : {};
                         var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"), props);
                         if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);

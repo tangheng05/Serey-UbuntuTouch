@@ -990,6 +990,13 @@ Page {
         }
         // No auto-focus-on-load: used to steal focus even for mouse opens
 
+        // closes open comment menu on outside tap
+        MouseArea {
+            width: scroll.contentWidth; height: scroll.contentHeight
+            enabled: CommentMenu.openKey !== ""
+            onClicked: CommentMenu.openKey = ""
+        }
+
         Column {
             id: contentCol
             width: Math.min(scroll.width, page.maxContentWidth)
@@ -1298,6 +1305,7 @@ Page {
                                         var arr;
                                         try { arr = JSON.parse(model.links || "[]"); } catch (e) { return ""; }
                                         if (!arr.length) return "";
+                                        // confirm click is inside the link's own rect
                                         var pos = bodyTxt.positionAt(x, y);
                                         var plain = bodyTxt.getText(0, bodyTxt.length);
                                         for (var i = 0; i < arr.length; i++) {
@@ -1305,7 +1313,12 @@ Page {
                                             if (!t) continue;
                                             var from = 0, idx;
                                             while ((idx = plain.indexOf(t, from)) !== -1) {
-                                                if (pos >= idx && pos <= idx + t.length) return arr[i].href;
+                                                if (pos >= idx && pos <= idx + t.length) {
+                                                    var r0 = bodyTxt.positionToRectangle(idx);
+                                                    var r1 = bodyTxt.positionToRectangle(idx + t.length);
+                                                    if (y >= r0.y && y <= r0.y + r0.height && x >= r0.x && x <= r1.x)
+                                                        return arr[i].href;
+                                                }
                                                 from = idx + 1;
                                             }
                                         }

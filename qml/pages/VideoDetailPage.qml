@@ -1001,6 +1001,13 @@ Page {
         }
         // No auto-focus-on-load: used to steal focus even for mouse opens (see keyboardFocusItem)
 
+        // closes open comment menu on outside tap
+        MouseArea {
+            width: scroll.contentWidth; height: scroll.contentHeight
+            enabled: CommentMenu.openKey !== ""
+            onClicked: CommentMenu.openKey = ""
+        }
+
         Column {
             id: contentCol
             width: scroll.width

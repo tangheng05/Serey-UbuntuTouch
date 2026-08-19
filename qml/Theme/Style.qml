@@ -104,6 +104,15 @@ QtObject {
     // Khmer combining vowel signs can ink past their advance-width box, so wrapped text needs this margin subtracted to avoid clipping.
     readonly property real wrapSafeMargin: units.gu(0.5)
 
+    // Uppercases the first letter only, the way a keyboard's auto-shift would. Leaves the rest
+    // of the string alone, and anything that doesn't start with a letter untouched.
+    function sentenceCase(s) {
+        if (!s || s.length === 0) return s;
+        var first = s.charAt(0);
+        var up = first.toUpperCase();
+        return up === first ? s : up + s.substring(1);
+    }
+
     // Helpers: relative timestamp formatted as "just now / Xm / Xh / Xd ago / DD Mon [YYYY]".
     function formatTimeAgo(dateStr) {
         if (!dateStr)

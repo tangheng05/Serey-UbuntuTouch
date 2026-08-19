@@ -32,6 +32,8 @@ Page {
     property bool nativeMode: false     // QtMultimedia (efficient, mp4/webm/m4v)
     property bool webVideoMode: false   // Chromium HTML5 <video> (mov / native fallback)
     property bool isFullscreen: false   // player reparented to fill the whole screen
+    // Mirrors VideoWebView.scrubbing (webLoader is recreated on every play, so it can't be bound to)
+    property bool scrubbing: false
     property bool isFollowing: false
     property bool descSheetOpen: false
 
@@ -759,7 +761,9 @@ Page {
         // Enter bypasses the Send button's enabled state, so a fast double tap posted twice.
         if (page.posting) return;
         var activeComposer = page.showSidePanel ? panelComposer : composer;
-        var text = activeComposer.text.trim();
+        // Word prediction can commit the first word before AutoCapitalize sees it, so the
+        // send path capitalizes too; both are no-ops when the text already starts upper.
+        var text = Style.sentenceCase(activeComposer.text.trim());
         if (text.length === 0) return;
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
@@ -964,6 +968,10 @@ Page {
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
+        // A drag on the player's timeline crossed this Flickable's threshold and got stolen,
+        // so the scrub stopped after a few pixels (fullscreen reparents out of here, which is
+        // why it worked there). The WebView reports the drag; freeze scrolling while it runs.
+        interactive: !page.scrubbing
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
@@ -1044,6 +1052,8 @@ Page {
                     id: webLoader
                     anchors.fill: parent
                     active: page.playing
+                    // Unloading mid-drag would otherwise leave the page unscrollable.
+                    onActiveChanged: if (!active) page.scrubbing = false
                     // Native player only for nativeMode; webVideoMode and embed playback both use the WebView (HTML5 <video> vs iframe).
                     source: page.playing
                         ? (page.nativeMode ? Qt.resolvedUrl("../components/VideoNativePlayer.qml")
@@ -1062,6 +1072,8 @@ Page {
                         }
                         // Both WebView modes (<video> + YouTube iframe) can request fullscreen; the native player can't.
                         if (!page.nativeMode) {
+                            page.scrubbing = false;
+                            item.scrubbingChanged.connect(function () { page.scrubbing = item.scrubbing; });
                             item.fullscreenToggled.connect(page.setFullscreen);
                             // Play was a click on the poster, so the shortcuts should work
                             // straight away without a second click into the video.
@@ -1843,6 +1855,8 @@ Page {
 
                     TextField {
                         id: panelComposer
+                    // Stands in for the keyboard's auto-shift on the first letter.
+                    AutoCapitalize { field: panelComposer }
                         anchors { left: parent.left; leftMargin: Style.spacingM; right: panelSendButton.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
                         height: parent.height - units.dp(2)
                         StyleHints {
@@ -2090,6 +2104,8 @@ Page {
                     // Lomiri TextField (not a raw TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste; StyleHints keep the gray-pill look.
                     TextField {
                         id: composer
+                        // Stands in for the keyboard's auto-shift on the first letter.
+                        AutoCapitalize { field: composer }
                         width: parent.width - cmtSendBtn.width - Style.spacingS
                         height: units.gu(5)
                         StyleHints {

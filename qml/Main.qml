@@ -127,6 +127,9 @@ MainView {
 
         // Every request doubles as a reachability sample, so the whole app knows it's offline.
         Http.setNetworkStatusHandler(function (reachable) { Net.report(reachable); });
+        // Lets Net probe while a request is still hanging, instead of learning about a dead
+        // network only when that request times out 15s later.
+        Http.setPendingHandler(function (count) { Net.pending = count; });
 
         // Needed immediately: the header pill icons and can-post gates read it.
         _loadCommunities();

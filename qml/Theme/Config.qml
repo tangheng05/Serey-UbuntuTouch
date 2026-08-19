@@ -30,7 +30,7 @@ QtObject {
     readonly property bool debugScrollTest: false
     property bool useLocalDev: false
 
-    readonly property string baseUrl: "https://offline.invalid/api/v2"   // TEMP offline preview
+    readonly property string baseUrl: useLocalDev ? devBase : prodBase
     readonly property string baseUrlV1: useLocalDev ? devBaseV1 : prodBaseV1
 
     // Default page size for paginated lists.
@@ -48,7 +48,7 @@ QtObject {
     readonly property string storageDeleteUploadUrl: "https://serey.io/api/storage/delete-upload"
 
     // Homepage mini-app: a single fixed site, filtered client-side via a `community_id` query param rather than switching domains.
-    readonly property string homeLandingPageUrl: "https://offline.invalid"   // TEMP offline preview
+    readonly property string homeLandingPageUrl: "https://khmer.serey.io"
 
     // Regional sources: the three fixed rows at the top of the community picker; Global (id 0) applies no filter, combining every community's feed.
     readonly property var baseSources: [

@@ -9,6 +9,18 @@ var _onNetworkStatus = null;
 function setNetworkStatusHandler(fn) { _onNetworkStatus = fn; }
 function _reportNet(reachable) { if (_onNetworkStatus) _onNetworkStatus(reachable); }
 
+// How many requests are waiting for an answer. A dropped connection is only reported when a
+// request finally times out, so Net watches this instead and probes while one is still hanging.
+var _pending = 0;
+var _onPending = null;
+function setPendingHandler(fn) { _onPending = fn; }
+function _pendingDelta(d) {
+    _pending += d;
+    if (_pending < 0) _pending = 0;
+    if (_onPending) _onPending(_pending);
+}
+function pendingCount() { return _pending; }
+
 function buildQuery(params) {
     if (!params)
         return "";
@@ -34,7 +46,11 @@ function send(method, url, token, bodyObj, onOk, onErr, timeoutMs) {
     // Without a timeout a stalled mobile request never resolves, leaving the caller's `loading` flag stuck true and permanently blocking pagination.
     // Callers doing an on-chain write pass a longer one: a broadcast outlives the default wait.
     xhr.timeout = timeoutMs || 15000;
+    // One settle per request, whichever way it ends (abort() fires readystatechange too).
+    var settled = false;
+    function _settle() { if (settled) return; settled = true; _pendingDelta(-1); }
     xhr.ontimeout = function () {
+        _settle();
         _reportNet(false);
         // `timeout: true` lets a caller tell "we stopped waiting" apart from "it failed".
         onErr({ status: 0, timeout: true, message: "Request timed out. Check your connection." });
@@ -43,6 +59,7 @@ function send(method, url, token, bodyObj, onOk, onErr, timeoutMs) {
     xhr.onreadystatechange = function () {
         if (xhr.readyState !== XMLHttpRequest.DONE)
             return;
+        _settle();
 
         if (xhr.status === 0) {
             _reportNet(false);
@@ -72,6 +89,7 @@ function send(method, url, token, bodyObj, onOk, onErr, timeoutMs) {
         }
     };
 
+    _pendingDelta(1);
     xhr.send(bodyObj ? JSON.stringify(bodyObj) : null);
     return xhr;   // returned so callers can abort() a stale/in-flight request
 }

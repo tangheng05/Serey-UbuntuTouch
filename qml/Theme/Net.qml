@@ -9,7 +9,7 @@ Item {
 
     // Dev switch: flip to true to preview every offline surface without pulling the plug.
     // Ships false; nothing in the app sets it.
-    property bool forceOffline: true   // TEMP: previewing the offline surfaces
+    property bool forceOffline: false
 
     readonly property bool online: !net.forceOffline && net._reachable
     property bool _reachable: true
@@ -52,6 +52,20 @@ Item {
         interval: 15000
         repeat: true
         running: !net.online && !net.forceOffline
+        onTriggered: net.probe()
+    }
+
+    // Requests currently waiting for an answer (fed by Http.setPendingHandler in Main.qml).
+    property int pending: 0
+
+    // A dropped connection otherwise stays invisible until a request hits its own 15s timeout,
+    // so the spinner outlives the network. While anything is pending, probe: the probe answers
+    // in well under a second on a live link, so a slow-but-alive network is left alone and only
+    // a real outage flips us offline early.
+    Timer {
+        interval: 3000
+        repeat: true
+        running: net.pending > 0 && net._reachable && !net.forceOffline
         onTriggered: net.probe()
     }
 }

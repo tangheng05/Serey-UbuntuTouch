@@ -159,7 +159,9 @@ Page {
     function submitComment() {
         // Enter bypasses the Send button's enabled state, so a fast double tap posted twice.
         if (page.posting) return;
-        var text = composer.text.trim();
+        // Word prediction can commit the first word before AutoCapitalize sees it, so the
+        // send path capitalizes too; both are no-ops when the text already starts upper.
+        var text = Style.sentenceCase(composer.text.trim());
         if (text.length === 0)
             return;
         if (!Session.isLoggedIn) {
@@ -458,6 +460,8 @@ Page {
             // Lomiri TextField (not a raw TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste; StyleHints keep the gray-pill look.
             TextField {
                 id: composer
+                // Stands in for the keyboard's auto-shift on the first letter.
+                AutoCapitalize { field: composer }
                 width: parent.width - sendButton.width - Style.spacingS
                 height: units.gu(5)
                 StyleHints {

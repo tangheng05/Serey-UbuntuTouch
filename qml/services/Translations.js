@@ -177,7 +177,7 @@ var nl = {
     "Language saved. Restart the app to apply.":        "Taal opgeslagen. Herstart de app om toe te passen.",
     "Last name":                                        "Achternaam",
     "Latest":                                            "Recent",
-    "Latest Videos":                                    "Nieuwste video's",
+    "Latest Videos":                                    "Recente video's",
     "Library":                                          "Bibliotheek",
     "Liked":                                            "Geliked",
     "Likes":                                            "Likes",

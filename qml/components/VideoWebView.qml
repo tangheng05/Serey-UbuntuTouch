@@ -24,6 +24,9 @@ Item {
     property bool paused: false
     signal fullscreenToggled(bool on)
 
+    // True while the user drags our timeline. The host page uses it to freeze its Flickable.
+    property bool scrubbing: false
+
     // Freeze the Chromium renderer on app background/suspend; same SIGBUS-on-resume issue and lifecycleState int trap as WebAppView.
     readonly property int _lcActive: 0
     readonly property int _lcFrozen: 1
@@ -126,6 +129,8 @@ Item {
         onJavaScriptConsoleMessage: function (level, message, lineNumber, sourceID) {
             if (message.indexOf("__SEREY_READY__") >= 0)
                 root.ready = true;
+            if (message.indexOf("__SEREY_SCRUB__") >= 0)
+                root.scrubbing = message.indexOf("__SEREY_SCRUB__1") >= 0;
             // Overriding this handler suppresses Chromium's own stdout echo, so forward ours.
             if (message.indexOf("[yt]") >= 0)
                 console.log("VideoWebView " + message);
@@ -203,9 +208,13 @@ Item {
                'function commit(p){var d=P.dur();' +
                'if(d&&isFinite(d))jump(p*d);else want=p;' +
                'poke();}' +
-               'function endDrag(){if(!drag)return;drag=false;commit(pend);}' +
+               // QML listens for these: the page Flickable steals the touch mid-drag otherwise,
+               // which is why scrubbing died after a few pixels inline but worked fullscreen.
+               'function scrubOn(){console.log("__SEREY_SCRUB__1");}' +
+               'function scrubOff(){console.log("__SEREY_SCRUB__0");}' +
+               'function endDrag(){if(!drag)return;drag=false;scrubOff();commit(pend);}' +
                // Drag latch must be release-proof: QtWebEngine can drop pointerup after a tap
-               'trk.addEventListener("pointerdown",function(e){drag=true;pend=pos(e.clientX);' +
+               'trk.addEventListener("pointerdown",function(e){drag=true;scrubOn();pend=pos(e.clientX);' +
                'try{trk.setPointerCapture(e.pointerId);}catch(_){}' +
                'paint(pend);poke();e.preventDefault();});' +
                'trk.addEventListener("pointermove",function(e){' +
@@ -218,8 +227,8 @@ Item {
                // the pointerup, this still arrives and the drag still commits.
                'window.addEventListener("touchend",endDrag,true);' +
                'window.addEventListener("touchcancel",endDrag,true);' +
-               'window.addEventListener("pointercancel",function(){drag=false;poke();},true);' +
-               'window.addEventListener("blur",function(){drag=false;});' +
+               'window.addEventListener("pointercancel",function(){drag=false;scrubOff();poke();},true);' +
+               'window.addEventListener("blur",function(){drag=false;scrubOff();});' +
                'pb.addEventListener("click",function(){if(P.paused()){P.play();}else{P.pause();}icon();poke();});' +
                'fs.addEventListener("click",function(){fsToggle();});' +
                // Once the user clicks the video, keys go to Chromium and never reach QML's

@@ -115,7 +115,7 @@ var nl = {
     "Serey only, no votes or rewards.":             "Alleen Serey, geen stemmen of beloningen.",
     "Still sending your last vote...":                  "Je vorige stem wordt nog verstuurd...",
     "Serey couldn't record that vote right now. Please try again.": "Serey kon je stem nu niet verwerken. Probeer het opnieuw.",
-    "Thanks for your feedback!":                    "Je stem is geregistreerd",
+    "Thanks for your feedback!":                    "Bedankt voor je stem",
     "Thanks for your report":                       "Bedankt voor je melding",
     "Thanks for your vote!":                        "Bedankt voor je stem!",
     "That device will be signed out and must sign in again.": "Dat apparaat wordt afgemeld en moet opnieuw inloggen.",

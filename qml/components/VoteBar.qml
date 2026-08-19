@@ -178,6 +178,19 @@ RowLayout {
         bar._failReverting(e, snap);
     }
 
+    // Same deal for the flag direction: "already voted in a similar way" is the
+    // server confirming the flag is on chain, even when the feed's flaggers list
+    // (server-cached) hasn't caught up. Reverting turned the icon grey again a
+    // second after the tap.
+    function _failFlag(e, snap) {
+        var msg = (e && e.message) ? e.message.toLowerCase() : "";
+        if (!_isHandledAuthFailure(e) && msg.indexOf("already") >= 0) {
+            bar._finishBusy();
+            return;
+        }
+        bar._failReverting(e, snap);
+    }
+
     function doUpvote() {
         // Tapping again during a broadcast almost always means "undo that". Refusing for the
         // 20s+ a chain write can take reads as a broken button, so queue it and replay on
@@ -257,7 +270,7 @@ RowLayout {
             bar.busy = true;
             VoteService.flag(Config.baseUrl, author, permlink, voteType, Session.token,
                 function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
-                function (e) { if (bar._stale(key)) return; bar._failReverting(e, snap); });
+                function (e) { if (bar._stale(key)) return; bar._failFlag(e, snap); });
         }
     }
 

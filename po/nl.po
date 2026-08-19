@@ -884,7 +884,7 @@ msgid "You have 1 new notification"
 msgstr "U heeft 1 nieuwe melding"
 
 msgid "You hold your own private key. It can't be recovered if lost."
-msgstr "U beheert uw eigen privésleutel. Hij kan niet worden hersteld als hij verloren gaat."
+msgstr "Volledige controle. U beheert uw eigen privésleutel, niemand anders heeft toegang. Bewaar hem goed, want hij kan niet worden hersteld."
 
 msgid "You won't be able to see any posts from this person"
 msgstr "U kunt geen berichten meer zien van deze persoon"

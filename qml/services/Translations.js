@@ -697,8 +697,6 @@ var nl = {
     "View live site":                                   "Live site bekijken",
     "Watch this video without a connection":            "Bekijk deze video zonder verbinding",
     "We keep your keys safe, sign in with a password.": "Wij bewaren uw sleutels veilig; u logt in met een wachtwoord.",
-    "Where should this post go?":                       "Waar moet dit artikel komen?",
-    "Where should this video go?":                      "Waar moet deze video komen?",
     "Your platforms":                                   "Uw platforms",
     "Explore platforms":                                "Ontdek platforms",
     "Where you're browsing":                            "Waar u nu bladert",

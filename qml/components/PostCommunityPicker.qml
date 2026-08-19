@@ -529,7 +529,7 @@ Item {
                     Label {
                         width: parent.width - units.gu(3.5)
                         anchors.verticalCenter: parent.verticalCenter
-                        text: picker.forVideo ? Lang.tr("Where should this video go?") : Lang.tr("Where should this post go?")
+                        text: Lang.tr("Choose the platform that you want to post in")
                         font.pixelSize: Style.fontMedium
                         font.weight: Font.DemiBold
                         color: Style.textTitle
@@ -578,21 +578,14 @@ Item {
                         }
 
                         Label {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: picker.forVideo ? Lang.tr("Where should this video go?") : Lang.tr("Where should this post go?")
-                            font.pixelSize: units.dp(17)
-                            font.weight: Font.DemiBold
-                            color: Style.textTitle
-                        }
-                        Label {
                             width: parent.width - Style.spacingM * 4
                             anchors.horizontalCenter: parent.horizontalCenter
-                            visible: !picker.anchored
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.WordWrap
                             text: Lang.tr("Choose the platform that you want to post in")
-                            font.pixelSize: Style.fontSmall
-                            color: Style.textSecondary
+                            font.pixelSize: units.dp(17)
+                            font.weight: Font.DemiBold
+                            color: Style.textTitle
                         }
                     }
                 }

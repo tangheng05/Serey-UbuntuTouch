@@ -9,7 +9,7 @@ Item {
 
     // Dev switch: flip to true to preview every offline surface without pulling the plug.
     // Ships false; nothing in the app sets it.
-    property bool forceOffline: false
+    property bool forceOffline: true   // TEMP: previewing the offline surfaces
 
     readonly property bool online: !net.forceOffline && net._reachable
     property bool _reachable: true
@@ -29,7 +29,10 @@ Item {
         if (net.forceOffline || net._probing) return;
         net._probing = true;
         var xhr = new XMLHttpRequest();
-        xhr.timeout = 8000;
+        // A HEAD against the API answers in well under a second on any live connection, so
+        // this only has to outlast a slow handshake. Every second here is a second the app
+        // keeps spinning before it admits it's offline.
+        xhr.timeout = 4000;
         xhr.ontimeout = function () { net._probing = false; net._reachable = false; };
         xhr.onreadystatechange = function () {
             if (xhr.readyState !== XMLHttpRequest.DONE) return;

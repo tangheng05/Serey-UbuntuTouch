@@ -659,7 +659,17 @@ Page {
     Connections {
         target: Net
         function onOnlineChanged() {
-            if (!Net.online) return;
+            // Losing the network mid-request used to leave the spinner up until the HTTP
+            // timeout (~15s). Drop the request as soon as Net says we're offline, so the
+            // offline surface is immediate.
+            if (!Net.online) {
+                if (page.inflight) { page.inflight.abort(); page.inflight = null; }
+                page.loading = false;
+                page.refreshing = false;
+                if (feedModel.count === 0 && page.errorMsg === "")
+                    page.errorMsg = Lang.tr("There is currently no network connection.");
+                return;
+            }
             if (feedModel.count === 0) page.reload();
             else if (!page.loading && !page.endReached && list.atYEnd) page.loadMore();
         }
@@ -669,10 +679,27 @@ Page {
     ErrorState {
         anchors.fill: list
         autoRetry: false   // the Net handler above already reloads and resumes paging
-        visible: page.errorMsg !== "" && feedModel.count === 0
+        // Offline is the cover below; this stays the online-error panel only.
+        visible: Net.online && page.errorMsg !== "" && feedModel.count === 0
         message: page.errorMsg
         onRetry: page.reload()
     }
+
+    // Offline shows the Homepage's panel over the whole list, cached rows and all, so the
+    // offline face of the app is the same everywhere (opaque, or rows read through it).
+    Rectangle {
+        anchors.fill: list
+        visible: !Net.online
+        color: Style.surface
+        z: 2
+        // Swallow taps so the list can't be scrolled or opened behind the panel.
+        MouseArea { anchors.fill: parent }
+        OfflineState {
+            anchors.fill: parent
+            onRetry: page.reload()
+        }
+    }
+
     EmptyState {
         anchors.fill: list
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0

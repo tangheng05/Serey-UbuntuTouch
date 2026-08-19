@@ -744,7 +744,17 @@ Page {
     Connections {
         target: Net
         function onOnlineChanged() {
-            if (!Net.online) return;
+            // Losing the network mid-request used to leave the spinner up until the HTTP
+            // timeout (~15s). Drop the requests as soon as Net says we're offline, so the
+            // offline surface is immediate.
+            if (!Net.online) {
+                page._abortInflight();
+                page.loading = false;
+                page.refreshing = false;
+                if (feedModel.count === 0 && page.errorMsg === "")
+                    page.errorMsg = Lang.tr("There is currently no network connection.");
+                return;
+            }
             if (feedModel.count === 0) page.reload();
             else if (!page.loading && !page._allEnded() && list.atYEnd) page.loadMore();
         }

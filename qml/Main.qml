@@ -216,6 +216,19 @@ MainView {
         root._prefetchFeeds();
     }
 
+    // The same country hint that picks the default community also picks the UI language:
+    // Dutch in the Netherlands, English everywhere else. Hooked to the property rather than
+    // the callbacks, so the startup fetch and the back-online retry are both covered.
+    // setLanguageAuto() no-ops once the language was chosen by hand in Settings.
+    Connections {
+        target: Config
+        function onDetectedCountryCodeChanged() {
+            var cc = Config.detectedCountryCode;
+            if (cc.length === 0) return;
+            Session.setLanguageAuto(cc === "NL" ? "nl" : "en");
+        }
+    }
+
     // Backstop: geo or get-communities may never answer, and the feeds still want warming.
     Timer {
         id: _prefetchLate
@@ -618,6 +631,7 @@ MainView {
                 onClicked: {
                     // Target the News master page (not whatever's open in the detail column).
                     var np = newsStack.rootPage;
+                    postCommunityPicker.forVideo = false;
                     postCommunityPicker.openFor(function (target) {
                         var props = target ? { targetCommunity: target } : {};
                         var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"), props);
@@ -647,18 +661,24 @@ MainView {
                 KeyTapArea { onActivated: composeBtn.clicked() }
             }
 
-            // Upload video (Video tab only), gated on the community's video posting permission.
+            // Upload video (Video tab only). Always shown: the picker below lists only the
+            // communities that allow video posting, so the browsed source's permission no longer gates it.
             AbstractButton {
                 id: uploadBtn
-                visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostVideoCurrent
+                visible: Session.isLoggedIn && root.currentTab === 2
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
                 height: width
                 onClicked: {
                     // Target the Video master page; currentPage in split mode has no reload()
                     var vp = videoStack.rootPage;
-                    var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
-                    if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);
+                    postCommunityPicker.forVideo = true;
+                    postCommunityPicker.openFor(function (target) {
+                        var props = target ? { targetCommunity: target } : {};
+                        var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"), props);
+                        if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);
+                    // desktop only: anchors the dropdown
+                    }, root.desktopMode ? uploadBtn : null);
                 }
                 Rectangle {
                     anchors.fill: parent

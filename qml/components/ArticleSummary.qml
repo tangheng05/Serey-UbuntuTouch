@@ -47,8 +47,8 @@ Item {
             height: units.gu(3)
             onClicked: root.expanded = !root.expanded
 
-            // Bounded by the toggle, not free-floating: a long translation used to run
-            // straight under "Inklappen" on a phone.
+            // Bounded by the toggle, not free-floating: the meta line has to give way to the
+            // chevron rather than run under it on a phone.
             Row {
                 id: metaRow
                 anchors { left: parent.left; right: toggleRow.left; rightMargin: Style.spacingS
@@ -85,19 +85,12 @@ Item {
                 }
             }
 
-            // Word plus chevron: the chevron alone doesn't read as "tap me".
+            // Chevron only: the whole header is the tap target, and the rotation says which way.
             Row {
                 id: toggleRow
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 spacing: Style.spacingXs
 
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.expanded ? Lang.tr("Collapse") : Lang.tr("Expand")
-                    font.pixelSize: Style.fontXSmall
-                    font.family: Style.fontFor(text)
-                    color: Style.textSecondary
-                }
                 Icon {
                     anchors.verticalCenter: parent.verticalCenter
                     width: units.gu(1.4); height: width

@@ -51,17 +51,21 @@ Item {
 
         Image {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: units.gu(6); height: width
-            source: Qt.resolvedUrl(Style.dark ? "../../assets/no-connection-dark.png" : "../../assets/no-connection.png")
+            // Big enough to read as an illustration, not an icon; capped so it stays
+            // sane in the narrow detail panel of a split window.
+            width: Math.min(parent.width * 0.62, units.gu(24)); height: width
+            // One illustration for both themes: it reads on light and dark alike.
+            source: Qt.resolvedUrl("../../assets/offline-camp.png")
             fillMode: Image.PreserveAspectFit
-            sourceSize.width: units.gu(12)
+            sourceSize.width: units.gu(24)
             asynchronous: true
 
-            // gentle breathing loop
+            // Slow, shallow breathing: at illustration size a 12% pulse read as a throb,
+            // so it's 3% over a 7s cycle, on a sine so there is no beat at the turns.
             SequentialAnimation on scale {
                 loops: Animation.Infinite
-                NumberAnimation { from: 1.0; to: 1.12; duration: 900; easing.type: Easing.InOutQuad }
-                NumberAnimation { from: 1.12; to: 1.0; duration: 900; easing.type: Easing.InOutQuad }
+                NumberAnimation { from: 1.0; to: 1.03; duration: 3500; easing.type: Easing.InOutSine }
+                NumberAnimation { from: 1.03; to: 1.0; duration: 3500; easing.type: Easing.InOutSine }
             }
         }
 

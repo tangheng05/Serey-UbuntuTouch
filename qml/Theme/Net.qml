@@ -7,42 +7,48 @@ import QtQuick 2.7
 Item {
     id: net
 
-    property bool online: true
+    // Dev switch: flip to true to preview every offline surface without pulling the plug.
+    // Ships false; nothing in the app sets it.
+    property bool forceOffline: false
+
+    readonly property bool online: !net.forceOffline && net._reachable
+    property bool _reachable: true
     property bool _probing: false
 
     // status 0 from Http.js is "no response at all", but that also covers our own abort()
     // of a stale feed request, so a failure is confirmed with a probe before flipping.
     function report(reachable) {
-        if (reachable) { net.online = true; return; }
-        if (!net.online || net._probing) return;
+        if (net.forceOffline) return;
+        if (reachable) { net._reachable = true; return; }
+        if (!net._reachable || net._probing) return;
         net.probe();
     }
 
     // Any HTTP answer proves connectivity, so the status code itself doesn't matter.
     function probe() {
-        if (net._probing) return;
+        if (net.forceOffline || net._probing) return;
         net._probing = true;
         var xhr = new XMLHttpRequest();
         xhr.timeout = 8000;
-        xhr.ontimeout = function () { net._probing = false; net.online = false; };
+        xhr.ontimeout = function () { net._probing = false; net._reachable = false; };
         xhr.onreadystatechange = function () {
             if (xhr.readyState !== XMLHttpRequest.DONE) return;
             net._probing = false;
-            net.online = xhr.status !== 0;
+            net._reachable = xhr.status !== 0;
         };
         try {
             xhr.open("HEAD", Config.baseUrl);
             xhr.send();
         } catch (e) {
             net._probing = false;
-            net.online = false;
+            net._reachable = false;
         }
     }
 
     Timer {
         interval: 15000
         repeat: true
-        running: !net.online
+        running: !net.online && !net.forceOffline
         onTriggered: net.probe()
     }
 }

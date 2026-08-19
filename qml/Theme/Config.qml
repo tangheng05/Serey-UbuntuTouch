@@ -245,7 +245,8 @@ QtObject {
     // Same as allowPostByDns, for video posting
     property var videoAllowPostByDns: ({})
 
-    // Same as canPostCurrent, gates the Video upload FAB
+    // Same as canPostCurrent, for video. The Video tab's upload button no longer uses it
+    // (the picker filters by permission instead); kept as the per-source video-permission read.
     readonly property bool canPostVideoCurrent: communityId > 0
         && (isOwnerCurrent
             || (selectedSubCommunity ? !!selectedSubCommunity.videoAllowPost

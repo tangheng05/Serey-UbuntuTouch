@@ -13,6 +13,9 @@ QtObject {
     // user_devices row (UUID) for this login; lets Active sessions mark "This device". "" = unknown (pre-existing session).
     property string deviceId: ""
     property string language: "en"   // "en" or "nl"
+    // True once the language was picked by hand in Settings; blocks the geo default from
+    // overwriting that choice on later launches.
+    property bool languageChosen: false
     // epoch ms of last push-token registration
     property double lastPushRegisterAt: 0
 
@@ -38,14 +41,26 @@ QtObject {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
                 var rs = tx.executeSql("SELECT k, v FROM auth");
+                var sawLanguage = false, sawChosen = false;
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);
+                    if (row.k === "language") sawLanguage = true;
+                    if (row.k === "languageChosen") sawChosen = true;
                     if (row.k === "token") session.token = row.v;
                     else if (row.k === "username") session.username = row.v;
                     else if (row.k === "pushEnabled") session.pushEnabled = (row.v !== "false");
                     else if (row.k === "language") session.language = row.v;
+                    else if (row.k === "languageChosen") session.languageChosen = (row.v === "true");
                     else if (row.k === "lastPushRegisterAt") session.lastPushRegisterAt = Number(row.v) || 0;
                     else if (row.k === "deviceId") session.deviceId = row.v || "";
+                }
+                // Installs from before the geo default: a language row could only come from
+                // the Settings picker, so honour it as an explicit choice rather than
+                // overwriting it on the next launch. Both writers store the flag now, so its
+                // absence is what dates the row.
+                if (sawLanguage && !sawChosen) {
+                    session.languageChosen = true;
+                    tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('languageChosen', 'true')");
                 }
             });
         } catch (e) {
@@ -134,14 +149,31 @@ QtObject {
         } catch (e) { console.warn("Session save lastPushRegisterAt error: " + e); }
     }
 
-    function setLanguage(lang) {
-        language = lang;
+    function _saveKey(k, v) {
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
-                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('language', ?)", [lang]);
+                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES(?, ?)", [k, v]);
             });
-        } catch (e) { console.warn("Session save language error: " + e); }
+        } catch (e) { console.warn("Session save " + k + " error: " + e); }
+    }
+
+    // Explicit pick from Settings: remembered as the user's own choice.
+    function setLanguage(lang) {
+        language = lang;
+        languageChosen = true;
+        _saveKey("language", lang);
+        _saveKey("languageChosen", "true");
+    }
+
+    // Geo default (Main.qml, from the detected country). Yields to an explicit pick, and is
+    // still persisted so a launch with no network keeps the language it settled on.
+    function setLanguageAuto(lang) {
+        if (languageChosen || lang === language) return;
+        language = lang;
+        _saveKey("language", lang);
+        // Stamped false, not left absent: _load() reads a missing flag as a pre-geo manual pick.
+        _saveKey("languageChosen", "false");
     }
 
     function saveVote(author, permlink, upvoted, flagged, votes) {

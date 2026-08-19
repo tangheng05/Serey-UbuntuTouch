@@ -23,6 +23,14 @@ Item {
     // allow it are shown (for browsing into their children) but can't be selected.
     property bool forVideo: false
     function _canPost(entry) { return !!entry && !!(picker.forVideo ? entry.videoAllowPost : entry.allowPost); }
+    // The pre-selected id can name a row that doesn't exist yet (a child arrives only once its
+    // country is fetched), so selectedEntry stays null and Continue reads as disabled even with
+    // the row visibly ticked. Re-resolve it from _byId every time new rows are registered.
+    function _syncSelectedEntry() {
+        if (picker.selectedEntry || picker.selectedId.length === 0) return;
+        var e = picker._byId[picker.selectedId];
+        if (e) picker.selectedEntry = e;
+    }
     // Marks rows for communities the signed-in user owns/manages with the "Owner" pill.
     function _isOwned(entry) { return !!entry && !!entry.id && !!Config.ownedCommunityIdSet[entry.id]; }
     // True when `items` is the country list; only then can rows expand for children
@@ -45,12 +53,14 @@ Item {
         for (var k in Config.communityById) {
             var c = Config.communityById[k];
             if (!c || c.dns !== dns) continue;
-            if (picker.forVideo ? !c.videoAllowPost : !c.allowPost) return null;
+            // Blog: no post permission means no row at all (Global can't be expanded into).
+            // Video: keep the row and let _canPost grey it, so the list matches the blog's shape.
+            if (!picker.forVideo && !c.allowPost) return null;
             return {
                 id: String(c.id),
                 name: c.title || Config.sources[0].name,
                 icon: Config.communityIcon(dns),
-                allowPost: true,
+                allowPost: !!c.allowPost,
                 videoAllowPost: !!c.videoAllowPost,
                 isParent: true,
                 expandable: false
@@ -76,6 +86,8 @@ Item {
 
     // Communities the user owns live anywhere in the tree, so browsing a different branch
     // would otherwise hide them; an owner may post to their own community regardless.
+    // That holds for video too: is_allow_post/video_is_allow_post false means "only me and my
+    // managers" (see VideoManagementPage), not "nobody", so both flags are forced on here.
     function _ownedEntries(list) {
         var seen = {};
         for (var i = 0; i < list.length; i++) seen[list[i].id] = true;
@@ -89,7 +101,7 @@ Item {
                 name: c.title || "",
                 icon: c.icon,
                 allowPost: true,
-                videoAllowPost: !!c.videoAllowPost,
+                videoAllowPost: true,
                 isParent: false,
                 expandable: false,
                 // Caption rides on the first row of the group only
@@ -104,10 +116,12 @@ Item {
     // One shared exit: no target -> current context, exactly one -> take it without a modal.
     function _present(list) {
         var owned = picker._ownedEntries(list);
-        // Label the rest as a separate group only when there's a "Your platforms" section above it.
-        if (owned.length > 0 && list.length > 0) list[0].section = Lang.tr("Explore platforms");
+        // _fetch already captions its layers; only an unsectioned list needs a divider from
+        // the "Your platforms" group above it.
+        if (owned.length > 0 && list.length > 0 && !list[0].section)
+            list[0].section = Lang.tr("Explore platforms");
         var full = owned.concat(list);
-        if (full.length === 0 || (full.length === 1 && !full[0].allowPost)) {
+        if (full.length === 0 || (full.length === 1 && !picker._canPost(full[0]))) {
             var cb0 = picker._onChosen; picker._onChosen = null;
             if (cb0) cb0(null);
             return;
@@ -117,6 +131,9 @@ Item {
             if (cb1) cb1(full[0]);
             return;
         }
+        // Arm the reveal before the rows exist: assigning `items` builds the top-level
+        // delegates synchronously, so their Component.onCompleted runs before _open() would.
+        picker._revealId = picker.selectedId;
         picker.items = full;
         picker._open();
     }
@@ -173,11 +190,37 @@ Item {
             out0.push(entry);
             picker._byId[entry.id] = entry;
         }
-        // Browsing Global with no sub-community picked: pre-select the Global row
-        if (picker.selectedId.length === 0 && globalEntry) {
-            picker.selectedId = globalEntry.id;
-            picker.selectedEntry = globalEntry;
+        // The row for whatever is being browsed (Global's own row when that's the source).
+        var browsed = Config.sources[Config.sourceIndex];
+        var browsedId = browsed ? String(browsed.id) : "";
+        var current = null;
+        for (var b = 0; b < out0.length; b++)
+            if (out0[b].id === browsedId) { current = out0[b]; break; }
+        if (!current) current = globalEntry;
+
+        // No sub-community picked: pre-select the browsed row, so the sheet opens on the
+        // community you're already in rather than defaulting to Global every time.
+        if (picker.selectedId.length === 0 && current) {
+            picker.selectedId = current.id;
+            picker.selectedEntry = current;
         }
+
+        // Three layers: your own platforms (added in _present), then the country you're
+        // browsing, expanded so its communities are right there, then every other country.
+        if (current) {
+            var rest = [];
+            for (var r = 0; r < out0.length; r++)
+                if (out0[r] !== current) rest.push(out0[r]);
+            current.section = Lang.tr("Where you're browsing");
+            if (rest.length > 0) rest[0].section = Lang.tr("Explore platforms");
+            out0 = [current].concat(rest);
+            if (current.expandable !== false) {
+                picker.expandedId = current.id;
+                picker._loadChildren(current.id);
+            }
+        }
+
+        picker._syncSelectedEntry();
         if (out0.length > 1) {
             picker._autoExpandForSelection(out0);
             picker._autoExpandForOwnership(out0);
@@ -213,6 +256,7 @@ Item {
             var kids = picker._mapCommunities(comms);
             nc[id] = kids;
             picker.childCache = nc;
+            picker._syncSelectedEntry();
             if (onDone) onDone(kids);
         };
         xhr.send(null);
@@ -244,6 +288,7 @@ Item {
                 isParent: false
             };
         }
+        picker._syncSelectedEntry();
     }
 
     // Auto-expands the first top-level country that contains an owned community, so its "Owner"
@@ -271,9 +316,16 @@ Item {
     function _autoExpandForSelection(countryItems) {
         if (picker.selectedId.length === 0) return;
         var target = picker.selectedId;
-        // Already one of the top-level rows itself (rare, but possible); nothing to expand.
-        for (var i = 0; i < countryItems.length; i++)
-            if (countryItems[i].id === target) return;
+        // The selection is a top-level row itself: expand it so its children are visible
+        // right away (Global is the one row with nothing to expand into).
+        for (var i = 0; i < countryItems.length; i++) {
+            if (countryItems[i].id !== target) continue;
+            if (countryItems[i].expandable !== false) {
+                picker.expandedId = target;
+                picker._loadChildren(target);
+            }
+            return;
+        }
 
         for (var j = 0; j < countryItems.length; j++) {
             (function (countryId) {
@@ -296,12 +348,14 @@ Item {
 
     // The pre-selected row can sit far below the fold once its country auto-expands, so
     // scroll it into view. Rows announce themselves as they are created (children arrive
-    // lazily); only the one matching _revealId acts, and only once.
+    // lazily); only the one matching _revealId acts.
     property string _revealId: ""
     property var _revealTarget: null
+    property int _revealTries: 0
     function _queueReveal(item, id) {
         if (picker._revealId === "" || picker._revealId !== String(id)) return;
         picker._revealTarget = item;
+        picker._revealTries = 0;
         revealTimer.restart();
     }
     Timer {
@@ -309,17 +363,38 @@ Item {
         interval: 60   // let the expanded rows lay out before measuring
         onTriggered: {
             var it = picker._revealTarget;
+            if (!it) { picker._revealId = ""; return; }
+            var y = it.mapToItem(sheetContent, 0, 0).y;
+            var pad = units.gu(1);
+            var vh = flickable.height;
+            var max = Math.max(0, flickable.contentHeight - vh);
+            // Scroll the minimum needed: centering unconditionally pushed the sheet's own
+            // header off the top whenever the pre-selected row was one of the first ones.
+            if (y < flickable.contentY + pad)
+                flickable.contentY = Math.max(0, Math.min(max, y - pad));
+            else if (y + it.height > flickable.contentY + vh - pad)
+                flickable.contentY = Math.max(0, Math.min(max, y + it.height - vh + pad));
+            // The row keeps moving after the first measure: the sheet grows to fit, and an
+            // auto-expanded country inserts its children above/below. Re-check a few times
+            // instead of trusting one 60ms snapshot.
+            if (picker._revealTries++ < 4) { revealTimer.restart(); return; }
             picker._revealTarget = null;
             picker._revealId = "";
-            if (!it) return;
-            var y = it.mapToItem(sheetContent, 0, 0).y;
-            var max = Math.max(0, flickable.contentHeight - flickable.height);
-            flickable.contentY = Math.max(0, Math.min(max, y - flickable.height / 2 + it.height / 2));
         }
     }
 
     function _open() {
-        picker._revealId = picker.selectedId;
+        // Top-level rows are built synchronously with `items`, so their Component.onCompleted
+        // may run before anything armed the reveal; find the row by index instead of waiting
+        // to be announced. Child rows still announce themselves when they arrive.
+        if (picker._revealId.length > 0) {
+            for (var i = 0; i < picker.items.length; i++) {
+                if (picker.items[i].id !== picker._revealId) continue;
+                var it = topRepeater.itemAt(i);
+                if (it) { picker._revealTarget = it; picker._revealTries = 0; revealTimer.restart(); }
+                break;
+            }
+        }
         if (picker.caller) {
             var p = picker.caller.mapToItem(picker, 0, 0);
             picker._callerCx = p.x + picker.caller.width / 2;
@@ -441,7 +516,7 @@ Item {
                     Label {
                         width: parent.width - units.gu(3.5)
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Lang.tr("Where should this post go?")
+                        text: picker.forVideo ? Lang.tr("Where should this video go?") : Lang.tr("Where should this post go?")
                         font.pixelSize: Style.fontMedium
                         font.weight: Font.DemiBold
                         color: Style.textTitle
@@ -491,7 +566,7 @@ Item {
 
                         Label {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: Lang.tr("Where should this post go?")
+                            text: picker.forVideo ? Lang.tr("Where should this video go?") : Lang.tr("Where should this post go?")
                             font.pixelSize: units.dp(17)
                             font.weight: Font.DemiBold
                             color: Style.textTitle
@@ -502,7 +577,8 @@ Item {
                             visible: !picker.anchored
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.WordWrap
-                            text: Lang.tr("Pick the community this post will publish into. Your current browsing view won't change.")
+                            text: picker.forVideo ? Lang.tr("Pick the community this video will publish into. Your current browsing view won't change.")
+                                                  : Lang.tr("Pick the community this post will publish into. Your current browsing view won't change.")
                             font.pixelSize: Style.fontSmall
                             color: Style.textSecondary
                         }
@@ -513,6 +589,7 @@ Item {
 
                 // Flat radio list (no cards); from Global, each row is a country that can expand
                 Repeater {
+                    id: topRepeater
                     model: picker.items
 
                     delegate: Column {

@@ -827,7 +827,7 @@ Page {
                 text = text.replace(/<\/li>/gi, "<br/>");
                 text = text.replace(/<\/?(?:ul|ol)[^>]*>/gi, "");
                 text = text.replace(/<br\s*\/?>/gi, "<br/>");
-                text = text.replace(/<(?!\/?(?:b|i|br|u|a)\b)[^>]*>/gi, "");
+                text = text.replace(/<(?!\/?(?:b|i|br|u|s|a)\b)[^>]*>/gi, "");
                 text = text.replace(/&nbsp;/g, " ");
                 text = text.replace(/&amp;/g, "&");
                 text = text.replace(/&lt;/g, "<");

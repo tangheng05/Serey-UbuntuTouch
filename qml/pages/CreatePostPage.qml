@@ -211,9 +211,18 @@ Page {
         if (bodyMatch) t = bodyMatch[1];
         t = t.replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<\/?html[^>]*>/gi, "")
              .replace(/<head>[\s\S]*?<\/head>/gi, "");
-        t = t.replace(/<span[^>]*style="[^"]*font-weight:\s*(?:600|700|bold)[^"]*"[^>]*>([\s\S]*?)<\/span>/gi, "<b>$1</b>");
-        t = t.replace(/<span[^>]*style="[^"]*font-style:\s*italic[^"]*"[^>]*>([\s\S]*?)<\/span>/gi, "<i>$1</i>");
-        t = t.replace(/<span[^>]*style="[^"]*text-decoration:[^"]*line-through[^"]*"[^>]*>([\s\S]*?)<\/span>/gi, "<s>$1</s>");
+        // One pass per span so combined styles (e.g. bold+underline) collapse into nested tags
+        // instead of needing every attribute to line up with a separate regex.
+        t = t.replace(/<span([^>]*)>([\s\S]*?)<\/span>/gi, function (m, attrs, inner) {
+            var styleMatch = attrs.match(/style="([^"]*)"/i);
+            var style = styleMatch ? styleMatch[1] : "";
+            var open = "", close = "";
+            if (/font-weight:\s*(?:[6-9]00|bold)/i.test(style)) { open += "<b>"; close = "</b>" + close; }
+            if (/font-style:\s*italic/i.test(style)) { open += "<i>"; close = "</i>" + close; }
+            if (/text-decoration[^:]*:[^;"]*underline/i.test(style)) { open += "<u>"; close = "</u>" + close; }
+            if (/text-decoration[^:]*:[^;"]*line-through/i.test(style)) { open += "<s>"; close = "</s>" + close; }
+            return open.length > 0 ? open + inner + close : m;
+        });
         t = t.replace(/<p[^>]*>/gi, "<p>");
         t = t.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>/gi, '<a href="$1">');
         return t;

@@ -23,6 +23,16 @@ Item {
     // allow it are shown (for browsing into their children) but can't be selected.
     property bool forVideo: false
     function _canPost(entry) { return !!entry && !!(picker.forVideo ? entry.videoAllowPost : entry.allowPost); }
+    // Tapped a row that doesn't allow this content type: toast instead of selecting it.
+    function _selectOrWarn(entry, id) {
+        if (!picker._canPost(entry)) {
+            Toast.error(picker.forVideo ? Lang.tr("This platform doesn't allow video uploads. Choose another.")
+                                         : Lang.tr("This platform doesn't allow posting. Choose another."));
+            return;
+        }
+        picker.selectedId = id;
+        picker.selectedEntry = entry;
+    }
     // The pre-selected id can name a row that doesn't exist yet (a child arrives only once its
     // country is fetched), so selectedEntry stays null and Continue reads as disabled even with
     // the row visibly ticked. Re-resolve it from _byId every time new rows are registered.
@@ -633,9 +643,8 @@ Item {
                             AbstractButton {
                                 id: rowSelectBtn
                                 anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: row.chevronW }
-                                enabled: picker._canPost(modelData)
-                                opacity: enabled ? 1 : 0.45
-                                onClicked: { picker.selectedId = modelData.id; picker.selectedEntry = modelData; }
+                                opacity: picker._canPost(modelData) ? 1 : 0.45
+                                onClicked: picker._selectOrWarn(modelData, modelData.id)
 
                                 Row {
                                     anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
@@ -787,9 +796,8 @@ Item {
                                     AbstractButton {
                                         id: childSelectBtn
                                         anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: childRow.chevronW }
-                                        enabled: picker._canPost(modelData)
-                                        opacity: enabled ? 1 : 0.45
-                                        onClicked: { picker.selectedId = modelData.id; picker.selectedEntry = modelData; }
+                                        opacity: picker._canPost(modelData) ? 1 : 0.45
+                                        onClicked: picker._selectOrWarn(modelData, modelData.id)
 
                                         Row {
                                             anchors { fill: parent; leftMargin: Style.spacingM + units.gu(3.2); rightMargin: Style.spacingM }
@@ -918,10 +926,9 @@ Item {
                                         height: units.gu(6)
                                         readonly property string gcId: String(modelData.id || modelData._id || "")
                                         readonly property bool isSelected: picker.selectedId === gcRow.gcId
-                                        enabled: picker._canPost(modelData)
-                                        opacity: enabled ? 1 : 0.45
+                                        opacity: picker._canPost(modelData) ? 1 : 0.45
                                         // Normalized via _toggleHub()
-                                        onClicked: { picker.selectedId = gcRow.gcId; picker.selectedEntry = picker._byId[gcRow.gcId] || modelData; }
+                                        onClicked: picker._selectOrWarn(picker._byId[gcRow.gcId] || modelData, gcRow.gcId)
                                         Component.onCompleted: picker._queueReveal(gcRow, gcRow.gcId)
 
                                         Row {
@@ -1031,20 +1038,27 @@ Item {
                 anchors { verticalCenter: parent.verticalCenter; horizontalCenter: parent.horizontalCenter }
                 width: parent.width - Style.spacingM * 2
                 height: units.gu(5.5)
-                enabled: picker._canPost(picker.selectedEntry)
-                onClicked: picker._confirm()
+                readonly property bool canPost: picker._canPost(picker.selectedEntry)
+                onClicked: {
+                    if (!canPost) {
+                        Toast.error(picker.forVideo ? Lang.tr("This platform doesn't allow video uploads. Choose another.")
+                                                     : Lang.tr("This platform doesn't allow posting. Choose another."));
+                        return;
+                    }
+                    picker._confirm();
+                }
 
                 Rectangle {
                     anchors.fill: parent
                     radius: Style.cardRadius
-                    color: parent.enabled ? Style.brand : Style.iconBackground
+                    color: continueBtn.canPost ? Style.brand : Style.iconBackground
                 }
                 Label {
                     anchors.centerIn: parent
                     text: Lang.tr("Continue")
                     font.pixelSize: Style.fontMedium
                     font.weight: Font.DemiBold
-                    color: parent.enabled ? Style.textOnBrand : Style.textSecondary
+                    color: continueBtn.canPost ? Style.textOnBrand : Style.textSecondary
                 }
             }
         }

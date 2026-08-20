@@ -636,8 +636,6 @@ MainView {
                     var np = newsStack.rootPage;
                     // pin post mode
                     postCommunityPicker.forVideo = false;
-                    if (!Config.canPostCurrent)
-                        Toast.error(Lang.tr("This platform doesn't allow posting. Choose another."));
                     postCommunityPicker.openFor(function (target) {
                         var props = target ? { targetCommunity: target } : {};
                         var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"), props);
@@ -678,8 +676,6 @@ MainView {
                     // Target the Video master page; currentPage in split mode has no reload()
                     var vp = videoStack.rootPage;
                     postCommunityPicker.forVideo = true;
-                    if (!Config.canPostVideoCurrent)
-                        Toast.error(Lang.tr("This platform doesn't allow video uploads. Choose another."));
                     postCommunityPicker.openFor(function (target) {
                         postCommunityPicker.forVideo = false;
                         var props = target ? { targetCommunity: target } : {};

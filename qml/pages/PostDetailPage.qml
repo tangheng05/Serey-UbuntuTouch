@@ -388,11 +388,22 @@ Page {
     property string summaryError: ""
     property bool summaryRequested: false
 
+    // Very short articles get no summary bar at all: it promises a one-minute read of
+    // something already shorter than that, and generating one spends a request from a
+    // budget shared by every reader. 120 words is about 35 seconds at the 200 wpm below;
+    // above that a summary earns its keep, below it the post is a couple of sentences.
+    readonly property int _summaryMinWords: 120
+    property bool summarySkipped: false
+
+    function _wordCount(html) {
+        var text = String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        return text === "" ? 0 : text.split(" ").length;
+    }
+
     // Local word-count estimate shown immediately; AI bullets fill in behind it (200 wpm)
     function _localReadMinutes(html) {
-        var text = String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-        if (text === "") return 0;
-        return Math.max(1, Math.round(text.split(" ").length / 200));
+        var words = page._wordCount(html);
+        return words === 0 ? 0 : Math.max(1, Math.round(words / 200));
     }
 
     // Read time is a local word count, so the bar stands on its own; only the
@@ -402,7 +413,9 @@ Page {
         page.summaryError = "";
         page.summaryLoading = false;
         page.summaryRequested = false;
-        page.summaryMinutes = page.post ? page._localReadMinutes(page.post.body) : 0;
+        page.summarySkipped = !page.post || page._wordCount(page.post.body) < page._summaryMinWords;
+        // Zero minutes is what hides the bar, so a skipped article shows nothing at all.
+        page.summaryMinutes = page.summarySkipped ? 0 : page._localReadMinutes(page.post.body);
         page._prefetchSummary();
     }
 
@@ -410,6 +423,7 @@ Page {
     // reaches the AI service, and rides its own rate limit). Expanding the drawer
     // then costs nothing for every article that has been summarized before.
     function _prefetchSummary() {
+        if (page.summarySkipped) return;
         if (!page.post || !page.post.author || !page.post.permlink) return;
         var permlink = page.post.permlink;
         SummaryService.summarize(Config.baseUrl, page.post, Session.token, Session.language, true,
@@ -432,6 +446,7 @@ Page {
     // session, and every drawer after that opened empty. Prefetch above is cache-only
     // for exactly that reason.
     function _loadSummary(force) {
+        if (page.summarySkipped) return;
         if (!page.post || !page.post.body) return;
         if (page.summaryLoading || (page.summaryRequested && !force)) return;
         page.summaryRequested = true;
@@ -1621,8 +1636,9 @@ Page {
                     id: detailVoteBar
                     visible: !page.offlineMode
                     parent: page.showSidePanel ? sidePanelCol : footerCol
-                    // small right margin for the SEREY pill
-                    width: page.showSidePanel ? parent.width - Style.spacingS : parent.width - Style.spacingM * 2
+                    // Full rail width: the coin pill needs every pixel to keep its "SEREY"
+                    // unit word, and the column already insets it from the window frame.
+                    width: page.showSidePanel ? parent.width : parent.width - Style.spacingM * 2
                     anchors.horizontalCenter: page.showSidePanel ? undefined : parent.horizontalCenter
                     author: page.author
                     permlink: page.permlink

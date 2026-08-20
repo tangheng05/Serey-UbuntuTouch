@@ -1737,9 +1737,24 @@ Page {
                         Layout.preferredWidth: units.gu(2.5)
                     }
 
-                    Item { Layout.fillWidth: true }
+                    // Same filling-cell trick as VoteBar: one spacing charge, so the pill
+                    // keeps its unit word and still clears the rail (window) edge.
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: units.gu(3.5)
+                        visible: page.onChain && page.payout.length > 0
 
-                    CoinValue { visible: page.onChain && page.payout.length > 0; value: page.payout }
+                        CoinValue {
+                            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                            readonly property real edgeGap: Style.spacingS
+                            anchors.rightMargin: edgeGap
+                            availableWidth: parent.width - edgeGap
+                            width: Math.min(implicitWidth, Math.max(units.gu(8), parent.width - edgeGap))
+                            value: page.payout
+                            // Narrow rail: may drop the unit word if the row can't fit it.
+                            compact: true
+                        }
+                    }
                 }
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }

@@ -601,7 +601,10 @@ Page {
             }
 
             // Lomiri HIG (Presenting data): leading = negative/destructive, trailing = positive/confirming.
-            leadingActions: ListItemActions {
+            // Swipe is a touch affordance: on desktop the card's "..." menu already offers these.
+            leadingActions: Config.desktopMode ? null : swipeHideActions
+            ListItemActions {
+                id: swipeHideActions
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -629,7 +632,9 @@ Page {
                 ]
             }
 
-            trailingActions: ListItemActions {
+            trailingActions: Config.desktopMode ? null : swipeShareActions
+            ListItemActions {
+                id: swipeShareActions
                 delegate: Item {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)

@@ -28,7 +28,8 @@ RowLayout {
     property bool showComments: true
     property bool showShare: true
     property bool showVotersLabel: false
-    // Cluster everything to the left instead of pushing the coin pill to the bar's far edge.
+    // Narrow host (detail side rail): shortens the coin pill (icon only, no unit word) so
+    // the row still fits. Alignment is unchanged, the pill stays on the bar's right edge.
     property bool compact: false
     // Keyboard nav highlight, set by a host page's arrow-key handling: 0 = upvote, 1 = downvote, -1 = none.
     property int keyboardHighlight: -1
@@ -429,17 +430,25 @@ RowLayout {
         }
     }
 
-    // Excluded from the layout (not just shrunk) when compact, so no leftover gap remains
-    Item { visible: !bar.compact; Layout.fillWidth: true }
-
-    CoinValue {
+    // One filling cell rather than a spacer plus a fixed pill: the row's spacing is then
+    // charged once instead of twice, which is the difference between the pill keeping its
+    // "SEREY" unit word in the detail side rail and having to drop it.
+    Item {
+        Layout.fillWidth: true
+        Layout.preferredHeight: units.gu(3.5)
         visible: bar.onChain && bar.payout.length > 0 && bar.voteType !== "comment"
-        value: bar.payout
+
+        CoinValue {
+            id: payoutPill
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            // In a side rail the bar's right edge is the window frame, so keep a little air
+            // there. Elsewhere the pill sits flush, level with the vote icons on the left.
+            readonly property real edgeGap: bar.compact ? Style.spacingS : 0
+            anchors.rightMargin: edgeGap
+            availableWidth: parent.width - edgeGap
+            width: Math.min(implicitWidth, Math.max(units.gu(8), parent.width - edgeGap))
+            value: bar.payout
+            compact: bar.compact
+        }
     }
-
-    // gap after the pill, non-compact mode
-    Item { visible: !bar.compact; width: Style.spacingXs; height: 1 }
-
-    // Compact mode: soak up leftover width instead of letting the pill stretch flush to the edge
-    Item { visible: bar.compact; Layout.fillWidth: true }
 }

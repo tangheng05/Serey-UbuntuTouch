@@ -871,7 +871,8 @@ MainView {
                 delegate: AbstractButton {
                     width: navBar.width / 4
                     height: navBar.height
-                    property bool active: root.currentTab === index
+                    // My Feed isn't any one tab's content, so no tab reads as selected while it's open.
+                    property bool active: root.currentTab === index && !root.feedPageOpen
                     property alias keyArea: navTap
 
                     Icon {
@@ -920,7 +921,8 @@ MainView {
                 delegate: AbstractButton {
                     width: sideNavBar.width
                     height: units.gu(6)
-                    property bool active: root.currentTab === index
+                    // My Feed isn't any one tab's content, so no tab reads as selected while it's open.
+                    property bool active: root.currentTab === index && !root.feedPageOpen
                     property alias keyArea: railTap
 
                     Row {

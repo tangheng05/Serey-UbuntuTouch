@@ -488,7 +488,7 @@ Page {
             AbstractButton {
                 id: sendButton
                 width: units.gu(5); height: units.gu(5)
-                enabled: !page.posting && composer.text.trim().length > 0
+                enabled: !page.posting && composer.displayText.trim().length > 0
                 onClicked: page.submitComment()
 
                 Rectangle {

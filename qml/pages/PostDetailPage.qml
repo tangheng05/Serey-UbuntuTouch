@@ -1784,7 +1784,7 @@ Page {
                         id: sendButton
                         anchors { right: parent.right; rightMargin: units.dp(3); verticalCenter: parent.verticalCenter }
                         width: units.gu(3.8); height: width
-                        enabled: !page.posting && composer.text.trim().length > 0
+                        enabled: !page.posting && composer.displayText.trim().length > 0
                         onClicked: page.submitComment()
 
                         Rectangle {

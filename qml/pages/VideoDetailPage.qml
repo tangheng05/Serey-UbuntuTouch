@@ -1909,7 +1909,7 @@ Page {
                         id: panelSendButton
                         anchors { right: parent.right; rightMargin: units.dp(3); verticalCenter: parent.verticalCenter }
                         width: units.gu(3.8); height: width
-                        enabled: !page.posting && panelComposer.text.trim().length > 0
+                        enabled: !page.posting && panelComposer.displayText.trim().length > 0
                         onClicked: page.submitComment()
 
                         Rectangle {
@@ -2147,7 +2147,7 @@ Page {
                     AbstractButton {
                         id: cmtSendBtn
                         width: units.gu(5); height: units.gu(5)
-                        enabled: !page.posting && composer.text.trim().length > 0
+                        enabled: !page.posting && composer.displayText.trim().length > 0
                         onClicked: page.submitComment()
 
                         Rectangle {

@@ -369,7 +369,7 @@ Item {
                     id: sendBtn
                     anchors { right: parent.right; rightMargin: units.dp(3); verticalCenter: parent.verticalCenter }
                     width: units.gu(3.8); height: width
-                    enabled: !sheet.posting && composer.text.trim().length > 0
+                    enabled: !sheet.posting && composer.displayText.trim().length > 0
                     onClicked: sheet.submit()
 
                     Rectangle {

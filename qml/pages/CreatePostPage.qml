@@ -21,15 +21,52 @@ Page {
     readonly property real maxContentWidth: units.gu(72)
     property string coverImageUrl: ""
     property bool uploading: false
-    // Maps editor placeholder "[image N]" -> uploaded URL; publish() swaps them back to <img>
-    property var bodyImages: []
+    // The body as a sequence of blocks: {type:"text", html:"..."} or {type:"image", url:"..."}.
+    // Lomiri's TextArea can't render <img> tags (Qt bug QTBUG-27071, confirmed in the component's
+    // own source), so images can't live inside a single rich-text document here; instead each image
+    // is its own real Image item, stacked between editable text segments inside the same bordered box.
+    property var bodyParts: [{ type: "text", html: "" }]
+    // Which bodyParts text segment currently has keyboard focus; formatting/link/image-insert act on it.
+    property int activeTextIndex: 0
+    // Bumped by every text segment's onTextChanged so canPublish/placeholder stay reactive
+    // (a plain function call into a Repeater delegate's .text isn't tracked as a binding dependency).
+    property int _bodyRev: 0
+    // True while any bodyParts text segment has focus (focus itself lives on whichever child TextArea is active).
+    property bool bodyFocused: false
+    // Set right before a fresh text segment is created (e.g. after inserting an image) so its
+    // Loader can focus it once instantiated; Loader.onLoaded fires only once per delegate creation.
+    property int _pendingFocusIndex: -1
     // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
-    // Bound by the publish button; bodyArea lives further down the file.
+    function _anyBodyPartFocused() {
+        for (var i = 0; i < page.bodyParts.length; i++) {
+            var l = bodyRepeater.itemAt(i);
+            if (l && l.item && l.item.activeFocus) return true;
+        }
+        return false;
+    }
+
+    // Single writer into the real bodyParts array (by index, so it actually persists).
+    function _setPartHtml(idx, html) {
+        if (idx < 0 || idx >= page.bodyParts.length) return;
+        if (page.bodyParts[idx].type !== "text") return;
+        page.bodyParts[idx].html = html;
+        page._bodyRev++;
+    }
+
+    function _bodyHasContent() {
+        for (var i = 0; i < page.bodyParts.length; i++) {
+            var p = page.bodyParts[i];
+            if (p.type === "image") return true;
+            if (p.type === "text" && (p.html || "").trim().length > 0) return true;
+        }
+        return false;
+    }
+
     readonly property bool canPublish: !page.submitting
         && titleField.text.trim().length > 0
-        && bodyArea.getText(0, bodyArea.length).trim().length > 0
+        && page._bodyRev >= 0 && page._bodyHasContent()
 
     // Chosen in PostCommunityPicker before this page opens; unset = post into the browsed source
     property var targetCommunity: null
@@ -97,16 +134,27 @@ Page {
     Component.onCompleted: {
         if (page.editPost) {
             titleField.text = page.editPost.title || "";
-            // Strip the leading cover <img> we prepend on publish so it isn't duplicated; the cover is restored from the post's thumbnail.
-            var b = (page.editPost.body || "").replace(/^\s*<img[^>]*>\s*/i, "");
-            // Turn remaining inline images into "[image N]" placeholders so the editor shows readable text; publish() restores them.
-            var imgs = [];
-            b = b.replace(/<img[^>]*src=["']([^"']*)["'][^>]*\/?>/gi, function (m, src) {
-                imgs.push(src);
-                return "[image " + imgs.length + "]";
-            });
-            page.bodyImages = imgs;
-            bodyArea.text = b;
+            var b = page.editPost.body || "";
+            // Older posts baked their cover image in as a leading <img>; strip it only when it actually
+            // matches this post's own thumbnail (restored separately below), never a genuine first body
+            // image the user actually typed there.
+            var thumb = page.editPost.thumbnail || "";
+            if (thumb.length > 0) {
+                var leadMatch = b.match(/^\s*<img[^>]*src=["']([^"']*)["'][^>]*>\s*/i);
+                if (leadMatch && leadMatch[1] === thumb) b = b.substring(leadMatch[0].length);
+            }
+            // Split the body into alternating text/image blocks, one real Image item per <img>.
+            var parts = [];
+            var lastIndex = 0;
+            var imgRe = /<img[^>]*src=["']([^"']*)["'][^>]*\/?>/gi;
+            var m;
+            while ((m = imgRe.exec(b)) !== null) {
+                parts.push({ type: "text", html: b.substring(lastIndex, m.index) });
+                parts.push({ type: "image", url: m[1] });
+                lastIndex = imgRe.lastIndex;
+            }
+            parts.push({ type: "text", html: b.substring(lastIndex) });
+            page.bodyParts = parts;
             page.coverImageUrl = page.editPost.thumbnail || "";
             // primaryCategory is a scalar since the categories array is wrapped by the feed ListModel and loses [] indexing.
             page.selectedCategory = page.editPost.primaryCategory || "";
@@ -172,6 +220,10 @@ Page {
         Popups.PopupUtils.open(pickerComp);
     }
     function pickBodyImage() {
+        // Force the keyboard to commit any word still mid-composition (predictive text only lands in
+        // the field's real .text at a word boundary) before this segment loses focus to the picker,
+        // else that text never makes it into partData.html and gets lost when the image lands.
+        Qt.inputMethod.commit();
         page.imageTarget = "body";
         Popups.PopupUtils.open(pickerComp);
     }
@@ -190,11 +242,7 @@ Page {
         onUploadingChanged: page.uploading = uploading
         onUploaded: {
             if (page.imageTarget === "body") {
-                page.bodyImages = page.bodyImages.concat([url]);
-                var snippet = "[image " + page.bodyImages.length + "]";
-                var pos = bodyArea.cursorPosition;
-                bodyArea.insert(pos, snippet);
-                bodyArea.cursorPosition = pos + snippet.length;
+                page._insertBodyImage(url);
                 Toast.success(Lang.tr("Image added"));
             } else {
                 page.coverImageUrl = url;
@@ -202,6 +250,49 @@ Page {
             }
         }
         onFailed: Toast.error(message)
+    }
+
+    // Inserts a new image block right after the currently-focused text segment (splitting mid-paragraph
+    // would need real HTML document surgery QML doesn't expose, so images land as their own block instead,
+    // same as most block-based editors). Always leaves a fresh empty text segment after it to keep typing in.
+    function _insertBodyImage(url) {
+        Qt.inputMethod.commit();
+        var parts = page.bodyParts.slice();
+        var afterIdx = page.activeTextIndex;
+        if (afterIdx < 0 || afterIdx >= parts.length || parts[afterIdx].type !== "text")
+            afterIdx = parts.length - 1;
+        // Belt and braces: pull the segment's true current text straight off its live TextArea rather
+        // than trusting partData.html, in case onTextChanged hasn't caught up with the commit above yet.
+        var activeLoader = bodyRepeater.itemAt(afterIdx);
+        if (activeLoader && activeLoader.item)
+            parts[afterIdx] = { type: "text", html: activeLoader.item.text };
+        parts.splice(afterIdx + 1, 0, { type: "image", url: url }, { type: "text", html: "" });
+        page.bodyParts = parts;
+        page.activeTextIndex = afterIdx + 2;
+        page._pendingFocusIndex = afterIdx + 2;
+        page._bodyRev++;
+    }
+
+    // Removes one image block; if that leaves two text segments touching, merges them into one
+    // so the user isn't left staring at a pointless split.
+    function _removeBodyPart(idx) {
+        Qt.inputMethod.commit();
+        // Pull every segment's true current text off its live TextArea first, else any segment still
+        // mid-composition (or just not yet caught by onTextChanged) reverts to its stale array copy.
+        var parts = page.bodyParts.map(function (p, i) {
+            if (p.type !== "text") return p;
+            var l = bodyRepeater.itemAt(i);
+            return (l && l.item) ? { type: "text", html: l.item.text } : p;
+        });
+        parts.splice(idx, 1);
+        if (idx > 0 && idx < parts.length && parts[idx - 1].type === "text" && parts[idx].type === "text") {
+            parts[idx - 1] = { type: "text", html: parts[idx - 1].html + parts[idx].html };
+            parts.splice(idx, 1);
+        }
+        if (parts.length === 0) parts = [{ type: "text", html: "" }];
+        page.bodyParts = parts;
+        page.activeTextIndex = Math.min(page.activeTextIndex, parts.length - 1);
+        page._bodyRev++;
     }
 
     // Qt's RichText re-serializes formatting as style spans; collapse back to <b>/<i>/<s> tags
@@ -233,16 +324,23 @@ Page {
             Toast.error(Lang.tr("Please log in first."));
             return;
         }
-        var body = page._richHtmlToSimple(bodyArea.text).trim();
-        // Swap "[image N]" placeholders back into real <img> tags; unknown numbers are left as typed.
-        var imgs = page.bodyImages || [];
-        body = body.replace(/\[image (\d+)\]/gi, function (m, n) {
-            var u = imgs[parseInt(n, 10) - 1];
-            return u ? '<img src="' + u + '" style="max-width:100%;height:auto;" />' : m;
-        });
-        if (page.coverImageUrl.length > 0) {
-            body = '<img src="' + page.coverImageUrl + '" style="max-width:100%;height:auto;" />\n' + body;
+        // Assemble the body from its text/image blocks; pull each text segment's live content off
+        // its actual delegate rather than the (possibly stale) bodyParts copy.
+        var body = "";
+        for (var i = 0; i < page.bodyParts.length; i++) {
+            var part = page.bodyParts[i];
+            if (part.type === "image") {
+                body += '<img src="' + part.url + '" style="max-width:100%;height:auto;" />';
+            } else {
+                var loader = bodyRepeater.itemAt(i);
+                var html = loader && loader.item ? loader.item.text : (part.html || "");
+                body += page._richHtmlToSimple(html);
+            }
         }
+        body = body.trim();
+        // Cover image is NOT prepended into the body: it's sent below via `images`, which is what
+        // both the API/web thumbnail and PostDetailPage's own cover frame derive from. Baking it
+        // into the body too just duplicated it inline above the article text.
         page.submitting = true;
         PostService.createPost(Config.baseUrl, {
             title: titleField.text.trim(),
@@ -272,18 +370,26 @@ Page {
         });
     }
 
+    // The Loader delegate for the focused text segment; .item is the actual TextArea.
+    function _activeTextArea() {
+        var loader = bodyRepeater.itemAt(page.activeTextIndex);
+        return loader ? loader.item : null;
+    }
+
     // Requires a selection: plain TextEdit has no "current format" state to toggle
     function wrapSelection(tagOpen, tagClose) {
-        var start = bodyArea.selectionStart;
-        var end = bodyArea.selectionEnd;
+        var ta = page._activeTextArea();
+        if (!ta) return;
+        var start = ta.selectionStart;
+        var end = ta.selectionEnd;
         if (start === end) {
             Toast.show(Lang.tr("Select some text first"));
             return;
         }
-        var sel = bodyArea.selectedText;
-        bodyArea.remove(start, end);
-        bodyArea.insert(start, tagOpen + sel + tagClose);
-        bodyArea.forceActiveFocus();
+        var sel = ta.selectedText;
+        ta.remove(start, end);
+        ta.insert(start, tagOpen + sel + tagClose);
+        ta.forceActiveFocus();
     }
 
     property string _pendingLinkText: ""
@@ -291,21 +397,24 @@ Page {
     property int _pendingLinkEnd: 0
 
     function promptLink() {
-        if (bodyArea.selectionStart === bodyArea.selectionEnd) {
+        var ta = page._activeTextArea();
+        if (!ta || ta.selectionStart === ta.selectionEnd) {
             Toast.show(Lang.tr("Select some text first"));
             return;
         }
-        page._pendingLinkText = bodyArea.selectedText;
-        page._pendingLinkStart = bodyArea.selectionStart;
-        page._pendingLinkEnd = bodyArea.selectionEnd;
+        page._pendingLinkText = ta.selectedText;
+        page._pendingLinkStart = ta.selectionStart;
+        page._pendingLinkEnd = ta.selectionEnd;
         Popups.PopupUtils.open(linkDialog);
     }
 
     function applyLink(url) {
         if (url.length === 0) return;
-        bodyArea.remove(page._pendingLinkStart, page._pendingLinkEnd);
-        bodyArea.insert(page._pendingLinkStart, '<a href="' + url + '">' + page._pendingLinkText + '</a>');
-        bodyArea.forceActiveFocus();
+        var ta = page._activeTextArea();
+        if (!ta) return;
+        ta.remove(page._pendingLinkStart, page._pendingLinkEnd);
+        ta.insert(page._pendingLinkStart, '<a href="' + url + '">' + page._pendingLinkText + '</a>');
+        ta.forceActiveFocus();
     }
 
     Component {
@@ -380,7 +489,8 @@ Page {
                     }
                 }
 
-                TextInput {
+                // Lomiri TextField (not plain TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste.
+                TextField {
                     id: titleField
                     anchors {
                         top: parent.top; topMargin: Style.spacingM
@@ -392,6 +502,13 @@ Page {
                     color: Style.textPrimary
                     clip: true
                     maximumLength: page.titleMaxLength
+                    hasClearButton: false
+                    StyleHints {
+                        backgroundColor: "transparent"
+                        borderColor: "transparent"
+                        frameSpacing: 0
+                        overlaySpacing: 0
+                    }
                 }
 
                 Label {
@@ -418,42 +535,54 @@ Page {
                 }
             }
 
-            // Body text area; toolbar docks inside on desktop, above OSK on phone
+            // Body: a bordered box holding a stack of text segments and real inline Image blocks
+            // (toolbar docks inside on desktop, above OSK on phone).
             Rectangle {
                 id: bodyBox
                 readonly property real toolbarH: Config.wideMode ? units.gu(5.5) : 0
                 width: parent.width
-                height: Math.max(units.gu(25), bodyArea.contentHeight + Style.spacingM * 2) + toolbarH
+                height: Math.max(units.gu(25), partsCol.height + Style.spacingM * 2) + toolbarH
                 radius: Style.cardRadius
                 color: "transparent"
                 clip: true
                 border.width: units.dp(1.5)
-                border.color: bodyArea.activeFocus ? Style.brand : Style.divider
+                border.color: page.bodyFocused ? Style.brand : Style.divider
 
-                // Same as the title: declared FIRST so it catches taps below the text
+                // Same as the title: declared FIRST so it catches taps below the content, focusing
+                // the last segment (always text, by construction: every image insert appends a fresh one).
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        bodyArea.forceActiveFocus();
-                        bodyArea.cursorPosition = bodyArea.length;
+                        var loader = bodyRepeater.itemAt(page.bodyParts.length - 1);
+                        var ta = loader ? loader.item : null;
+                        if (ta) { ta.forceActiveFocus(); ta.cursorPosition = ta.length; }
                         Qt.inputMethod.show();
                     }
                 }
 
-                TextEdit {
-                    id: bodyArea
-                    anchors {
-                        left: parent.left; right: parent.right; top: parent.top
-                        margins: Style.spacingM
+                Column {
+                    id: partsCol
+                    x: Style.spacingM; y: Style.spacingM
+                    width: parent.width - Style.spacingM * 2
+                    spacing: Style.spacingS
+
+                    Repeater {
+                        id: bodyRepeater
+                        model: page.bodyParts
+                        delegate: Loader {
+                            width: partsCol.width
+                            property var partData: modelData
+                            property int partIndex: index
+                            sourceComponent: partData.type === "image" ? bodyImagePartComp : bodyTextPartComp
+                            onLoaded: {
+                                if (partIndex === page._pendingFocusIndex) {
+                                    item.forceActiveFocus();
+                                    item.cursorPosition = item.length;
+                                    page._pendingFocusIndex = -1;
+                                }
+                            }
+                        }
                     }
-                    textFormat: Text.RichText
-                    selectByMouse: true
-                    persistentSelection: true
-                    selectionColor: Style.brand
-                    font.family: Style.fontFor(text)
-                    font.pixelSize: Style.fontRegular
-                    color: Style.textPrimary
-                    wrapMode: Text.WordWrap
                 }
 
                 Label {
@@ -461,7 +590,8 @@ Page {
                         left: parent.left; top: parent.top
                         leftMargin: Style.spacingM; topMargin: Style.spacingM
                     }
-                    visible: bodyArea.getText(0, bodyArea.length).length === 0 && !bodyArea.activeFocus && !Qt.inputMethod.visible
+                    visible: page.bodyParts.length === 1 && page._bodyRev >= 0 && !page._bodyHasContent()
+                             && !page.bodyFocused && !Qt.inputMethod.visible
                     text: Lang.tr("Write your article here...")
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
@@ -482,6 +612,94 @@ Page {
                     Loader {
                         anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
                         sourceComponent: parent.visible ? formatButtonsComp : undefined
+                    }
+                }
+            }
+
+            // One editable rich-text segment. Lomiri TextArea (not plain TextEdit): only the styled
+            // component wires up native long-press selection + Cut/Copy/Paste.
+            Component {
+                id: bodyTextPartComp
+                TextArea {
+                    id: partArea
+                    textFormat: Text.RichText
+                    selectByMouse: true
+                    persistentSelection: true
+                    selectionColor: Style.brand
+                    font.family: Style.fontFor(text)
+                    font.pixelSize: Style.fontRegular
+                    color: Style.textPrimary
+                    // Wrap (not WordWrap): a run with no spaces (URL, pasted blob) must still break instead of overflowing the box.
+                    wrapMode: Text.Wrap
+                    // Auto-expand to fit content; the Column sizes off each segment's real height.
+                    autoSize: true
+                    maximumLineCount: 0
+                    Component.onCompleted: { text = partData.html; Qt.callLater(_fitHeight); }
+                    // autoSize's internal line-count estimate under-measures wrapped/rich text, leaving the
+                    // editor's own height too short so its inner Flickable scrolls instead of the box growing.
+                    // Force it to the true painted height, same fix as the read-only article body.
+                    onPaintedHeightChanged: Qt.callLater(_fitHeight)
+                    onLineCountChanged: Qt.callLater(_fitHeight)
+                    onCursorPositionChanged: Qt.callLater(_fitHeight)
+                    function _fitHeight() {
+                        if (height < paintedHeight) height = paintedHeight;
+                        // Lomiri's own InputHandler scrolls the internal Flickable to keep the caret
+                        // visible using the height *before* the grow above lands, and never scrolls it
+                        // back — leaving text pushed up out of view with dead space below it. Since this
+                        // segment always grows to fit (never scrolls internally), force that back to 0.
+                        if (__rightScrollbar && __rightScrollbar.flickableItem)
+                            __rightScrollbar.flickableItem.contentY = 0;
+                    }
+                    // Write through partIndex, NOT partData.html: a JS-array model hands the delegate a
+                    // QVariantMap *copy*, so mutating partData never reaches page.bodyParts and the text
+                    // is lost the moment the Repeater rebuilds (e.g. when an image is inserted).
+                    onTextChanged: page._setPartHtml(partIndex, text)
+                    onActiveFocusChanged: {
+                        if (activeFocus) { page.activeTextIndex = partIndex; page.bodyFocused = true; }
+                        else Qt.callLater(function () { page.bodyFocused = page._anyBodyPartFocused(); });
+                    }
+                    StyleHints {
+                        backgroundColor: "transparent"
+                        borderColor: "transparent"
+                        frameSpacing: 0
+                        overlaySpacing: 0
+                    }
+                }
+            }
+
+            // One inline image block: a real, fully rendered image, not a "[image N]" placeholder.
+            Component {
+                id: bodyImagePartComp
+                Item {
+                    width: parent.width
+                    height: img.height
+
+                    Image {
+                        id: img
+                        width: parent.width
+                        fillMode: Image.PreserveAspectFit
+                        source: partData.url
+                        asynchronous: true
+                        autoTransform: true
+                        height: (status === Image.Ready && implicitWidth > 0)
+                                ? width * implicitHeight / implicitWidth
+                                : units.gu(20)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Style.thumbRadius
+                            color: Style.iconBackground
+                            visible: parent.status !== Image.Ready
+                            z: -1
+                        }
+                    }
+
+                    AbstractButton {
+                        anchors { top: parent.top; right: parent.right; margins: units.dp(6) }
+                        width: units.gu(3.2); height: width
+                        onClicked: page._removeBodyPart(partIndex)
+                        Rectangle { anchors.fill: parent; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.55) }
+                        Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "close"; color: "white" }
                     }
                 }
             }

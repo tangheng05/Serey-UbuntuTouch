@@ -15,6 +15,9 @@ Page {
     property bool loading: false
     property bool endReached: false
     property string errorMsg: ""
+    // Kept out of errorMsg (a plain string) so the "banned" message stays a live Lang.tr() binding
+    // and re-translates immediately on a language switch, instead of being baked in at reload() time.
+    property bool bannedHere: false
     property int feedIndex: 0
     // Tracks which row's detail is open in the split-pane (wide) layout so the master list can highlight it.
     property string openPermlink: ""
@@ -47,6 +50,7 @@ Page {
             if (prevSel !== "") { page.selectedCategory = ""; page.reload(); }
             return;
         }
+        if (Config.isBannedFromCurrentCommunity) return;
 
         // currentCommunityName can lag a tick behind communityId here - read the source object directly.
         var communityTitle = Config.selectedSubCommunity ? Config.selectedSubCommunity.name : Config.communityName;
@@ -107,6 +111,8 @@ Page {
         target: Config
         // Warm the other tab too, or first toggle after a community switch flashes skeleton
         function onCommunityIdChanged() { page.loadCategories(); page.reload(); page._warmOtherFeed(); }
+        // Account switch (or a fresh ban) can flip this for the SAME community id already on screen.
+        function onIsBannedFromCurrentCommunityChanged() { page.reload(); }
     }
 
     // Clears the highlighted row once the detail pane's back button returns here (split/wide layout).
@@ -173,6 +179,7 @@ Page {
 
     // Prefetch the other tab on arrival so first toggle paints from cache, not skeleton
     function _warmOtherFeed() {
+        if (Config.isBannedFromCurrentCommunity) return;
         var other = page.feedIndex === 1 ? 0 : 1;
         var params = _pageParams(0);
         var fn = _feedFnFor(other);
@@ -193,6 +200,12 @@ Page {
         errorMsg = "";
         autoFetches = 0;
         page.showingCached = false;
+        page.bannedHere = Config.isBannedFromCurrentCommunity;
+        if (page.bannedHere) {
+            feedModel.clear();
+            page.endReached = true;
+            return;
+        }
         // Only wipe list if nothing cached, else clearing flashes skeleton between feeds
         if (!_paintCached()) feedModel.clear();
         // Force to top: synced-in-place rows keep scroll offset, unlike old clear()-based reload
@@ -248,6 +261,7 @@ Page {
     property bool refreshing: false
     function refresh() {
         if (page.refreshing) return;
+        if (Config.isBannedFromCurrentCommunity) return;
         page.refreshing = true;
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
@@ -286,6 +300,7 @@ Page {
 
     function loadMore() {
         if (loading || endReached) return;
+        if (Config.isBannedFromCurrentCommunity) { page.bannedHere = true; page.endReached = true; return; }
         // Offline: every page request would just fail, and parking at the end retries forever.
         if (!Net.online) return;
         loading = true;
@@ -685,8 +700,9 @@ Page {
         anchors.fill: list
         autoRetry: false   // the Net handler above already reloads and resumes paging
         // Offline is the cover below; this stays the online-error panel only.
-        visible: Net.online && page.errorMsg !== "" && feedModel.count === 0
-        message: page.errorMsg
+        visible: Net.online && (page.errorMsg !== "" || page.bannedHere) && feedModel.count === 0
+        // Live Lang.tr() binding (not baked into errorMsg) so a language switch re-translates immediately.
+        message: page.bannedHere ? Lang.tr("You're banned from this community.") : page.errorMsg
         onRetry: page.reload()
     }
 
@@ -713,7 +729,7 @@ Page {
 
     EmptyState {
         anchors.fill: list
-        visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
+        visible: !page.loading && page.errorMsg === "" && !page.bannedHere && feedModel.count === 0
         iconName: "stock_note"
         message: page.selectedCategory !== ""
             ? Lang.tr("No posts tagged \"%1\" in %2").arg(page.selectedCategory).arg(Config.currentCommunityName)

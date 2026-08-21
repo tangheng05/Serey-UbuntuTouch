@@ -17,6 +17,9 @@ Page {
     property bool loading: false
     property bool endReached: false
     property string errorMsg: ""
+    // Kept out of errorMsg (a plain string) so the "banned" message stays a live Lang.tr() binding
+    // and re-translates immediately on a language switch, instead of being baked in at reload() time.
+    property bool bannedHere: false
     // Request generation bumped on reload() so a late response from a previous community can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
@@ -39,6 +42,8 @@ Page {
     Connections {
         target: Config
         function onCommunityIdChanged() { page.reload(); }
+        // Account switch (or a fresh ban) can flip this for the SAME community id already on screen.
+        function onIsBannedFromCurrentCommunityChanged() { page.reload(); }
     }
 
     // Clears the highlighted row once the detail pane's back button returns here (split/wide layout).
@@ -93,6 +98,12 @@ Page {
         refreshing = false;
         errorMsg = "";
         page.showingCached = false;
+        page.bannedHere = Config.isBannedFromCurrentCommunity;
+        if (page.bannedHere) {
+            reels = []; feedModel.clear();
+            page.endReached = true;
+            return;
+        }
         // Only wipe if nothing cached, else list flashes empty between communities
         if (!_paintCached()) { reels = []; feedModel.clear(); }
         // In-place sync keeps the scroll offset, so reset it explicitly (see NewsPage).
@@ -194,6 +205,7 @@ Page {
     property bool refreshing: false
     function refresh() {
         if (page.refreshing) return;
+        if (Config.isBannedFromCurrentCommunity) return;
         page.refreshing = true;
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
@@ -202,6 +214,7 @@ Page {
 
     function loadMore() {
         if (loading || endReached) return;
+        if (Config.isBannedFromCurrentCommunity) { page.bannedHere = true; page.endReached = true; return; }
         // Offline: every page request would just fail, and parking at the end retries forever.
         if (!Net.online) return;
         // Page 0 is the shared list+reels fetch; only deeper pages come through here.
@@ -627,8 +640,9 @@ Page {
         anchors.fill: list
         autoRetry: false   // the Net handler above already reloads and resumes paging
         // Offline is the cover below; this stays the online-error panel only.
-        visible: Net.online && page.errorMsg !== "" && feedModel.count === 0
-        message: page.errorMsg
+        visible: Net.online && (page.errorMsg !== "" || page.bannedHere) && feedModel.count === 0
+        // Live Lang.tr() binding (not baked into errorMsg) so a language switch re-translates immediately.
+        message: page.bannedHere ? Lang.tr("You're banned from this community.") : page.errorMsg
         onRetry: page.reload()
     }
 
@@ -655,7 +669,7 @@ Page {
 
     EmptyState {
         anchors.fill: list
-        visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
+        visible: !page.loading && page.errorMsg === "" && !page.bannedHere && feedModel.count === 0
         iconName: "camcorder"
         message: Lang.tr("No videos to show")
     }

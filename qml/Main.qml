@@ -15,6 +15,7 @@ import "services/BlockedUsers.js" as BlockedUsers
 import "services/PaymentService.js" as PaymentService
 import "services/PostService.js" as PostService
 import "services/VideoService.js" as VideoService
+import "services/PlatformService.js" as PlatformService
 
 MainView {
     id: root
@@ -297,6 +298,7 @@ MainView {
             if (root.startupSettled) {
                 root._syncBlockedUsers();
                 root._syncOwnedCommunities();
+                root._syncBannedCommunities();
             }
         }
     }
@@ -363,6 +365,7 @@ MainView {
             }
             _syncBlockedUsers();
             _syncOwnedCommunities();
+            _syncBannedCommunities();
         }
     }
 
@@ -382,6 +385,26 @@ MainView {
                 var set = {};
                 for (var i = 0; i < ids.length; i++) set[ids[i]] = true;
                 Config.ownedCommunityIdSet = set;
+            },
+            function (err) { /* offline / failed, keep last-known set */ });
+    }
+
+    // Communities the user is banned from; gates entering/posting to them in the pickers.
+    function _syncBannedCommunities() {
+        if (!Session.isLoggedIn) {
+            Config.bannedCommunityIdSet = ({});
+            Config.bannedCommunityTitleSet = ({});
+            return;
+        }
+        PlatformService.listBannedCommunities(Config.baseUrl, Session.token,
+            function (list) {
+                var idSet = {}, titleSet = {};
+                for (var i = 0; i < list.length; i++) {
+                    if (list[i].id) idSet[list[i].id] = true;
+                    if (list[i].title) titleSet[list[i].title.toLowerCase()] = true;
+                }
+                Config.bannedCommunityIdSet = idSet;
+                Config.bannedCommunityTitleSet = titleSet;
             },
             function (err) { /* offline / failed, keep last-known set */ });
     }
@@ -533,7 +556,7 @@ MainView {
     Connections {
         target: Session
         // Keyed off the token (not isLoggedIn) so account switches resync; one account's blocks must never leak into another's feed.
-        function onTokenChanged() { root._syncBlockedUsers(); root._syncOwnedCommunities() }
+        function onTokenChanged() { root._syncBlockedUsers(); root._syncOwnedCommunities(); root._syncBannedCommunities() }
         function onIsLoggedInChanged() {
             if (!Session.isLoggedIn) {
                 NotificationState.unread = -1

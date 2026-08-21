@@ -67,6 +67,26 @@ function unbanUser(baseUrl, token, communityTitle, username, onOk, onErr) {
     Http.post(baseUrl, "/banning-user/remove", body, token, onOk, onErr);
 }
 
+// Communities the SIGNED-IN user is banned from; onOk([{ id, title }]). id is "" when the row
+// only carries the community title, so callers should match on title as a fallback.
+function listBannedCommunities(baseUrl, token, onOk, onErr) {
+    Http.get(baseUrl, "/banning-user/list-by-current-user", {}, token,
+        function (data) {
+            var raw = (data && (data.banning_users || data.banned_users || data.communities || data.data)) || [];
+            if (!Array.isArray(raw)) raw = [];
+            var out = [];
+            for (var i = 0; i < raw.length; i++) {
+                var r = raw[i];
+                var c = (r && typeof r.community === "object") ? r.community : null;
+                out.push({
+                    id: String((c && c.id) || r.community_id || r.communityId || r.id || ""),
+                    title: (c && (c.title || c.name)) || r.community || r.title || r.name || ""
+                });
+            }
+            onOk(out.filter(function (e) { return e.id.length > 0 || e.title.length > 0; }));
+        }, onErr);
+}
+
 // Soft delete - sets deleted/deleted_at/deleted_reason on the Community row.
 function deleteCommunity(baseUrl, token, id, onOk, onErr) {
     // POST alias: QML XMLHttpRequest drops the DELETE body, so DELETE arrives with no id

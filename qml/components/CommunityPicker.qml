@@ -160,8 +160,14 @@ Item {
             flickable.contentY = y + it.height - flickable.height
     }
 
+    // Banned: gray the row out and toast instead of navigating.
+    function _isBanned(id, title) { return Config.isBannedFromCommunity(id, title) }
+    function _warnBanned() { Toast.error(Lang.tr("You're banned from this community.")) }
+
     // Shared by pointer and keyboard so the two paths can't drift.
     function _selectSource(i) {
+        var s = Config.sources[i]
+        if (picker._isBanned(s.id, s.name)) { picker._warnBanned(); return }
         Config.sourceIndex = i
         Config.selectedSubCommunity = null
         picker.expandedIndex = -1
@@ -173,6 +179,8 @@ Item {
         else { picker.expandedIndex = i; picker._fetch(i) }
     }
     function _selectCommunity(m) {
+        var id = String(m.id || m._id || "")
+        if (picker._isBanned(id, m.title || m.name)) { picker._warnBanned(); return }
         Config.selectedSubCommunity = {
             id: String(m.id || m._id || ""),
             name: m.title || m.name || "",
@@ -561,6 +569,7 @@ Item {
                         property int srcIndex: modelData._realIndex
                         property bool isExpanded: picker.expandedIndex === sourceCol.srcIndex
                         property var cats: picker.cache[sourceCol.srcIndex] || []
+                        readonly property bool isBanned: picker._isBanned(modelData.id, modelData.name)
 
                         Item {
                             id: sourceRow
@@ -581,6 +590,7 @@ Item {
                             Row {
                                 anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
                                 spacing: Style.spacingM
+                                opacity: sourceCol.isBanned ? 0.4 : 1
 
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
@@ -807,6 +817,7 @@ Item {
                                             property var hubChildren: commBtn.isSuperhub
                                                                       ? (Config.superhubChildrenById[commBtn.commId] || [])
                                                                       : []
+                                            readonly property bool isBanned: picker._isBanned(commBtn.commId, commBtn.commName)
 
                                             Rectangle {
                                                 anchors {
@@ -818,6 +829,7 @@ Item {
                                                 }
                                                 radius: Style.cardRadius
                                                 color: Style.surface
+                                                opacity: commBtn.isBanned ? 0.45 : 1
                                                 border.width: commBtn.isSelected ? units.dp(2) : units.dp(1)
                                                 border.color: commBtn.isSelected ? Style.brand : Style.divider
 
@@ -960,6 +972,7 @@ Item {
                                                     property bool cSelected: Config.selectedSubCommunity
                                                                              && Config.selectedSubCommunity.id === childBtn.cId
                                                     property bool cSubscribed: picker.subscribedRev >= 0 && !!picker.subscribedMap[childBtn.cId]
+                                                    readonly property bool isBanned: picker._isBanned(childBtn.cId, childBtn.cName)
 
                                                     // Connector: vertical line down the indent gutter + short elbow into the card
                                                     Rectangle {
@@ -986,12 +999,14 @@ Item {
                                                         }
                                                         radius: Style.cardRadius
                                                         color: Style.surface
+                                                        opacity: childBtn.isBanned ? 0.45 : 1
                                                         border.width: childBtn.cSelected ? units.dp(2) : units.dp(1)
                                                         border.color: childBtn.cSelected ? Style.brand : Style.divider
 
                                                         MouseArea {
                                                             anchors.fill: parent
                                                             onClicked: {
+                                                                if (picker._isBanned(childBtn.cId, childBtn.cName)) { picker._warnBanned(); return }
                                                                 Config.selectedSubCommunity = {
                                                                     id: childBtn.cId,
                                                                     name: childBtn.cName,

@@ -23,8 +23,13 @@ Item {
     // allow it are shown (for browsing into their children) but can't be selected.
     property bool forVideo: false
     function _canPost(entry) { return !!entry && !!(picker.forVideo ? entry.videoAllowPost : entry.allowPost); }
-    // Tapped a row that doesn't allow this content type: toast instead of selecting it.
+    function _isBanned(entry) { return !!entry && Config.isBannedFromCommunity(entry.id, entry.name); }
+    // Tapped a row that doesn't allow this content type (or bans you): toast instead of selecting it.
     function _selectOrWarn(entry, id) {
+        if (picker._isBanned(entry)) {
+            Toast.error(Lang.tr("You're banned from this community."));
+            return;
+        }
         if (!picker._canPost(entry)) {
             Toast.error(picker.forVideo ? Lang.tr("This platform doesn't allow video uploads. Choose another.")
                                          : Lang.tr("This platform doesn't allow posting. Choose another."));
@@ -645,7 +650,7 @@ Item {
                             AbstractButton {
                                 id: rowSelectBtn
                                 anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: row.chevronW }
-                                opacity: picker._canPost(modelData) ? 1 : 0.45
+                                opacity: picker._isBanned(modelData) ? 0.4 : (picker._canPost(modelData) ? 1 : 0.45)
                                 onClicked: picker._selectOrWarn(modelData, modelData.id)
 
                                 Row {
@@ -798,7 +803,7 @@ Item {
                                     AbstractButton {
                                         id: childSelectBtn
                                         anchors { left: parent.left; top: parent.top; bottom: parent.bottom; right: parent.right; rightMargin: childRow.chevronW }
-                                        opacity: picker._canPost(modelData) ? 1 : 0.45
+                                        opacity: picker._isBanned(modelData) ? 0.4 : (picker._canPost(modelData) ? 1 : 0.45)
                                         onClicked: picker._selectOrWarn(modelData, modelData.id)
 
                                         Row {
@@ -928,7 +933,7 @@ Item {
                                         height: units.gu(6)
                                         readonly property string gcId: String(modelData.id || modelData._id || "")
                                         readonly property bool isSelected: picker.selectedId === gcRow.gcId
-                                        opacity: picker._canPost(modelData) ? 1 : 0.45
+                                        opacity: picker._isBanned(modelData) ? 0.4 : (picker._canPost(modelData) ? 1 : 0.45)
                                         // Normalized via _toggleHub()
                                         onClicked: picker._selectOrWarn(picker._byId[gcRow.gcId] || modelData, gcRow.gcId)
                                         Component.onCompleted: picker._queueReveal(gcRow, gcRow.gcId)
@@ -1040,8 +1045,12 @@ Item {
                 anchors { verticalCenter: parent.verticalCenter; horizontalCenter: parent.horizontalCenter }
                 width: parent.width - Style.spacingM * 2
                 height: units.gu(5.5)
-                readonly property bool canPost: picker._canPost(picker.selectedEntry)
+                readonly property bool canPost: !picker._isBanned(picker.selectedEntry) && picker._canPost(picker.selectedEntry)
                 onClicked: {
+                    if (picker._isBanned(picker.selectedEntry)) {
+                        Toast.error(Lang.tr("You're banned from this community."));
+                        return;
+                    }
                     if (!canPost) {
                         Toast.error(picker.forVideo ? Lang.tr("This platform doesn't allow video uploads. Choose another.")
                                                      : Lang.tr("This platform doesn't allow posting. Choose another."));

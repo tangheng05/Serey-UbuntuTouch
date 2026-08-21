@@ -219,6 +219,19 @@ QtObject {
     // Community ids the signed-in user owns/manages, fetched from /user-permission/permission-by-current-user; empty when logged out.
     property var ownedCommunityIdSet: ({})
 
+    // Communities the signed-in user is BANNED from, fetched from /banning-user/list-by-current-user; empty when logged out.
+    // Id-keyed and title-keyed (lowercased) in parallel since ban rows don't always carry the numeric id.
+    property var bannedCommunityIdSet: ({})
+    property var bannedCommunityTitleSet: ({})
+    function isBannedFromCommunity(id, title) {
+        if (id && !!bannedCommunityIdSet[String(id)]) return true;
+        if (title && !!bannedCommunityTitleSet[String(title).toLowerCase()]) return true;
+        return false;
+    }
+    // Whatever community is actually selected right now (Global never counts: communityId 0).
+    readonly property bool isBannedFromCurrentCommunity: communityId > 0
+        && isBannedFromCommunity(communityId, currentCommunityName)
+
     // Whether the signed-in user owns/manages the selected community; OR-ed into the compose gates since an owner may post even when owner-only.
     readonly property bool isOwnerCurrent: communityId > 0
                                            && !!ownedCommunityIdSet[communityId]

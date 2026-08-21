@@ -714,7 +714,8 @@ var nl = {
     "Update password":                                  "Wachtwoord bijwerken",
     "and %1 more":                                      "en nog %1",
     "invites left · %1 of %2 used":                     "uitnodigingen over · %1 van %2 gebruikt",
-    "more":                                             "meer"
+    "more":                                             "meer",
+    "You're banned from this community.":               "U bent verbannen uit deze community."
 };
 
 function tr(str, lang) {

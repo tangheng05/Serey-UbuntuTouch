@@ -1677,6 +1677,7 @@ Page {
                     permlink: page.permlink
                     voteType: "post"
                     onChain: page.post ? (page.post.postToBlockchain !== false) : true
+                    createdAt: page.post ? (page.post.date || "") : ""
                     showComments: false
                     showVotersLabel: false
                     showShare: false   // Share now lives in the header action bar, not duplicated here

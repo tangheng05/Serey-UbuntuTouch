@@ -24,12 +24,10 @@ Page {
     readonly property int maxChars: 2000
     readonly property real maxContentWidth: units.gu(60)
 
-    // The title moves into the body on wide panes, where the settings list
-    // beside this page already provides the way back.
+    // Kept at every width, like the other settings sub-pages: a wide window still needs
+    // a visible way back, and the panel beside it is a list, not a back affordance.
     header: PageHeader {
-        visible: !Config.wideMode
-        height: Config.wideMode ? 0 : units.gu(6)
-        title: Lang.tr("Report a Problem")
+        title: Lang.tr("Report Improvement")
         leadingActionBar.actions: [
             Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
         ]
@@ -248,18 +246,9 @@ Page {
             // Centred at the same width as the other settings panes.
             width: Math.min(parent.width - Style.spacingM * 2, units.gu(50))
             x: (parent.width - width) / 2
-            y: Config.wideMode ? units.gu(4) : Style.spacingL
+            y: Style.spacingL
             spacing: Style.spacingM
 
-            // Heading (wide only; narrow keeps the header bar)
-            Label {
-                visible: Config.wideMode
-                text: Lang.tr("Report a Problem")
-                font.pixelSize: Style.fontTitle
-                font.weight: Font.DemiBold
-                font.family: Style.fontFor(text)
-                color: Style.textTitle
-            }
             Item { width: 1; height: Style.spacingS }
 
             Label {

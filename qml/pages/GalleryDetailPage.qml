@@ -422,6 +422,7 @@ Page {
             permlink: page.permlink
             voteType: "post"
             onChain: page.post ? (page.post.postToBlockchain !== false) : true
+            createdAt: page.post ? (page.post.date || "") : ""
             votes: page.post ? page.post.votes : 0
             voters: page.post ? (page.post.voters || []) : []
             flaggers: page.post && page.post.flaggers ? page.post.flaggers.length : 0

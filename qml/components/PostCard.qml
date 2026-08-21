@@ -323,6 +323,7 @@ Item {
             permlink: p.permlink || ""
             voteType: "post"
             onChain: p.postToBlockchain !== false
+            createdAt: p.date || ""
             votes: p.votes || 0
             // Rebuilt from voterStr scalar: dynamicRoles ListModel stringifies string arrays as garbage
             voters: (p.voterStr || "").split(",").filter(function (n) { return n.length > 0; })

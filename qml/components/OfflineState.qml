@@ -36,14 +36,17 @@ Item {
 
         // Animated WebP, not a video: QtMultimedia would hand playback to media-hub, whose
         // AppArmor profile can't read our own files (see VideoDetailPage.startPlay). WebP over
-        // GIF for the 8-bit alpha: GIF's 1-bit transparency left the circle's edge jagged.
-        // Transparent outside the circle, so it needs no theme variant.
+        // GIF for the 8-bit alpha: GIF's 1-bit transparency left the artwork's edge jagged.
+        // Transparent outside the rounded card, so it needs no theme variant.
+        // Re-encoded to 480px / 75 frames: the source art is 1024px at 150 frames (6.4 MB)
+        // and the loop is near-static, so half the frames at the drawn size look the same
+        // for a third of the bytes.
         AnimatedImage {
             anchors.horizontalCenter: parent.horizontalCenter
-            // Big enough to read as an illustration, not an icon; capped so it stays sane in
-            // the narrow detail panel of a split window, and so the 480px asset is never
-            // stretched past its own resolution.
-            width: Math.min(parent.width * 0.78, units.gu(26)); height: width
+            // Big enough to read as an illustration, not an icon; capped so it stays sane
+            // in the narrow detail panel of a split window, and short of the 480px asset's
+            // own resolution so it is never upscaled.
+            width: Math.min(parent.width * 0.9, units.gu(30)); height: width
             source: Qt.resolvedUrl("../../assets/offline-camp.webp")
             fillMode: Image.PreserveAspectFit
             // The file is already close to its drawn size; no sourceSize, or every frame

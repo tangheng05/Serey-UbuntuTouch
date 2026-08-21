@@ -25,6 +25,10 @@ RowLayout {
     property bool busy: false
     // Off-chain (DB-only) posts: like/dislike stay, but weight popover and payout pill are suppressed, mirroring the web's simpleVote/showCoins.
     property bool onChain: true
+    // Post date (Mappers `date`). With onChain it decides whether the 7-day payout
+    // window has closed; the chain refuses votes after payout, so the buttons go dead.
+    property string createdAt: ""
+    readonly property bool payoutClosed: bar.onChain && Config.isPayoutClosed(bar.createdAt)
     property bool showComments: true
     property bool showShare: true
     property bool showVotersLabel: false
@@ -64,6 +68,10 @@ RowLayout {
     }
 
     function _guard() {
+        if (bar.payoutClosed) {
+            Toast.show(Lang.tr("Voting closed: this post paid out after %1 days.").arg(Config.payoutWindowDays));
+            return false;
+        }
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
             bar.requireLogin();
@@ -280,8 +288,9 @@ RowLayout {
         id: upvoteBtn
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: upRow.implicitWidth
-        // Dimmed while the broadcast is out: taps are refused, and a solid button lies about that
-        opacity: bar.busy ? 0.45 : 1
+        // Dimmed while the broadcast is out, or once the payout window has closed:
+        // taps are refused either way, and a solid button lies about that
+        opacity: bar.busy || bar.payoutClosed ? 0.45 : 1
         Behavior on opacity { NumberAnimation { duration: 120 } }
         onClicked: bar.doUpvote()
         Rectangle {
@@ -360,7 +369,7 @@ RowLayout {
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: downRow.implicitWidth
         visible: bar.allowFlag
-        opacity: bar.busy ? 0.45 : 1
+        opacity: bar.busy || bar.payoutClosed ? 0.45 : 1
         Behavior on opacity { NumberAnimation { duration: 120 } }
         onClicked: bar.doFlag()
         Rectangle {

@@ -59,7 +59,7 @@ Page {
 
             PrimaryButton {
                 width: parent.width
-                text: Lang.tr("Create Serey account")
+                text: Lang.tr("Serey standard account")
                 onClicked: page.pageStack.push(Qt.resolvedUrl("SignupPage.qml"))
             }
             Label {
@@ -89,7 +89,7 @@ Page {
 
             SecondaryButton {
                 width: parent.width
-                text: Lang.tr("Self-custody")
+                text: Lang.tr("Self-custody account")
                 onClicked: page.pageStack.push(Qt.resolvedUrl("SelfCustodySignupPage.qml"))
             }
             Label {
@@ -104,7 +104,7 @@ Page {
 
             SecondaryButton {
                 width: parent.width
-                text: Lang.tr("Anonymous")
+                text: Lang.tr("Anonymous account")
                 onClicked: page.pageStack.push(Qt.resolvedUrl("AnonymousSignupPage.qml"))
             }
             Label {

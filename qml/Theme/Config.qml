@@ -33,6 +33,19 @@ QtObject {
     readonly property string baseUrl: useLocalDev ? devBase : prodBase
     readonly property string baseUrlV1: useLocalDev ? devBaseV1 : prodBaseV1
 
+    // Steem pays out a post 7 days after publishing and stops accepting votes on it,
+    // so the vote buttons go dead once that window closes. Off-chain (DB-only) posts
+    // never pay out, so callers only apply this when the post is on-chain.
+    readonly property int payoutWindowDays: 7
+    function isPayoutClosed(dateStr) {
+        if (!dateStr)
+            return false;
+        var t = new Date(dateStr).getTime();
+        if (isNaN(t))
+            return false;
+        return (Date.now() - t) > payoutWindowDays * 86400000;
+    }
+
     // Default page size for paginated lists.
     readonly property int pageSize: 10
 

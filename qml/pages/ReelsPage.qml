@@ -378,8 +378,15 @@ Page {
             property bool flagged: _vc ? _vc.flagged : false
             property int  votes:   _vc ? _vc.votes : (modelData.votes || 0)
             property bool busy: false
+            // On-chain posts stop accepting votes once they pay out at 7 days.
+            readonly property bool payoutClosed: (modelData.postToBlockchain !== false)
+                                                 && Config.isPayoutClosed(modelData.date || "")
 
             function _vguard() {
+                if (reel.payoutClosed) {
+                    Toast.show(Lang.tr("Voting closed: this post paid out after %1 days.").arg(Config.payoutWindowDays));
+                    return false;
+                }
                 if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return false; }
                 return !reel.busy;
             }
@@ -695,7 +702,8 @@ Page {
                     AbstractButton {
                         id: reelUpvoteBtn
                         width: units.gu(7); height: units.gu(7)
-                        enabled: !reel.busy
+                        enabled: !reel.busy && !reel.payoutClosed
+                        opacity: reel.payoutClosed ? 0.45 : 1
                         onClicked: reel.toggleUpvote(reelUpvoteBtn)
                         Column {
                             anchors.centerIn: parent
@@ -718,7 +726,8 @@ Page {
 
                     AbstractButton {
                         width: units.gu(7); height: units.gu(7)
-                        enabled: !reel.busy
+                        enabled: !reel.busy && !reel.payoutClosed
+                        opacity: reel.payoutClosed ? 0.45 : 1
                         onClicked: reel.toggleFlag()
                         Icon {
                             anchors.centerIn: parent

@@ -14,11 +14,9 @@ Page {
     property int twoFaEnabled: -1     // -1 = not loaded yet
     property string twoFaEmail: ""
 
-    // The design puts the title in the body and drops the header bar on wide
-    // panes, where the list beside it already provides the way back.
+    // Kept at every width, like the other settings sub-pages: a wide window still needs
+    // a visible way back, and the panel beside it is a list, not a back affordance.
     header: PageHeader {
-        visible: !Config.wideMode
-        height: Config.wideMode ? 0 : units.gu(6)
         title: Lang.tr("Password & Security")
         leadingActionBar.actions: [
             Action { iconName: "back"; text: Lang.tr("Back"); onTriggered: page.pageStack.pop() }
@@ -172,24 +170,14 @@ Page {
             // The mock left-aligns this; consistency across panes won that call.
             width: Math.min(parent.width - Style.spacingM * 2, units.gu(50))
             x: (parent.width - width) / 2
-            y: Config.wideMode ? units.gu(4) : Style.spacingL
+            y: Style.spacingL
             spacing: 0
 
             // Inputs run the full column so they line up with the section rules above and below.
             readonly property real fieldWidth: width
 
-            // ---------- Heading (wide only; narrow keeps the header bar) ----------
+            // ---------- Subtitle (the title itself is in the header bar) ----------
             Label {
-                visible: Config.wideMode
-                text: Lang.tr("Password & Security")
-                font.pixelSize: Style.fontTitle
-                font.weight: Font.DemiBold
-                font.family: Style.fontFor(text)
-                color: Style.textTitle
-            }
-            Item { width: 1; height: Style.spacingXs; visible: Config.wideMode }
-            Label {
-                visible: Config.wideMode
                 width: parent.width
                 text: Lang.tr("Manage your password and account security")
                 wrapMode: Text.WordWrap
@@ -197,9 +185,8 @@ Page {
                 font.family: Style.fontFor(text)
                 color: Style.textSecondary
             }
-            Item { width: 1; height: Style.spacingM; visible: Config.wideMode }
+            Item { width: 1; height: Style.spacingM }
             Rectangle {
-                visible: Config.wideMode
                 width: parent.width; height: units.dp(1)
                 color: Style.divider
             }

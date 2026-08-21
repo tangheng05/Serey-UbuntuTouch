@@ -44,6 +44,10 @@ Page {
     property string payout:   ""
     // Off-chain videos skip the vote-weight popover/award (see doUpvote)
     readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
+    // The chain stops accepting votes once a post pays out at 7 days, so both vote
+    // buttons go dead from then on (off-chain videos never pay out, so they stay live).
+    readonly property bool payoutClosed: page.onChain && page.video
+                                         && Config.isPayoutClosed(page.video.date || "")
 
     // Download state, shared by the header action and the in-content download button.
     readonly property string dlPermlink: (page.video && page.video.permlink) || ""
@@ -400,6 +404,10 @@ Page {
     // caller = the button to anchor the weight popover to; keyboard activation has none,
     // so it falls back to the inline vote button.
     function doUpvote(caller) {
+        if (page.payoutClosed) {
+            Toast.show(Lang.tr("Voting closed: this post paid out after %1 days.").arg(Config.payoutWindowDays));
+            return;
+        }
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
         if (page.voteBusy) return;
         if (page.upvoted) {
@@ -422,6 +430,10 @@ Page {
         }
     }
     function doFlag() {
+        if (page.payoutClosed) {
+            Toast.show(Lang.tr("Voting closed: this post paid out after %1 days.").arg(Config.payoutWindowDays));
+            return;
+        }
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
         if (page.voteBusy) return;
         var snap = page._snapVote();
@@ -1309,7 +1321,7 @@ Page {
                     id: videoUpvoteBtn
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: upvoteInner.implicitWidth + Style.spacingM
-                    opacity: page.voteBusy ? 0.45 : 1
+                    opacity: page.voteBusy || page.payoutClosed ? 0.45 : 1
                     onClicked: page.doUpvote(videoUpvoteBtn)
                     Row {
                         id: upvoteInner
@@ -1333,7 +1345,7 @@ Page {
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: units.gu(3.5)
-                    opacity: page.voteBusy ? 0.45 : 1
+                    opacity: page.voteBusy || page.payoutClosed ? 0.45 : 1
                     onClicked: page.doFlag()
                     Icon {
                         anchors.centerIn: parent
@@ -1694,7 +1706,7 @@ Page {
                         id: panelUpvoteBtn
                         Layout.preferredHeight: units.gu(4.5)
                         Layout.preferredWidth: panelUpvoteInner.implicitWidth + Style.spacingM
-                        opacity: page.voteBusy ? 0.45 : 1
+                        opacity: page.voteBusy || page.payoutClosed ? 0.45 : 1
                         onClicked: page.doUpvote(panelUpvoteBtn)
                         Rectangle {
                             anchors.fill: parent
@@ -1725,7 +1737,7 @@ Page {
                     AbstractButton {
                         Layout.preferredHeight: units.gu(4.5)
                         Layout.preferredWidth: units.gu(3.5)
-                        opacity: page.voteBusy ? 0.45 : 1
+                        opacity: page.voteBusy || page.payoutClosed ? 0.45 : 1
                         onClicked: page.doFlag()
                         Rectangle {
                             anchors.fill: parent

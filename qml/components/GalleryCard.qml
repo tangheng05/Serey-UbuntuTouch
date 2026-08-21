@@ -296,6 +296,7 @@ Item {
             permlink: p.permlink || ""
             voteType: "post"
             onChain: p.postToBlockchain !== false
+            createdAt: p.date || ""
             votes: p.votes || 0
             // From the voterStr scalar; the feed ListModel mangles string arrays
             voters: (p.voterStr || "").split(",").filter(function (n) { return n.length > 0; })

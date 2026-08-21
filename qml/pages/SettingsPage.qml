@@ -929,7 +929,7 @@ Page {
             SettingsRow {
                 id: bugReportRow
                 iconName: "dialog-warning-symbolic"
-                label: Lang.tr("Report a Problem")
+                label: Lang.tr("Report Improvement")
                 showChevron: true
                 onClicked: {
                     if (Session.isLoggedIn)

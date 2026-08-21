@@ -110,7 +110,16 @@ Page {
         var mdl = modelFor(t);
         function ok(items, rawCount) {
             s.loading = false; s.loaded = true;
-            for (var i = 0; i < items.length; i++) mdl.append(items[i]);
+            // Dedupe on permlink: backend pagination can resend a row (e.g. after a caption edit),
+            // which otherwise appends it a second time (see VideoPage._applyRows/loadMore).
+            var existing = {};
+            for (var e = 0; e < mdl.count; e++) existing[mdl.get(e).permlink] = true;
+            for (var i = 0; i < items.length; i++) {
+                var pl = items[i].permlink || "";
+                if (existing[pl]) continue;
+                existing[pl] = true;
+                mdl.append(items[i]);
+            }
             s.offset += rawCount;
             if (rawCount < Config.pageSize) s.end = true;
             rev++;

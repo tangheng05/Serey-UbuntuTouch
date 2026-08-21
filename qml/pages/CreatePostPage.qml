@@ -155,7 +155,14 @@ Page {
             }
             parts.push({ type: "text", html: b.substring(lastIndex) });
             page.bodyParts = parts;
-            page.coverImageUrl = page.editPost.thumbnail || "";
+            // A thumbnail that is still one of the body's own images was auto-derived, not a cover the
+            // user picked. Re-sending it as `images` turned it into a real cover, so deleting that image
+            // from the body made it reappear on top of the article.
+            var thumbIsBodyImage = false;
+            for (var pi = 0; pi < parts.length; pi++) {
+                if (parts[pi].type === "image" && parts[pi].url === thumb) { thumbIsBodyImage = true; break; }
+            }
+            page.coverImageUrl = thumbIsBodyImage ? "" : thumb;
             // primaryCategory is a scalar since the categories array is wrapped by the feed ListModel and loses [] indexing.
             page.selectedCategory = page.editPost.primaryCategory || "";
             // Best-effort sub-category prefill (field name varies across sources).
@@ -295,6 +302,14 @@ Page {
         page._bodyRev++;
     }
 
+    // The only tags an article body may publish. Everything else Qt's serializer emits is layout
+    // scaffolding for the editor, not content.
+    readonly property var _allowedBodyTags: ({
+        p: 1, br: 1, b: 1, strong: 1, i: 1, em: 1, u: 1, s: 1,
+        a: 1, ul: 1, ol: 1, li: 1, blockquote: 1, img: 1,
+        h1: 1, h2: 1, h3: 1
+    })
+
     // Qt's RichText re-serializes formatting as style spans; collapse back to <b>/<i>/<s> tags
     function _richHtmlToSimple(html) {
         var t = html || "";
@@ -314,8 +329,29 @@ Page {
             if (/text-decoration[^:]*:[^;"]*line-through/i.test(style)) { open += "<s>"; close = "</s>" + close; }
             return open.length > 0 ? open + inner + close : m;
         });
-        t = t.replace(/<p[^>]*>/gi, "<p>");
-        t = t.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>/gi, '<a href="$1">');
+        // Qt's export is a full HTML document whose every tag carries the editor's own runtime font
+        // (font-size in pt, font-family, -qt-* hints). On the web those inline styles beat the article
+        // CSS and the post renders far bigger than the surrounding text. Chasing each declaration is a
+        // losing game across Qt versions, so keep only the tags an article needs and drop every
+        // attribute but a link's href and an image's src.
+        t = t.replace(/<(\/?)([a-zA-Z0-9]+)([^>]*)>/g, function (m, slash, tag, attrs) {
+            var name = tag.toLowerCase();
+            if (!page._allowedBodyTags[name]) return "";
+            if (slash.length > 0) return "</" + name + ">";
+            if (name === "br") return "<br/>";
+            if (name === "a") {
+                var href = attrs.match(/href=["']([^"']*)["']/i);
+                return href ? '<a href="' + href[1] + '">' : "";
+            }
+            if (name === "img") {
+                var src = attrs.match(/src=["']([^"']*)["']/i);
+                return src ? '<img src="' + src[1] + '" style="max-width:100%;height:auto;" />' : "";
+            }
+            return "<" + name + ">";
+        });
+        // Qt writes a paragraph per blank line; a run of them is a gap the web renders at its own
+        // (much larger) paragraph spacing, so collapse each run to a single break.
+        t = t.replace(/(?:<p>(?:\s|<br\/>|&nbsp;)*<\/p>\s*){2,}/gi, "<p></p>");
         return t;
     }
 

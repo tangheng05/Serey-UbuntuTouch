@@ -126,6 +126,11 @@ function put(baseUrl, path, bodyObj, token, onOk, onErr) {
     return send("PUT", baseUrl + path, token, bodyObj || {}, onOk, onErr);
 }
 
+// Verified: Qt 5.15's QML XHR does send a body with PATCH (unlike DELETE, which drops it).
+function patch(baseUrl, path, bodyObj, token, onOk, onErr) {
+    return send("PATCH", baseUrl + path, token, bodyObj || {}, onOk, onErr);
+}
+
 function del(baseUrl, path, token, onOk, onErr) {
     return send("DELETE", baseUrl + path, token, null, onOk, onErr);
 }

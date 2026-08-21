@@ -94,7 +94,7 @@ Page {
     function _navRows() {
         var c = [profileCardBtn, loginBtn, signupBtn, languageRow,
                  createPlatformRow, managePlatformRow, editProfileRow,
-                 passwordRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+                 passwordRow, sessionsRow, blockedRow, downloadsRow, bugReportRow, websiteRow, logoutRow];
         var rows = [];
         for (var i = 0; i < c.length; i++)
             if (c[i].visible) rows.push(c[i]);
@@ -304,7 +304,7 @@ Page {
         refreshProfile();
         var rows = [profileCardBtn, loginBtn, signupBtn, languageRow,
                     createPlatformRow, managePlatformRow, editProfileRow,
-                    passwordRow, sessionsRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+                    passwordRow, sessionsRow, blockedRow, downloadsRow, bugReportRow, websiteRow, logoutRow];
         for (var i = 0; i < rows.length; i++) {
             rows[i].pressedChanged.connect((function (row) {
                 return function () { if (row.pressed) page.navCurrent = null; };
@@ -924,6 +924,21 @@ Page {
                 iconName: "info"
                 label: Lang.tr("Version")
                 valueText: Config.appVersion
+            }
+            // Reporting needs a JWT (the backend has no anonymous route), so send guests to log in first.
+            SettingsRow {
+                id: bugReportRow
+                iconName: "dialog-warning-symbolic"
+                label: Lang.tr("Report a Problem")
+                showChevron: true
+                onClicked: {
+                    if (Session.isLoggedIn)
+                        page.pageStack.push(Qt.resolvedUrl("BugReportPage.qml"));
+                    else {
+                        Toast.show(Lang.tr("Log in to send a report."));
+                        page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"));
+                    }
+                }
             }
             SettingsRow {
                 id: websiteRow

@@ -109,11 +109,15 @@ function createPost(baseUrl, params, token, onOk, onErr) {
         body.permlink = params.permlink;
     // Explicit bool so an edit can flip it either way; omitting it defaults true
     body.post_to_blockchain = (params.postToBlockchain !== false);
-    if (params.communityId)            // omit when 0/empty so we don't post a falsy id
+    // Always send the post's own community_id, on create AND edit, so an edit keeps the post in
+    // the same community it was originally posted to. Never send country_name alongside a real
+    // id - only as a fallback when id is unknown (0/missing) - since sending both together was
+    // getting rejected as "Invalid community".
+    if (params.communityId) {
         body.community_id = Number(params.communityId);
-    // Server resolves by id when present, else by title, letting "Global" (id 0) and unheld ids still resolve server-side.
-    if (params.communityName)
+    } else if (params.communityName) {
         body.country_name = params.communityName;
+    }
     Http.post(baseUrl, "/serey-web/create-or-update-post", body,
               token, function (data) { onOk(data || {}); }, onErr);
 }
@@ -139,10 +143,13 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
     // Editing an existing video post: sending its permlink makes the backend update in place (same contract as createPost).
     if (params.permlink)
         body.permlink = params.permlink;
-    if (params.communityId)
+    // Always send the post's own community_id, on create AND edit - see createPost() for why
+    // country_name is never sent alongside a real id.
+    if (params.communityId) {
         body.community_id = Number(params.communityId);
-    if (params.communityName)
+    } else if (params.communityName) {
         body.country_name = params.communityName;
+    }
     Http.post(baseUrl, "/serey-web/create-or-update-post", body,
               token, function (data) { onOk(data || {}); }, onErr);
 }

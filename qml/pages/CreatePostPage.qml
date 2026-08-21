@@ -201,6 +201,22 @@ Page {
             page.selectedSubCategory = eSub || "";
             // Prefill the toggle from the saved post (default on if absent).
             page.postToBlockchain = (page.editPost.postToBlockchain !== false);
+            if (!(page.editPost.communityId > 0) || !page.editPost.community) {
+                var author = page.editPost.author || "";
+                var permlink = page.editPost.permlink || "";
+                if (author && permlink) {
+                    PostService.detail(Config.baseUrl, author, permlink, Session.token,
+                        function (result) {
+                            var p = result && result.post;
+                            if (!p || !page.editPost) return;
+                            page.editPost = Object.assign({}, page.editPost, {
+                                communityId: p.communityId || page.editPost.communityId,
+                                community: p.community || page.editPost.community
+                            });
+                        },
+                        function (err) { /* best-effort; publish() still has its old fallback */ });
+                }
+            }
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
@@ -450,8 +466,7 @@ Page {
         PostService.createPost(Config.baseUrl, {
             title: titleField.text.trim(),
             body: body,
-            // On edit, keep the post in its own community (resolve by its title) rather than the currently-selected source.
-            communityId: page.isEdit ? 0 : page.postCommunityId,
+            communityId: page.postCommunityId,
             communityName: page.isEdit ? (page.editPost.community || Config.communityName)
                                        : page.postCommunityName,
             categories: page.selectedCategory || "general",

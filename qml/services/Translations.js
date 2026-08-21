@@ -743,7 +743,8 @@ var nl = {
     "and %1 more":                                      "en nog %1",
     "invites left · %1 of %2 used":                     "uitnodigingen over · %1 van %2 gebruikt",
     "more":                                             "meer",
-    "You're banned from this community.":               "U bent verbannen uit deze community."
+    "You're banned from this community.":               "U bent verbannen uit deze community.",
+    "Community: %1 (#%2)":                              "Community: %1 (#%2)"
 };
 
 function tr(str, lang) {

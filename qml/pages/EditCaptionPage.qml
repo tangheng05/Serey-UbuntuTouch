@@ -4,6 +4,7 @@ import "../Theme"
 import "../Session"
 import "../components"
 import "../services/PostService.js" as PostService
+import "../services/VideoService.js" as VideoService
 
 // Editing a video's title/description used to be a step inside PostActionSheet. A text editor in a
 // bottom sheet fights the toolkit: the field ends up nested in the sheet's own flick, and Lomiri's
@@ -85,9 +86,38 @@ Page {
     }
 
     Component.onCompleted: {
+        if (page.post) {
+            page.post = {
+                author: page.post.author || "",
+                permlink: page.post.permlink || "",
+                title: page.post.title || "",
+                body: page.post.body || "",
+                thumbnail: page.post.thumbnail || "",
+                videoLink: page.post.videoLink || "",
+                community: page.post.community || "",
+                communityId: page.post.communityId || 0,
+                postToBlockchain: page.post.postToBlockchain !== false
+            };
+        }
         titleField.text = page.origTitle;
         descField.text = page.origBody;
         titleField.forceActiveFocus();
+        if (page.post && (!(page.post.communityId > 0) || !page.post.community)) {
+            var author = page.post.author || "";
+            var permlink = page.post.permlink || "";
+            if (author && permlink) {
+                VideoService.detail(Config.baseUrl, author, permlink, Session.token,
+                    function (v) {
+                        if (!v || !page.post) return;
+                        page.post = Object.assign({}, page.post, {
+                            communityId: v.communityId || page.post.communityId,
+                            community: v.community || page.post.community,
+                            postToBlockchain: v.postToBlockchain
+                        });
+                    },
+                    function (err) { /* best-effort; save() still has its old fallback */ });
+            }
+        }
     }
 
     // Only the form scrolls; the description keeps its own scrolling so the toolkit's selection
@@ -108,6 +138,19 @@ Page {
             spacing: 0
 
             Item { width: 1; height: Style.spacingM }
+
+            // Shows which community this edit will be saved into, so a mismatch is visible
+            // before hitting Save instead of only surfacing as a backend rejection.
+            Label {
+                x: Style.spacingM
+                width: parent.width - Style.spacingM * 2
+                text: Lang.tr("Community: %1 (#%2)").arg((page.post && page.post.community) || "?")
+                                                      .arg((page.post && page.post.communityId) || 0)
+                font.pixelSize: Style.fontXSmall
+                color: Style.textSecondary
+                elide: Text.ElideRight
+            }
+            Item { width: 1; height: Style.spacingXs }
 
             Label {
                 x: Style.spacingM

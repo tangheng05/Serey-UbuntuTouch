@@ -105,12 +105,12 @@ Page {
 
     // Desktop "•••" dropdown rows; report/delete/block route through PostActionSheet
     function headerMenuItems() {
-        // Tablet: already in header row
+        // Tablet: save already in header row
         var items = [
-            { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" }
+            { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },
+            { icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" }
         ];
         if (!Config.tabletMode) {
-            items.push({ icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" });
             items.push({ icon: page.isSaved ? "tick" : "save",
               label: page.isSaved ? Lang.tr("Remove from saved") : Lang.tr("Save for offline"),
               action: "toggleSaved" });
@@ -203,14 +203,6 @@ Page {
                     name: page.isSaved ? "tick" : "save"
                     color: page.isSaved ? Style.brand : Style.textPrimary
                 }
-            }
-
-            AbstractButton {
-                id: browserHeaderBtn
-                visible: Config.tabletMode && page.shareUrl.length > 0
-                width: units.gu(4); height: units.gu(4)
-                onClicked: Qt.openUrlExternally(page.shareUrl)
-                Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "external-link"; color: Style.textPrimary }
             }
 
             AbstractButton {

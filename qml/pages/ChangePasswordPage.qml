@@ -175,8 +175,8 @@ Page {
             y: Config.wideMode ? units.gu(4) : Style.spacingL
             spacing: 0
 
-            // Inputs sit narrower than the section rules, as in the design.
-            readonly property real fieldWidth: Math.min(width, units.gu(40))
+            // Inputs run the full column so they line up with the section rules above and below.
+            readonly property real fieldWidth: width
 
             // ---------- Heading (wide only; narrow keeps the header bar) ----------
             Label {

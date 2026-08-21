@@ -777,9 +777,6 @@ Page {
     // --- Body HTML -> {type: "text"|"image", content} blocks -----------------
     ListModel { id: bodyModel }
 
-    // Set by _parseBody: the article carries its own images, so the auto cover would duplicate one.
-    property bool _bodyHasOwnImage: false
-
     // YouTube only
     function _isEmbeddableVideoUrl(url) {
         return /(?:youtube\.com\/(?:watch\?|embed\/|shorts\/)|youtu\.be\/)/i.test(url || "");
@@ -813,7 +810,6 @@ Page {
 
     function _parseBody() {
         bodyModel.clear();
-        page._bodyHasOwnImage = false;
         if (!page.post)
             return;
         var html = page.post.body || "";
@@ -856,20 +852,14 @@ Page {
         }
         pieces = pieces2;
 
-        // The cover is auto-derived (often a re-upload of the article's own header image, so
-        // the URLs differ and no string compare can pair them) and it was drawn on top of a
-        // body that already carries that picture. An article with its own images doesn't need
-        // it: the cover only stands in when the body has none at all.
         var seenImages = {};
         for (var i = 0; i < pieces.length; i++) {
             var piece = pieces[i];
             if (piece.type === "image") {
                 if (seenImages[piece.content]) continue;   // container tag + inner <img> = same src twice
-                page._bodyHasOwnImage = true;
                 seenImages[piece.content] = true;
                 bodyModel.append({ type: "image", content: piece.content, links: "[]" });
             } else if (piece.type === "embed") {
-                page._bodyHasOwnImage = true;   // a playable embed stands in for the cover just like a real image
                 bodyModel.append({ type: "embed", content: piece.content, links: "[]" });
             } else {
                 var text = piece.content;
@@ -1216,44 +1206,6 @@ Page {
             }
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
-
-            // Featured/cover image: Rectangle.clip only clips to the bounding box, so the Image is masked against a rounded Rectangle for a true rounded crop.
-            Item {
-                id: coverFrame
-                width: parent.width - Style.spacingM * 2
-                anchors.horizontalCenter: parent.horizontalCenter
-                height: visible ? width * 0.6 : 0
-                visible: page.post && (page.post.thumbnail || "") !== "" && !page._bodyHasOwnImage
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Style.thumbRadius
-                    color: Style.iconBackground
-                }
-                Image {
-                    id: coverImg
-                    anchors.fill: parent
-                    source: page.post ? (page.post.thumbnail || "") : ""
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    autoTransform: true     // honour EXIF orientation
-                    visible: false
-                    Behavior on opacity { NumberAnimation { duration: 200 } }
-                    opacity: status === Image.Ready ? 1.0 : 0.0
-                }
-                Rectangle {
-                    id: coverMask
-                    anchors.fill: parent
-                    radius: Style.thumbRadius
-                    visible: false
-                }
-                OpacityMask {
-                    anchors.fill: parent
-                    source: coverImg
-                    maskSource: coverMask
-                    opacity: coverImg.opacity
-                }
-            }
 
             // Body is parsed into text blocks and rounded images; inset once here so every block shares the same left/right padding as the title/author row.
             Column {

@@ -174,7 +174,10 @@ Page {
             height: videoCard.implicitHeight
 
             // HIG polarity: LEADING = negative (red trash), TRAILING = positive.
-            leadingActions: ListItemActions {
+            // Swipe is a touch affordance: on desktop the card's "..." menu already offers these.
+            leadingActions: Config.desktopMode ? null : swipeRemoveActions
+            ListItemActions {
+                id: swipeRemoveActions
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -195,7 +198,9 @@ Page {
                 ]
             }
 
-            trailingActions: ListItemActions {
+            trailingActions: Config.desktopMode ? null : swipeShareActions
+            ListItemActions {
+                id: swipeShareActions
                 delegate: Item {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -422,7 +427,10 @@ Page {
                 ? moreBtn.mapToItem(articleItem._menuOverlayParent, moreBtn.width, moreBtn.height) : Qt.point(0, 0)
 
             // HIG polarity: LEADING = negative (red trash), TRAILING = positive.
-            leadingActions: ListItemActions {
+            // Swipe is a touch affordance: on desktop the "..." menu already offers these.
+            leadingActions: Config.desktopMode ? null : swipeRemoveActions
+            ListItemActions {
+                id: swipeRemoveActions
                 delegate: Rectangle {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)
@@ -443,7 +451,9 @@ Page {
                 ]
             }
 
-            trailingActions: ListItemActions {
+            trailingActions: Config.desktopMode ? null : swipeShareActions
+            ListItemActions {
+                id: swipeShareActions
                 delegate: Item {
                     width: units.gu(7)
                     height: parent ? parent.height : units.gu(6)

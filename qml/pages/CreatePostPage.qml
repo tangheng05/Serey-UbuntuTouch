@@ -775,6 +775,8 @@ Page {
                     property string _prevText: ""
                     property bool _linkifyBusy: false
                     function _autoLinkifyPasted() {
+                        // skip while IME is mid-word
+                        if (partArea.inputMethodComposing) return;
                         var oldText = text;
                         var oldFragment = page._bodyFragment(oldText);
                         var linked = page._autoLinkify(oldText);
@@ -808,7 +810,8 @@ Page {
                     onTextChanged: {
                         page._setPartHtml(partIndex, text);
                         if (!partArea._linkifyBusy) {
-                            if (text.length - partArea._prevText.length > 3) Qt.callLater(partArea._autoLinkifyPasted);
+                            // paste threshold, raised
+                            if (text.length - partArea._prevText.length > 15) Qt.callLater(partArea._autoLinkifyPasted);
                             partArea._prevText = text;
                         }
                     }

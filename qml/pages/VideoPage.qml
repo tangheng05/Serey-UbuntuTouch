@@ -134,9 +134,13 @@ Page {
         var rows = [];
         var out = [];
         var seen = {};
+        var seenRow = {};
         for (var i = 0; i < result.length; i++) {
             var v = result[i];
             if (hidden[v.permlink || ""] || blocked[v.author || ""]) continue;
+            // dedupe: backend can send one post as multiple rows
+            if (seenRow[v.permlink || ""]) continue;
+            seenRow[v.permlink || ""] = true;
             rows.push(v);
             // Reel shelf: Serey-hosted and playable only, deduped, capped at 12.
             if (out.length < 12 && v.platform === "SEREY" && (v.videoLink || "").length > 0
@@ -217,9 +221,15 @@ Page {
                 loading = false;
                 var hidden = HiddenPosts.loadAll();
                 var blocked = BlockedUsers.loadAll();
-                for (var i = 0; i < result.length; i++)
-                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
-                        feedModel.append(result[i]);
+                // dedupe against rows already on screen
+                var existing = {};
+                for (var e = 0; e < feedModel.count; e++) existing[feedModel.get(e).permlink] = true;
+                for (var i = 0; i < result.length; i++) {
+                    var pl = result[i].permlink || "";
+                    if (hidden[pl] || blocked[result[i].author || ""] || existing[pl]) continue;
+                    existing[pl] = true;
+                    feedModel.append(result[i]);
+                }
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
                 // Keep paging if this page was filtered below a screenful (see refresh()).

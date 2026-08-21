@@ -23,6 +23,9 @@ Item {
     readonly property bool canEdit: isOwn && PostActions.kind !== "video"
     // Opened straight at a sub-step (report/delete/block), bypassing the main menu
     readonly property bool openedDirectly: PostActions.startStep !== 0
+    // Same caps CreateVideoPage enforces on new videos, mirrored here for edits.
+    readonly property int captionTitleMaxLength: 100
+    readonly property int captionDescMaxLength: 2500
     property bool deleting: false
     property bool blocking: false
     property bool reporting: false
@@ -1036,6 +1039,15 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 enabled: !sheet.savingCaption
                 placeholderText: Lang.tr("Title")
+                maximumLength: sheet.captionTitleMaxLength
+            }
+            Label {
+                x: Style.spacingM
+                width: parent.width - Style.spacingM * 2
+                horizontalAlignment: Text.AlignRight
+                text: captionTitleField.text.length + "/" + sheet.captionTitleMaxLength
+                font.pixelSize: Style.fontXSmall
+                color: captionTitleField.text.length >= sheet.captionTitleMaxLength ? Style.danger : Style.textSecondary
             }
 
             Item { width: 1; height: Style.spacingM }
@@ -1055,6 +1067,20 @@ Item {
                 height: units.gu(10)
                 enabled: !sheet.savingCaption
                 placeholderText: Lang.tr("Description")
+                // TextArea has no native maximumLength (unlike TextField)
+                onTextChanged: if (text.length > sheet.captionDescMaxLength) {
+                    var cp = cursorPosition;
+                    text = text.substring(0, sheet.captionDescMaxLength);
+                    cursorPosition = Math.min(cp, text.length);
+                }
+            }
+            Label {
+                x: Style.spacingM
+                width: parent.width - Style.spacingM * 2
+                horizontalAlignment: Text.AlignRight
+                text: captionDescField.text.length + "/" + sheet.captionDescMaxLength
+                font.pixelSize: Style.fontXSmall
+                color: captionDescField.text.length >= sheet.captionDescMaxLength ? Style.danger : Style.textSecondary
             }
 
             Item { width: 1; height: Style.spacingL }

@@ -14,6 +14,8 @@ Page {
 
     property bool submitting: false
     readonly property real maxContentWidth: units.gu(60)
+    readonly property int titleMaxLength: 100
+    readonly property int descMaxLength: 2500
 
     // Local picked file + hosted results.
     property string videoFileUrl: ""   // file:// of the picked video
@@ -300,6 +302,12 @@ Page {
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     wrapMode: Text.WordWrap
+                    // TextEdit has no native maximumLength (unlike TextField)
+                    onTextChanged: if (text.length > page.titleMaxLength) {
+                        var cp = cursorPosition;
+                        text = text.substring(0, page.titleMaxLength);
+                        cursorPosition = Math.min(cp, text.length);
+                    }
                 }
                 Label {
                     anchors { left: titleField.left; top: titleField.top }
@@ -308,6 +316,13 @@ Page {
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFor(text)
+                }
+                Label {
+                    anchors { right: parent.right; bottom: parent.bottom; bottomMargin: units.dp(2) }
+                    visible: titleField.activeFocus || titleField.text.length > 0
+                    text: titleField.text.length + "/" + page.titleMaxLength
+                    font.pixelSize: Style.fontXSmall
+                    color: titleField.text.length >= page.titleMaxLength ? Style.danger : Style.textSecondary
                 }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -338,6 +353,12 @@ Page {
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
                     wrapMode: Text.WordWrap
+                    // TextEdit has no native maximumLength (unlike TextField)
+                    onTextChanged: if (text.length > page.descMaxLength) {
+                        var cp = cursorPosition;
+                        text = text.substring(0, page.descMaxLength);
+                        cursorPosition = Math.min(cp, text.length);
+                    }
                 }
                 Label {
                     anchors { left: descField.left; top: descField.top }
@@ -346,6 +367,13 @@ Page {
                     color: Style.textSecondary
                     font.pixelSize: Style.fontRegular
                     font.family: Style.fontFor(text)
+                }
+                Label {
+                    anchors { right: parent.right; bottom: parent.bottom; bottomMargin: units.dp(2) }
+                    visible: descField.activeFocus || descField.text.length > 0
+                    text: descField.text.length + "/" + page.descMaxLength
+                    font.pixelSize: Style.fontXSmall
+                    color: descField.text.length >= page.descMaxLength ? Style.danger : Style.textSecondary
                 }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }

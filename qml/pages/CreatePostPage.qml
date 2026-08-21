@@ -391,12 +391,28 @@ Page {
                 .replace(/<head>[\s\S]*?<\/head>/gi, "");
     }
 
-    // Wraps bare pasted URLs in <a>
+    // Wraps bare pasted URLs in <a>; whitelisted TLDs avoid linkifying "e.g." or "Mr. Smith"
     function _autoLinkify(html) {
-        var urlRe = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+        // "co" dropped: prefix of "com", would link early mid-word
+        var tlds = "com|net|org|io|gov|edu|info|biz|dev|app|me|tv|xyz|ai|to|gg|link|shop";
+        var urlBody = "https?://[^\\s<]+|www\\.[^\\s<]+"
+            + "|\\b[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:" + tlds + ")(?:\\.[a-z]{2,3})?(?:/[^\\s<]*)?\\b";
+        var urlRe = new RegExp("(" + urlBody + ")", "gi");
+        var fullUrlRe = new RegExp("^(?:" + urlBody + ")$", "i");
         var parts = page._bodyFragment(html).split(/(<a\b[^>]*>[\s\S]*?<\/a>)/gi);
         for (var i = 0; i < parts.length; i++) {
-            if (/^<a\b/i.test(parts[i])) continue;
+            var aMatch = parts[i].match(/^<a\b[^>]*>([\s\S]*)<\/a>$/i);
+            if (aMatch) {
+                // re-sync href to current text; unwrap if no longer a URL
+                var inner = aMatch[1];
+                if (fullUrlRe.test(inner)) {
+                    var innerHref = /^https?:\/\//i.test(inner) ? inner : "https://" + inner;
+                    parts[i] = '<a href="' + innerHref + '">' + inner + '</a>';
+                } else {
+                    parts[i] = inner;
+                }
+                continue;
+            }
             parts[i] = parts[i].replace(urlRe, function (m) {
                 var href = /^https?:\/\//i.test(m) ? m : "https://" + m;
                 return '<a href="' + href + '">' + m + '</a>';
@@ -806,21 +822,24 @@ Page {
                     autoSize: true
                     maximumLineCount: 0
                     Component.onCompleted: { text = partData.html; partArea._prevText = text; Qt.callLater(_fitHeight); }
-                    // Paste = multi-char jump vs typing = 1 char
                     property string _prevText: ""
                     property bool _linkifyBusy: false
+                    Timer {
+                        id: linkifyTimer
+                        interval: 500
+                        onTriggered: partArea._autoLinkifyPasted()
+                    }
                     function _autoLinkifyPasted() {
                         // skip while IME is mid-word
                         if (partArea.inputMethodComposing) return;
-                        var oldText = text;
-                        var oldFragment = page._bodyFragment(oldText);
-                        var linked = page._autoLinkify(oldText);
+                        var oldFragment = page._bodyFragment(text);
+                        var linked = page._autoLinkify(text);
                         if (linked === oldFragment) return;
+                        // cursorPosition is a plain-text offset; linkifying only adds markup, not visible chars.
                         var cp = cursorPosition;
-                        var added = linked.length - oldFragment.length;
                         partArea._linkifyBusy = true;
                         text = linked;
-                        cursorPosition = Math.min(text.length, cp + added);
+                        cursorPosition = Math.min(cp, text.length);
                         partArea._prevText = text;
                         partArea._linkifyBusy = false;
                     }
@@ -845,8 +864,7 @@ Page {
                     onTextChanged: {
                         page._setPartHtml(partIndex, text);
                         if (!partArea._linkifyBusy) {
-                            // paste threshold, raised
-                            if (text.length - partArea._prevText.length > 15) Qt.callLater(partArea._autoLinkifyPasted);
+                            linkifyTimer.restart();
                             partArea._prevText = text;
                         }
                     }

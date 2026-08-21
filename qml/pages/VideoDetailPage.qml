@@ -116,7 +116,7 @@ Page {
         if (action === "copyLink") { Clipboard.push(page.shareUrl); Toast.show(Lang.tr("Link copied")); }
         else if (action === "openBrowser") Qt.openUrlExternally(page.shareUrl);
         else if (action === "toggleDownload") page.doDownloadToggle();
-        else if (action === "editCaption") PostActions.open(page.video, "video", 4);
+        else if (action === "editCaption") Nav.editCaption(page.video);
         else if (action === "delete") PostActions.open(page.video, "video", 2);
         else if (action === "hide") {
             HiddenPosts.hide(page.video.permlink || "");
@@ -364,29 +364,38 @@ Page {
     }
     // wasRemove distinguishes "already voted" from "already removed": both say "already",
     // but re-adding the vote after a removal is exactly backwards.
-    function _voteFail(e, wasRemove) {
+    function _voteFail(e, wasRemove, snap) {
         page.voteBusy = false;
-        // A timeout means we stopped waiting, not that the chain refused it. This page applies
-        // vote state on the response, so say it's still going rather than claim it failed.
-        if (e && e.timeout) { Toast.show(Lang.tr("Your vote is still being sent.")); return; }
+        // A timeout means we stopped waiting, not that the chain refused it: the broadcast is
+        // usually still landing, so keep what the tap already showed.
+        if (e && e.timeout) return;
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
-        if (msg.indexOf("already") >= 0) {
-            if (wasRemove) return;   // the server agrees the vote is gone; our state matches
-            if (!page.upvoted) { page.voteCount++; page.upvoted = true; page._voteCache(); }
-            return;
-        }
+        // "Already voted" / "already removed" is the server agreeing with our optimistic state.
+        if (msg.indexOf("already") >= 0) return;
+        if (snap) page._rollbackVote(snap);
+        if (e && e.status === 401) return;   // Http.js already toasted the logout
         Toast.error(Lang.tr(VoteService.friendlyError(e)));
     }
-    function _voteFailRemove(e) { page._voteFail(e, true); }
+    // Optimistic, same as the blog VoteBar: count, icon and toast land on the tap and the chain
+    // broadcast runs behind them. Waiting on it made a vote feel like it took twenty seconds.
+    function _snapVote() {
+        return { upvoted: page.upvoted, flagged: page.flagged, votes: page.voteCount, payout: page.payout };
+    }
+    function _rollbackVote(s) {
+        page.upvoted = s.upvoted; page.flagged = s.flagged;
+        page.voteCount = s.votes; page.payout = s.payout;
+        page._voteCache();
+    }
     function _sendUpvote(weight) {
+        var snap = page._snapVote();
+        if (!page.upvoted) page.voteCount++;
+        page.upvoted = true; page.flagged = false;
+        page._voteCache();
+        Toast.success(Lang.tr("Thanks for your vote!"));
         page.voteBusy = true;
         VoteService.upvote(Config.baseUrl, page.video.author, page.video.permlink, "post", weight, Session.token,
-            function (r) {
-                if (!page.upvoted) page.voteCount++;
-                page.upvoted = true; page.flagged = false;
-                page._voteApply(r); page._voteCache();
-                Toast.success(Lang.tr("Thanks for your vote!"));
-            }, page._voteFail);
+            function (r) { page._voteApply(r); page._voteCache(); },
+            function (e) { page._voteFail(e, false, snap); });
     }
     // caller = the button to anchor the weight popover to; keyboard activation has none,
     // so it falls back to the inline vote button.
@@ -394,10 +403,15 @@ Page {
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
         if (page.voteBusy) return;
         if (page.upvoted) {
+            var snap = page._snapVote();
+            page.upvoted = false;
+            page.voteCount = Math.max(0, page.voteCount - 1);
+            page._voteCache();
+            Toast.show(Lang.tr("Vote removed"));
             page.voteBusy = true;
             VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
-                function (r) { page.upvoted = false; page.voteCount = Math.max(0, page.voteCount - 1); page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
-                page._voteFailRemove);
+                function (r) { page._voteApply(r); page._voteCache(); },
+                function (e) { page._voteFail(e, true, snap); });
         } else if (!page.onChain) {
             // Off-chain (DB-only) video: plain one-tap like, no weight popover, matching fe-serey-web's simpleVote.
             page._sendUpvote(100);
@@ -410,18 +424,23 @@ Page {
     function doFlag() {
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
         if (page.voteBusy) return;
+        var snap = page._snapVote();
         page.voteBusy = true;
         if (page.flagged) {
+            page.flagged = false;
+            page._voteCache();
+            Toast.show(Lang.tr("Vote removed"));
             VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
-                function (r) { page.flagged = false; page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
-                page._voteFailRemove);
+                function (r) { page._voteApply(r); page._voteCache(); },
+                function (e) { page._voteFail(e, true, snap); });
         } else {
+            if (page.upvoted) page.voteCount = Math.max(0, page.voteCount - 1);
+            page.flagged = true; page.upvoted = false;
+            page._voteCache();
+            Toast.show(Lang.tr("Thanks for your feedback!"));
             VoteService.flag(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
-                function (r) {
-                    if (page.upvoted) page.voteCount = Math.max(0, page.voteCount - 1);
-                    page.flagged = true; page.upvoted = false;
-                    page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Thanks for your feedback!"));
-                }, page._voteFail);
+                function (r) { page._voteApply(r); page._voteCache(); },
+                function (e) { page._voteFail(e, false, snap); });
         }
     }
 
@@ -1290,7 +1309,7 @@ Page {
                     id: videoUpvoteBtn
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: upvoteInner.implicitWidth + Style.spacingM
-                    enabled: !page.voteBusy
+                    opacity: page.voteBusy ? 0.45 : 1
                     onClicked: page.doUpvote(videoUpvoteBtn)
                     Row {
                         id: upvoteInner
@@ -1314,7 +1333,7 @@ Page {
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: units.gu(3.5)
-                    enabled: !page.voteBusy
+                    opacity: page.voteBusy ? 0.45 : 1
                     onClicked: page.doFlag()
                     Icon {
                         anchors.centerIn: parent
@@ -1322,13 +1341,6 @@ Page {
                         name: "thumb-down"
                         color: page.flagged ? Style.danger : Style.textSecondary
                     }
-                }
-
-                ActivityIndicator {
-                    visible: page.voteBusy
-                    running: page.voteBusy
-                    Layout.preferredHeight: units.gu(2.5)
-                    Layout.preferredWidth: units.gu(2.5)
                 }
 
                 Item { Layout.fillWidth: true }
@@ -1682,7 +1694,7 @@ Page {
                         id: panelUpvoteBtn
                         Layout.preferredHeight: units.gu(4.5)
                         Layout.preferredWidth: panelUpvoteInner.implicitWidth + Style.spacingM
-                        enabled: !page.voteBusy
+                        opacity: page.voteBusy ? 0.45 : 1
                         onClicked: page.doUpvote(panelUpvoteBtn)
                         Rectangle {
                             anchors.fill: parent
@@ -1713,7 +1725,7 @@ Page {
                     AbstractButton {
                         Layout.preferredHeight: units.gu(4.5)
                         Layout.preferredWidth: units.gu(3.5)
-                        enabled: !page.voteBusy
+                        opacity: page.voteBusy ? 0.45 : 1
                         onClicked: page.doFlag()
                         Rectangle {
                             anchors.fill: parent
@@ -1728,13 +1740,6 @@ Page {
                             name: "thumb-down"
                             color: page.flagged ? Style.danger : Style.textSecondary
                         }
-                    }
-
-                    ActivityIndicator {
-                        visible: page.voteBusy
-                        running: page.voteBusy
-                        Layout.preferredHeight: units.gu(2.5)
-                        Layout.preferredWidth: units.gu(2.5)
                     }
 
                     // Same filling-cell trick as VoteBar: one spacing charge, so the pill

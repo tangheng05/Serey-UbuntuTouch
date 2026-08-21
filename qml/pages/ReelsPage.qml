@@ -166,7 +166,7 @@ Page {
             if (Downloads.isSaved(pl)) { Downloads.remove(pl); return; }
             Downloads.start(v, v.videoLink || "");
         }
-        else if (action === "editCaption") PostActions.open(v, "video", 4);
+        else if (action === "editCaption") Nav.editCaption(v);
         else if (action === "delete") PostActions.open(v, "video", 2);
         else if (action === "hide") {
             HiddenPosts.hide(v.permlink || "");
@@ -175,24 +175,20 @@ Page {
         else if (action === "report") PostActions.open(v, "video", 1);
     }
 
+    // Optimistic like the rail's other vote actions: the tap shows immediately and the chain
+    // broadcast runs behind it. Applying only on the response left the reel unchanged for seconds.
     function _sendUpvote(weight) {
         var reel = page._voteReel;
         if (!reel) return;
+        var wasUp = reel.upvoted, wasFlag = reel.flagged, prevVotes = reel.votes;
+        if (!reel.upvoted) reel.votes = reel.votes + 1;
+        reel.upvoted = true; reel.flagged = false;
+        VoteService._updateCache(page._voteAuthor, page._votePermlink, true, false, reel.votes, "");
+        Toast.success(Lang.tr("Thanks for your vote!"));
         reel.busy = true;
-        var applyVote = function () {
-            if (!reel.upvoted) reel.votes = reel.votes + 1;
-            reel.upvoted = true; reel.flagged = false; reel.busy = false;
-            VoteService._updateCache(page._voteAuthor, page._votePermlink, true, false, reel.votes, "");
-            Toast.success(Lang.tr("Thanks for your vote!"));
-        };
         VoteService.upvote(Config.baseUrl, page._voteAuthor, page._votePermlink, "post", weight, Session.token,
-            function (r) { applyVote(); },
-            function (e) {
-                // A timeout means we stopped waiting, not that the chain refused it.
-                if (e && e.timeout) { applyVote(); return; }
-                reel.busy = false;
-                Toast.error(Lang.tr(VoteService.friendlyError(e)));
-            });
+            function (r) { reel.busy = false; },
+            function (e) { reel._revert(wasUp, wasFlag, prevVotes, e); });
     }
 
     header: Item { height: 0 }
@@ -396,6 +392,10 @@ Page {
                 // A timeout means we stopped waiting, not that the chain refused it; keep the
                 // optimistic state rather than reverting a vote that is still landing.
                 if (e && e.timeout) { reel.busy = false; return; }
+                // "Already voted" is the server agreeing with what the tap already showed.
+                var msg = (e && e.message) ? e.message.toLowerCase() : "";
+                if (msg.indexOf("already") >= 0) { reel.busy = false; return; }
+                if (e && e.status === 401) { reel.busy = false; return; }   // Http.js toasts 401
                 reel.upvoted = wasUp; reel.flagged = wasFlag; reel.votes = prevVotes;
                 reel.busy = false; reel._vcache();
                 Toast.error(Lang.tr(VoteService.friendlyError(e)));

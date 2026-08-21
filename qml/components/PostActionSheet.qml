@@ -1,4 +1,4 @@
-import QtQuick 2.7
+import QtQuick 2.14      // WheelHandler
 import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 import "../Theme"
@@ -23,9 +23,6 @@ Item {
     readonly property bool canEdit: isOwn && PostActions.kind !== "video"
     // Opened straight at a sub-step (report/delete/block), bypassing the main menu
     readonly property bool openedDirectly: PostActions.startStep !== 0
-    // Same caps CreateVideoPage enforces on new videos, mirrored here for edits.
-    readonly property int captionTitleMaxLength: 100
-    readonly property int captionDescMaxLength: 2500
     property bool deleting: false
     property bool blocking: false
     property bool reporting: false
@@ -33,12 +30,14 @@ Item {
     property bool reportTypesLoaded: false
     property bool reportTypesLoading: false
     property string selectedReportTypeId: ""
-    // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm, 4 = edit video caption.
+    // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm.
     property int step: 0
-    property bool savingCaption: false
 
-    // Lift the sheet above the OSK (the edit-caption step has text inputs).
-    readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
+    // The backdrop's MouseArea blocks presses, but nothing blocks the wheel: over the backdrop, or
+    // over any part of the sheet that doesn't scroll, it reached the page underneath and scrolled it
+    // behind the modal. Whatever is under the pointer and scrollable still takes the event first
+    // (the sheet's own flick), so this only swallows what would otherwise fall through.
+    WheelHandler { onWheel: {} }
 
     // Keyboard nav: Up/Down/Tab move a highlight, Enter/Space activates, Escape backs out
     property var navRows: []
@@ -77,21 +76,13 @@ Item {
     }
 
     Keys.onPressed: {
-        var busy = (step === 1 && reporting) || (step === 2 && deleting)
-                || (step === 3 && blocking) || (step === 4 && savingCaption);
+        var busy = (step === 1 && reporting) || (step === 2 && deleting) || (step === 3 && blocking);
         if (event.key === Qt.Key_Escape) {
             if (!busy) {
                 if (step === 0 || sheet.openedDirectly) closeSheet();
                 else step = 0;
             }
             event.accepted = true;
-        } else if (step === 4) {
-            // Text-entry step: trap Tab between the two fields so focus can't tunnel to the page
-            if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-                if (captionTitleField.activeFocus) captionDescField.forceActiveFocus();
-                else captionTitleField.forceActiveFocus();
-                event.accepted = true;
-            }
         } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
             _navMove(1); event.accepted = true;
         } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Backtab) {
@@ -102,14 +93,7 @@ Item {
         }
     }
 
-    onStepChanged: {
-        if (step !== 4) {
-            Qt.inputMethod.hide();
-            // Reclaim key events from the caption fields when leaving the edit step.
-            if (visible) sheet.forceActiveFocus();
-        }
-        Qt.callLater(_rebuildNav);
-    }
+    onStepChanged: Qt.callLater(_rebuildNav)
 
     // Report reasons arrive async; refresh the arrow-key row list when they land.
     onReportTypesChanged: if (step === 1) Qt.callLater(_rebuildNav)
@@ -139,7 +123,6 @@ Item {
         sheet._openEpoch++;
         step = PostActions.startStep;
         // seed fields for direct-entry edit
-        if (step === 4) sheet._seedCaptionFields();
         backdropFade.start();
         if (sheetRect.wide) { sheetFadeIn.start(); sheetScaleIn.start(); }
         else sheetSlide.start();
@@ -261,63 +244,6 @@ Item {
     }
 
     // The stored description is HTML; strip tags for editing and rebuild <p> paragraphs (text re-escaped) when saving.
-    function _htmlToPlain(html) {
-        return (html || "")
-            .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
-            .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/<[^>]+>/g, "")
-            .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-            .replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&nbsp;/g, " ")
-            .trim();
-    }
-    function _plainToHtml(text) {
-        var lines = (text || "").split(/\n+/);
-        var out = [];
-        for (var i = 0; i < lines.length; i++) {
-            var t = lines[i].trim();
-            if (t.length === 0) continue;
-            t = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            out.push("<p>" + t + "</p>");
-        }
-        return out.join("");
-    }
-
-    function _seedCaptionFields() {
-        var p = PostActions.post;
-        captionTitleField.text = (p && p.title) || "";
-        captionDescField.text = sheet._htmlToPlain((p && p.body) || "");
-    }
-
-    // Update a video post's caption in place by reusing the create-or-update endpoint with the existing permlink; other fields resent unchanged.
-    function doSaveCaption() {
-        var p = PostActions.post;
-        if (!p || sheet.savingCaption) return;
-        var newTitle = captionTitleField.text.trim();
-        if (newTitle.length === 0) { Toast.error(Lang.tr("Title can't be empty.")); return; }
-        var newBody = sheet._plainToHtml(captionDescField.text);
-        sheet.savingCaption = true;
-        PostService.createVideoPost(Config.baseUrl, {
-            title: newTitle,
-            desc: newBody,
-            permlink: p.permlink || "",
-            videoUrl: p.videoLink || "",
-            thumbUrl: p.thumbnail || "",
-            communityId: p.communityId || 0,
-            communityName: p.community || "",
-            postToBlockchain: p.postToBlockchain !== false
-        }, Session.token,
-            function () {
-                sheet.savingCaption = false;
-                PostActions.postUpdated(p.author || "", p.permlink || "", newTitle, newBody);
-                sheet.closeSheet();
-                Toast.success(Lang.tr("Post updated!"));
-            },
-            function (err) {
-                sheet.savingCaption = false;
-                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update post."));
-            });
-    }
-
     // Video offline download: direct-file downloads as-is, YouTube resolves via InnerTube first
     function _isDirectFile(u) {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
@@ -406,13 +332,11 @@ Item {
             horizontalCenter: parent.horizontalCenter
             bottom: sheetRect.wide ? undefined : parent.bottom
             verticalCenter: sheetRect.wide ? parent.verticalCenter : undefined
-            bottomMargin: sheetRect.wide ? 0 : sheet.kbHeight
         }
         width: sheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(60)) : parent.width
         height: (sheet.step === 0 ? mainCol.height
                  : sheet.step === 1 ? reportCol.height
                  : sheet.step === 2 ? deleteCol.height
-                 : sheet.step === 4 ? editCol.height
                  : blockCol.height) + units.gu(4)
         radius: units.dp(16)
         color: Style.surface
@@ -596,8 +520,9 @@ Item {
                 width: parent.width; height: units.gu(8)
                 visible: sheet.isOwn && PostActions.kind === "video"
                 onClicked: {
-                    sheet._seedCaptionFields();
-                    sheet.step = 4;
+                    var p = PostActions.post;
+                    sheet.closeSheet();
+                    if (p) Nav.editCaption(p);
                 }
                 Row {
                     anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
@@ -987,122 +912,6 @@ Item {
                     font.pixelSize: Style.fontMedium
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
-                }
-            }
-
-            Item { width: 1; height: Style.spacingM }
-        }
-
-        // ===================== Step 4: Edit video caption =====================
-        Column {
-            id: editCol
-            anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
-            spacing: 0
-            visible: sheet.step === 4
-
-            Item {
-                width: parent.width; height: units.gu(5)
-
-                AbstractButton {
-                    anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    width: units.gu(3.5); height: units.gu(3.5)
-                    enabled: !sheet.savingCaption
-                    // direct-entry: back means close
-                    onClicked: sheet.openedDirectly ? sheet.closeSheet() : (sheet.step = 0)
-                    Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "back"; color: Style.textPrimary }
-                }
-
-                Label {
-                    anchors.centerIn: parent
-                    text: Lang.tr("Edit caption")
-                    font.pixelSize: Style.fontMedium
-                    font.weight: Font.DemiBold
-                    color: Style.textPrimary
-                }
-            }
-
-            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
-
-            Item { width: 1; height: Style.spacingM }
-
-            Label {
-                x: Style.spacingM
-                text: Lang.tr("Title")
-                font.pixelSize: Style.fontSmall
-                font.weight: Font.DemiBold
-                color: Style.textSecondary
-            }
-            Item { width: 1; height: Style.spacingXs }
-            TextField {
-                id: captionTitleField
-                width: parent.width - Style.spacingM * 2
-                anchors.horizontalCenter: parent.horizontalCenter
-                enabled: !sheet.savingCaption
-                placeholderText: Lang.tr("Title")
-                maximumLength: sheet.captionTitleMaxLength
-            }
-            Label {
-                x: Style.spacingM
-                width: parent.width - Style.spacingM * 2
-                horizontalAlignment: Text.AlignRight
-                text: captionTitleField.text.length + "/" + sheet.captionTitleMaxLength
-                font.pixelSize: Style.fontXSmall
-                color: captionTitleField.text.length >= sheet.captionTitleMaxLength ? Style.danger : Style.textSecondary
-            }
-
-            Item { width: 1; height: Style.spacingM }
-
-            Label {
-                x: Style.spacingM
-                text: Lang.tr("Description")
-                font.pixelSize: Style.fontSmall
-                font.weight: Font.DemiBold
-                color: Style.textSecondary
-            }
-            Item { width: 1; height: Style.spacingXs }
-            TextArea {
-                id: captionDescField
-                width: parent.width - Style.spacingM * 2
-                anchors.horizontalCenter: parent.horizontalCenter
-                height: units.gu(10)
-                enabled: !sheet.savingCaption
-                placeholderText: Lang.tr("Description")
-                // TextArea has no native maximumLength (unlike TextField)
-                onTextChanged: if (text.length > sheet.captionDescMaxLength) {
-                    var cp = cursorPosition;
-                    text = text.substring(0, sheet.captionDescMaxLength);
-                    cursorPosition = Math.min(cp, text.length);
-                }
-            }
-            Label {
-                x: Style.spacingM
-                width: parent.width - Style.spacingM * 2
-                horizontalAlignment: Text.AlignRight
-                text: captionDescField.text.length + "/" + sheet.captionDescMaxLength
-                font.pixelSize: Style.fontXSmall
-                color: captionDescField.text.length >= sheet.captionDescMaxLength ? Style.danger : Style.textSecondary
-            }
-
-            Item { width: 1; height: Style.spacingL }
-
-            AbstractButton {
-                width: parent.width - Style.spacingM * 2
-                anchors.horizontalCenter: parent.horizontalCenter
-                height: units.gu(6)
-                enabled: !sheet.savingCaption
-                onClicked: sheet.doSaveCaption()
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Style.cardRadius
-                    color: Style.brand
-                    opacity: sheet.savingCaption ? 0.6 : 1
-                }
-                Label {
-                    anchors.centerIn: parent
-                    text: sheet.savingCaption ? Lang.tr("Saving…") : Lang.tr("Save")
-                    font.pixelSize: Style.fontMedium
-                    font.weight: Font.DemiBold
-                    color: Style.textOnBrand
                 }
             }
 

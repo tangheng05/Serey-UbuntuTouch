@@ -39,5 +39,9 @@ QtObject {
     // Any offline panel can offer the on-device library without knowing its own stack
     signal openLibrary()
 
+    // Edit a video's caption: emitted from feed cards, the reel menu and the action sheet, none of
+    // which know their own stack. Main pushes the editor onto whichever tab is active.
+    signal editCaption(var post)
+
     function home() { goToTab(0); }
 }

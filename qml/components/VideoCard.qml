@@ -89,7 +89,7 @@ AbstractButton {
 
     function runMenuAction(action) {
         if (action === "toggleDownload") root.toggleDownload();
-        else if (action === "editCaption") PostActions.open(root.v, "video", 4);
+        else if (action === "editCaption") Nav.editCaption(root.v);
         else if (action === "delete") PostActions.open(root.v, "video", 2);
         else if (action === "hide") {
             HiddenPosts.hide(v.permlink || "");

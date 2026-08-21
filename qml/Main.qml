@@ -582,6 +582,10 @@ MainView {
         }
         // An offline panel asked for the on-device library.
         function onOpenLibrary() { root.openLibrary(); }
+        function onEditCaption(post) {
+            var stack = root.activeStack;
+            if (stack) stack.push(Qt.resolvedUrl("pages/EditCaptionPage.qml"), { post: post });
+        }
         // Invite link opened in-app: redeem it natively on the Homepage tab.
         function onRedeemInvite(code) {
             root.currentTab = 0;

@@ -134,7 +134,7 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
         is_ai_generated: false,
         site_credit: '<p>This was posted using <a href="https://serey.io" rel="nofollow noopener">Serey.io</a></p>'
     };
-    // "Post to blockchain" toggle (see createPost): explicit bool, false = DB-only.
+    // "Post on the blockchain" toggle (see createPost): explicit bool, false = DB-only.
     body.post_to_blockchain = (params.postToBlockchain !== false);
     // Editing an existing video post: sending its permlink makes the backend update in place (same contract as createPost).
     if (params.permlink)

@@ -36,7 +36,7 @@ Page {
     // Set right before a fresh text segment is created (e.g. after inserting an image) so its
     // Loader can focus it once instantiated; Loader.onLoaded fires only once per delegate creation.
     property int _pendingFocusIndex: -1
-    // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
+    // "Post on the blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
     function _anyBodyPartFocused() {
@@ -70,11 +70,23 @@ Page {
 
     // Chosen in PostCommunityPicker before this page opens; unset = post into the browsed source
     property var targetCommunity: null
-    readonly property int postCommunityId: page.targetCommunity ? Number(page.targetCommunity.id)
+    readonly property int postCommunityId: page.isEdit ? Number((page.editPost && page.editPost.communityId) || 0)
+                                         : page.targetCommunity ? Number(page.targetCommunity.id)
                                                                 : Config.communityId
-    // Categories key by the selected sub-community; the post itself by its top-level source
-    readonly property string catCommunityName: page.targetCommunity ? page.targetCommunity.name
+    // Categories key by the selected sub-community; the post itself by its top-level source.
+    // An edit can't move a post between communities, so its categories come from the community it
+    // was posted in: keying them off the browsed source offered categories it could never use.
+    readonly property string catCommunityName: page.isEdit ? ((page.editPost && page.editPost.community) || Config.currentCommunityName)
+                                             : page.targetCommunity ? page.targetCommunity.name
                                                                     : Config.currentCommunityName
+    // Cached record for the edited post's platform, for its logo in the row below.
+    readonly property var editCommunityInfo: page.isEdit && page.editPost && page.editPost.communityId
+                                             ? Config.communityInfoFor(page.editPost.communityId) : null
+    readonly property string editCommunityIcon: page.editCommunityInfo
+                                                ? (page.editCommunityInfo.icon || "")
+                                                : (page.catCommunityName === Config.currentCommunityName
+                                                   ? Config.currentCommunityIconUrl : "")
+
     readonly property string postCommunityName: page.targetCommunity ? page.targetCommunity.name
                                                                      : Config.communityName
 
@@ -96,6 +108,15 @@ Page {
     function subsForSelected() {
         var s = page.subcatsByCat[page.selectedCategory];
         return (s && s.length) ? s : [];
+    }
+
+    // Case-insensitive lookup that returns the list's own spelling, or "" when absent.
+    function _matchName(list, want) {
+        if (!want || !list) return "";
+        var w = String(want).toLowerCase();
+        for (var i = 0; i < list.length; i++)
+            if (String(list[i]).toLowerCase() === w) return list[i];
+        return "";
     }
 
     function loadCategories() {
@@ -121,7 +142,13 @@ Page {
                     map[raw[i].name || ""] = subs;
                 }
                 page.subcatsByCat = map;
-                if (names.indexOf(prev) < 0) { page.selectedCategory = ""; page.selectedSubCategory = ""; }
+                // Keep what the post was filed under. The API's category names don't always match
+                // the post's copy exactly (case differs), and a strict compare dropped an edit back
+                // to "Select category" even though the post already had one.
+                var keep = page._matchName(names, prev);
+                page.selectedCategory = keep;
+                page.selectedSubCategory = (keep.length === 0) ? ""
+                    : page._matchName(map[keep] || [], page.selectedSubCategory);
             },
             function () {
                 if (epoch !== page.catEpoch) return;
@@ -180,7 +207,7 @@ Page {
     // React to source changes, unless a specific target community was chosen via the picker
     Connections {
         target: Config
-        function onCommunityIdChanged() { if (!page.targetCommunity) page.loadCategories() }
+        function onCommunityIdChanged() { if (!page.targetCommunity && !page.isEdit) page.loadCategories() }
     }
 
     header: Item { height: 0 }
@@ -482,7 +509,8 @@ Page {
     }
 
     function applyLink(url) {
-        if (url.length === 0) return;
+        // The field is seeded with the scheme, so an untouched dialog reads as "https://", not empty.
+        if (url.length === 0 || /^https?:\/\/$/i.test(url)) return;
         var ta = page._activeTextArea();
         if (!ta) return;
         ta.remove(page._pendingLinkStart, page._pendingLinkEnd);
@@ -559,7 +587,14 @@ Page {
                 text: page._pendingLinkHref
                 placeholderText: "https://"
                 inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoPredictiveText
-                Component.onCompleted: linkUrlField.forceActiveFocus()
+                Component.onCompleted: {
+                    // Real text rather than a placeholder, with the caret after it, so typing carries
+                    // on from the scheme. Still ordinary text: it can be selected or cleared as usual.
+                    if (linkUrlField.text.length === 0)
+                        linkUrlField.text = "https://";
+                    linkUrlField.cursorPosition = linkUrlField.text.length;
+                    linkUrlField.forceActiveFocus();
+                }
             }
             Button {
                 text: Lang.tr("Insert")
@@ -891,6 +926,68 @@ Page {
                 }
             }
 
+            // Editing keeps the post where it is, so name the platform it lives in: the categories
+            // below come from it, and there is nothing else on this page that says so.
+            Item {
+                width: parent.width
+                height: units.gu(6)
+                visible: page.isEdit && page.catCommunityName.length > 0
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Style.cardRadius
+                    color: Style.iconBackground
+                }
+                Label {
+                    id: editCommunityCaption
+                    anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    text: Lang.tr("Platform")
+                    font.pixelSize: Style.fontSmall
+                    font.family: Style.fontFor(text)
+                    color: Style.textSecondary
+                }
+                // Logo and name read as one unit, so they stay together at the end of the row
+                // rather than the logo drifting into the gap after the caption.
+                Row {
+                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    spacing: Style.spacingXs
+                    readonly property real avail: parent.width - Style.spacingM * 2
+                                                  - editCommunityCaption.width - Style.spacingS
+
+                    Item {
+                        id: editCommunityLogo
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: visible ? units.gu(3) : 0
+                        height: width
+                        visible: page.editCommunityIcon.length > 0
+
+                        CircleImage {
+                            anchors.fill: parent
+                            source: page.editCommunityIcon
+                        }
+                        // Same hairline ring as the header pill, so a pale logo keeps its edge.
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: units.dp(1)
+                            border.color: Style.divider
+                        }
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth,
+                                        parent.avail - editCommunityLogo.width - parent.spacing)
+                        elide: Text.ElideRight
+                        text: page.catCommunityName
+                        font.pixelSize: Style.fontRegular
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                    }
+                }
+            }
+
             // Category selector hidden for communities that haven't defined any categories yet (publish() falls back to "general").
             AbstractButton {
                 width: parent.width
@@ -947,7 +1044,7 @@ Page {
                         spacing: units.dp(2)
 
                         Label {
-                            text: Lang.tr("Post to blockchain")
+                            text: Lang.tr("Post on the blockchain")
                             font.pixelSize: Style.fontRegular
                             font.weight: Font.DemiBold
                             font.family: Style.fontFor(text)

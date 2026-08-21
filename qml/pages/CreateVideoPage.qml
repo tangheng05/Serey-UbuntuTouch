@@ -25,7 +25,7 @@ Page {
     property bool uploadingVideo: false
     property int uploadPercent: 0      // chunked-upload progress (0-100)
     property bool grabbingThumb: false
-    // "Post to blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
+    // "Post on the blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
 
     // Chosen in PostCommunityPicker before this page opens; unset = post into the browsed source
@@ -392,7 +392,7 @@ Page {
                     spacing: units.dp(2)
 
                     Label {
-                        text: Lang.tr("Post to blockchain")
+                        text: Lang.tr("Post on the blockchain")
                         font.pixelSize: Style.fontRegular
                         font.weight: Font.DemiBold
                         font.family: Style.fontFor(text)
@@ -401,7 +401,7 @@ Page {
                     Label {
                         width: parent.width
                         text: page.postToBlockchain
-                            ? Lang.tr("Permanent, tamper proof storage on the blockchain. Proves authorship and earns SRY rewards")
+                            ? Lang.tr("The title and the link are permanently recorded on the blockchain. This allows you to prove that you are the creator and receive SRY rewards. The video itself simply remains on a server.")
                             : Lang.tr("Serey only, no votes or rewards.")
                         font.pixelSize: Style.fontXSmall
                         font.family: Style.fontFor(text)

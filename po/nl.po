@@ -665,7 +665,7 @@ msgid "Reset password"
 msgstr "Wachtwoord opnieuw instellen"
 
 msgid "Retry"
-msgstr "Opnieuw proberen"
+msgstr "Opnieuw verbinden"
 
 msgid "Save"
 msgstr "Opslaan"

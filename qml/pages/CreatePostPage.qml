@@ -58,7 +58,7 @@ Page {
     function _bodyHasContent() {
         for (var i = 0; i < page.bodyParts.length; i++) {
             var p = page.bodyParts[i];
-            if (p.type === "image") return true;
+            if (p.type === "image" || p.type === "embed") return true;
             if (p.type === "text" && (p.html || "").trim().length > 0) return true;
         }
         return false;
@@ -319,6 +319,29 @@ Page {
         return t;
     }
 
+    // Strips doctype/html/head, keeps body fragment only
+    function _bodyFragment(html) {
+        var t = html || "";
+        var bodyMatch = t.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        if (bodyMatch) t = bodyMatch[1];
+        return t.replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<\/?html[^>]*>/gi, "")
+                .replace(/<head>[\s\S]*?<\/head>/gi, "");
+    }
+
+    // Wraps bare pasted URLs in <a>
+    function _autoLinkify(html) {
+        var urlRe = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+        var parts = page._bodyFragment(html).split(/(<a\b[^>]*>[\s\S]*?<\/a>)/gi);
+        for (var i = 0; i < parts.length; i++) {
+            if (/^<a\b/i.test(parts[i])) continue;
+            parts[i] = parts[i].replace(urlRe, function (m) {
+                var href = /^https?:\/\//i.test(m) ? m : "https://" + m;
+                return '<a href="' + href + '">' + m + '</a>';
+            });
+        }
+        return parts.join("");
+    }
+
     function publish() {
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
@@ -331,6 +354,9 @@ Page {
             var part = page.bodyParts[i];
             if (part.type === "image") {
                 body += '<img src="' + part.url + '" style="max-width:100%;height:auto;" />';
+            } else if (part.type === "embed") {
+                // Matches PostDetailPage's embed detection
+                body += '<p><a href="' + part.url + '">' + part.url + '</a></p>';
             } else {
                 var loader = bodyRepeater.itemAt(i);
                 var html = loader && loader.item ? loader.item.text : (part.html || "");
@@ -393,8 +419,18 @@ Page {
     }
 
     property string _pendingLinkText: ""
+    property string _pendingLinkHref: ""
     property int _pendingLinkStart: 0
     property int _pendingLinkEnd: 0
+
+    // Prefill dialog with existing href, if any
+    function _existingHrefFor(html, selectedText) {
+        if (!selectedText) return "";
+        var esc = selectedText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        var re = new RegExp('<a\\s+[^>]*href="([^"]*)"[^>]*>\\s*' + esc + '\\s*</a>', "i");
+        var m = re.exec(html || "");
+        return m ? m[1] : "";
+    }
 
     function promptLink() {
         var ta = page._activeTextArea();
@@ -405,6 +441,7 @@ Page {
         page._pendingLinkText = ta.selectedText;
         page._pendingLinkStart = ta.selectionStart;
         page._pendingLinkEnd = ta.selectionEnd;
+        page._pendingLinkHref = page._existingHrefFor(ta.text, ta.selectedText);
         Popups.PopupUtils.open(linkDialog);
     }
 
@@ -417,6 +454,65 @@ Page {
         ta.forceActiveFocus();
     }
 
+    // Same providers the article reader knows how to render as a live player.
+    function _isEmbeddableVideoUrl(url) {
+        return /(?:youtube\.com\/(?:watch\?|embed\/|shorts\/)|youtu\.be\/)/i.test(url || "");
+    }
+
+    function promptEmbed() {
+        Popups.PopupUtils.open(embedDialog);
+    }
+
+    function applyEmbed(url) {
+        if (url.length === 0) return;
+        if (!page._isEmbeddableVideoUrl(url)) {
+            Toast.error(Lang.tr("Paste a YouTube link to embed a video."));
+            return;
+        }
+        page._insertBodyEmbed(url);
+    }
+
+    // Same shape as _insertBodyImage
+    function _insertBodyEmbed(url) {
+        Qt.inputMethod.commit();
+        var parts = page.bodyParts.slice();
+        var afterIdx = page.activeTextIndex;
+        if (afterIdx < 0 || afterIdx >= parts.length || parts[afterIdx].type !== "text")
+            afterIdx = parts.length - 1;
+        var activeLoader = bodyRepeater.itemAt(afterIdx);
+        if (activeLoader && activeLoader.item)
+            parts[afterIdx] = { type: "text", html: activeLoader.item.text };
+        parts.splice(afterIdx + 1, 0, { type: "embed", url: url }, { type: "text", html: "" });
+        page.bodyParts = parts;
+        page.activeTextIndex = afterIdx + 2;
+        page._pendingFocusIndex = afterIdx + 2;
+        page._bodyRev++;
+    }
+
+    Component {
+        id: embedDialog
+        Popups.Dialog {
+            id: edlg
+            title: Lang.tr("Embed video")
+            TextField {
+                id: embedUrlField
+                placeholderText: "https://www.youtube.com/watch?v=…"
+                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoPredictiveText
+                // Needed for paste to work
+                Component.onCompleted: embedUrlField.forceActiveFocus()
+            }
+            Button {
+                text: Lang.tr("Insert")
+                color: Style.brand
+                onClicked: { Popups.PopupUtils.close(edlg); page.applyEmbed(embedUrlField.text.trim()); }
+            }
+            Button {
+                text: Lang.tr("Cancel")
+                onClicked: Popups.PopupUtils.close(edlg)
+            }
+        }
+    }
+
     Component {
         id: linkDialog
         Popups.Dialog {
@@ -424,8 +520,10 @@ Page {
             title: Lang.tr("Add link")
             TextField {
                 id: linkUrlField
+                text: page._pendingLinkHref
                 placeholderText: "https://"
                 inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoPredictiveText
+                Component.onCompleted: linkUrlField.forceActiveFocus()
             }
             Button {
                 text: Lang.tr("Insert")
@@ -573,7 +671,9 @@ Page {
                             width: partsCol.width
                             property var partData: modelData
                             property int partIndex: index
-                            sourceComponent: partData.type === "image" ? bodyImagePartComp : bodyTextPartComp
+                            sourceComponent: partData.type === "image" ? bodyImagePartComp
+                                            : partData.type === "embed" ? bodyEmbedPartComp
+                                            : bodyTextPartComp
                             onLoaded: {
                                 if (partIndex === page._pendingFocusIndex) {
                                     item.forceActiveFocus();
@@ -634,7 +734,23 @@ Page {
                     // Auto-expand to fit content; the Column sizes off each segment's real height.
                     autoSize: true
                     maximumLineCount: 0
-                    Component.onCompleted: { text = partData.html; Qt.callLater(_fitHeight); }
+                    Component.onCompleted: { text = partData.html; partArea._prevText = text; Qt.callLater(_fitHeight); }
+                    // Paste = multi-char jump vs typing = 1 char
+                    property string _prevText: ""
+                    property bool _linkifyBusy: false
+                    function _autoLinkifyPasted() {
+                        var oldText = text;
+                        var oldFragment = page._bodyFragment(oldText);
+                        var linked = page._autoLinkify(oldText);
+                        if (linked === oldFragment) return;
+                        var cp = cursorPosition;
+                        var added = linked.length - oldFragment.length;
+                        partArea._linkifyBusy = true;
+                        text = linked;
+                        cursorPosition = Math.min(text.length, cp + added);
+                        partArea._prevText = text;
+                        partArea._linkifyBusy = false;
+                    }
                     // autoSize's internal line-count estimate under-measures wrapped/rich text, leaving the
                     // editor's own height too short so its inner Flickable scrolls instead of the box growing.
                     // Force it to the true painted height, same fix as the read-only article body.
@@ -653,7 +769,13 @@ Page {
                     // Write through partIndex, NOT partData.html: a JS-array model hands the delegate a
                     // QVariantMap *copy*, so mutating partData never reaches page.bodyParts and the text
                     // is lost the moment the Repeater rebuilds (e.g. when an image is inserted).
-                    onTextChanged: page._setPartHtml(partIndex, text)
+                    onTextChanged: {
+                        page._setPartHtml(partIndex, text);
+                        if (!partArea._linkifyBusy) {
+                            if (text.length - partArea._prevText.length > 3) Qt.callLater(partArea._autoLinkifyPasted);
+                            partArea._prevText = text;
+                        }
+                    }
                     onActiveFocusChanged: {
                         if (activeFocus) { page.activeTextIndex = partIndex; page.bodyFocused = true; }
                         else Qt.callLater(function () { page.bodyFocused = page._anyBodyPartFocused(); });
@@ -692,6 +814,32 @@ Page {
                             visible: parent.status !== Image.Ready
                             z: -1
                         }
+                    }
+
+                    AbstractButton {
+                        anchors { top: parent.top; right: parent.right; margins: units.dp(6) }
+                        width: units.gu(3.2); height: width
+                        onClicked: page._removeBodyPart(partIndex)
+                        Rectangle { anchors.fill: parent; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.55) }
+                        Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "close"; color: "white" }
+                    }
+                }
+            }
+
+            // One inline video embed block: live preview, same player the article reader shows.
+            Component {
+                id: bodyEmbedPartComp
+                Rectangle {
+                    width: parent.width
+                    height: width * 9 / 16
+                    radius: Style.thumbRadius
+                    color: "black"
+                    clip: true
+
+                    VideoWebView {
+                        anchors.fill: parent
+                        wrap: true
+                        embedUrl: partData.url
                     }
 
                     AbstractButton {
@@ -938,6 +1086,22 @@ Page {
                     anchors.centerIn: parent
                     width: units.gu(2.2); height: width
                     name: "stock_link"
+                    color: Style.textPrimary
+                }
+            }
+
+            AbstractButton {
+                width: units.gu(5); height: units.gu(4.5)
+                onClicked: page.promptEmbed()
+                Rectangle {
+                    anchors.fill: parent; anchors.margins: units.dp(4)
+                    radius: Style.cardRadius; color: "transparent"
+                    border.width: units.dp(1); border.color: Style.divider
+                }
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.2); height: width
+                    name: "media-playback-start"
                     color: Style.textPrimary
                 }
             }

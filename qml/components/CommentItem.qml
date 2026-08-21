@@ -1,6 +1,5 @@
 import QtQuick 2.7
 import QtQuick.Controls 2.2
-import QtQuick.Layouts 1.3
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
@@ -64,13 +63,13 @@ Item {
 
         Item {
             width: parent.width
-            height: avatar.height
+            height: Math.max(avatar.height, nameCol.implicitHeight)
             z: item.menuOpen ? 20 : 0
 
             Item {
                 id: avatar
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(3.5); height: width
+                width: units.gu(4); height: width
 
                 Rectangle {
                     anchors.fill: parent
@@ -81,7 +80,7 @@ Item {
                     Label {
                         anchors.centerIn: parent
                         text: (c.author || "?").charAt(0).toUpperCase()
-                        font.pixelSize: Style.fontSmall
+                        font.pixelSize: Style.fontRegular
                         font.bold: true
                         color: Style.brand
                     }
@@ -98,7 +97,7 @@ Item {
                 MouseArea { anchors.fill: parent; onClicked: item.authorClicked(c.author || "") }
             }
 
-            RowLayout {
+            Column {
                 id: nameCol
                 anchors {
                     left: avatar.right
@@ -107,17 +106,12 @@ Item {
                     rightMargin: Style.spacingXs
                     verticalCenter: parent.verticalCenter
                 }
-                spacing: Style.spacingXs
+                spacing: units.dp(1)
 
                 Label {
-                    // Rail only: cap at the text width so the timestamp reads as part of the
-                    // byline instead of a stray value pinned to the far edge of a narrow column.
-                    Layout.fillWidth: true
-                    Layout.maximumWidth: item.compact ? implicitWidth : Number.POSITIVE_INFINITY
-                    // stops RowLayout shrinking the name below readable size
-                    Layout.minimumWidth: Math.min(implicitWidth, units.gu(8))
+                    width: parent.width
                     text: c.author || ""
-                    font.pixelSize: Style.fontSmall
+                    font.pixelSize: Style.fontRegular
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
                     elide: Text.ElideRight
@@ -130,13 +124,12 @@ Item {
                     }
                 }
                 Label {
-                    Layout.preferredWidth: implicitWidth
-                    text: "· " + Style.formatTimeAgo(c.date || "")
-                    font.pixelSize: Style.fontXSmall
+                    width: parent.width
+                    text: Style.formatTimeAgo(c.date || "")
+                    font.pixelSize: Style.fontSmall
                     color: Style.textSecondary
                     elide: Text.ElideRight
                 }
-                Item { Layout.fillWidth: true; visible: item.compact }
             }
 
             AbstractButton {

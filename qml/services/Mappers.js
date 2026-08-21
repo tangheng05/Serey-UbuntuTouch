@@ -56,7 +56,22 @@ function fixThumb(url) {
     return url;
 }
 
-// Pick a thumbnail for a post: explicit list field, else first <img> in the body.
+// First YouTube link in the body, either format: web editor's data-video-url container,
+// or our own app's <a href> (isolated-link paragraph or inline).
+function firstEmbedThumb(desc) {
+    if (!desc) return "";
+    var dm = /data-video-url="([^"]*)"/i.exec(desc);
+    var url = dm ? dm[1] : null;
+    if (!url) {
+        var am = /<a\s+[^>]*href="([^"]*(?:youtube\.com|youtu\.be)[^"]*)"/i.exec(desc);
+        url = am ? am[1] : null;
+    }
+    if (!url) return "";
+    var idm = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/i.exec(url);
+    return idm ? ("https://img.youtube.com/vi/" + idm[1] + "/hqdefault.jpg") : "";
+}
+
+// Pick a thumbnail for a post: explicit list field, else first <img>, else first embedded video.
 function firstImage(raw) {
     var imgs = parseList(raw.image_url);
     if (imgs.length)
@@ -65,7 +80,9 @@ function firstImage(raw) {
         return fixThumb(raw.thumbnail_url);
     var desc = raw.description || raw.post_description || "";
     var m = /<img[^>]+src=["']([^"']+)["']/i.exec(desc);
-    return m ? fixThumb(m[1]) : "";
+    if (m)
+        return fixThumb(m[1]);
+    return firstEmbedThumb(desc);
 }
 
 // Normalise a voters/flaggers list to plain usernames; the API sends either ["alice"] or [{voter:"alice"}] depending on endpoint.

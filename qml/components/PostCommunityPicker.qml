@@ -482,7 +482,9 @@ Item {
         readonly property real _margin: units.gu(1)
         // x/y instead of anchors: three placements (phone sheet, centred panel, anchored
         // drop-up) can't be expressed by toggling anchors off (see the AnchorChanges gotcha).
-        width: sheet.wide ? Math.min(picker.width - units.gu(4), units.gu(50)) : picker.width
+        width: sheet.wide ? Math.min(picker.width - units.gu(4), units.gu(50))
+             : Config.tabletMode ? Math.min(picker.width - units.gu(4), units.gu(60))
+             : picker.width
         height: Math.min(sheetContent.height + footerBar.height + units.gu(1), picker.height * 0.82)
         x: picker.anchored
            ? Math.max(_margin, Math.min(picker.width - width - _margin, picker._callerCx - width / 2))

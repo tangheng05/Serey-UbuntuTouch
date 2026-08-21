@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import "../Theme"
@@ -104,15 +105,18 @@ Page {
 
     // Desktop "•••" dropdown rows; report/delete/block route through PostActionSheet
     function headerMenuItems() {
+        // Tablet: already in header row
         var items = [
-            { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },
-            { icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" },
-            { icon: page.isSaved ? "tick" : "save",
-              label: page.isSaved ? Lang.tr("Remove from saved") : Lang.tr("Save for offline"),
-              action: "toggleSaved" },
-            // Same split as the video menu: content actions above, negative below.
-            { divider: true }
+            { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" }
         ];
+        if (!Config.tabletMode) {
+            items.push({ icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" });
+            items.push({ icon: page.isSaved ? "tick" : "save",
+              label: page.isSaved ? Lang.tr("Remove from saved") : Lang.tr("Save for offline"),
+              action: "toggleSaved" });
+        }
+        // Same split as the video menu: content actions above, negative below.
+        items.push({ divider: true });
         if (page.isOwnPost) {
             items.push({ icon: "edit", label: Lang.tr("Edit post"), action: "edit" });
             items.push({ icon: "delete", label: Lang.tr("Delete post"), danger: true, action: "delete" });
@@ -211,7 +215,7 @@ Page {
 
             AbstractButton {
                 id: shareHeaderBtn
-                visible: !Config.wideMode
+                visible: !Config.wideMode || Config.tabletMode
                 width: units.gu(4); height: units.gu(4)
                 enabled: page.shareUrl.length > 0
                 onClicked: Share.open(page.shareUrl, shareHeaderBtn)
@@ -776,12 +780,46 @@ Page {
     // Set by _parseBody: the article carries its own images, so the auto cover would duplicate one.
     property bool _bodyHasOwnImage: false
 
+    // YouTube only
+    function _isEmbeddableVideoUrl(url) {
+        return /(?:youtube\.com\/(?:watch\?|embed\/|shorts\/)|youtu\.be\/)/i.test(url || "");
+    }
+
+    // Web editor's nested-div video embed -> our <p><a> shape
+    function _stripWebVideoContainers(html) {
+        var re = /<div\b[^>]*data-video-url="([^"]*)"[^>]*>/gi;
+        var tagRe = /<div\b[^>]*>|<\/div>/gi;
+        var out = "";
+        var lastIndex = 0;
+        var m;
+        while ((m = re.exec(html)) !== null) {
+            out += html.substring(lastIndex, m.index);
+            var url = m[1];
+            var depth = 1;
+            var end = html.length;
+            tagRe.lastIndex = re.lastIndex;
+            var tm;
+            while ((tm = tagRe.exec(html)) !== null) {
+                depth += tm[0].charAt(1) === "/" ? -1 : 1;
+                if (depth === 0) { end = tm.index + tm[0].length; break; }
+            }
+            out += url.length > 0 ? ('<p><a href="' + url + '">' + url + '</a></p>') : "";
+            lastIndex = end;
+            re.lastIndex = end;
+        }
+        out += html.substring(lastIndex);
+        return out;
+    }
+
     function _parseBody() {
         bodyModel.clear();
         page._bodyHasOwnImage = false;
         if (!page.post)
             return;
         var html = page.post.body || "";
+
+        // Must run before <img>/tag stripping below
+        html = page._stripWebVideoContainers(html);
 
         // Custom editor containers carry the real src in data-image-url; replace the entire parent tag with a plain <img> so the splitter catches them.
         html = html.replace(/<[^>]*data-image-url="([^"]*)"[^>]*>/g, '<img src="$1"/>');
@@ -798,6 +836,26 @@ Page {
         }
         if (remaining) pieces.push({ type: "html", content: remaining });
 
+        // Isolated video link -> own "embed" block
+        var pieces2 = [];
+        var linkParaRe = /<p[^>]*>\s*<a\s+[^>]*href="([^"]*)"[^>]*>[^<]*<\/a>\s*<\/p>/gi;
+        for (var pi = 0; pi < pieces.length; pi++) {
+            var pc = pieces[pi];
+            if (pc.type !== "html") { pieces2.push(pc); continue; }
+            var rem2 = pc.content, lastIdx = 0, mm;
+            linkParaRe.lastIndex = 0;
+            while ((mm = linkParaRe.exec(rem2)) !== null) {
+                var before2 = rem2.substring(lastIdx, mm.index);
+                if (before2) pieces2.push({ type: "html", content: before2 });
+                if (page._isEmbeddableVideoUrl(mm[1])) pieces2.push({ type: "embed", content: mm[1] });
+                else pieces2.push({ type: "html", content: mm[0] });
+                lastIdx = mm.index + mm[0].length;
+            }
+            var tail2 = rem2.substring(lastIdx);
+            if (tail2) pieces2.push({ type: "html", content: tail2 });
+        }
+        pieces = pieces2;
+
         // The cover is auto-derived (often a re-upload of the article's own header image, so
         // the URLs differ and no string compare can pair them) and it was drawn on top of a
         // body that already carries that picture. An article with its own images doesn't need
@@ -810,6 +868,9 @@ Page {
                 page._bodyHasOwnImage = true;
                 seenImages[piece.content] = true;
                 bodyModel.append({ type: "image", content: piece.content, links: "[]" });
+            } else if (piece.type === "embed") {
+                page._bodyHasOwnImage = true;   // a playable embed stands in for the cover just like a real image
+                bodyModel.append({ type: "embed", content: piece.content, links: "[]" });
             } else {
                 var text = piece.content;
                 // The blocks render as RichText, which collapses literal "\n" to a space; block boundaries become <br/> tags, and a paragraph gap is a double break.
@@ -1205,7 +1266,35 @@ Page {
 
                     delegate: Loader {
                         width: parent.width
-                        sourceComponent: model.type === "image" ? bodyImageComp : bodyTextComp
+                        sourceComponent: model.type === "image" ? bodyImageComp
+                                        : model.type === "embed" ? bodyEmbedComp
+                                        : bodyTextComp
+
+                        Component {
+                            id: bodyEmbedComp
+                            // No OpacityMask: WebEngineView doesn't mask reliably
+                            Rectangle {
+                                id: embedBox
+                                width: parent.width
+                                height: width * 9 / 16
+                                radius: Style.thumbRadius
+                                color: "black"
+                                clip: true
+
+                                VideoWebView {
+                                    id: embedPlayer
+                                    anchors.fill: parent
+                                    wrap: true
+                                    embedUrl: model.content
+                                    // Reparent only; anchors.fill: parent follows automatically
+                                    onFullscreenToggled: {
+                                        page.videoFullscreenActive = on;
+                                        embedPlayer.parent = on ? videoFsHost : embedBox;
+                                        embedPlayer.focusWeb();
+                                    }
+                                }
+                            }
+                        }
 
                         Component {
                             id: bodyImageComp
@@ -1899,5 +1988,16 @@ Page {
 
         // composerArea (reply banner + pill composer) reparents in here; declared under sidePanel.
     }
+    }
+
+    // Fullscreen host for body embeds (mirrors VideoDetailPage's fsHost)
+    property bool videoFullscreenActive: false
+    Item {
+        id: videoFsHost
+        parent: (page.videoFullscreenActive && Window.contentItem) ? Window.contentItem : page
+        anchors.fill: parent
+        z: 2000
+        visible: page.videoFullscreenActive
+        Rectangle { anchors.fill: parent; color: "black" }
     }
 }

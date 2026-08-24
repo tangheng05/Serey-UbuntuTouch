@@ -200,6 +200,13 @@ Page {
         return !!(c && c.indexOf && c.indexOf("video") >= 0);
     }
 
+    // Gallery posts (category "gallery") have their own page/card; blog cards can't render them, so drop them here.
+    function _isGallery(p) {
+        if (p.primaryCategory === "gallery") return true;
+        var c = p.categories;
+        return !!(c && c.indexOf && c.indexOf("gallery") >= 0);
+    }
+
     // Parse a row's publish date to a sortable timestamp (0 if unparseable) so a mixed batch can be ordered newest-first.
     function _ts(row) {
         var t = Date.parse(row.date || "");
@@ -349,7 +356,7 @@ Page {
                     page.inflightBlog = null;
                     for (var i = 0; i < result.length; i++) {
                         var p = result[i];
-                        if (page._isVideo(p)) continue;
+                        if (page._isVideo(p) || page._isGallery(p)) continue;
                         p._kind = "blog";
                         blogRows.push(p);
                     }
@@ -406,7 +413,7 @@ Page {
                     page.inflightOwn = null;
                     for (var i = 0; i < result.length; i++) {
                         var o = result[i];
-                        if (page._isVideo(o)) continue;   // videos come from the video source
+                        if (page._isVideo(o) || page._isGallery(o)) continue;   // videos/gallery come from their own sources
                         o._kind = "blog";
                         ownRows.push(o);
                     }

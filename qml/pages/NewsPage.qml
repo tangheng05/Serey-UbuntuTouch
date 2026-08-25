@@ -425,12 +425,6 @@ Page {
         flickableDirection: Flickable.HorizontalFlick
         clip: true
 
-        ActivityIndicator {
-            anchors.centerIn: parent
-            running: page.categoriesLoading && page.categories.length === 0
-            visible: running
-        }
-
         Row {
             visible: !(page.categoriesLoading && page.categories.length === 0)
             id: catRow
@@ -474,6 +468,14 @@ Page {
         visible: catBar.showBar
         height: units.dp(1)
         color: Style.divider
+    }
+
+    // Also a sibling: inside the Flickable it centres on contentWidth (one "All" chip while
+    // the fetch is out), which parked it at the left edge instead of the middle of the bar.
+    ActivityIndicator {
+        anchors.centerIn: catBar
+        running: catBar.showBar && page.categoriesLoading && page.categories.length === 0
+        visible: running
     }
 
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).

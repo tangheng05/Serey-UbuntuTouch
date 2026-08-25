@@ -15,11 +15,6 @@ Page {
     property string errorMsg: ""
     property var imageUrls: []
 
-    // Empty while composing a new report, otherwise the id of the report being edited.
-    // bug_reports.id is a UUID, so this is a string: Number() on it yields NaN.
-    property string editingId: ""
-    readonly property bool isEdit: editingId !== ""
-
     readonly property int maxImages: 5
     readonly property int maxChars: 2000
     readonly property real maxContentWidth: units.gu(60)
@@ -46,29 +41,6 @@ Page {
         scroll.forceActiveFocus();
     }
 
-    // What triage needs to reproduce a report: build and platform, nothing identifying.
-    function deviceInfo() {
-        return {
-            app: "Ubuntu Touch",
-            app_version: Config.appVersion,
-            platform: Qt.platform.os,
-            language: Session.language || "en",
-            screen: Math.round(page.width) + "x" + Math.round(page.height)
-        };
-    }
-
-    function statusLabel(status) {
-        if (status === "in_progress") return Lang.tr("In progress");
-        if (status === "resolved") return Lang.tr("Resolved");
-        return Lang.tr("Open");
-    }
-
-    function statusColor(status) {
-        if (status === "resolved") return Style.success;
-        if (status === "in_progress") return Style.brand;
-        return Style.textSecondary;
-    }
-
     function load() {
         if (!Session.isLoggedIn)
             return;
@@ -88,6 +60,17 @@ Page {
             });
     }
 
+    // What triage needs to reproduce a report: build and platform, nothing identifying.
+    function deviceInfo() {
+        return {
+            app: "Ubuntu Touch",
+            app_version: Config.appVersion,
+            platform: Qt.platform.os,
+            language: Session.language || "en",
+            screen: Math.round(page.width) + "x" + Math.round(page.height)
+        };
+    }
+
     function submit() {
         var text = descField.text.trim();
         if (text.length === 0) {
@@ -95,19 +78,6 @@ Page {
             return;
         }
         page.submitting = true;
-        if (page.isEdit) {
-            BugReportService.updateOwn(Config.baseUrl, Session.token, page.editingId,
-                // Status is triage-only: the reporter edits text and images.
-                { description: text, imageUrls: page.imageUrls },
-                function () {
-                    page.submitting = false;
-                    Toast.success(Lang.tr("Report updated."));
-                    page.resetForm();
-                    page.load();
-                },
-                function (err) { page._fail(err, Lang.tr("Couldn't update the report.")); });
-            return;
-        }
         BugReportService.submit(Config.baseUrl, Session.token,
             { description: text, imageUrls: page.imageUrls, deviceInfo: page.deviceInfo() },
             function () {
@@ -117,6 +87,25 @@ Page {
                 page.load();
             },
             function (err) { page._fail(err, Lang.tr("Couldn't send the report.")); });
+    }
+
+    function confirmDelete(index) {
+        PopupUtils.open(deleteDialog, page, { rowIndex: index });
+    }
+
+    function removeReport(index) {
+        var r = reportsModel.get(index);
+        if (!r) return;
+        var id = String(r.id);
+        BugReportService.removeOwn(Config.baseUrl, Session.token, id,
+            function () {
+                reportsModel.remove(index);
+                Toast.show(Lang.tr("Report deleted"));
+            },
+            function (err) {
+                if (err && err.status === 401) return;
+                Toast.error((err && err.message) || Lang.tr("Couldn't delete the report."));
+            });
     }
 
     // A 401 is already toasted by the global handler; don't show it twice.
@@ -130,34 +119,7 @@ Page {
     function resetForm() {
         descField.text = "";
         page.imageUrls = [];
-        page.editingId = "";
         page.dismissKeyboard();
-    }
-
-    function startEdit(index) {
-        var r = reportsModel.get(index);
-        if (!r) return;
-        page.editingId = String(r.id);
-        descField.text = r.description || "";
-        // imagesStr is the newline-joined scalar; the array field is wrapped by the ListModel.
-        page.imageUrls = (r.imagesStr || "").split("\n").filter(function (s) { return s.length > 0; });
-        scroll.contentY = 0;
-    }
-
-    function removeReport(index) {
-        var r = reportsModel.get(index);
-        if (!r) return;
-        var id = String(r.id);
-        BugReportService.removeOwn(Config.baseUrl, Session.token, id,
-            function () {
-                if (page.editingId === id) page.resetForm();
-                reportsModel.remove(index);
-                Toast.show(Lang.tr("Report deleted"));
-            },
-            function (err) {
-                if (err && err.status === 401) return;
-                Toast.error((err && err.message) || Lang.tr("Couldn't delete the report."));
-            });
     }
 
     function addImage() {
@@ -174,10 +136,6 @@ Page {
         for (var i = 0; i < page.imageUrls.length; i++)
             if (i !== idx) copy.push(page.imageUrls[i]);
         page.imageUrls = copy;
-    }
-
-    function confirmDelete(index) {
-        PopupUtils.open(deleteDialog, page, { rowIndex: index });
     }
 
     Component {
@@ -390,25 +348,9 @@ Page {
                 width: parent.width
                 busy: page.submitting
                 enabled: !page.submitting && !page.uploading && descField.text.trim().length > 0
-                text: page.submitting ? (page.isEdit ? Lang.tr("Saving…") : Lang.tr("Sending…"))
-                                      : (page.isEdit ? Lang.tr("Save changes") : Lang.tr("Send report"))
+                text: page.submitting ? Lang.tr("Sending…") : Lang.tr("Send report")
                 onClicked: page.submit()
             }
-
-            AbstractButton {
-                width: parent.width
-                height: units.gu(4)
-                visible: page.isEdit
-                onClicked: page.resetForm()
-                Label {
-                    anchors.centerIn: parent
-                    text: Lang.tr("Cancel edit")
-                    font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFor(text)
-                    color: Style.textSecondary
-                }
-            }
-
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
@@ -458,7 +400,7 @@ Page {
                     radius: Style.cardRadius
                     color: Style.card
                     border.width: units.dp(1)
-                    border.color: page.editingId === String(model.id) ? Style.brand : Style.divider
+                    border.color: Style.divider
 
                     Column {
                         id: cardCol
@@ -468,32 +410,10 @@ Page {
                         }
                         spacing: Style.spacingXs
 
-                        Row {
-                            width: parent.width
-                            spacing: Style.spacingS
-
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: statusLbl.implicitWidth + Style.spacingS * 2
-                                height: units.gu(2.5)
-                                radius: Style.chipRadius
-                                color: Style.iconBackground
-                                Label {
-                                    id: statusLbl
-                                    anchors.centerIn: parent
-                                    text: page.statusLabel(model.status)
-                                    font.pixelSize: Style.fontXSmall
-                                    font.weight: Font.DemiBold
-                                    font.family: Style.fontFor(text)
-                                    color: page.statusColor(model.status)
-                                }
-                            }
-                            Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Style.formatTimeAgo(model.createdAt)
-                                font.pixelSize: Style.fontXSmall
-                                color: Style.textSecondary
-                            }
+                        Label {
+                            text: Style.formatTimeAgo(model.createdAt)
+                            font.pixelSize: Style.fontXSmall
+                            color: Style.textSecondary
                         }
 
                         Label {
@@ -505,17 +425,6 @@ Page {
                             font.pixelSize: Style.fontSmall
                             font.family: Style.fontFor(text)
                             color: Style.textPrimary
-                        }
-
-                        // Triage's reply, when it left one.
-                        Label {
-                            width: parent.width
-                            visible: (model.adminNote || "") !== ""
-                            text: Lang.tr("Serey team: %1").arg(model.adminNote || "")
-                            wrapMode: Text.WordWrap
-                            font.pixelSize: Style.fontXSmall
-                            font.family: Style.fontFor(text)
-                            color: Style.brand
                         }
 
                         Row {
@@ -541,58 +450,30 @@ Page {
 
                         Item { width: 1; height: Style.spacingXs }
 
-                        Row {
-                            spacing: Style.spacingM
-
-                            AbstractButton {
-                                width: editRow.width
-                                height: units.gu(3)
-                                // Imported .js is null inside delegate handlers, so both go via page functions.
-                                onClicked: page.startEdit(index)
-                                Row {
-                                    id: editRow
-                                    spacing: Style.spacingXs
-                                    Icon {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: units.gu(2); height: width
-                                        name: "edit"; color: Style.textSecondary
-                                    }
-                                    Label {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: Lang.tr("Edit")
-                                        font.pixelSize: Style.fontXSmall
-                                        font.family: Style.fontFor(text)
-                                        color: Style.textSecondary
-                                    }
+                        AbstractButton {
+                            width: delRow.width
+                            height: units.gu(3)
+                            onClicked: page.confirmDelete(index)
+                            Row {
+                                id: delRow
+                                spacing: Style.spacingXs
+                                Icon {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2); height: width
+                                    name: "delete"; color: Style.danger
                                 }
-                            }
-
-                            AbstractButton {
-                                width: delRow.width
-                                height: units.gu(3)
-                                onClicked: page.confirmDelete(index)
-                                Row {
-                                    id: delRow
-                                    spacing: Style.spacingXs
-                                    Icon {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: units.gu(2); height: width
-                                        name: "delete"; color: Style.danger
-                                    }
-                                    Label {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: Lang.tr("Delete")
-                                        font.pixelSize: Style.fontXSmall
-                                        font.family: Style.fontFor(text)
-                                        color: Style.danger
-                                    }
+                                Label {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: Lang.tr("Delete")
+                                    font.pixelSize: Style.fontXSmall
+                                    font.family: Style.fontFor(text)
+                                    color: Style.danger
                                 }
                             }
                         }
                     }
                 }
             }
-
 
             Item { width: 1; height: Style.spacingL }
         }

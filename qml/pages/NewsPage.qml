@@ -51,6 +51,10 @@ Page {
             return;
         }
         if (Config.isBannedFromCurrentCommunity) return;
+        // Offline this request just hangs (QML's XHR ignores its own timeout on a stalled
+        // connection) and the chips bar sits above the offline cover, so the spinner outlived
+        // the outage. The Net handler below re-runs this once we're back.
+        if (!Net.online) return;
 
         // currentCommunityName can lag a tick behind communityId here - read the source object directly.
         var communityTitle = Config.selectedSubCommunity ? Config.selectedSubCommunity.name : Config.communityName;
@@ -684,12 +688,17 @@ Page {
             // offline surface is immediate.
             if (!Net.online) {
                 if (page.inflight) { page.inflight.abort(); page.inflight = null; }
+                // Same for the categories: their spinner is outside the offline cover.
+                if (page.inflightCat) { page.inflightCat.abort(); page.inflightCat = null; }
+                page.categoriesLoading = false;
                 page.loading = false;
                 page.refreshing = false;
                 if (feedModel.count === 0 && page.errorMsg === "")
                     page.errorMsg = Lang.tr("There is currently no network connection.");
                 return;
             }
+            // Chips were skipped while offline; fetch them before the feed comes back.
+            if (page.categories.length === 0) page.loadCategories();
             if (feedModel.count === 0) page.reload();
             else if (!page.loading && !page.endReached && list.atYEnd) page.loadMore();
         }

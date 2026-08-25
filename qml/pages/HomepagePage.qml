@@ -60,13 +60,14 @@ Page {
         }
     }
 
-    // The site failing to load is the offline signal; cover it with the native panel
-    // rather than let Chromium's own error page through.
+    // Two offline signals: the site failing to load (Chromium's own error page), and Net
+    // knowing we're down. The second matters because a route change the site accepted while
+    // offline leaves its own spinner turning forever with no load failure to catch.
     Rectangle {
         id: offlineCover
         anchors.fill: parent
         // Backdrop cuts in, content fades: same as the News/Video covers.
-        visible: webApp.loadFailed
+        visible: webApp.loadFailed || !Net.online
         color: Style.surface
 
         OfflineState {
@@ -77,11 +78,12 @@ Page {
         }
     }
 
-    // Walk back into coverage and the site comes back on its own; the cover hides the reload.
+    // Backstop for a site that is down while the network is fine; a real outage is picked up
+    // by WebAppView the moment Net flips back. The cover hides the reload either way.
     Timer {
         interval: 20000
         repeat: true
-        running: offlineCover.visible && Config.currentTab === 0
+        running: offlineCover.visible && Net.online && Config.currentTab === 0
         onTriggered: webApp.reload()
     }
 

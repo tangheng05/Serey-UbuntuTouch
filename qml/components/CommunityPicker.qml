@@ -258,9 +258,31 @@ Item {
         }
     }
 
+    // A hung fetch leaves the row spinning: QML's XHR ignores its own `timeout` when the
+    // connection stalls instead of being refused, so nothing ever answers. Give up here and
+    // the row falls back to its "tap to try again" state (cache stays undefined).
+    Timer {
+        id: fetchWatchdog
+        interval: 20000
+        repeat: false
+        onTriggered: picker.loadingIndex = -1
+    }
+
+    // Offline the spinner would only outlive the outage; drop it and show the retry row.
+    property Connections _netWatcher: Connections {
+        target: Net
+        function onOnlineChanged() {
+            if (Net.online) return
+            fetchWatchdog.stop()
+            picker.loadingIndex = -1
+        }
+    }
+
     function _fetch(srcIndex) {
         if (picker.cache[srcIndex] !== undefined) return
+        if (!Net.online) { picker.loadingIndex = -1; return }
         picker.loadingIndex = srcIndex
+        fetchWatchdog.restart()
 
         // Fetch communities, then categories, then group the former by the latter; Global uses categories/list directly since list-by-parent-id/1 returns only hubs.
 
@@ -336,13 +358,14 @@ Item {
             for (var k in picker.cache) nc[k] = picker.cache[k]
             nc[si] = cats
             picker.cache = nc
+            fetchWatchdog.stop()
             picker.loadingIndex = -1
         }
 
         // Offline, every request "returns" an empty list. Caching that left the row stuck on
         // "No platforms found" for the rest of the session, so a failure stays uncached and
         // the next expand tries again.
-        function _abandon() { picker.loadingIndex = -1 }
+        function _abandon() { fetchWatchdog.stop(); picker.loadingIndex = -1 }
         function _ok(xhr) { return xhr.status >= 200 && xhr.status < 300 }
 
         if (srcIndex === 0) {

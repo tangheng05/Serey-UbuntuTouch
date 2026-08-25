@@ -688,6 +688,9 @@ msgstr "Opgeslagen artikelen"
 msgid "Saving…"
 msgstr "Opslaan…"
 
+msgid "Screenshots (%1/%2)"
+msgstr "Schermafbeeldingen (%1/%2)"
+
 msgid "Search users..."
 msgstr "Gebruikers zoeken..."
 
@@ -825,6 +828,9 @@ msgstr "Versie"
 
 msgid "Video"
 msgstr "Video"
+
+msgid "Video (%1/1)"
+msgstr "Video (%1/1)"
 
 msgid "Video published!"
 msgstr "Video gepubliceerd!"

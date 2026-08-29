@@ -108,13 +108,18 @@ Item {
                 Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update comment."));
             });
     }
-    function startReply(c) { sheet.editTarget = null; sheet.replyTarget = c; composer.forceActiveFocus(); }
+    function startReply(c) {
+        sheet.editTarget = null; sheet.replyTarget = c;
+        composer.forceActiveFocus();
+        Qt.inputMethod.show();
+    }
     // Edit runs through this composer, pre-filled, instead of a second field in the row.
     function startEdit(c) {
         sheet.replyTarget = null;
         sheet.editTarget = c;
         composer.text = c.body || "";
         composer.forceActiveFocus();
+        Qt.inputMethod.show();
     }
     function cancelEdit() { sheet.editTarget = null; composer.text = ""; }
 
@@ -177,12 +182,9 @@ Item {
         // Geometry, not anchors: docked and sheet modes differ on every edge, and an
         // anchor set can't be swapped from a ternary (see the AnchorChanges note in CLAUDE.md).
         x: sheet.docked ? sheet.dockRect.x : (parent.width - width) / 2
-        y: sheet.docked ? sheet.dockRect.y : (parent.height - sheet.kbHeight - height)
+        y: sheet.docked ? sheet.dockRect.y : (parent.height - height)
         width: sheet.docked ? sheet.dockRect.width : Math.min(parent.width, Config.sheetMaxWidth)
-        // Docked still yields to the on-screen keyboard: a wide tablet has one, and the
-        // composer sits at the panel's bottom edge.
-        height: sheet.docked ? Math.max(units.gu(10), sheet.dockRect.height - sheet.kbHeight)
-                             : Math.min(sheet.height * 0.72, sheet.height - sheet.kbHeight - units.gu(2))
+        height: sheet.docked ? sheet.dockRect.height : Math.min(sheet.height * 0.72, sheet.height - units.gu(2))
         color: Style.surface
         // Docked, it's a right rail flush with the window edge, like VideoDetailPage's side panel.
         radius: sheet.docked ? 0 : Style.cardRadius
@@ -293,6 +295,10 @@ Item {
         Column {
             id: composerBar
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            // Ride above the on-screen keyboard; cList above is anchored to composerBar.top
+            // and shrinks to keep both visible (same fix as VideoDetailPage's comment footer).
+            anchors.bottomMargin: sheet.kbHeight
+            Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
             spacing: 0
 
             // "Replying to @x  Cancel", the same treatment as the video composers
@@ -327,6 +333,8 @@ Item {
             }
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+            Item { width: 1; height: Style.spacingS }
 
             // Same pill + round send button as VideoDetailPage's composers, so every
             // comment box in the app looks alike.
@@ -363,6 +371,9 @@ Item {
                     font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     onAccepted: sheet.submit()
+                    // A direct tap here can still leave the OSK unraised on some platforms,
+                    // which starves the panel's kbHeight math and lets the keyboard cover it.
+                    onActiveFocusChanged: if (activeFocus) Qt.inputMethod.show()
                 }
 
                 AbstractButton {

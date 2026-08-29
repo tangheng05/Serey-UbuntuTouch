@@ -57,6 +57,9 @@ AbstractButton {
             visible: root.valueText.length > 0
             anchors.verticalCenter: parent.verticalCenter
             text: root.valueText
+            elide: Text.ElideRight
+            width: Math.min(implicitWidth, units.gu(16))
+            horizontalAlignment: Text.AlignRight
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFor(text)
             color: Style.textSecondary

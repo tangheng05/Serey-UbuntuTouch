@@ -201,6 +201,12 @@ Page {
             page.selectedSubCategory = eSub || "";
             // Prefill the toggle from the saved post (default on if absent).
             page.postToBlockchain = (page.editPost.postToBlockchain !== false);
+            // Some list endpoints (e.g. list-by-author, used by the Profile page) don't return
+            // community_id/community_title per row, so editPost can arrive with neither set.
+            // publish() then falls back to Config.communityName, which can be a different
+            // community than the one this post actually lives in -> backend rejects the save
+            // with "invalid community". Re-fetch the authoritative values from the post's own
+            // detail endpoint whenever they're missing, regardless of which page opened the editor.
             if (!(page.editPost.communityId > 0) || !page.editPost.community) {
                 var author = page.editPost.author || "";
                 var permlink = page.editPost.permlink || "";

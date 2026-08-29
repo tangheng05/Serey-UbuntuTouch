@@ -2292,14 +2292,14 @@ Page {
                                 spacing: units.dp(2)
                                 Label {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: page.video.votes || "0"
+                                    text: page.voteCount
                                     font.pixelSize: Style.fontMedium
                                     font.weight: Font.DemiBold
                                     color: Style.textPrimary
                                 }
                                 Label {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: Lang.tr("Likes")
+                                    text: Lang.tr("Upvotes")
                                     font.pixelSize: Style.fontSmall
                                     color: Style.textSecondary
                                 }

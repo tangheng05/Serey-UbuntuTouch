@@ -283,7 +283,7 @@ Page {
             // Title field (Lomiri underline input - bottom border, no box).
             Item {
                 width: parent.width
-                height: Math.max(units.gu(5), titleField.contentHeight + Style.spacingM)
+                height: Math.max(units.gu(5), titleField.contentHeight + Style.spacingM + titleCountLabel.height)
 
                 // Declared FIRST so it sits under the editor, catching taps on the padding gap
                 MouseArea {
@@ -301,7 +301,7 @@ Page {
                     font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
-                    wrapMode: Text.WordWrap
+                    wrapMode: Text.Wrap
                     // TextEdit has no native maximumLength (unlike TextField)
                     onTextChanged: if (text.length > page.titleMaxLength) {
                         var cp = cursorPosition;
@@ -318,11 +318,13 @@ Page {
                     font.family: Style.fontFor(text)
                 }
                 Label {
+                    id: titleCountLabel
                     anchors { right: parent.right; bottom: parent.bottom; bottomMargin: units.dp(2) }
                     visible: titleField.activeFocus || titleField.text.length > 0
-                    text: titleField.text.length + "/" + page.titleMaxLength
+                    readonly property int liveLength: titleField.text.length + titleField.preeditText.length
+                    text: liveLength + "/" + page.titleMaxLength
                     font.pixelSize: Style.fontXSmall
-                    color: titleField.text.length >= page.titleMaxLength ? Style.danger : Style.textSecondary
+                    color: liveLength >= page.titleMaxLength ? Style.danger : Style.textSecondary
                 }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -334,7 +336,7 @@ Page {
             // Description field (Lomiri underline input).
             Item {
                 width: parent.width
-                height: Math.max(units.gu(10), descField.contentHeight + Style.spacingM)
+                height: Math.max(units.gu(10), descField.contentHeight + Style.spacingM + descCountLabel.height)
 
                 // Same dead-space fix as the title field above
                 MouseArea {
@@ -352,7 +354,7 @@ Page {
                     font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
-                    wrapMode: Text.WordWrap
+                    wrapMode: Text.Wrap
                     // TextEdit has no native maximumLength (unlike TextField)
                     onTextChanged: if (text.length > page.descMaxLength) {
                         var cp = cursorPosition;
@@ -369,11 +371,13 @@ Page {
                     font.family: Style.fontFor(text)
                 }
                 Label {
+                    id: descCountLabel
                     anchors { right: parent.right; bottom: parent.bottom; bottomMargin: units.dp(2) }
                     visible: descField.activeFocus || descField.text.length > 0
-                    text: descField.text.length + "/" + page.descMaxLength
+                    readonly property int liveLength: descField.text.length + descField.preeditText.length
+                    text: liveLength + "/" + page.descMaxLength
                     font.pixelSize: Style.fontXSmall
-                    color: descField.text.length >= page.descMaxLength ? Style.danger : Style.textSecondary
+                    color: liveLength >= page.descMaxLength ? Style.danger : Style.textSecondary
                 }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }

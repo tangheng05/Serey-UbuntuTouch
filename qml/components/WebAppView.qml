@@ -36,6 +36,7 @@ FocusScope {
             if (!webAppView.appAway) webView.visible = true;
             webView.lifecycleState = webAppView._lcActive;
             webAppView._log("[lifecycle] resumed -> Active");
+            webAppView._applyDeferredNav();
         }
     }
 
@@ -54,6 +55,7 @@ FocusScope {
             webView.visible = true;
             if (!webAppView.suspended)
                 webView.lifecycleState = webAppView._lcActive;
+            webAppView._applyDeferredNav();
         }
     }
 
@@ -189,7 +191,9 @@ FocusScope {
                 // Chromium hits the dead network long before any of our XHRs time out. Without
                 // this, Net still believed it was online, and switching to News/Video showed a
                 // screenful of cached cards before the offline panel caught up.
-                if (webAppView.loadFailed) Net.report(false);
+                // Nothing on screen is usable, so retry the moment the network returns rather
+                // than waiting on the shell's slow retry timer.
+                if (webAppView.loadFailed) { webAppView._deferredNav = true; Net.report(false); }
                 webAppView._log("full load FAILED: " + loadRequest.errorString
                                 + " (" + loadRequest.url + ")");
             }
@@ -248,9 +252,44 @@ FocusScope {
     // Covers the view through an in-place hop so the old route doesn't flash before repaint
     property bool _hopping: false
 
+    // A route (or a failed load) the site never got. Applied as a fresh load once we can
+    // actually do one, which needs both a network and an unfrozen renderer.
+    property bool _deferredNav: false
+    function _deferNav(why) {
+        navTimer.stop(); navVerify.stop(); hopSettle.stop(); hopWatchdog.stop(); loadTimer.stop();
+        webAppView._hopping = false;
+        webAppView.loading = false;
+        webAppView._deferredNav = true;
+        webAppView._log("nav deferred (" + why + "): " + webAppView.url);
+    }
+    function _applyDeferredNav() {
+        if (!webAppView._deferredNav || !Net.online) return;
+        // A frozen renderer runs no JS and starts no navigation, so wait for the tab.
+        if (webAppView.suspended || webAppView.appAway) return;
+        webAppView._deferredNav = false;
+        webAppView._log("applying deferred nav");
+        webAppView.reload();
+    }
+
+    Connections {
+        target: Net
+        function onOnlineChanged() {
+            if (Net.online) { webAppView._applyDeferredNav(); return; }
+            // Anything in flight is dead; drop the spinner instead of waiting out Chromium's
+            // own (minutes-long) timeout, and reload once we're back since the site's own
+            // failed fetches never retry themselves.
+            if (webAppView.loading || webAppView._hopping || !webAppView.suspended)
+                webAppView._deferNav("network lost");
+        }
+    }
+
     onUrlChanged: {
         if (url === "") return;
         _navStartedAt = Date.now();
+        // Offline, an in-place hop lands the SPA on a route whose fetches never answer, so it
+        // spins forever with no load failure for us to notice; a full load would just fail.
+        // Park the route and apply it when the network is back.
+        if (!Net.online) { _deferNav("offline"); return; }
         if (_pageReady && _samePagePath(url) !== "" && _samePagePath(_loadedUrl) !== "") {
             _log("url -> " + url + " | in-place hop queued");
             _hopping = true;
@@ -272,11 +311,13 @@ FocusScope {
             var path = webAppView._samePagePath(webAppView.url);
             if (path === "") { webAppView._hopping = false; loadTimer.restart(); return; }
             webAppView._log("in-place hop -> " + path);
+            hopWatchdog.restart();
             webView.runJavaScript(
                 "(function(){ if (typeof window.__sereyNavigate !== 'function') return false;" +
                 "  try { window.__sereyNavigate(" + JSON.stringify(path) + "); return true; }" +
                 "  catch (e) { return false; } })()",
                 function (handled) {
+                    hopWatchdog.stop();
                     if (handled) {
                         webAppView._log("in-place hop accepted after "
                                         + (Date.now() - webAppView._navStartedAt) + "ms");
@@ -289,6 +330,23 @@ FocusScope {
                         loadTimer.restart();
                     }
                 });
+        }
+    }
+
+    // runJavaScript's callback never arrives if the renderer was frozen or the page is gone,
+    // and the cover is only lifted from inside it, so time the hop out here too.
+    Timer {
+        id: hopWatchdog
+        interval: 4000
+        repeat: false
+        onTriggered: {
+            if (!webAppView._hopping) return;
+            // A frozen renderer hasn't refused the hop, it just hasn't run it yet; the callback
+            // arrives on resume. Keep waiting rather than forcing a reload behind a hidden tab.
+            if (webAppView.suspended || webAppView.appAway) { hopWatchdog.restart(); return; }
+            webAppView._log("in-place hop never answered");
+            webAppView._hopping = false;
+            if (Net.online) loadTimer.restart(); else webAppView._deferNav("hop timed out offline");
         }
     }
 
@@ -370,7 +428,8 @@ FocusScope {
     }
 
     function reload() {
-        navTimer.stop(); navVerify.stop(); hopSettle.stop(); _hopping = false;
+        navTimer.stop(); navVerify.stop(); hopSettle.stop(); hopWatchdog.stop();
+        _hopping = false; _deferredNav = false;
         webView.url = "";
         loadTimer.restart();
     }

@@ -1,10 +1,13 @@
 import QtQuick 2.7
+import Qt.labs.settings 1.0
 import Lomiri.Components 1.3
 import Lomiri.Components.Popups 1.3
+import Serey.FileUtils 1.0 as FileUtils
 import "../Theme"
 import "../Session"
 import "../components"
 import "../services/BugReportService.js" as BugReportService
+import "../services/Uploads.js" as Uploads
 
 Page {
     id: page
@@ -15,14 +18,30 @@ Page {
     property string errorMsg: ""
     property var imageUrls: []
 
-    // Empty while composing a new report, otherwise the id of the report being edited.
-    // bug_reports.id is a UUID, so this is a string: Number() on it yields NaN.
-    property string editingId: ""
-    readonly property bool isEdit: editingId !== ""
+    // Single video attachment: local picked file + hosted result once the tus upload finishes.
+    property string videoFileUrl: ""
+    property string videoUrl: ""
+    property string videoId: ""
+    property string videoThumbUrl: ""   // server-generated thumbnail, from the upload job status
+    property bool uploadingVideo: false
+    property int videoUploadPercent: 0
 
     readonly property int maxImages: 5
     readonly property int maxChars: 2000
     readonly property real maxContentWidth: units.gu(60)
+
+    // Fullscreen tap-to-preview overlay, shared by the compose tiles and the history list.
+    property string previewUrl: ""
+    property bool previewIsVideo: false
+    function openPreview(url, isVideo) {
+        if (!url) return;
+        page.previewUrl = url;
+        page.previewIsVideo = isVideo;
+    }
+    function closePreview() {
+        page.previewUrl = "";
+        page.previewIsVideo = false;
+    }
 
     // Kept at every width, like the other settings sub-pages: a wide window still needs
     // a visible way back, and the panel beside it is a list, not a back affordance.
@@ -36,7 +55,7 @@ Page {
     // Without this the pushed page leaves active focus on the header's back action, and
     // Suru paints its focus underline over the header divider (reads as a broken hairline).
     property Item keyboardFocusItem: scroll
-    Keys.onEscapePressed: Nav.focusMaster()
+    Keys.onEscapePressed: page.previewUrl !== "" ? page.closePreview() : Nav.focusMaster()
     onVisibleChanged: if (visible) scroll.forceActiveFocus()
 
     ListModel { id: reportsModel; dynamicRoles: true }
@@ -44,29 +63,39 @@ Page {
     Component.onCompleted: {
         page.load();
         scroll.forceActiveFocus();
+        Uploads.setDelayHook(function (ms, fn) {
+            uploadDelayTimer.pending = fn;
+            uploadDelayTimer.interval = ms;
+            uploadDelayTimer.restart();
+        });
+        Uploads.setFileReader(chunkReader);
+        Uploads.setUploadStore({
+            get: function () { return videoResumeStore.pendingUpload; },
+            set: function (v) { videoResumeStore.pendingUpload = v; }
+        });
     }
 
-    // What triage needs to reproduce a report: build and platform, nothing identifying.
-    function deviceInfo() {
-        return {
-            app: "Ubuntu Touch",
-            app_version: Config.appVersion,
-            platform: Qt.platform.os,
-            language: Session.language || "en",
-            screen: Math.round(page.width) + "x" + Math.round(page.height)
-        };
+    // Uploads.js has no setTimeout (QML JS library); this Timer drives the delay between status polls.
+    Timer {
+        id: uploadDelayTimer
+        repeat: false
+        property var pending: null
+        onTriggered: {
+            var fn = pending;
+            pending = null;
+            if (fn) fn();
+        }
     }
 
-    function statusLabel(status) {
-        if (status === "in_progress") return Lang.tr("In progress");
-        if (status === "resolved") return Lang.tr("Resolved");
-        return Lang.tr("Open");
-    }
+    // C++ streaming file reader: uploads read 25 MB slices from disk instead of loading the whole video into RAM.
+    FileUtils.FileChunkReader { id: chunkReader }
 
-    function statusColor(status) {
-        if (status === "resolved") return Style.success;
-        if (status === "in_progress") return Style.brand;
-        return Style.textSecondary;
+    // Survives app restarts, letting Uploads.js resume a half-finished upload. Own category
+    // (separate from CreateVideoPage's "VideoUpload") since these are two independent uploads.
+    Settings {
+        id: videoResumeStore
+        category: "BugReportVideoUpload"
+        property string pendingUpload: ""
     }
 
     function load() {
@@ -88,6 +117,17 @@ Page {
             });
     }
 
+    // What triage needs to reproduce a report: build and platform, nothing identifying.
+    function deviceInfo() {
+        return {
+            app: "Ubuntu Touch",
+            app_version: Config.appVersion,
+            platform: Qt.platform.os,
+            language: Session.language || "en",
+            screen: Math.round(page.width) + "x" + Math.round(page.height)
+        };
+    }
+
     function submit() {
         var text = descField.text.trim();
         if (text.length === 0) {
@@ -95,21 +135,14 @@ Page {
             return;
         }
         page.submitting = true;
-        if (page.isEdit) {
-            BugReportService.updateOwn(Config.baseUrl, Session.token, page.editingId,
-                // Status is triage-only: the reporter edits text and images.
-                { description: text, imageUrls: page.imageUrls },
-                function () {
-                    page.submitting = false;
-                    Toast.success(Lang.tr("Report updated."));
-                    page.resetForm();
-                    page.load();
-                },
-                function (err) { page._fail(err, Lang.tr("Couldn't update the report.")); });
-            return;
-        }
         BugReportService.submit(Config.baseUrl, Session.token,
-            { description: text, imageUrls: page.imageUrls, deviceInfo: page.deviceInfo() },
+            {
+                description: text,
+                imageUrls: page.imageUrls,
+                videoUrls: page.videoUrl ? [page.videoUrl] : [],
+                videoThumbUrls: page.videoThumbUrl ? [page.videoThumbUrl] : [],
+                deviceInfo: page.deviceInfo()
+            },
             function () {
                 page.submitting = false;
                 Toast.success(Lang.tr("Thanks! Your report has been sent."));
@@ -117,6 +150,65 @@ Page {
                 page.load();
             },
             function (err) { page._fail(err, Lang.tr("Couldn't send the report.")); });
+    }
+
+    function pickVideo() {
+        if (page.uploadingVideo) return;
+        PopupUtils.open(videoPickerComp);
+    }
+
+    function onVideoPicked(fileUrl) {
+        page.videoFileUrl = fileUrl;
+        page.videoUrl = "";
+        page.videoId = "";
+        page.videoThumbUrl = "";
+        page.uploadingVideo = true;
+        page.videoUploadPercent = 0;
+        Uploads.uploadVideo(Config.storageCreateUploadUrl, Session.token, fileUrl,
+            function (url, job) {
+                page.uploadingVideo = false;
+                page.videoUrl = url;
+                page.videoId = (job && job.id) ? job.id : "";
+                page.videoThumbUrl = (job && job.thumbnail_url) ? job.thumbnail_url : "";
+                Toast.success(Lang.tr("Video uploaded"));
+            },
+            function (err) {
+                page.uploadingVideo = false;
+                page.videoFileUrl = "";
+                Toast.error((err && err.message) ? err.message : Lang.tr("Video upload failed."));
+            },
+            function (percent) { page.videoUploadPercent = percent; });
+    }
+
+    function clearVideo() {
+        Uploads.abort();
+        if (page.videoId)
+            Uploads.deleteVideo(Config.storageDeleteUploadUrl, Session.token, page.videoId);
+        page.videoFileUrl = "";
+        page.videoUrl = "";
+        page.videoId = "";
+        page.videoThumbUrl = "";
+        page.uploadingVideo = false;
+        page.videoUploadPercent = 0;
+    }
+
+    function confirmDelete(index) {
+        PopupUtils.open(deleteDialog, page, { rowIndex: index });
+    }
+
+    function removeReport(index) {
+        var r = reportsModel.get(index);
+        if (!r) return;
+        var id = String(r.id);
+        BugReportService.removeOwn(Config.baseUrl, Session.token, id,
+            function () {
+                reportsModel.remove(index);
+                Toast.show(Lang.tr("Report deleted"));
+            },
+            function (err) {
+                if (err && err.status === 401) return;
+                Toast.error((err && err.message) || Lang.tr("Couldn't delete the report."));
+            });
     }
 
     // A 401 is already toasted by the global handler; don't show it twice.
@@ -130,34 +222,12 @@ Page {
     function resetForm() {
         descField.text = "";
         page.imageUrls = [];
-        page.editingId = "";
+        page.videoFileUrl = "";
+        page.videoUrl = "";
+        page.videoId = "";
+        page.videoThumbUrl = "";
+        page.videoUploadPercent = 0;
         page.dismissKeyboard();
-    }
-
-    function startEdit(index) {
-        var r = reportsModel.get(index);
-        if (!r) return;
-        page.editingId = String(r.id);
-        descField.text = r.description || "";
-        // imagesStr is the newline-joined scalar; the array field is wrapped by the ListModel.
-        page.imageUrls = (r.imagesStr || "").split("\n").filter(function (s) { return s.length > 0; });
-        scroll.contentY = 0;
-    }
-
-    function removeReport(index) {
-        var r = reportsModel.get(index);
-        if (!r) return;
-        var id = String(r.id);
-        BugReportService.removeOwn(Config.baseUrl, Session.token, id,
-            function () {
-                if (page.editingId === id) page.resetForm();
-                reportsModel.remove(index);
-                Toast.show(Lang.tr("Report deleted"));
-            },
-            function (err) {
-                if (err && err.status === 401) return;
-                Toast.error((err && err.message) || Lang.tr("Couldn't delete the report."));
-            });
     }
 
     function addImage() {
@@ -176,13 +246,14 @@ Page {
         page.imageUrls = copy;
     }
 
-    function confirmDelete(index) {
-        PopupUtils.open(deleteDialog, page, { rowIndex: index });
-    }
-
     Component {
         id: photoPickerComp
         PhotoPicker { onPicked: shotUploader.upload(fileUrl) }
+    }
+
+    Component {
+        id: videoPickerComp
+        VideoPicker { onPicked: page.onVideoPicked(fileUrl) }
     }
 
     Component {
@@ -275,12 +346,24 @@ Page {
                 color: descField.length >= page.maxChars ? Style.danger : Style.textSecondary
             }
 
-            Label {
-                text: Lang.tr("Screenshots (%1/%2)").arg(page.imageUrls.length).arg(page.maxImages)
-                font.pixelSize: Style.fontSmall
-                font.weight: Font.DemiBold
-                font.family: Style.fontFor(text)
-                color: Style.textPrimary
+            Row {
+                spacing: Style.spacingM
+
+                Label {
+                    text: Lang.tr("Screenshots (%1/%2)").arg(page.imageUrls.length).arg(page.maxImages)
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.DemiBold
+                    font.family: Style.fontFor(text)
+                    color: Style.textPrimary
+                }
+
+                Label {
+                    text: Lang.tr("Video (%1/1)").arg(page.videoFileUrl ? 1 : 0)
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.DemiBold
+                    font.family: Style.fontFor(text)
+                    color: Style.textPrimary
+                }
             }
 
             Flow {
@@ -305,6 +388,10 @@ Page {
                                 asynchronous: true
                                 autoTransform: true          // honour EXIF orientation
                                 sourceSize.width: units.gu(20)
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: page.openPreview(modelData, false)
                             }
                         }
 
@@ -384,31 +471,143 @@ Page {
                         }
                     }
                 }
+
+                // Video tile: same square size/style as the image tiles, sitting right beside them.
+                Item {
+                    id: videoTile
+                    width: (parent.width - Style.spacingS * 2) / 3
+                    height: width
+
+                    // Empty: tap to pick one from the content hub (gallery/files) and upload.
+                    AbstractButton {
+                        anchors.fill: parent
+                        visible: page.videoFileUrl === ""
+                        enabled: !page.uploadingVideo
+                        onClicked: page.pickVideo()
+
+                        Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: Style.iconBackground }
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: Style.spacingXs
+
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: units.gu(4.5); height: width
+                                radius: width / 2
+                                color: Style.brand
+                                Icon {
+                                    anchors.centerIn: parent
+                                    width: units.gu(2.5); height: width
+                                    name: "add"; color: Style.textOnBrand
+                                }
+                            }
+                            Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: videoTile.width - Style.spacingS
+                                text: Lang.tr("Add video")
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                                font.pixelSize: Style.fontXSmall
+                                font.family: Style.fontFor(text)
+                                color: Style.textSecondary
+                            }
+                        }
+                    }
+
+                    // Uploading: same progress look as an image tile mid-upload.
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Style.cardRadius
+                        color: Style.iconBackground
+                        visible: page.videoFileUrl !== "" && page.uploadingVideo
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: Style.spacingXs
+                            ActivityIndicator { anchors.horizontalCenter: parent.horizontalCenter; running: page.uploadingVideo }
+                            Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: videoTile.width - Style.spacingS
+                                text: page.videoUploadPercent + "%"
+                                horizontalAlignment: Text.AlignHCenter
+                                font.pixelSize: Style.fontXSmall
+                                font.family: Style.fontFor(text)
+                                color: Style.textSecondary
+                            }
+                        }
+                    }
+
+                    // Attached: the real thumbnail (once the server has one) with a play icon overlay,
+                    // same corner remove button as an image tile. Falls back to a plain play icon
+                    // if the thumbnail isn't ready yet (or upload failed, shown in red).
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Style.cardRadius
+                        color: Style.iconBackground
+                        clip: true
+                        visible: page.videoFileUrl !== "" && !page.uploadingVideo
+
+                        Image {
+                            anchors.fill: parent
+                            visible: page.videoThumbUrl !== ""
+                            source: page.videoThumbUrl
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            sourceSize.width: units.gu(20)
+                        }
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            visible: page.videoThumbUrl !== ""
+                            width: units.gu(3); height: width
+                            radius: width / 2
+                            color: Qt.rgba(0, 0, 0, 0.45)
+                            Icon {
+                                anchors.centerIn: parent
+                                width: units.gu(1.8); height: width
+                                name: "media-playback-start"; color: "white"
+                            }
+                        }
+
+                        Icon {
+                            anchors.centerIn: parent
+                            visible: page.videoThumbUrl === ""
+                            width: units.gu(3.5); height: width
+                            name: "media-playback-start"
+                            color: page.videoUrl ? Style.textSecondary : Style.danger
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: page.videoUrl !== ""
+                            onClicked: page.openPreview(page.videoUrl, true)
+                        }
+
+                        AbstractButton {
+                            anchors { top: parent.top; right: parent.right; topMargin: units.dp(4); rightMargin: units.dp(4) }
+                            width: units.gu(2.5); height: width
+                            onClicked: page.clearVideo()
+                            Rectangle { anchors.fill: parent; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.5) }
+                            Icon {
+                                anchors.centerIn: parent
+                                width: units.gu(1.5); height: width
+                                name: "close"; color: "white"
+                            }
+                        }
+                    }
+                }
             }
 
             PrimaryButton {
                 width: parent.width
                 busy: page.submitting
-                enabled: !page.submitting && !page.uploading && descField.text.trim().length > 0
-                text: page.submitting ? (page.isEdit ? Lang.tr("Saving…") : Lang.tr("Sending…"))
-                                      : (page.isEdit ? Lang.tr("Save changes") : Lang.tr("Send report"))
+                enabled: !page.submitting && !page.uploading && !page.uploadingVideo && descField.text.trim().length > 0
+                text: page.submitting ? Lang.tr("Sending…") : Lang.tr("Send report")
                 onClicked: page.submit()
             }
-
-            AbstractButton {
-                width: parent.width
-                height: units.gu(4)
-                visible: page.isEdit
-                onClicked: page.resetForm()
-                Label {
-                    anchors.centerIn: parent
-                    text: Lang.tr("Cancel edit")
-                    font.pixelSize: Style.fontSmall
-                    font.family: Style.fontFor(text)
-                    color: Style.textSecondary
-                }
-            }
-
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
@@ -452,13 +651,28 @@ Page {
                     id: reportCard
                     // imagesStr is joined at the mapper; a ListModel would wrap the array itself.
                     readonly property var shots: (model.imagesStr || "").split("\n").filter(function (s) { return s.length > 0; })
+                    readonly property var clips: (model.videosStr || "").split("\n").filter(function (s) { return s.length > 0; })
+                    readonly property var clipThumbs: (model.videoThumbsStr || "").split("\n").filter(function (s) { return s.length > 0; })
+                    // Single merged list so images and video render as one row of tiles (1-2-3…).
+                    readonly property var attachments: {
+                        var out = [];
+                        for (var i = 0; i < reportCard.shots.length; i++)
+                            out.push({ url: reportCard.shots[i], isVideo: false, thumb: "" });
+                        for (var j = 0; j < reportCard.clips.length; j++)
+                            out.push({
+                                url: reportCard.clips[j],
+                                isVideo: true,
+                                thumb: j < reportCard.clipThumbs.length ? reportCard.clipThumbs[j] : ""
+                            });
+                        return out;
+                    }
 
                     width: form.width
                     height: cardCol.height + Style.spacingM * 2
                     radius: Style.cardRadius
                     color: Style.card
                     border.width: units.dp(1)
-                    border.color: page.editingId === String(model.id) ? Style.brand : Style.divider
+                    border.color: Style.divider
 
                     Column {
                         id: cardCol
@@ -468,32 +682,10 @@ Page {
                         }
                         spacing: Style.spacingXs
 
-                        Row {
-                            width: parent.width
-                            spacing: Style.spacingS
-
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: statusLbl.implicitWidth + Style.spacingS * 2
-                                height: units.gu(2.5)
-                                radius: Style.chipRadius
-                                color: Style.iconBackground
-                                Label {
-                                    id: statusLbl
-                                    anchors.centerIn: parent
-                                    text: page.statusLabel(model.status)
-                                    font.pixelSize: Style.fontXSmall
-                                    font.weight: Font.DemiBold
-                                    font.family: Style.fontFor(text)
-                                    color: page.statusColor(model.status)
-                                }
-                            }
-                            Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: Style.formatTimeAgo(model.createdAt)
-                                font.pixelSize: Style.fontXSmall
-                                color: Style.textSecondary
-                            }
+                        Label {
+                            text: Style.formatTimeAgo(model.createdAt)
+                            font.pixelSize: Style.fontXSmall
+                            color: Style.textSecondary
                         }
 
                         Label {
@@ -507,22 +699,14 @@ Page {
                             color: Style.textPrimary
                         }
 
-                        // Triage's reply, when it left one.
-                        Label {
+                        // Images and video attached side by side in one wrapping row (1-2-3…),
+                        // not stacked as separate blocks.
+                        Flow {
                             width: parent.width
-                            visible: (model.adminNote || "") !== ""
-                            text: Lang.tr("Serey team: %1").arg(model.adminNote || "")
-                            wrapMode: Text.WordWrap
-                            font.pixelSize: Style.fontXSmall
-                            font.family: Style.fontFor(text)
-                            color: Style.brand
-                        }
-
-                        Row {
                             spacing: Style.spacingS
-                            visible: reportCard.shots.length > 0
+                            visible: reportCard.attachments.length > 0
                             Repeater {
-                                model: reportCard.shots
+                                model: reportCard.attachments
                                 delegate: Rectangle {
                                     width: units.gu(7); height: width
                                     radius: Style.cardRadius
@@ -530,10 +714,28 @@ Page {
                                     clip: true
                                     Image {
                                         anchors.fill: parent
-                                        source: modelData
+                                        visible: modelData.thumb !== "" || !modelData.isVideo
+                                        source: modelData.isVideo ? modelData.thumb : modelData.url
                                         fillMode: Image.PreserveAspectCrop
                                         asynchronous: true
                                         sourceSize.width: units.gu(14)
+                                    }
+                                    Rectangle {
+                                        anchors.centerIn: parent
+                                        visible: modelData.isVideo
+                                        width: units.gu(2.5); height: width
+                                        radius: width / 2
+                                        color: modelData.thumb !== "" ? Qt.rgba(0, 0, 0, 0.45) : "transparent"
+                                        Icon {
+                                            anchors.centerIn: parent
+                                            width: units.gu(1.5); height: width
+                                            name: "media-playback-start"
+                                            color: modelData.thumb !== "" ? "white" : Style.textSecondary
+                                        }
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: page.openPreview(modelData.url, modelData.isVideo)
                                     }
                                 }
                             }
@@ -541,51 +743,26 @@ Page {
 
                         Item { width: 1; height: Style.spacingXs }
 
-                        Row {
-                            spacing: Style.spacingM
-
-                            AbstractButton {
-                                width: editRow.width
-                                height: units.gu(3)
-                                // Imported .js is null inside delegate handlers, so both go via page functions.
-                                onClicked: page.startEdit(index)
-                                Row {
-                                    id: editRow
-                                    spacing: Style.spacingXs
-                                    Icon {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: units.gu(2); height: width
-                                        name: "edit"; color: Style.textSecondary
-                                    }
-                                    Label {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: Lang.tr("Edit")
-                                        font.pixelSize: Style.fontXSmall
-                                        font.family: Style.fontFor(text)
-                                        color: Style.textSecondary
-                                    }
+                        AbstractButton {
+                            width: parent.width
+                            height: units.gu(3)
+                            onClicked: page.confirmDelete(index)
+                            Row {
+                                id: delRow
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: Style.spacingXs
+                                Icon {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2); height: width
+                                    name: "delete"; color: Style.danger
                                 }
-                            }
-
-                            AbstractButton {
-                                width: delRow.width
-                                height: units.gu(3)
-                                onClicked: page.confirmDelete(index)
-                                Row {
-                                    id: delRow
-                                    spacing: Style.spacingXs
-                                    Icon {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: units.gu(2); height: width
-                                        name: "delete"; color: Style.danger
-                                    }
-                                    Label {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: Lang.tr("Delete")
-                                        font.pixelSize: Style.fontXSmall
-                                        font.family: Style.fontFor(text)
-                                        color: Style.danger
-                                    }
+                                Label {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: Lang.tr("Delete")
+                                    font.pixelSize: Style.fontXSmall
+                                    font.family: Style.fontFor(text)
+                                    color: Style.danger
                                 }
                             }
                         }
@@ -593,8 +770,55 @@ Page {
                 }
             }
 
-
             Item { width: 1; height: Style.spacingL }
+        }
+    }
+
+    // Fullscreen preview — tap any thumbnail to open, tap the background or the
+    // close button to dismiss. Video uses VideoWebView (Chromium <video>), same as
+    // VideoDetailPage: it has a real scrub bar / play-pause / fullscreen, and is the
+    // reliable path for remote mp4/webm — QtMultimedia/media-hub (VideoNativePlayer)
+    // is reserved for local .mov only and otherwise fails to decode these.
+    Rectangle {
+        id: previewOverlay
+        anchors.fill: parent
+        z: 100
+        color: "black"
+        visible: page.previewUrl !== ""
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: page.closePreview()
+        }
+
+        Image {
+            anchors.fill: parent
+            anchors.margins: Style.spacingL
+            visible: previewOverlay.visible && !page.previewIsVideo
+            source: page.previewIsVideo ? "" : page.previewUrl
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+        }
+
+        VideoWebView {
+            anchors.fill: parent
+            anchors.margins: Style.spacingL
+            visible: previewOverlay.visible && page.previewIsVideo
+            directVideo: true
+            controls: true
+            embedUrl: (previewOverlay.visible && page.previewIsVideo) ? page.previewUrl : ""
+        }
+
+        AbstractButton {
+            anchors { top: parent.top; right: parent.right; topMargin: Style.spacingM; rightMargin: Style.spacingM }
+            width: units.gu(4); height: width
+            onClicked: page.closePreview()
+            Rectangle { anchors.fill: parent; radius: width / 2; color: Qt.rgba(0, 0, 0, 0.5) }
+            Icon {
+                anchors.centerIn: parent
+                width: units.gu(2.2); height: width
+                name: "close"; color: "white"
+            }
         }
     }
 }

@@ -1,16 +1,17 @@
 .pragma library
 .import "Http.js" as Http
 
-// Bug / feedback / feature-request reports. All routes need a JWT.
-// Backend: serey-api src/routes/bug_report_route.js, mounted at /bug-reports.
+// Bug / feedback / feature-request reports. JWT required.
+// Backend: serey-api src/routes/ubuntu_report_route.js, mounted at /ubuntu-app/report.
+// Delta Chat notification + own DB row (ubuntu_reports). View/delete own only — no edit.
 
-var BASE = "/bug-reports";
+var BASE = "/ubuntu-app/report";
 
-// The server derives the title from the description, so the form only sends text + images.
 function submit(baseUrl, token, payload, onOk, onErr) {
     var body = { description: payload.description };
-    if (payload.type) body.type = payload.type;
     if (payload.imageUrls && payload.imageUrls.length) body.image_urls = payload.imageUrls;
+    if (payload.videoUrls && payload.videoUrls.length) body.video_urls = payload.videoUrls;
+    if (payload.videoThumbUrls && payload.videoThumbUrls.length) body.video_thumb_urls = payload.videoThumbUrls;
     if (payload.deviceInfo) body.device_info = payload.deviceInfo;
     Http.post(baseUrl, BASE, body, token,
               function (data) { onOk(mapReport(data && data.data)); }, onErr);
@@ -24,38 +25,32 @@ function myReports(baseUrl, token, onOk, onErr) {
     }, onErr);
 }
 
-// Owner-editable fields only; priority and admin notes stay admin-side.
-function updateOwn(baseUrl, token, id, fields, onOk, onErr) {
-    var body = {};
-    if (fields.description !== undefined) body.description = fields.description;
-    if (fields.status !== undefined) body.status = fields.status;
-    if (fields.imageUrls !== undefined) body.image_urls = fields.imageUrls;
-    Http.patch(baseUrl, BASE + "/" + id, body, token,
-               function (data) { onOk(mapReport(data && data.data)); }, onErr);
-}
-
 function removeOwn(baseUrl, token, id, onOk, onErr) {
     Http.del(baseUrl, BASE + "/" + id, token, onOk, onErr);
 }
 
+function _asArray(v) {
+    if (typeof v === "string") {
+        try { v = JSON.parse(v); } catch (e) { v = []; }
+    }
+    return Array.isArray(v) ? v : [];
+}
+
 function mapReport(r) {
     r = r || {};
-    var imgs = r.image_urls;
-    if (typeof imgs === "string") {
-        try { imgs = JSON.parse(imgs); } catch (e) { imgs = []; }
-    }
-    if (!Array.isArray(imgs)) imgs = [];
+    var imgs = _asArray(r.image_urls);
+    var vids = _asArray(r.video_urls);
+    var vidThumbs = _asArray(r.video_thumb_urls);
     return {
         id: r.id,
-        type: r.type || "bug",
-        title: r.title || "",
         description: r.description || "",
-        status: r.status || "open",
-        priority: r.priority || "medium",
-        adminNote: r.admin_note || "",
         images: imgs,
+        videos: vids,
+        videoThumbs: vidThumbs,
         // Joined for the ListModel: array fields come back wrapped and lose .length there.
         imagesStr: imgs.join("\n"),
+        videosStr: vids.join("\n"),
+        videoThumbsStr: vidThumbs.join("\n"),
         createdAt: r.created_at || r.createdAt || ""
     };
 }

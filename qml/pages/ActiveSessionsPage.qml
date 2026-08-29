@@ -281,10 +281,15 @@ Page {
                 spacing: units.dp(3)
 
                 Row {
+                    id: titleRow
                     spacing: Style.spacingS
                     width: parent.width
 
                     Label {
+                        // Elide needs a bounded width; without one the label kept its full
+                        // implicit width and long device names ran under the Terminate button.
+                        width: Math.max(0, titleRow.width
+                                           - (currentBadge.visible ? currentBadge.width + titleRow.spacing : 0))
                         text: model.deviceName || Lang.tr("Unknown device")
                         font.pixelSize: Style.fontRegular
                         font.weight: Font.DemiBold
@@ -293,6 +298,7 @@ Page {
                         elide: Text.ElideRight
                     }
                     Rectangle {
+                        id: currentBadge
                         visible: model.isCurrent
                         width: currentTag.width + Style.spacingS * 2
                         height: currentTag.height + units.dp(4)
@@ -335,6 +341,11 @@ Page {
                 }
                 Label {
                     anchors.centerIn: parent
+                    // Kept inside the pill: a longer translation ("Beëindigen") would otherwise
+                    // spill out of both ends of it.
+                    width: parent.width - Style.spacingS
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
                     text: model.busy ? Lang.tr("Ending…") : Lang.tr("Terminate")
                     font.pixelSize: Style.fontSmall
                     font.weight: Font.DemiBold

@@ -333,7 +333,10 @@ Page {
         onCurrentIndexChanged: {
             page.menuOpen = false;
             if (page.wideReels) page.syncDockedPanel();
-            else if (commentSheet.visible) commentSheet.close();
+            else if (commentSheet.visible) {
+                var cur = page.currentReel;
+                if (cur && cur.permlink !== page._commentSheetPermlink) commentSheet.close();
+            }
         }
 
         // End-of-feed hint: dragging up past the last reel reveals this, then the pager snaps back (StrictlyEnforceRange keeps the last reel in range).

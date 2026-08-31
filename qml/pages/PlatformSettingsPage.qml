@@ -104,9 +104,12 @@ Page {
             SettingsSectionHeader { text: Lang.tr("Subscription") }
             SettingsRow {
                 width: parent.width
+                // Plan names like "Cambodia Premium Hub - 1 Year" don't fit one line on a
+                height: page.subscriptionText.length > 0 ? units.gu(9) : units.gu(7)
                 iconName: "starred"
                 label: Lang.tr("My Subscription")
                 valueText: page.subscriptionText
+                valueWrap: true
                 showChevron: page.subscription !== null && page.subscription.hasActive
                 onClicked: if (page.subscription && page.subscription.hasActive) page.pageStack.push(subscriptionPage)
             }
@@ -163,7 +166,8 @@ Page {
                     Label {
                         width: parent.width
                         text: subPage.sub.planName || subPage.sub.planType || Lang.tr("Subscription")
-                        font.pixelSize: Style.fontTitle
+                        wrapMode: Text.Wrap
+                        font.pixelSize: Style.fontLarge
                         font.weight: Font.DemiBold
                         font.family: Style.fontFor(text)
                         color: Style.textPrimary

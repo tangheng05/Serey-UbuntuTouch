@@ -333,29 +333,25 @@ Page {
                 }
             }
 
-            // Description field (Lomiri underline input).
+            // Description field. Lomiri TextArea (not plain TextEdit): only the styled component
             Item {
                 width: parent.width
-                height: Math.max(units.gu(10), descField.contentHeight + Style.spacingM + descCountLabel.height)
+                height: descField.height + Style.spacingM + descCountLabel.height
 
-                // Same dead-space fix as the title field above
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        descField.forceActiveFocus();
-                        descField.cursorPosition = descField.length;
-                        Qt.inputMethod.show();
-                    }
-                }
-
-                TextEdit {
+                TextArea {
                     id: descField
                     anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: Style.spacingS }
+                    height: units.gu(10)
+                    wrapMode: Text.Wrap
                     font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
-                    wrapMode: Text.Wrap
-                    // TextEdit has no native maximumLength (unlike TextField)
+                    placeholderText: Lang.tr("Describe your video...")
+                    StyleHints {
+                        backgroundColor: "transparent"
+                        borderColor: "transparent"
+                    }
+                    // TextArea has no native maximumLength (unlike TextField)
                     onTextChanged: if (text.length > page.descMaxLength) {
                         var cp = cursorPosition;
                         text = text.substring(0, page.descMaxLength);
@@ -363,21 +359,12 @@ Page {
                     }
                 }
                 Label {
-                    anchors { left: descField.left; top: descField.top }
-                    visible: descField.text.length === 0 && !descField.activeFocus
-                    text: Lang.tr("Describe your video...")
-                    color: Style.textSecondary
-                    font.pixelSize: Style.fontRegular
-                    font.family: Style.fontFor(text)
-                }
-                Label {
                     id: descCountLabel
                     anchors { right: parent.right; bottom: parent.bottom; bottomMargin: units.dp(2) }
                     visible: descField.activeFocus || descField.text.length > 0
-                    readonly property int liveLength: descField.text.length + descField.preeditText.length
-                    text: liveLength + "/" + page.descMaxLength
+                    text: descField.text.length + "/" + page.descMaxLength
                     font.pixelSize: Style.fontXSmall
-                    color: liveLength >= page.descMaxLength ? Style.danger : Style.textSecondary
+                    color: descField.text.length >= page.descMaxLength ? Style.danger : Style.textSecondary
                 }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }

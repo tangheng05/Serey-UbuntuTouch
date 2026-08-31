@@ -14,6 +14,8 @@ AbstractButton {
     property bool danger: false
     property int unreadBadge: 0
     property bool showDivider: true
+    // Long values (e.g. a subscription plan name) wrap to 2 lines instead of eliding to
+    property bool valueWrap: false
     signal switchToggled(bool checked)
 
     width: parent ? parent.width : units.gu(40)
@@ -57,8 +59,10 @@ AbstractButton {
             visible: root.valueText.length > 0
             anchors.verticalCenter: parent.verticalCenter
             text: root.valueText
+            wrapMode: root.valueWrap ? Text.Wrap : Text.NoWrap
+            maximumLineCount: root.valueWrap ? 2 : 1
             elide: Text.ElideRight
-            width: Math.min(implicitWidth, units.gu(16))
+            width: root.valueWrap ? units.gu(20) : Math.min(implicitWidth, units.gu(16))
             horizontalAlignment: Text.AlignRight
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFor(text)

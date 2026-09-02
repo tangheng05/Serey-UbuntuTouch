@@ -45,12 +45,21 @@ Page {
         page.categories = [];
         page.categoriesLoading = false;
 
-        // No selector on Global, there is no coherent taxonomy across every community.
-        if (Config.communityId <= 0) {
-            if (prevSel !== "") { page.selectedCategory = ""; page.reload(); }
+        if (Config.isBannedFromCurrentCommunity) return;
+
+        // Global and countries own no categories, so their chips are the shared
+        // buckets: the union of every platform's names is unusable as a filter,
+        // and the buckets mean the same thing at both levels. No request needed,
+        // so these survive being offline too.
+        if (page.bucketSource()) {
+            page.categories = Config.countryBuckets;
+            if (prevSel !== "" && Config.countryBuckets.indexOf(prevSel) < 0) {
+                page.selectedCategory = "";
+                page.reload();
+            }
             return;
         }
-        if (Config.isBannedFromCurrentCommunity) return;
+
         // Offline this request just hangs (QML's XHR ignores its own timeout on a stalled
         // connection) and the chips bar sits above the offline cover, so the spinner outlived
         // the outage. The Net handler below re-runs this once we're back.
@@ -88,12 +97,35 @@ Page {
         page.reload();
     }
 
+    // Global and countries have no categories of their own; both show the shared
+    // buckets, which the backend resolves server-side. Only a sub-community has a
+    // category list of its own, and it keeps the client-side filter below.
+    // Read as functions, never as sibling bindings. Both this and Config.communityId
+    // derive from Config.selectedSubCommunity, and the only trigger below is
+    // onCommunityIdChanged; when two bindings share a dependency their re-evaluation
+    // order is undefined, so a binding read from that handler could still hold the
+    // previous community's answer. That showed up as chips lagging one switch behind:
+    // the country fetched its own (zero) categories, the sub-community showed buckets.
+    // Computing straight from Config is order-proof.
+    function bucketSource() {
+        return !Config.selectedSubCommunity || Config.isGlobalCommunity(Config.communityId);
+    }
+    function serverBucket() {
+        return (page.bucketSource() && page.selectedCategory !== "") ? page.selectedCategory : "";
+    }
+
+    // Display only: the chip label re-renders whenever this settles, so binding
+    // order is harmless here.
+    readonly property bool isBucketSourceView: !Config.selectedSubCommunity
+                                               || Config.isGlobalCommunity(Config.communityId)
+
     // Case-insensitive compare: post tags vs. category list casing can differ.
     function _norm(s) { return (s || "").trim().toLowerCase(); }
 
     // Raw fetch results are plain JS objects (not yet ListModel-wrapped), so categories[] indexes normally here.
     function _matchesCategory(p) {
         if (page.selectedCategory === "") return true;
+        if (page.serverBucket() !== "") return true;   // filtered server-side already
         if (!p.categories) return false;
         var target = page._norm(page.selectedCategory);
         for (var i = 0; i < p.categories.length; i++)
@@ -101,8 +133,11 @@ Page {
         return false;
     }
 
-    // No server-side category filter; applied client-side, so fetch bigger batches while filtering.
-    function _fetchLimit() { return page.selectedCategory !== "" ? Config.pageSize * 4 : Config.pageSize; }
+    // Over-fetch only when filtering client-side; a server-filtered page is already dense.
+    function _fetchLimit() {
+        if (page.serverBucket() !== "") return Config.pageSize;
+        return page.selectedCategory !== "" ? Config.pageSize * 4 : Config.pageSize;
+    }
     property int autoFetches: 0
 
     // Zero-height header: the global AppHeader provides the top bar, but keeping an explicit header avoids Lomiri's deprecated Page.head path.
@@ -178,6 +213,8 @@ Page {
             params.community_id = Config.communityId;
         else
             params.exclude_home = 1;   // Global feed hides the Cambodia community + children
+        var bucket = page.serverBucket();
+        if (bucket !== "") params.category_bucket = bucket;
         return params;
     }
 
@@ -187,7 +224,7 @@ Page {
         var other = page.feedIndex === 1 ? 0 : 1;
         var params = _pageParams(0);
         var fn = _feedFnFor(other);
-        FeedCache.request(FeedCache.newsKey(other, Config.communityId),
+        FeedCache.request(FeedCache.newsKey(other, Config.communityId, page.serverBucket()),
             function (ok, err) { return fn(Config.baseUrl, params, Session.token, ok, err); },
             function () { /* stored by FeedCache; the toggle reads it */ },
             function () { /* offline: the toggle falls back to its own request */ });
@@ -254,7 +291,7 @@ Page {
 
     // Paint cached rows immediately (suppresses skeleton); the fresh request replaces them
     function _paintCached() {
-        var cached = FeedCache.peek(FeedCache.newsKey(page.feedIndex, Config.communityId));
+        var cached = FeedCache.peek(FeedCache.newsKey(page.feedIndex, Config.communityId, page.serverBucket()));
         if (!cached) return false;
         _syncRows(_filterRows(cached));
         page.showingCached = feedModel.count > 0;
@@ -272,7 +309,7 @@ Page {
         var epoch = page.reqEpoch;
         var params = _pageParams(0);
         // Through FeedCache so a manual refresh also updates the stored rows.
-        inflight = FeedCache.request(FeedCache.newsKey(page.feedIndex, Config.communityId),
+        inflight = FeedCache.request(FeedCache.newsKey(page.feedIndex, Config.communityId, page.serverBucket()),
             function (ok, err) { return feedFn()(Config.baseUrl, params, Session.token, ok, err); },
             function (result, rawCount) {
                 if (epoch !== page.reqEpoch) return;
@@ -346,7 +383,7 @@ Page {
 
         // Page 0 goes through FeedCache (ties into Main.qml prefetch); deeper pages go direct
         if (isFirstPage) {
-            inflight = FeedCache.request(FeedCache.newsKey(page.feedIndex, Config.communityId),
+            inflight = FeedCache.request(FeedCache.newsKey(page.feedIndex, Config.communityId, page.serverBucket()),
                 function (ok, err) { return feedFn()(Config.baseUrl, params, Session.token, ok, err); },
                 onOk, onErr);
         } else {
@@ -452,7 +489,10 @@ Page {
                     Label {
                         id: catLbl
                         anchors.centerIn: parent
-                        text: catName === "" ? Lang.tr("All") : catName
+                        // Buckets are our own vocabulary, so they translate. A
+                        // community's own categories are author-defined and render as-is.
+                        text: catName === "" ? Lang.tr("All")
+                              : (page.isBucketSourceView ? Lang.tr(catName) : catName)
                         font.pixelSize: Style.fontSmall
                         font.weight: Font.DemiBold
                         color: parent.isSelected ? Style.textOnBrand : Style.textPrimary

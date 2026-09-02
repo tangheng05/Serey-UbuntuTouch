@@ -46,22 +46,22 @@ Page {
     // under a SuperHub under a country gets a row per level with no hard-coded tiers.
     readonly property var scopeOptions: {
         var chain = Config.scopeChainFor(page.postCommunityId);   // nearest-first
+        // Labels spell out the full path a post can surface in rather than
+        // describing the scope, so the hint carries the explanation instead.
         var opts = [{ "id": 0,
-                      "label": Lang.tr("Everywhere"),
+                      "label": Config.scopePath(chain, -1),
                       "hint": Lang.tr("Also shown in the Global feed.") }];
         for (var i = chain.length - 1; i >= 0; i--) {
-            if (chain[i].isRoot)
-                opts.push({ "id": chain[i].id,
-                            "label": Lang.tr("Not on Global"),
-                            "hint": Lang.tr("Everywhere except the Global feed.") });
-            else if (i === 0)
-                opts.push({ "id": chain[i].id,
-                            "label": Lang.tr("%1 only").arg(chain[i].name),
-                            "hint": Lang.tr("Only people browsing %1.").arg(chain[i].name) });
-            else
-                opts.push({ "id": chain[i].id,
-                            "label": Lang.tr("%1 and below").arg(chain[i].name),
-                            "hint": Lang.tr("%1 and the platforms under it.").arg(chain[i].name) });
+            var hint = chain[i].isRoot
+                ? Lang.tr("Everywhere except the Global feed.")
+                : (i === 0 ? Lang.tr("Only people browsing %1.").arg(chain[i].name)
+                           : Lang.tr("%1 and the platforms under it.").arg(chain[i].name));
+            // Nothing sits below the Global community, so posting straight into it
+            // makes the ceiling's path read the same as no ceiling at all. The
+            // only difference left is the unscoped feed, which a path can't show.
+            var label = Config.scopePath(chain, i);
+            if (label === opts[0].label) label = Lang.tr("Not on Global");
+            opts.push({ "id": chain[i].id, "label": label, "hint": hint });
         }
         return opts;
     }
@@ -69,7 +69,7 @@ Page {
         var o = page.scopeOptions;
         for (var i = 0; i < o.length; i++)
             if (o[i].id === page.publishCeilingId) return o[i].label;
-        return Lang.tr("Everywhere");
+        return o.length > 0 ? o[0].label : "";
     }
     // Plain-language line under the row: the label names the choice, this says what it does.
     readonly property string scopeHint: {
@@ -383,6 +383,7 @@ Page {
                 Toast.success(Lang.tr("Image added"));
             } else {
                 page.coverImageUrl = url;
+                page.coverCleared = false;
                 Toast.success(Lang.tr("Cover image uploaded"));
             }
         }
@@ -524,6 +525,29 @@ Page {
         return parts.join("");
     }
 
+    // Thumbnail fallback: an article with pictures but no cover picked uses its
+    // first body image. Kept as a binding rather than written into coverImageUrl,
+    // so it always tracks the body (delete that image and it re-derives or clears)
+    // and stays distinguishable from a cover the user actually chose, which the
+    // edit prefill above depends on.
+    readonly property string derivedCoverUrl: {
+        var parts = page.bodyParts;
+        for (var i = 0; i < parts.length; i++)
+            if (parts[i].type === "image" && (parts[i].url || "").length > 0)
+                return parts[i].url;
+        return "";
+    }
+    // Set when the author clears the slot, which suppresses the derived fallback
+    // for the rest of the session: clearing has to mean "no thumbnail", not
+    // "re-derive the same picture I just dismissed". Picking one clears the flag.
+    property bool coverCleared: false
+
+    // What actually gets published, and what the thumbnail slot shows. A picked
+    // cover always wins over the derived one.
+    readonly property string effectiveCoverUrl: page.coverImageUrl.length > 0
+                                                ? page.coverImageUrl
+                                                : (page.coverCleared ? "" : page.derivedCoverUrl)
+
     function publish() {
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
@@ -549,6 +573,7 @@ Page {
         // Cover image is NOT prepended into the body: it's sent below via `images`, which is what
         // both the API/web thumbnail and PostDetailPage's own cover frame derive from. Baking it
         // into the body too just duplicated it inline above the article text.
+        var coverUrl = page.effectiveCoverUrl;
         page.submitting = true;
         PostService.createPost(Config.baseUrl, {
             title: titleField.text.trim(),
@@ -564,7 +589,7 @@ Page {
             publishCeilingId: page.targetIsGlobal ? 0 : page.publishCeilingId,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
             // Also send in `images` (json_meta.image) since the web derives the card thumbnail from that field, not from the body <img>.
-            images: page.coverImageUrl.length > 0 ? [page.coverImageUrl] : []
+            images: coverUrl.length > 0 ? [coverUrl] : []
         }, Session.token,
         function (data) {
             page.submitting = false;
@@ -1277,29 +1302,54 @@ Page {
                 height: units.gu(20)
                 radius: Style.thumbRadius
                 // Outlined while empty, filled once an image sits behind it.
-                color: page.coverImageUrl.length > 0 ? Style.iconBackground : "transparent"
-                border.width: page.coverImageUrl.length > 0 ? 0 : units.dp(1.5)
+                color: page.effectiveCoverUrl.length > 0 ? Style.iconBackground : "transparent"
+                border.width: page.effectiveCoverUrl.length > 0 ? 0 : units.dp(1.5)
                 border.color: Style.divider
                 clip: true
 
                 Image {
                     anchors.fill: parent
-                    source: page.coverImageUrl
+                    source: page.effectiveCoverUrl
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     autoTransform: true     // honour EXIF orientation
-                    visible: page.coverImageUrl.length > 0
+                    visible: page.effectiveCoverUrl.length > 0
+                }
+
+                // Says why a picture is here that the author never picked. On a dark
+                // pill, not outlined text: the image behind it is arbitrary, so
+                // nothing else guarantees contrast.
+                Rectangle {
+                    anchors {
+                        left: parent.left; bottom: parent.bottom
+                        leftMargin: Style.spacingS; bottomMargin: Style.spacingS
+                    }
+                    z: 2
+                    visible: page.coverImageUrl.length === 0 && page.derivedCoverUrl.length > 0
+                    width: derivedHint.width + Style.spacingM
+                    height: units.gu(2.5)
+                    radius: Style.pillRadius
+                    color: Qt.rgba(0, 0, 0, 0.65)
+
+                    Label {
+                        id: derivedHint
+                        anchors.centerIn: parent
+                        text: Lang.tr("From your article")
+                        font.pixelSize: Style.fontXSmall
+                        font.weight: Font.DemiBold
+                        color: "#FFFFFF"
+                    }
                 }
 
                 AbstractButton {
-                    visible: page.coverImageUrl.length > 0
+                    visible: page.effectiveCoverUrl.length > 0
                     anchors {
                         top: parent.top; right: parent.right
                         topMargin: Style.spacingS; rightMargin: Style.spacingS
                     }
                     width: units.gu(4); height: width
                     z: 2
-                    onClicked: page.coverImageUrl = ""
+                    onClicked: { page.coverImageUrl = ""; page.coverCleared = true; }
 
                     Rectangle {
                         anchors.fill: parent
@@ -1328,7 +1378,7 @@ Page {
                 Column {
                     anchors.centerIn: parent
                     spacing: Style.spacingS
-                    visible: page.coverImageUrl.length === 0 && !page.uploading
+                    visible: page.effectiveCoverUrl.length === 0 && !page.uploading
 
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -1354,6 +1404,8 @@ Page {
 
                 MouseArea {
                     anchors.fill: parent
+                    // Keyed off the picked cover, not the effective one: a derived
+                    // thumbnail must stay tappable so it can be replaced.
                     enabled: !page.uploading && page.coverImageUrl.length === 0
                     onClicked: page.pickCoverImage()
                 }

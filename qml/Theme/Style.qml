@@ -81,6 +81,15 @@ QtObject {
     readonly property string cjkFamily: cjkFontLoader.status === FontLoader.Ready
                                         ? cjkFontLoader.name : fontFamily
 
+    // Korean face (~1.9 MB, subset to Hangul + Latin). The CJK face above is
+    // Simplified Chinese and carries no Hangul syllables at all, so Korean text
+    // renders as tofu without this.
+    property FontLoader koreanFontLoader: FontLoader {
+        source: Qt.resolvedUrl("../../assets/fonts/NotoSansKR-Regular.otf")
+    }
+    readonly property string koreanFamily: koreanFontLoader.status === FontLoader.Ready
+                                           ? koreanFontLoader.name : fontFamily
+
     property FontLoader bengaliFontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansBengali-Regular.ttf")
     }
@@ -94,6 +103,11 @@ QtObject {
 
     // Script face by codepoint, else Khmer/Latin default.
     function fontFor(text) {
+        // Hangul is tested first on purpose: Korean text carrying CJK punctuation
+        // (U+3000-303F) also matches the CJK range below, which would pick a face
+        // with no Hangul and put the whole label back to tofu.
+        if (text && /[ᄀ-ᇿ㄰-㆏가-힣]/.test(text))
+            return koreanFamily;
         if (text && /[⺀-鿿豈-﫿＀-￯]/.test(text))
             return cjkFamily;
         if (text && /[ঀ-৿]/.test(text))

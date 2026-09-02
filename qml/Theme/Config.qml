@@ -49,6 +49,15 @@ QtObject {
     // Default page size for paginated lists.
     readonly property int pageSize: 10
 
+    // Country category buckets. A country has no categories of its own, and the
+    // union of its platforms' names is unusable as a filter (108 under Cambodia),
+    // so the backend expands one of these into the platform category names it
+    // covers via `category_bucket`. Must stay in step with serey-api's
+    // src/source/country_category_aliases.json, which defines the same 7.
+    readonly property var countryBuckets: [
+        "News", "Politics", "Economy", "Crypto", "Tech", "Society", "Sport"
+    ]
+
     // Upstream media host used to normalise some relative asset paths.
     readonly property string uploadHost: "https://upload.serey.io"
 
@@ -182,6 +191,33 @@ QtObject {
             videoAllowPost: !!c.videoAllowPost
         };
         return true;
+    }
+
+    // "Global - Netherlands - Voetbal": every place a post with this ceiling can
+    // surface, outermost first, so an option names the places instead of
+    // describing them. `chain` is scopeChainFor()'s nearest-first list and
+    // `fromIndex` is where the ceiling sits in it; -1 means no ceiling, which
+    // also reaches the unscoped Global feed.
+    function scopePath(chain, fromIndex) {
+        if (!chain || chain.length === 0) return sources[0].name;
+        var names = [];
+        var start = fromIndex < 0 ? chain.length - 1 : fromIndex;
+        // The chain tops out at whatever parent we cached, often the country, so
+        // the Global feed has to be named explicitly. Skip it when the chain
+        // already carries the Global community itself.
+        if (fromIndex < 0 && chain[chain.length - 1].name !== sources[0].name)
+            names.push(sources[0].name);
+        for (var i = start; i >= 0; i--) names.push(chain[i].name);
+        return names.join(" - ");
+    }
+
+    // True for both spellings of Global: the id-0 pseudo-source (no filter) and
+    // the real Global community row, which the picker and mini-app navigation can
+    // select by id. They share a dns, so match on that rather than a hard-coded id.
+    function isGlobalCommunity(id) {
+        if (Number(id) === sources[0].id) return true;
+        var c = communityById[String(id)];
+        return !!c && (c.dns || "") === sources[0].dns;
     }
 
     // Community id for a URL the mini app landed on, or "" if it names none

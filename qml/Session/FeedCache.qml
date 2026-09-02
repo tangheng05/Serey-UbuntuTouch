@@ -106,8 +106,11 @@ QtObject {
                 ? Session.username : "__guest__";
     }
 
-    function newsKey(feedIndex, communityId) {
-        return "news:" + (feedIndex === 1 ? "new" : "trending") + ":" + communityId + ":" + _who();
+    // `bucket` is the optional country category filter; callers that omit it keep
+    // the key they always had, so the unfiltered feed's cache is untouched.
+    function newsKey(feedIndex, communityId, bucket) {
+        return "news:" + (feedIndex === 1 ? "new" : "trending") + ":" + communityId
+               + (bucket ? ":" + String(bucket).toLowerCase() : "") + ":" + _who();
     }
 
     function videoKey(communityId) {

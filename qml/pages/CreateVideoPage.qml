@@ -34,22 +34,22 @@ Page {
     // Generated from the target's real ancestor chain - see CreatePostPage.
     readonly property var scopeOptions: {
         var chain = Config.scopeChainFor(page.postCommunityId);   // nearest-first
+        // Labels spell out the full path a post can surface in rather than
+        // describing the scope, so the hint carries the explanation instead.
         var opts = [{ "id": 0,
-                      "label": Lang.tr("Everywhere"),
+                      "label": Config.scopePath(chain, -1),
                       "hint": Lang.tr("Also shown in the Global feed.") }];
         for (var i = chain.length - 1; i >= 0; i--) {
-            if (chain[i].isRoot)
-                opts.push({ "id": chain[i].id,
-                            "label": Lang.tr("Not on Global"),
-                            "hint": Lang.tr("Everywhere except the Global feed.") });
-            else if (i === 0)
-                opts.push({ "id": chain[i].id,
-                            "label": Lang.tr("%1 only").arg(chain[i].name),
-                            "hint": Lang.tr("Only people browsing %1.").arg(chain[i].name) });
-            else
-                opts.push({ "id": chain[i].id,
-                            "label": Lang.tr("%1 and below").arg(chain[i].name),
-                            "hint": Lang.tr("%1 and the platforms under it.").arg(chain[i].name) });
+            var hint = chain[i].isRoot
+                ? Lang.tr("Everywhere except the Global feed.")
+                : (i === 0 ? Lang.tr("Only people browsing %1.").arg(chain[i].name)
+                           : Lang.tr("%1 and the platforms under it.").arg(chain[i].name));
+            // Nothing sits below the Global community, so posting straight into it
+            // makes the ceiling's path read the same as no ceiling at all. The
+            // only difference left is the unscoped feed, which a path can't show.
+            var label = Config.scopePath(chain, i);
+            if (label === opts[0].label) label = Lang.tr("Not on Global");
+            opts.push({ "id": chain[i].id, "label": label, "hint": hint });
         }
         return opts;
     }
@@ -57,7 +57,7 @@ Page {
         var o = page.scopeOptions;
         for (var i = 0; i < o.length; i++)
             if (o[i].id === page.publishCeilingId) return o[i].label;
-        return Lang.tr("Everywhere");
+        return o.length > 0 ? o[0].label : "";
     }
     // Plain-language line under the row: the label names the choice, this says what it does.
     readonly property string scopeHint: {

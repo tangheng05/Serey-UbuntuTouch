@@ -20,6 +20,7 @@ var nl = {
     "Add image":                                        "Afbeelding toevoegen",
     "Add photo":                                        "Foto toevoegen",
     "Add thumbnail":                                     "Thumbnail toevoegen",
+    "From your article":                                 "Uit je artikel",
     "Add video":                                        "Video toevoegen",
     "Add your email":                                   "Voeg uw e-mail toe",
     "Address copied":                                   "Adres gekopieerd",
@@ -97,7 +98,6 @@ var nl = {
     "Couldn't publish post.":                           "Kon artikel niet publiceren.",
     "Couldn't publish video.":                          "Kon video niet publiceren.",
     "Couldn't save for offline.":                       "Kon niet opslaan voor offline gebruik.",
-    "That platform isn't available yet.":               "Dit platform is nog niet beschikbaar.",
     "Couldn't update comment.":                         "Kon reactie niet bijwerken.",
     "Couldn't update post.":                            "Kon artikel niet bijwerken.",
     "Cover image uploaded":                             "Omslagafbeelding geüpload",
@@ -224,6 +224,11 @@ var nl = {
     "New code sent.":                                   "Nieuwe code verzonden.",
     "New password":                                     "Nieuw wachtwoord",
     "News":                                             "Nieuws",
+    // Country/Global category buckets (Config.countryBuckets). Only the ones that
+    // differ from English are listed; tr() returns the source string otherwise.
+    "Politics":                                         "Politiek",
+    "Economy":                                          "Economie",
+    "Society":                                          "Samenleving",
     "Next":                                             "Volgende",
     "No blocked users":                                 "Geen geblokkeerde gebruikers",
     "No categories for this platform":                  "Geen categorieën voor dit platform",

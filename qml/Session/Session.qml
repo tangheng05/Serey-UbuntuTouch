@@ -176,6 +176,42 @@ QtObject {
         _saveKey("languageChosen", "false");
     }
 
+    // Composer default for the publishing-scope toggle, remembered per account AND
+    // per community: "everything I post to this platform stays here" is a stable
+    // intent, but it must not leak into the user's other communities. Keyed by a
+    // joined string so neither half can bind as "" (which LocalStorage stores as NULL).
+    function _scopeKey(communityId) {
+        return (session.username || "__guest__") + ":" + String(communityId);
+    }
+
+    // Value is the publishing-scope ceiling: a community id, or 0 for "everywhere".
+    function savePostScope(communityId, ceilingId) {
+        if (!(Number(communityId) > 0)) return;
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS post_scope(k TEXT PRIMARY KEY, v TEXT)");
+                tx.executeSql("INSERT OR REPLACE INTO post_scope(k, v) VALUES(?, ?)",
+                              [session._scopeKey(communityId), String(Number(ceilingId) || 0)]);
+            });
+        } catch (e) { console.warn("Session savePostScope error: " + e); }
+    }
+
+    // The remembered ceiling id (0 = everywhere), or undefined when this community
+    // has no saved choice yet - the caller needs "never chosen" to stay distinct
+    // from a deliberate "everywhere".
+    function loadPostScope(communityId) {
+        if (!(Number(communityId) > 0)) return undefined;
+        var out;
+        try {
+            _db().readTransaction(function (tx) {
+                var rs = tx.executeSql("SELECT v FROM post_scope WHERE k = ?",
+                                       [session._scopeKey(communityId)]);
+                if (rs.rows.length > 0) out = Number(rs.rows.item(0).v) || 0;
+            });
+        } catch (e) { /* table absent until the first save; undefined is the right answer */ }
+        return out;
+    }
+
     function saveVote(author, permlink, upvoted, flagged, votes) {
         if (!author || !permlink) return;
         try {

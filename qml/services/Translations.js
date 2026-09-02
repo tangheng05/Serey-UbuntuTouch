@@ -744,7 +744,16 @@ var nl = {
     "invites left · %1 of %2 used":                     "uitnodigingen over · %1 van %2 gebruikt",
     "more":                                             "meer",
     "You're banned from this community.":               "U bent verbannen uit deze community.",
-    "Community: %1 (#%2)":                              "Community: %1 (#%2)"
+    "Community: %1 (#%2)":                              "Community: %1 (#%2)",
+    "Publish to":                                       "Publiceren naar",
+    "Everywhere":                                       "Overal",
+    "Not on Global":                                    "Niet op Global",
+    "%1 only":                                          "Alleen %1",
+    "%1 and below":                                     "%1 en lager",
+    "Also shown in the Global feed.":                   "Ook te zien in de Global-feed.",
+    "Everywhere except the Global feed.":               "Overal behalve de Global-feed.",
+    "Only people browsing %1.":                         "Alleen wie %1 bekijkt.",
+    "%1 and the platforms under it.":                   "%1 en de platforms daaronder."
 };
 
 function tr(str, lang) {

@@ -38,6 +38,67 @@ Page {
     property int _pendingFocusIndex: -1
     // "Post on the blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
+    // Publishing scope: the highest community this post may surface under (its
+    // ceiling). 0 = no ceiling, i.e. everywhere including the Global feed.
+    property int publishCeilingId: 0
+
+    // Options are generated from the target's real ancestor chain, so a platform
+    // under a SuperHub under a country gets a row per level with no hard-coded tiers.
+    readonly property var scopeOptions: {
+        var chain = Config.scopeChainFor(page.postCommunityId);   // nearest-first
+        var opts = [{ "id": 0,
+                      "label": Lang.tr("Everywhere"),
+                      "hint": Lang.tr("Also shown in the Global feed.") }];
+        for (var i = chain.length - 1; i >= 0; i--) {
+            if (chain[i].isRoot)
+                opts.push({ "id": chain[i].id,
+                            "label": Lang.tr("Not on Global"),
+                            "hint": Lang.tr("Everywhere except the Global feed.") });
+            else if (i === 0)
+                opts.push({ "id": chain[i].id,
+                            "label": Lang.tr("%1 only").arg(chain[i].name),
+                            "hint": Lang.tr("Only people browsing %1.").arg(chain[i].name) });
+            else
+                opts.push({ "id": chain[i].id,
+                            "label": Lang.tr("%1 and below").arg(chain[i].name),
+                            "hint": Lang.tr("%1 and the platforms under it.").arg(chain[i].name) });
+        }
+        return opts;
+    }
+    readonly property string scopeLabel: {
+        var o = page.scopeOptions;
+        for (var i = 0; i < o.length; i++)
+            if (o[i].id === page.publishCeilingId) return o[i].label;
+        return Lang.tr("Everywhere");
+    }
+    // Plain-language line under the row: the label names the choice, this says what it does.
+    readonly property string scopeHint: {
+        var o = page.scopeOptions;
+        for (var i = 0; i < o.length; i++)
+            if (o[i].id === page.publishCeilingId) return o[i].hint;
+        return "";
+    }
+    // New posts open on the last choice made for this community; an edit ignores it,
+    // since the post's own saved ceiling is what the row must reflect.
+    function _applyRememberedScope() {
+        if (page.isEdit) return;
+        var saved = Session.loadPostScope(page.postCommunityId);
+        page.publishCeilingId = (saved === undefined) ? 0 : Number(saved);
+    }
+    onPostCommunityIdChanged: page._applyRememberedScope()
+
+    function _scopeSheetItems() {
+        var items = [];
+        var opts = page.scopeOptions;
+        for (var i = 0; i < opts.length; i++) {
+            (function (id) {
+                items.push({ "text": opts[i].label,
+                             "iconName": (id === page.publishCeilingId) ? "tick" : "",
+                             "onTriggered": function () { page.publishCeilingId = id; } });
+            })(opts[i].id);
+        }
+        return items;
+    }
 
     function _anyBodyPartFocused() {
         for (var i = 0; i < page.bodyParts.length; i++) {
@@ -89,6 +150,20 @@ Page {
 
     readonly property string postCommunityName: page.targetCommunity ? page.targetCommunity.name
                                                                      : Config.communityName
+    // Name shown in the publishing-scope row: whatever community the post lands in.
+    readonly property string scopeCommunityName: page.isEdit
+                                                 ? ((page.editPost && page.editPost.community) || page.catCommunityName)
+                                                 : page.postCommunityName
+    // Global is the combined feed, so "also publish to Global" is meaningless there.
+    // Can't test the id: the postable Global record has a real backend id like any
+    // other community (only the picker's synthetic source row is id 0). Its dns is
+    // what identifies it, same as PostCommunityPicker._globalEntry().
+    readonly property bool targetIsGlobal: {
+        var id = page.postCommunityId;
+        if (!(id > 0)) return true;
+        var c = Config.communityInfoFor(id);
+        return !!c && (c.dns || "") === Config.sources[0].dns;
+    }
 
     // When set, this page edits an existing post (sends its permlink to update in place) instead of creating a new one.
     property var editPost: null
@@ -201,6 +276,7 @@ Page {
             page.selectedSubCategory = eSub || "";
             // Prefill the toggle from the saved post (default on if absent).
             page.postToBlockchain = (page.editPost.postToBlockchain !== false);
+            page.publishCeilingId = Number(page.editPost.publishCeilingId || 0);
             // Some list endpoints (e.g. list-by-author, used by the Profile page) don't return
             // community_id/community_title per row, so editPost can arrive with neither set.
             // publish() then falls back to Config.communityName, which can be a different
@@ -219,10 +295,15 @@ Page {
                                 communityId: p.communityId || page.editPost.communityId,
                                 community: p.community || page.editPost.community
                             });
+                            // Feed rows can omit the ceiling too; the detail
+                            // response is authoritative, so re-prefill from it.
+                            page.publishCeilingId = Number(p.publishCeilingId || 0);
                         },
                         function (err) { /* best-effort; publish() still has its old fallback */ });
                 }
             }
+        } else {
+            page._applyRememberedScope();
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
@@ -478,12 +559,18 @@ Page {
             categories: page.selectedCategory || "general",
             subcategories: page.selectedSubCategory.length > 0 ? [page.selectedSubCategory] : [],
             postToBlockchain: page.postToBlockchain,
+            // Never cap a post whose target IS Global: it would hide the post from
+            // the only feed it was published to.
+            publishCeilingId: page.targetIsGlobal ? 0 : page.publishCeilingId,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
             // Also send in `images` (json_meta.image) since the web derives the card thumbnail from that field, not from the body <img>.
             images: page.coverImageUrl.length > 0 ? [page.coverImageUrl] : []
         }, Session.token,
         function (data) {
             page.submitting = false;
+            // Remember the scope for this community so the next post here starts there.
+            if (!page.targetIsGlobal)
+                Session.savePostScope(page.postCommunityId, page.publishCeilingId);
             Toast.success(page.isEdit ? Lang.tr("Post updated!") : Lang.tr("Post published!"));
             page.saved(!page.isEdit);
             page.pageStack.pop();
@@ -1109,6 +1196,82 @@ Page {
                 }
             }
 
+            // Publishing scope. Hidden on Global: that IS the combined feed, so
+            // there is nothing to narrow the post down to. A dropdown rather than
+            // a switch because the tree has more than two levels.
+            Item {
+                width: parent.width
+                visible: !page.targetIsGlobal
+                height: visible ? scopeCol.implicitHeight : 0
+
+                Column {
+                    id: scopeCol
+                    anchors { left: parent.left; right: parent.right }
+                    spacing: units.dp(2)
+
+                    Label {
+                        text: Lang.tr("Publish to")
+                        font.pixelSize: Style.fontRegular
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                    }
+
+                    // Same row shape as the category picker, so the composer reads
+                    // as one form rather than a switch plus a dropdown.
+                    MouseArea {
+                        id: scopeRow
+                        width: parent.width
+                        height: units.gu(5)
+                        onClicked: scopeSheet.show(page._scopeSheetItems(), scopeRow)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: "transparent"
+                            border.width: units.dp(1)
+                            border.color: Style.divider
+                            radius: Style.thumbRadius
+
+                            Row {
+                                anchors {
+                                    left: parent.left; right: parent.right
+                                    verticalCenter: parent.verticalCenter
+                                    leftMargin: Style.spacingM; rightMargin: Style.spacingM
+                                }
+                                spacing: Style.spacingS
+
+                                Label {
+                                    width: parent.width - scopeChevron.width - Style.spacingS
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: page.scopeLabel
+                                    elide: Text.ElideRight
+                                    font.pixelSize: Style.fontRegular
+                                    font.family: Style.fontFor(text)
+                                    color: Style.textPrimary
+                                }
+                                Icon {
+                                    id: scopeChevron
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2); height: width
+                                    name: "down"
+                                    color: Style.textSecondary
+                                }
+                            }
+                        }
+                    }
+
+                    // The label names the choice; this says what it actually does.
+                    Label {
+                        width: parent.width
+                        text: page.scopeHint
+                        font.pixelSize: Style.fontXSmall
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
             Rectangle {
                 width: parent.width
                 height: units.gu(20)
@@ -1568,4 +1731,8 @@ Page {
             }
         }
     }
+
+    // Publishing-scope picker. ActionBottomSheet already renders as a dropdown
+    // anchored to the row on desktop and a bottom sheet on touch.
+    ActionBottomSheet { id: scopeSheet }
 }

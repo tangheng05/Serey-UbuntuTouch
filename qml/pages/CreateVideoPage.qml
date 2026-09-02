@@ -27,6 +27,64 @@ Page {
     property bool grabbingThumb: false
     // "Post on the blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
+    // Publishing scope: the highest community this video may surface under (its
+    // ceiling). 0 = no ceiling, i.e. everywhere including the Global feed.
+    property int publishCeilingId: 0
+
+    // Generated from the target's real ancestor chain - see CreatePostPage.
+    readonly property var scopeOptions: {
+        var chain = Config.scopeChainFor(page.postCommunityId);   // nearest-first
+        var opts = [{ "id": 0,
+                      "label": Lang.tr("Everywhere"),
+                      "hint": Lang.tr("Also shown in the Global feed.") }];
+        for (var i = chain.length - 1; i >= 0; i--) {
+            if (chain[i].isRoot)
+                opts.push({ "id": chain[i].id,
+                            "label": Lang.tr("Not on Global"),
+                            "hint": Lang.tr("Everywhere except the Global feed.") });
+            else if (i === 0)
+                opts.push({ "id": chain[i].id,
+                            "label": Lang.tr("%1 only").arg(chain[i].name),
+                            "hint": Lang.tr("Only people browsing %1.").arg(chain[i].name) });
+            else
+                opts.push({ "id": chain[i].id,
+                            "label": Lang.tr("%1 and below").arg(chain[i].name),
+                            "hint": Lang.tr("%1 and the platforms under it.").arg(chain[i].name) });
+        }
+        return opts;
+    }
+    readonly property string scopeLabel: {
+        var o = page.scopeOptions;
+        for (var i = 0; i < o.length; i++)
+            if (o[i].id === page.publishCeilingId) return o[i].label;
+        return Lang.tr("Everywhere");
+    }
+    // Plain-language line under the row: the label names the choice, this says what it does.
+    readonly property string scopeHint: {
+        var o = page.scopeOptions;
+        for (var i = 0; i < o.length; i++)
+            if (o[i].id === page.publishCeilingId) return o[i].hint;
+        return "";
+    }
+    function _scopeSheetItems() {
+        var items = [];
+        var opts = page.scopeOptions;
+        for (var i = 0; i < opts.length; i++) {
+            (function (id) {
+                items.push({ "text": opts[i].label,
+                             "iconName": (id === page.publishCeilingId) ? "tick" : "",
+                             "onTriggered": function () { page.publishCeilingId = id; } });
+            })(opts[i].id);
+        }
+        return items;
+    }
+
+    // Opens on the last choice made for this community (see Session.loadPostScope).
+    function _applyRememberedScope() {
+        var saved = Session.loadPostScope(page.postCommunityId);
+        page.publishCeilingId = (saved === undefined) ? 0 : Number(saved);
+    }
+    onPostCommunityIdChanged: page._applyRememberedScope()
 
     // Chosen in PostCommunityPicker before this page opens; unset = post into the browsed source
     property var targetCommunity: null
@@ -36,6 +94,14 @@ Page {
                                                                       : Config.communityName
 
     readonly property bool hasCommunity: page.postCommunityId > 0
+    // See CreatePostPage: the postable Global record has a real id, so only its dns
+    // identifies it. "Also publish to Global" makes no sense when Global is the target.
+    readonly property bool targetIsGlobal: {
+        var id = page.postCommunityId;
+        if (!(id > 0)) return true;
+        var c = Config.communityInfoFor(id);
+        return !!c && (c.dns || "") === Config.sources[0].dns;
+    }
     readonly property bool canPublish: !page.submitting && !page.uploadingVideo
                                        && page.videoUrl.length > 0
                                        && titleField.text.trim().length > 0
@@ -113,11 +179,15 @@ Page {
             videoUrl: page.videoUrl,
             thumbUrl: page.thumbUrl,
             postToBlockchain: page.postToBlockchain,
+            publishCeilingId: page.targetIsGlobal ? 0 : page.publishCeilingId,
             communityId: page.postCommunityId,
             communityName: page.postCommunityName
         }, Session.token,
         function (data) {
             page.submitting = false;
+            // Remember the scope for this community so the next upload starts there.
+            if (!page.targetIsGlobal)
+                Session.savePostScope(page.postCommunityId, page.publishCeilingId);
             Toast.success(Lang.tr("Video published!"));
             page.saved();
             page.pageStack.pop();
@@ -154,6 +224,7 @@ Page {
     }
 
     Component.onCompleted: {
+        page._applyRememberedScope();
         Uploads.setDelayHook(function (ms, fn) {
             uploadDelayTimer.pending = fn;
             uploadDelayTimer.interval = ms;
@@ -409,6 +480,82 @@ Page {
                 }
             }
 
+            // Publishing scope. Hidden on Global: that IS the combined feed, so
+            // there is nothing to narrow the post down to. A dropdown rather than
+            // a switch because the tree has more than two levels.
+            Item {
+                width: parent.width
+                visible: !page.targetIsGlobal
+                height: visible ? vidScopeCol.implicitHeight : 0
+
+                Column {
+                    id: vidScopeCol
+                    anchors { left: parent.left; right: parent.right }
+                    spacing: units.dp(2)
+
+                    Label {
+                        text: Lang.tr("Publish to")
+                        font.pixelSize: Style.fontRegular
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                    }
+
+                    // Same row shape as the category picker, so the composer reads
+                    // as one form rather than a switch plus a dropdown.
+                    MouseArea {
+                        id: vidScopeRow
+                        width: parent.width
+                        height: units.gu(5)
+                        onClicked: vidScopeSheet.show(page._scopeSheetItems(), vidScopeRow)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: "transparent"
+                            border.width: units.dp(1)
+                            border.color: Style.divider
+                            radius: Style.thumbRadius
+
+                            Row {
+                                anchors {
+                                    left: parent.left; right: parent.right
+                                    verticalCenter: parent.verticalCenter
+                                    leftMargin: Style.spacingM; rightMargin: Style.spacingM
+                                }
+                                spacing: Style.spacingS
+
+                                Label {
+                                    width: parent.width - vidScopeChevron.width - Style.spacingS
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: page.scopeLabel
+                                    elide: Text.ElideRight
+                                    font.pixelSize: Style.fontRegular
+                                    font.family: Style.fontFor(text)
+                                    color: Style.textPrimary
+                                }
+                                Icon {
+                                    id: vidScopeChevron
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2); height: width
+                                    name: "down"
+                                    color: Style.textSecondary
+                                }
+                            }
+                        }
+                    }
+
+                    // The label names the choice; this says what it actually does.
+                    Label {
+                        width: parent.width
+                        text: page.scopeHint
+                        font.pixelSize: Style.fontXSmall
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
             Label {
@@ -520,4 +667,7 @@ Page {
         z: 100
         ActivityIndicator { anchors.centerIn: parent; running: page.submitting }
     }
+
+    // Publishing-scope picker (dropdown on desktop, bottom sheet on touch).
+    ActionBottomSheet { id: vidScopeSheet }
 }

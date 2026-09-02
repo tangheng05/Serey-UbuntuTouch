@@ -195,6 +195,31 @@ QtObject {
         return "";
     }
 
+    // The communities a post published into `id` can be capped at: that community
+    // first, then each ancestor up to the top-level country. Depth-agnostic on
+    // purpose - the tree has countries, SuperHubs, platforms and topics, and they
+    // don't sit at fixed levels, so the publishing-scope options are generated
+    // from the real chain rather than from hard-coded tiers.
+    // Returns [{ id, name }], nearest-first. Empty when the tree isn't cached yet.
+    function scopeChainFor(id) {
+        var out = [];
+        var idStr = String(id);
+        var guard = 0;
+        while (idStr && idStr !== "undefined" && guard++ < 12) {
+            var c = communityById[idStr];
+            if (!c) break;
+            var parentStr = parentCommunityById[idStr] !== undefined
+                            ? String(parentCommunityById[idStr]) : "";
+            // The root IS the Global community: every other community descends
+            // from it, so "Global and below" would read as a duplicate of
+            // "Everywhere". Flag it so callers can label it for what it actually
+            // is -- everywhere EXCEPT the unscoped Global feed.
+            out.push({ "id": Number(idStr), "name": c.title || "", "isRoot": parentStr === "" });
+            idStr = parentStr;
+        }
+        return out;
+    }
+
     // Looks up a community's {title, icon, dns, ...} by id from the cached tree, or null if unknown
     function communityInfoFor(id) {
         var c = communityById[String(id)];

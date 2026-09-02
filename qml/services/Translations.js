@@ -97,6 +97,7 @@ var nl = {
     "Couldn't publish post.":                           "Kon artikel niet publiceren.",
     "Couldn't publish video.":                          "Kon video niet publiceren.",
     "Couldn't save for offline.":                       "Kon niet opslaan voor offline gebruik.",
+    "That platform isn't available yet.":               "Dit platform is nog niet beschikbaar.",
     "Couldn't update comment.":                         "Kon reactie niet bijwerken.",
     "Couldn't update post.":                            "Kon artikel niet bijwerken.",
     "Cover image uploaded":                             "Omslagafbeelding geüpload",

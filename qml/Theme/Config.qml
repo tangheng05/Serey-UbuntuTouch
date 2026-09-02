@@ -113,9 +113,14 @@ QtObject {
     readonly property string currentCommunityName: selectedSubCommunity
                                                    ? selectedSubCommunity.name
                                                    : communityName
-    readonly property string currentCommunityIconUrl: selectedSubCommunity
-                                                      ? (selectedSubCommunity.icon || "")
-                                                      : communityIcon(communityDns)
+    // Resolved through the cached tree, not the stored icon: sub-community records
+    // are built from several shapes and carry no dns, so a relative logo can't be
+    // made absolute from them alone (and Global would miss its bundled globe).
+    readonly property string currentCommunityIconUrl: {
+        if (!selectedSubCommunity) return communityIcon(communityDns);
+        var byId = communityIconFor(communityId);
+        return byId !== "" ? byId : resolveIconUrl(selectedSubCommunity.icon || "", "");
+    }
     readonly property string communityDns: sources[sourceIndex].dns
     readonly property string communityName: sources[sourceIndex].name
 
@@ -307,7 +312,24 @@ QtObject {
         // Global uses a bundled multi-flag globe icon instead of the backend logo.
         if (dns === sources[0].dns)
             return Qt.resolvedUrl("../../assets/global.png");
-        var u = iconByDns[dns];
-        return u ? u : "";
+        return resolveIconUrl(iconByDns[dns] || "", dns);
+    }
+
+    // Some communities store a site-relative logo ("/logo.png"); it only resolves
+    // against their own host, and QML would resolve it against the calling QML file.
+    function resolveIconUrl(icon, dns) {
+        if (!icon) return "";
+        if (/^[a-z]+:/.test(icon)) return icon;   // http(s), file (bundled asset), data
+        if (!dns) return "";
+        return "https://" + dns + (icon.charAt(0) === "/" ? "" : "/") + icon;
+    }
+
+    // Icon for any community id in the cached tree, absolute and Global-aware.
+    // "" when the id is unknown or the community has no logo.
+    function communityIconFor(id) {
+        var c = communityById[String(id)];
+        if (!c) return "";
+        var byDns = communityIcon(c.dns || "");
+        return byDns !== "" ? byDns : resolveIconUrl(c.icon || "", c.dns || "");
     }
 }

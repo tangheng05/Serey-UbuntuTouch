@@ -20,6 +20,26 @@ Item {
     readonly property string shareUrl: (p.author && p.permlink)
         ? ("https://serey.io/authors/" + p.author + "/" + p.permlink) : ""
 
+    // Publishing platform, hidden once you've drilled into that same community
+    // (redundant chrome on every card). Compared by id, never by name: our
+    // "Global" source is the id-0 no-filter pseudo-source, while a real community
+    // is also titled "Global" (id 1), so names collide and blank the whole feed.
+    readonly property string platformName: {
+        var c = p.community || "";
+        if (c === "") return "";
+        return (Config.communityId > 0 && Number(p.communityId) === Config.communityId) ? "" : c;
+    }
+
+    // Logo for the platform pill; "" drops it back to a letter avatar.
+    readonly property string platformIcon: root.platformName === ""
+                                           ? "" : Config.communityIconFor(p.communityId)
+
+    // Global state, so the card switches Config itself instead of signalling the page.
+    function openPlatform() {
+        if (!Config.selectCommunityById(p.communityId))
+            Toast.error(Lang.tr("That platform isn't available yet."));
+    }
+
     // Feed rows only carry an excerpt, so saving offline needs the full post first
     function toggleSaved() {
         if (root.isSaved) { SavedPosts.remove(p.permlink); return; }
@@ -191,7 +211,74 @@ Item {
                     }
                 }
                 Row {
-                    spacing: Style.spacingS
+                    spacing: units.gu(0.75)
+
+                    // Attribution reads as a badge rather than a second name, so it
+                    // stays subordinate to the author on the line above.
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: root.platformName !== ""
+                        width: platformRow.width + units.gu(1.25)
+                        height: units.gu(2.25)
+                        radius: height / 2
+                        color: platformTap.pressed
+                                 ? Qt.rgba(Style.brand.r, Style.brand.g, Style.brand.b, 0.16)
+                                 : Style.iconBackground
+
+                        Row {
+                            id: platformRow
+                            anchors.centerIn: parent
+                            spacing: units.gu(0.5)
+
+                            Item {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(1.5); height: units.gu(1.5)
+
+                                // Not every community has uploaded a logo; fall back to the
+                                // initial, same letter-avatar convention as the author above.
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: width / 2
+                                    color: Style.avatarTint(root.platformName)
+                                    visible: root.platformIcon === ""
+
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: root.platformName.charAt(0).toUpperCase()
+                                        font.pixelSize: units.gu(1)
+                                        font.family: Style.fontFor(text)
+                                        font.bold: true
+                                        color: Style.brand
+                                    }
+                                }
+
+                                CircleImage {
+                                    anchors.fill: parent
+                                    visible: root.platformIcon !== ""
+                                    source: root.platformIcon
+                                    decode: units.gu(3)
+                                }
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                // Capped so a long platform name can't push the time off the row.
+                                width: Math.min(implicitWidth, root.width / 3)
+                                text: root.platformName
+                                font.pixelSize: Style.fontXSmall
+                                font.family: Style.fontFor(root.platformName)
+                                font.weight: Font.DemiBold
+                                color: Style.brand
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        MouseArea {
+                            id: platformTap
+                            anchors.fill: parent
+                            onClicked: root.openPlatform()
+                        }
+                    }
+
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Style.formatTimeAgo(p.date || "")

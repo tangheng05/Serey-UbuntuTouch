@@ -105,6 +105,56 @@ Page {
     function _fetchLimit() { return page.selectedCategory !== "" ? Config.pageSize * 4 : Config.pageSize; }
     property int autoFetches: 0
 
+    // --- Article search ---
+    property bool searchOpen: false
+    property string searchQuery: ""
+    property bool searching: false
+    property string searchErrorMsg: ""
+    property int searchReqEpoch: 0
+    property var searchInflight: null
+    ListModel { id: searchModel; dynamicRoles: true }
+
+    function openSearch() {
+        page.searchOpen = true;
+        searchField.forceActiveFocus();
+    }
+    function closeSearch() {
+        page.searchOpen = false;
+        page.searchQuery = "";
+        page.searchReqEpoch++;
+        if (page.searchInflight) { page.searchInflight.abort(); page.searchInflight = null; }
+        page.searching = false;
+        page.searchErrorMsg = "";
+        searchModel.clear();
+    }
+    // Debounced from the field's onTextChanged
+    function runSearch() {
+        page.searchReqEpoch++;
+        var epoch = page.searchReqEpoch;
+        if (page.searchInflight) { page.searchInflight.abort(); page.searchInflight = null; }
+        var q = page.searchQuery.trim();
+        searchModel.clear();
+        page.searchErrorMsg = "";
+        if (q.length === 0) { page.searching = false; return; }
+        page.searching = true;
+        var extraParams = {};
+        if (Config.communityId > 0) extraParams.community_id = Config.communityId;
+        page.searchInflight = PostService.searchPosts(Config.baseUrl, q, extraParams, Session.token,
+            function (result) {
+                if (epoch !== page.searchReqEpoch) return;
+                page.searchInflight = null;
+                page.searching = false;
+                for (var i = 0; i < result.length; i++) searchModel.append(result[i]);
+            },
+            function (err) {
+                if (epoch !== page.searchReqEpoch) return;
+                page.searchInflight = null;
+                page.searching = false;
+                page.searchErrorMsg = err.message || Lang.tr("Search failed.");
+            });
+    }
+    Timer { id: searchDebounce; interval: 350; onTriggered: page.runSearch() }
+
     // Zero-height header: the global AppHeader provides the top bar, but keeping an explicit header avoids Lomiri's deprecated Page.head path.
     header: Item { height: 0 }
 
@@ -114,7 +164,11 @@ Page {
     Connections {
         target: Config
         // Warm the other tab too, or first toggle after a community switch flashes skeleton
-        function onCommunityIdChanged() { page.loadCategories(); page.reload(); page._warmOtherFeed(); }
+        function onCommunityIdChanged() {
+            page.loadCategories(); page.reload(); page._warmOtherFeed();
+            // Re-run search for new community
+            if (page.searchOpen) page.runSearch();
+        }
         // Account switch (or a fresh ban) can flip this for the SAME community id already on screen.
         function onIsBannedFromCurrentCommunityChanged() { page.reload(); }
     }
@@ -398,26 +452,93 @@ Page {
         page.reload();
     }
 
-    SectionTabs {
-        id: tabs
+    // Trending/Latest strip, or search field when open
+    Item {
+        id: tabsHeader
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        model: [Lang.tr("Trending"), Lang.tr("Latest")]
-        currentIndex: page.feedIndex
-        onSelected: {
-            page.feedIndex = index;
-            page.reload();
-            // Lomiri buttons steal focus on press; hand it back to the list after a tab click
-            list.forceActiveFocus();
+        height: tabs.implicitHeight
+
+        SectionTabs {
+            id: tabs
+            visible: !page.searchOpen
+            anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
+            width: parent.width - searchIconBtn.width
+            model: [Lang.tr("Trending"), Lang.tr("Latest")]
+            currentIndex: page.feedIndex
+            onSelected: {
+                page.feedIndex = index;
+                page.reload();
+                // Lomiri buttons steal focus on press; hand it back to the list after a tab click
+                list.forceActiveFocus();
+            }
+            // Reset cursor from the strip: stale currentIndex made first Down appear dead
+            onFocusList: { list.currentIndex = -1; list.forceActiveFocus(); }
         }
-        // Reset cursor from the strip: stale currentIndex made first Down appear dead
-        onFocusList: { list.currentIndex = -1; list.forceActiveFocus(); }
+
+        // Separates the tabs from the search icon; stops short of the bottom so it
+        // doesn't cross (and double up on) SectionTabs' own horizontal divider.
+        Rectangle {
+            visible: !page.searchOpen
+            anchors { top: parent.top; bottom: parent.bottom; bottomMargin: units.dp(1); right: searchIconBtn.left }
+            width: units.dp(1)
+            color: Style.divider
+        }
+
+        AbstractButton {
+            id: searchIconBtn
+            visible: !page.searchOpen
+            anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
+            width: units.gu(6)
+            onClicked: page.openSearch()
+            Icon {
+                anchors.centerIn: parent
+                width: units.gu(2.4); height: width
+                name: "find"
+                color: Style.textSecondary
+            }
+            // SectionTabs' own bottom divider only spans its own (reduced) width, so it
+            // never reaches under this icon — closes that box's 4th (bottom) side.
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                height: units.dp(1)
+                color: Style.divider
+            }
+        }
+
+        TextField {
+            id: searchField
+            visible: page.searchOpen
+            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingS; topMargin: Style.spacingXs; bottomMargin: Style.spacingXs }
+            hasClearButton: false
+            placeholderText: Lang.tr("Search articles")
+            text: page.searchQuery
+            onTextChanged: {
+                page.searchQuery = text;
+                searchDebounce.restart();
+            }
+            Keys.onEscapePressed: page.closeSearch()
+            // Close button rendered inside the field's own border, not as a separate box.
+            secondaryItem: AbstractButton {
+                height: parent.height; width: height
+                onClicked: page.closeSearch()
+                Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "close"; color: Style.textSecondary }
+            }
+        }
+
+        // Divider for the search row
+        Rectangle {
+            visible: page.searchOpen
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: units.dp(1)
+            color: Style.divider
+        }
     }
 
-    // Category filter chips; stays visible as a spinner while loading.
+    // Category filter chips; hidden during search
     Flickable {
         id: catBar
-        anchors { top: tabs.bottom; left: parent.left; right: parent.right }
-        readonly property bool showBar: page.categories.length > 0 || page.categoriesLoading
+        anchors { top: tabsHeader.bottom; left: parent.left; right: parent.right }
+        readonly property bool showBar: !page.searchOpen && (page.categories.length > 0 || page.categoriesLoading)
         height: showBar ? units.gu(5.5) : 0
         visible: showBar
         contentWidth: catRow.width + Style.spacingM
@@ -494,6 +615,7 @@ Page {
 
     ListView {
         id: list
+        visible: !page.searchOpen
         anchors { top: catBar.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
         width: Math.min(parent.width, page.maxContentWidth)
         clip: true
@@ -679,7 +801,7 @@ Page {
 
     LoadingState {
         anchors.fill: list
-        visible: page.loading && feedModel.count === 0
+        visible: !page.searchOpen && page.loading && feedModel.count === 0
     }
     // Paging is blocked while offline; pick it up again as soon as the network is back.
     Connections {
@@ -711,7 +833,7 @@ Page {
         anchors.fill: list
         autoRetry: false   // the Net handler above already reloads and resumes paging
         // Offline is the cover below; this stays the online-error panel only.
-        visible: Net.online && (page.errorMsg !== "" || page.bannedHere) && feedModel.count === 0
+        visible: !page.searchOpen && Net.online && (page.errorMsg !== "" || page.bannedHere) && feedModel.count === 0
         // Live Lang.tr() binding (not baked into errorMsg) so a language switch re-translates immediately.
         message: page.bannedHere ? Lang.tr("You're banned from this community.") : page.errorMsg
         onRetry: page.reload()
@@ -740,11 +862,61 @@ Page {
 
     EmptyState {
         anchors.fill: list
-        visible: !page.loading && page.errorMsg === "" && !page.bannedHere && feedModel.count === 0
+        visible: !page.searchOpen && !page.loading && page.errorMsg === "" && !page.bannedHere && feedModel.count === 0
         iconName: "stock_note"
         message: page.selectedCategory !== ""
             ? Lang.tr("No posts tagged \"%1\" in %2").arg(page.selectedCategory).arg(Config.currentCommunityName)
             : Lang.tr("No posts in %1").arg(Config.currentCommunityName)
+    }
+
+    // --- Search results list ---
+    ListView {
+        id: searchList
+        visible: page.searchOpen
+        anchors { top: catBar.bottom; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(parent.width, page.maxContentWidth)
+        clip: true
+        model: searchModel
+
+        delegate: PostCard {
+            width: searchList.width
+            post: searchModel.get(index)
+            highlightQuery: page.searchQuery
+            onClicked: page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
+                { author: post.author, permlink: post.permlink, title: post.title, seedPost: post })
+            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: post.author })
+            onMoreClicked: PostActions.open(post, "blog")
+            onRequireLogin: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
+        }
+    }
+
+    ActivityIndicator {
+        anchors.centerIn: searchList
+        running: page.searchOpen && page.searching && searchModel.count === 0
+        visible: running
+    }
+
+    EmptyState {
+        anchors.fill: searchList
+        visible: page.searchOpen && !page.searching && page.searchErrorMsg === ""
+                 && searchModel.count === 0 && page.searchQuery.trim().length > 0
+        iconName: "find"
+        message: Lang.tr("No articles match \"%1\"").arg(page.searchQuery.trim())
+    }
+
+    EmptyState {
+        anchors.fill: searchList
+        visible: page.searchOpen && page.searchQuery.trim().length === 0
+        iconName: "find"
+        message: Lang.tr("Type to search articles")
+    }
+
+    ErrorState {
+        anchors.fill: searchList
+        autoRetry: false
+        visible: page.searchOpen && page.searchErrorMsg !== "" && searchModel.count === 0
+        message: page.searchErrorMsg
+        onRetry: page.runSearch()
     }
 
     // Compose lives in the global header action now (gated on the News tab); Lomiri uses a header action, not a Material floating button.

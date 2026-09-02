@@ -151,6 +151,14 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 0
 
+            SettingsSectionHeader { text: Lang.tr("Navigation") }
+            NavVisibilityToggle {
+                width: parent.width
+                navKey: "video"
+                navLabel: Lang.tr("Video")
+                navIcon: "camcorder"
+            }
+
             SettingsSectionHeader { text: Lang.tr("Posting Permissions") }
             Item {
                 width: parent.width

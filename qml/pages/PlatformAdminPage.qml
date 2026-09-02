@@ -481,6 +481,7 @@ Page {
 
                 Repeater {
                     model: [
+                        { key: "homepage", label: Lang.tr("Homepage"), icon: "home", page: "HomepageManagementPage.qml" },
                         { key: "blog", label: Lang.tr("Blog"), icon: "stock_note", page: "BlogManagementPage.qml" },
                         { key: "video", label: Lang.tr("Video"), icon: "camcorder", page: "VideoManagementPage.qml" }
                     ]
@@ -507,6 +508,7 @@ Page {
                             }
                         }
 
+                        // Visibility toggle lives in the pushed page
                         Rectangle {
                             anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                             width: manageLabel.implicitWidth + Style.spacingM * 2

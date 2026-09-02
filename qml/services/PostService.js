@@ -175,7 +175,38 @@ function adminBulkDeletePosts(baseUrl, ids, token, onOk, onErr) {
                       function (data) { onOk(data || {}); }, onErr);
 }
 
-// Used by BlogManagementPage for moderation; same paginated shape as other feeds
-function listAdvancedSearch(baseUrl, params, token, onOk, onErr) {
-    return _list(baseUrl, "/serey-web/search-advanced", params, token, onOk, onErr);
+// Response shape differs from other list endpoints: { new_posts, trending_posts, feed_posts }
+function searchAdvanced(baseUrl, params, token, onOk, onErr) {
+    return Http.get(baseUrl, "/serey-web/search-advanced", params, token, function (data) {
+        var buckets = (data.new_posts || []).concat(data.trending_posts || [], data.feed_posts || []);
+        onOk(buckets.map(M.toPost));
+    }, onErr);
+}
+
+// Fires search_title + search_username in parallel, merges+dedupes by id
+function searchPosts(baseUrl, query, extraParams, token, onOk, onErr) {
+    var pending = 2;
+    var byId = {};
+    var order = [];
+    var lastErr = null;
+    function record(posts) {
+        for (var i = 0; i < posts.length; i++) {
+            var p = posts[i];
+            var key = p.id !== undefined ? String(p.id) : (p.author + "/" + p.permlink);
+            if (byId[key]) continue;
+            byId[key] = true;
+            order.push(p);
+        }
+    }
+    function done(err) {
+        if (err) lastErr = err;
+        if (--pending > 0) return;
+        if (order.length === 0 && lastErr) { onErr(lastErr); return; }
+        onOk(order);
+    }
+    var titleParams = Object.assign({}, extraParams, { search_title: query });
+    var userParams = Object.assign({}, extraParams, { search_username: query });
+    var t1 = searchAdvanced(baseUrl, titleParams, token, function (posts) { record(posts); done(null); }, function (err) { done(err); });
+    var t2 = searchAdvanced(baseUrl, userParams, token, function (posts) { record(posts); done(null); }, function (err) { done(err); });
+    return { abort: function () { t1.abort(); t2.abort(); } };
 }

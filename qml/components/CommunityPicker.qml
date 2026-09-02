@@ -626,6 +626,7 @@ Item {
                                         id: srcIcon
                                         anchors { fill: parent; margins: units.dp(2) }
                                         source: Config.communityIcon(modelData.dns)
+                                        // Flags/globe: crop-to-fill
                                     }
                                     Icon {
                                         anchors.centerIn: parent
@@ -890,6 +891,8 @@ Item {
                                                             id: subIcon
                                                             anchors { fill: parent; margins: units.dp(2) }
                                                             source: commBtn.commIcon
+                                                            // Wordmark logo: fit, not crop
+                                                            fillMode: Image.PreserveAspectFit
                                                         }
                                                     }
 
@@ -1053,6 +1056,7 @@ Item {
                                                                 CircleImage {
                                                                     anchors { fill: parent; margins: units.dp(2) }
                                                                     source: childBtn.cIcon
+                                                                    fillMode: Image.PreserveAspectFit
                                                                 }
                                                             }
 

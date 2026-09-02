@@ -7,6 +7,8 @@ Item {
     property url source: ""
     // Cap the decoded resolution (px); remote avatars are large and decoding full-size into a tiny circle wastes texture memory. 0 = uncapped.
     property int decode: 0
+    // PreserveAspectFit for non-square logos (wordmarks)
+    property int fillMode: Image.PreserveAspectCrop
     readonly property bool loaded: img.status === Image.Ready && String(source) !== ""
 
     Rectangle {
@@ -20,7 +22,7 @@ Item {
         id: img
         anchors.fill: parent
         source: root.source
-        fillMode: Image.PreserveAspectCrop
+        fillMode: root.fillMode
         asynchronous: true
         sourceSize.width: root.decode
         sourceSize.height: root.decode

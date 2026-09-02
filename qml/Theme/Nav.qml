@@ -43,5 +43,8 @@ QtObject {
     // which know their own stack. Main pushes the editor onto whichever tab is active.
     signal editCaption(var post)
 
+    // Nav tab show/hide was just changed; Main reloads its cache
+    signal navMenuChanged()
+
     function home() { goToTab(0); }
 }

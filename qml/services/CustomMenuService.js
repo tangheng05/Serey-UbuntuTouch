@@ -1,12 +1,13 @@
 .pragma library
 .import "Http.js" as Http
 
-// Navbar/menu management; backend hardcodes `website` as literal "SEREY"
+// Navbar/menu management; shared with the web CMS's custom_menu table (platform_type=WEB).
 
 var DEFAULT_WEBSITE = "SEREY";
+var PLATFORM_TYPE = 1; // PLATFORM_TYPE.WEB — see backend constants.js
 
 function listByWebsiteAndCommunity(baseUrl, params, token, onOk, onErr) {
-    var query = Object.assign({ website: DEFAULT_WEBSITE }, params || {});
+    var query = Object.assign({ website: DEFAULT_WEBSITE, platform_type: PLATFORM_TYPE }, params || {});
     Http.get(baseUrl, "/custom-menu/list-by-website-and-community", query, token, function (data) {
         onOk(data.data || data.menus || []);
     }, onErr);
@@ -19,7 +20,7 @@ function detail(baseUrl, id, token, onOk, onErr) {
 }
 
 function createOrUpdate(baseUrl, body, token, onOk, onErr) {
-    var payload = Object.assign({ website: DEFAULT_WEBSITE }, body || {});
+    var payload = Object.assign({ website: DEFAULT_WEBSITE, platform_type: PLATFORM_TYPE }, body || {});
     Http.post(baseUrl, "/custom-menu/create-or-update-menu", payload, token,
         function (data) { onOk(data || {}); }, onErr);
 }

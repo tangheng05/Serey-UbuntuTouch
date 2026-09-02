@@ -106,9 +106,9 @@ Page {
     // Desktop "•••" dropdown rows; report/delete/block route through PostActionSheet
     function headerMenuItems() {
         // Tablet: save already in header row
+        // ShareSheet already offers Copy link/Open in browser
         var items = [
-            { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },
-            { icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" }
+            { icon: "share", label: Lang.tr("Share"), action: "shareVia" }
         ];
         if (!Config.tabletMode) {
             items.push({ icon: page.isSaved ? "tick" : "save",
@@ -128,8 +128,7 @@ Page {
     }
 
     function runHeaderMenuAction(action) {
-        if (action === "copyLink") { Clipboard.push(page.shareUrl); Toast.show(Lang.tr("Link copied")); }
-        else if (action === "openBrowser") Qt.openUrlExternally(page.shareUrl);
+        if (action === "shareVia") Share.open(page.shareUrl, moreHeaderBtn);
         else if (action === "toggleSaved") page.toggleSaved();
         else if (action === "edit") page.openEditor();
         else if (action === "delete") PostActions.open(page.post, "blog", 2);
@@ -1134,7 +1133,6 @@ Page {
             }
 
             Row {
-                visible: !Config.wideMode
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width - Style.spacingM * 2
                 spacing: Style.spacingS

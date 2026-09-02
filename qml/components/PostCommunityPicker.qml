@@ -432,7 +432,10 @@ Item {
         picker.visible = true;
         // A prior sheet-mode close leaves pcpTranslate.y at its slide-out offset (pcpDropIn never
         // touches it), so a dropdown-mode open right after would render the panel pushed way down.
+        // Same fix for opacity/scale left at 0 by a prior dropdown close
         pcpTranslate.y = 0;
+        sheet.opacity = 1;
+        sheet.scale = 1;
         pcpBackdropFade.start();
         if (picker.anchored) pcpDropIn.start(); else pcpSlide.start();
         picker.forceActiveFocus();
@@ -678,6 +681,8 @@ Item {
                                         CircleImage {
                                             anchors { fill: parent; margins: units.dp(2) }
                                             source: modelData.icon
+                                            // Flags (and the Global globe icon) — crop-to-fill is
+                                            // the right look here, unlike sub-community logos below.
                                         }
                                     }
 
@@ -831,6 +836,7 @@ Item {
                                                 CircleImage {
                                                     anchors { fill: parent; margins: units.dp(2) }
                                                     source: modelData.icon
+                                                    fillMode: Image.PreserveAspectFit
                                                 }
                                             }
 
@@ -963,6 +969,7 @@ Item {
                                                 CircleImage {
                                                     anchors { fill: parent; margins: units.dp(2) }
                                                     source: modelData.icon || modelData.icon_url || modelData.logo_url || ""
+                                                    fillMode: Image.PreserveAspectFit
                                                 }
                                             }
 

@@ -327,6 +327,14 @@ Page {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 0
 
+            SettingsSectionHeader { text: Lang.tr("Navigation") }
+            NavVisibilityToggle {
+                width: parent.width
+                navKey: "blog"
+                navLabel: Lang.tr("Blog")
+                navIcon: "stock_note"
+            }
+
             SettingsSectionHeader { text: Lang.tr("Posting Permissions") }
             Item {
                 width: parent.width

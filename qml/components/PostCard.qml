@@ -20,6 +20,36 @@ Item {
     readonly property string shareUrl: (p.author && p.permlink)
         ? ("https://serey.io/authors/" + p.author + "/" + p.permlink) : ""
 
+    // Set by search results to highlight the matched term in the title; empty everywhere else.
+    property string highlightQuery: ""
+    function _escapeHtml(s) {
+        return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+    function _escapeRegExp(s) {
+        return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    function _highlightedTitle() {
+        var title = root._escapeHtml(p.title || "");
+        var q = root.highlightQuery.trim();
+        if (q === "") return title;
+        var re = new RegExp("(" + root._escapeRegExp(q) + ")", "gi");
+        return title.replace(re, "<span style=\"background-color:#FFEB3B;color:#000000\">$1</span>");
+    }
+
+    // Jump to this post's platform
+    function openPlatform() {
+        var cid = p.communityId || 0;
+        var info = cid > 0 ? Config.communityInfoFor(cid) : null;
+        if (!info) return;
+        Nav.filterCategory("", {
+            id: cid,
+            name: info.title || info.name || "",
+            icon: info.icon || "",
+            allowPost: !!info.allowPost,
+            videoAllowPost: !!info.videoAllowPost
+        });
+    }
+
     // Feed rows only carry an excerpt, so saving offline needs the full post first
     function toggleSaved() {
         if (root.isSaved) { SavedPosts.remove(p.permlink); return; }
@@ -198,6 +228,29 @@ Item {
                         font.pixelSize: Style.fontXSmall
                         color: Style.textSecondary
                     }
+                    // Excerpt-only fallback (no thumbnail for the corner tag)
+                    Label {
+                        visible: (p.community || "") !== "" && (p.thumbnail || "") === ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "·"
+                        font.pixelSize: Style.fontXSmall
+                        color: Style.textSecondary
+                    }
+                    Label {
+                        visible: (p.community || "") !== "" && (p.thumbnail || "") === ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, units.gu(18))
+                        elide: Text.ElideRight
+                        text: p.community || ""
+                        font.pixelSize: Style.fontXSmall
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.brand
+                        MouseArea {
+                            anchors { fill: parent; margins: -Style.spacingXs }
+                            onClicked: root.openPlatform()
+                        }
+                    }
                 }
             }
 
@@ -249,9 +302,10 @@ Item {
             visible: (p.title || "") !== ""
             width: parent.width - Style.spacingM * 2
             x: Style.spacingM
-            text: p.title || ""
+            text: root.highlightQuery.trim() !== "" ? root._highlightedTitle() : (p.title || "")
+            textFormat: root.highlightQuery.trim() !== "" ? Text.StyledText : Text.PlainText
             font.pixelSize: Style.fontMedium
-            font.family: Style.fontFor(text)
+            font.family: Style.fontFor(p.title || "")
             color: Style.textPrimary
             wrapMode: Text.Wrap
             maximumLineCount: 3
@@ -275,21 +329,78 @@ Item {
                 decodeWidth: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
             }
 
-            Rectangle {
-                // categories is ListModel-wrapped here; use the mapper's scalar copy instead.
-                visible: (p.primaryCategory || "") !== ""
+            // Category + platform tags, top-right
+            Row {
+                id: cornerTags
+                // Above the thumbnail's MouseArea
+                z: 1
                 anchors { top: parent.top; right: parent.right; topMargin: Style.spacingS; rightMargin: Style.spacingS }
-                width: catLabel.width + Style.spacingM
-                height: units.gu(3)
-                radius: Style.pillRadius
-                color: Style.accentRed
-                Label {
-                    id: catLabel
-                    anchors.centerIn: parent
-                    text: p.primaryCategory || ""
-                    font.pixelSize: Style.fontSmall
-                    font.weight: Font.DemiBold
-                    color: Style.textOnBrand
+                spacing: Style.spacingXs
+
+                Rectangle {
+                    id: catTag
+                    // categories is ListModel-wrapped here; use the mapper's scalar copy instead.
+                    visible: (p.primaryCategory || "") !== ""
+                    width: catLabel.width + Style.spacingM
+                    height: units.gu(3)
+                    radius: Style.pillRadius
+                    color: Style.accentRed
+                    Label {
+                        id: catLabel
+                        anchors.centerIn: parent
+                        text: p.primaryCategory || ""
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.DemiBold
+                        color: Style.textOnBrand
+                    }
+                }
+
+                // Platform tag
+                Rectangle {
+                    id: platformTag
+                    readonly property var communityInfo: p.communityId > 0 ? Config.communityInfoFor(p.communityId) : null
+                    // Global uses the bundled globe icon
+                    readonly property string iconUrl: {
+                        if (!platformTag.communityInfo) return "";
+                        if (platformTag.communityInfo.dns === Config.sources[0].dns)
+                            return Config.communityIcon(platformTag.communityInfo.dns);
+                        return platformTag.communityInfo.icon || "";
+                    }
+                    visible: (p.community || "") !== ""
+                    width: platformRow.width + Style.spacingM
+                    height: units.gu(3)
+                    radius: Style.pillRadius
+                    color: "black"
+
+                    Row {
+                        id: platformRow
+                        anchors.centerIn: parent
+                        spacing: units.dp(4)
+
+                        Item {
+                            visible: platformTag.iconUrl !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: visible ? units.gu(1.8) : 0
+                            height: units.gu(1.8)
+                            CircleImage {
+                                anchors.fill: parent
+                                source: platformTag.iconUrl
+                                fillMode: Image.PreserveAspectFit
+                            }
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.min(implicitWidth, units.gu(16))
+                            elide: Text.ElideRight
+                            text: p.community || ""
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            font.family: Style.fontFor(text)
+                            color: "white"
+                        }
+                    }
+                    // Own tap target
+                    MouseArea { anchors.fill: parent; onClicked: root.openPlatform() }
                 }
             }
 

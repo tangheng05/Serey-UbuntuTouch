@@ -16,6 +16,7 @@ import "services/PaymentService.js" as PaymentService
 import "services/PostService.js" as PostService
 import "services/VideoService.js" as VideoService
 import "services/PlatformService.js" as PlatformService
+import "services/CustomMenuService.js" as CustomMenuService
 
 MainView {
     id: root
@@ -113,11 +114,46 @@ MainView {
         var p = activeStack ? activeStack.rootPage : null;
         return !!(p && p.isFeedPage);
     }
-    readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3
+    // Hide shell header while Feed page is open
+    readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3 && !feedPageOpen
     // Wide windows keep the rail inside pushed pages too: it's app chrome there.
-    readonly property bool showNavBar: root.wideMode || activeColumns > 1 || activeDepth <= 1
+    // Feed page stays a first-class browsing surface, not a deep detail push
+    readonly property bool showNavBar: root.wideMode || activeColumns > 1 || activeDepth <= 1 || root.feedPageOpen
+
+    // Nav tabs hidden for the current platform (custom_menu.is_hidden)
+    property var navVisibility: ({})
+    function _loadNavVisibility() {
+        CustomMenuService.listByWebsiteAndCommunity(Config.baseUrl,
+            { community_id: Config.communityId }, Session.token,
+            function (rows) {
+                var vis = {}
+                for (var i = 0; i < rows.length; i++)
+                    if (rows[i].key) vis[rows[i].key] = !!rows[i].is_hidden
+                root.navVisibility = vis
+                root._redirectIfCurrentTabHidden()
+            },
+            function () { root.navVisibility = {} /* non-fatal: every tab defaults to visible */ })
+    }
+    // Hop off a tab that just got hidden
+    function _redirectIfCurrentTabHidden() {
+        if (!root._tabHidden(root._tabs[root.currentTab])) return
+        var fallback = !root._tabHidden(root._tabs[1]) ? 1 : -1
+        if (fallback < 0)
+            for (var i = 0; i < root._tabs.length; i++)
+                if (!root._tabHidden(root._tabs[i])) { fallback = i; break }
+        if (fallback >= 0 && fallback !== root.currentTab) root.switchTab(fallback)
+    }
+    Connections {
+        target: Config
+        function onCommunityIdChanged() { root._loadNavVisibility(); }
+    }
+    Connections {
+        target: Nav
+        function onNavMenuChanged() { root._loadNavVisibility(); }
+    }
 
     Component.onCompleted: {
+        root._loadNavVisibility();
         // Expired tokens caught lazily via 401; only clear if rejected token is still current
         Http.setUnauthorizedHandler(function (tokenUsed) {
             if (!Session.isLoggedIn) return;
@@ -863,13 +899,20 @@ MainView {
         function onFocusRightPanel() { if (body._showAccountPanel) accountStatusPanel.focusPanel(); }
     }
 
-    // Shared by both nav layouts below, so the tab list only exists once.
+    // Shared by both nav layouts; `key` maps to a custom_menu row, Settings has none
     readonly property var _tabs: [
-        { label: Lang.tr("Homepage"), icon: "home" },
-        { label: Lang.tr("News"),     icon: "stock_note" },
-        { label: Lang.tr("Video"),    icon: "camcorder" },
+        { label: Lang.tr("Homepage"), icon: "home",       key: "homepage" },
+        { label: Lang.tr("News"),     icon: "stock_note", key: "blog" },
+        { label: Lang.tr("Video"),    icon: "camcorder",  key: "video" },
         { label: Lang.tr("Settings"), icon: "settings" }
     ]
+    // Tab indices stay fixed even when hidden
+    function _tabHidden(t) { return !!(t.key && root.navVisibility[t.key]); }
+    readonly property int _visibleTabCount: {
+        var n = 0;
+        for (var i = 0; i < root._tabs.length; i++) if (!root._tabHidden(root._tabs[i])) n++;
+        return n;
+    }
 
     // --- Bottom navigation (phone / narrow window) -------------------------
     Rectangle {
@@ -892,7 +935,9 @@ MainView {
                 id: navRep
                 model: root._tabs
                 delegate: AbstractButton {
-                    width: navBar.width / 4
+                    // Hidden tabs take no space in the Row
+                    visible: !root._tabHidden(modelData)
+                    width: navBar.width / Math.max(1, root._visibleTabCount)
                     height: navBar.height
                     // My Feed isn't any one tab's content, so no tab reads as selected while it's open.
                     property bool active: root.currentTab === index && !root.feedPageOpen
@@ -942,6 +987,8 @@ MainView {
                 id: railRep
                 model: root._tabs
                 delegate: AbstractButton {
+                    // Hidden tabs take no space in the Column
+                    visible: !root._tabHidden(modelData)
                     width: sideNavBar.width
                     height: units.gu(6)
                     // My Feed isn't any one tab's content, so no tab reads as selected while it's open.

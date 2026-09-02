@@ -22,7 +22,12 @@ Item {
 
     function sendToPeer(peer) {
         var transfer = peer.request();
-        transfer.items = [ linkItemComp.createObject(sheet, { url: Share.url }) ];
+        // Set all 3 real ContentItem fields; different peers read different ones
+        transfer.items = [ linkItemComp.createObject(sheet, {
+            url: Share.url,
+            text: Share.url,
+            name: Share.url
+        }) ];
         transfer.state = ContentTransfer.Charged;
         sheet.activeTransfer = transfer;
     }

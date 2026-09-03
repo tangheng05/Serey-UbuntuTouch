@@ -179,17 +179,29 @@ MainView {
 
         _prefetchLate.start();
         root._checkLaunchUrl();
+
+        // A signed-in session opens on My Feed rather than the Homepage mini app.
+        // Deferred by one loop pass so Session has finished restoring from SQLite
+        // (it loads in its own Component.onCompleted) and the tab stacks exist.
+        // Skipped for a notification cold start, which owns its own destination.
+        Qt.callLater(function () {
+            if (Session.isLoggedIn && root._launchNotifUrl() === "")
+                Nav.goToFeed();
+        });
     }
 
-    // cold start via a push-notification tap
-    function _checkLaunchUrl() {
+    // The notif= argument a push-notification tap launched us with, or "".
+    // Also gates the My-Feed default above: that launch owns its own destination.
+    function _launchNotifUrl() {
         var args = Qt.application.arguments || [];
-        for (var i = 0; i < args.length; i++) {
-            if (String(args[i]).indexOf("notif=") !== -1) {
-                root._handleIncomingUrl(args[i]);
-                break;
-            }
-        }
+        for (var i = 0; i < args.length; i++)
+            if (String(args[i]).indexOf("notif=") !== -1) return String(args[i]);
+        return "";
+    }
+
+    function _checkLaunchUrl() {
+        var url = root._launchNotifUrl();
+        if (url !== "") root._handleIncomingUrl(url);
     }
 
     function _extractNotifId(url) {

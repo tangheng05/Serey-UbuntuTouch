@@ -38,6 +38,67 @@ Page {
     property int _pendingFocusIndex: -1
     // "Post on the blockchain": on = broadcast on-chain (default), off = save to the Serey DB only (no voting/rewards).
     property bool postToBlockchain: true
+    // Publishing scope: the highest community this post may surface under (its
+    // ceiling). 0 = no ceiling, i.e. everywhere including the Global feed.
+    property int publishCeilingId: 0
+
+    // Options are generated from the target's real ancestor chain, so a platform
+    // under a SuperHub under a country gets a row per level with no hard-coded tiers.
+    readonly property var scopeOptions: {
+        var chain = Config.scopeChainFor(page.postCommunityId);   // nearest-first
+        // Labels spell out the full path a post can surface in rather than
+        // describing the scope, so the hint carries the explanation instead.
+        var opts = [{ "id": 0,
+                      "label": Config.scopePath(chain, -1),
+                      "hint": Lang.tr("Also shown in the Global feed.") }];
+        for (var i = chain.length - 1; i >= 0; i--) {
+            var hint = chain[i].isRoot
+                ? Lang.tr("Everywhere except the Global feed.")
+                : (i === 0 ? Lang.tr("Only people browsing %1.").arg(chain[i].name)
+                           : Lang.tr("%1 and the platforms under it.").arg(chain[i].name));
+            // Nothing sits below the Global community, so posting straight into it
+            // makes the ceiling's path read the same as no ceiling at all. The
+            // only difference left is the unscoped feed, which a path can't show.
+            var label = Config.scopePath(chain, i);
+            if (label === opts[0].label) label = Lang.tr("Not on Global");
+            opts.push({ "id": chain[i].id, "label": label, "hint": hint });
+        }
+        return opts;
+    }
+    readonly property string scopeLabel: {
+        var o = page.scopeOptions;
+        for (var i = 0; i < o.length; i++)
+            if (o[i].id === page.publishCeilingId) return o[i].label;
+        return o.length > 0 ? o[0].label : "";
+    }
+    // Plain-language line under the row: the label names the choice, this says what it does.
+    readonly property string scopeHint: {
+        var o = page.scopeOptions;
+        for (var i = 0; i < o.length; i++)
+            if (o[i].id === page.publishCeilingId) return o[i].hint;
+        return "";
+    }
+    // New posts open on the last choice made for this community; an edit ignores it,
+    // since the post's own saved ceiling is what the row must reflect.
+    function _applyRememberedScope() {
+        if (page.isEdit) return;
+        var saved = Session.loadPostScope(page.postCommunityId);
+        page.publishCeilingId = (saved === undefined) ? 0 : Number(saved);
+    }
+    onPostCommunityIdChanged: page._applyRememberedScope()
+
+    function _scopeSheetItems() {
+        var items = [];
+        var opts = page.scopeOptions;
+        for (var i = 0; i < opts.length; i++) {
+            (function (id) {
+                items.push({ "text": opts[i].label,
+                             "iconName": (id === page.publishCeilingId) ? "tick" : "",
+                             "onTriggered": function () { page.publishCeilingId = id; } });
+            })(opts[i].id);
+        }
+        return items;
+    }
 
     function _anyBodyPartFocused() {
         for (var i = 0; i < page.bodyParts.length; i++) {
@@ -89,6 +150,20 @@ Page {
 
     readonly property string postCommunityName: page.targetCommunity ? page.targetCommunity.name
                                                                      : Config.communityName
+    // Name shown in the publishing-scope row: whatever community the post lands in.
+    readonly property string scopeCommunityName: page.isEdit
+                                                 ? ((page.editPost && page.editPost.community) || page.catCommunityName)
+                                                 : page.postCommunityName
+    // Global is the combined feed, so "also publish to Global" is meaningless there.
+    // Can't test the id: the postable Global record has a real backend id like any
+    // other community (only the picker's synthetic source row is id 0). Its dns is
+    // what identifies it, same as PostCommunityPicker._globalEntry().
+    readonly property bool targetIsGlobal: {
+        var id = page.postCommunityId;
+        if (!(id > 0)) return true;
+        var c = Config.communityInfoFor(id);
+        return !!c && (c.dns || "") === Config.sources[0].dns;
+    }
 
     // When set, this page edits an existing post (sends its permlink to update in place) instead of creating a new one.
     property var editPost: null
@@ -201,6 +276,7 @@ Page {
             page.selectedSubCategory = eSub || "";
             // Prefill the toggle from the saved post (default on if absent).
             page.postToBlockchain = (page.editPost.postToBlockchain !== false);
+            page.publishCeilingId = Number(page.editPost.publishCeilingId || 0);
             // Some list endpoints (e.g. list-by-author, used by the Profile page) don't return
             // community_id/community_title per row, so editPost can arrive with neither set.
             // publish() then falls back to Config.communityName, which can be a different
@@ -219,10 +295,15 @@ Page {
                                 communityId: p.communityId || page.editPost.communityId,
                                 community: p.community || page.editPost.community
                             });
+                            // Feed rows can omit the ceiling too; the detail
+                            // response is authoritative, so re-prefill from it.
+                            page.publishCeilingId = Number(p.publishCeilingId || 0);
                         },
                         function (err) { /* best-effort; publish() still has its old fallback */ });
                 }
             }
+        } else {
+            page._applyRememberedScope();
         }
         loadCategories();   // captures selectedCategory above as the kept value
     }
@@ -302,6 +383,7 @@ Page {
                 Toast.success(Lang.tr("Image added"));
             } else {
                 page.coverImageUrl = url;
+                page.coverCleared = false;
                 Toast.success(Lang.tr("Cover image uploaded"));
             }
         }
@@ -443,6 +525,29 @@ Page {
         return parts.join("");
     }
 
+    // Thumbnail fallback: an article with pictures but no cover picked uses its
+    // first body image. Kept as a binding rather than written into coverImageUrl,
+    // so it always tracks the body (delete that image and it re-derives or clears)
+    // and stays distinguishable from a cover the user actually chose, which the
+    // edit prefill above depends on.
+    readonly property string derivedCoverUrl: {
+        var parts = page.bodyParts;
+        for (var i = 0; i < parts.length; i++)
+            if (parts[i].type === "image" && (parts[i].url || "").length > 0)
+                return parts[i].url;
+        return "";
+    }
+    // Set when the author clears the slot, which suppresses the derived fallback
+    // for the rest of the session: clearing has to mean "no thumbnail", not
+    // "re-derive the same picture I just dismissed". Picking one clears the flag.
+    property bool coverCleared: false
+
+    // What actually gets published, and what the thumbnail slot shows. A picked
+    // cover always wins over the derived one.
+    readonly property string effectiveCoverUrl: page.coverImageUrl.length > 0
+                                                ? page.coverImageUrl
+                                                : (page.coverCleared ? "" : page.derivedCoverUrl)
+
     function publish() {
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
@@ -468,6 +573,7 @@ Page {
         // Cover image is NOT prepended into the body: it's sent below via `images`, which is what
         // both the API/web thumbnail and PostDetailPage's own cover frame derive from. Baking it
         // into the body too just duplicated it inline above the article text.
+        var coverUrl = page.effectiveCoverUrl;
         page.submitting = true;
         PostService.createPost(Config.baseUrl, {
             title: titleField.text.trim(),
@@ -478,12 +584,18 @@ Page {
             categories: page.selectedCategory || "general",
             subcategories: page.selectedSubCategory.length > 0 ? [page.selectedSubCategory] : [],
             postToBlockchain: page.postToBlockchain,
+            // Never cap a post whose target IS Global: it would hide the post from
+            // the only feed it was published to.
+            publishCeilingId: page.targetIsGlobal ? 0 : page.publishCeilingId,
             permlink: page.isEdit ? (page.editPost.permlink || "") : "",
             // Also send in `images` (json_meta.image) since the web derives the card thumbnail from that field, not from the body <img>.
-            images: page.coverImageUrl.length > 0 ? [page.coverImageUrl] : []
+            images: coverUrl.length > 0 ? [coverUrl] : []
         }, Session.token,
         function (data) {
             page.submitting = false;
+            // Remember the scope for this community so the next post here starts there.
+            if (!page.targetIsGlobal)
+                Session.savePostScope(page.postCommunityId, page.publishCeilingId);
             Toast.success(page.isEdit ? Lang.tr("Post updated!") : Lang.tr("Post published!"));
             page.saved(!page.isEdit);
             page.pageStack.pop();
@@ -1109,34 +1221,135 @@ Page {
                 }
             }
 
+            // Publishing scope. Hidden on Global: that IS the combined feed, so
+            // there is nothing to narrow the post down to. A dropdown rather than
+            // a switch because the tree has more than two levels.
+            Item {
+                width: parent.width
+                visible: !page.targetIsGlobal
+                height: visible ? scopeCol.implicitHeight : 0
+
+                Column {
+                    id: scopeCol
+                    anchors { left: parent.left; right: parent.right }
+                    spacing: units.dp(2)
+
+                    Label {
+                        text: Lang.tr("Publish to")
+                        font.pixelSize: Style.fontRegular
+                        font.weight: Font.DemiBold
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                    }
+
+                    // Same row shape as the category picker, so the composer reads
+                    // as one form rather than a switch plus a dropdown.
+                    MouseArea {
+                        id: scopeRow
+                        width: parent.width
+                        height: units.gu(5)
+                        onClicked: scopeSheet.show(page._scopeSheetItems(), scopeRow)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: "transparent"
+                            border.width: units.dp(1)
+                            border.color: Style.divider
+                            radius: Style.thumbRadius
+
+                            Row {
+                                anchors {
+                                    left: parent.left; right: parent.right
+                                    verticalCenter: parent.verticalCenter
+                                    leftMargin: Style.spacingM; rightMargin: Style.spacingM
+                                }
+                                spacing: Style.spacingS
+
+                                Label {
+                                    width: parent.width - scopeChevron.width - Style.spacingS
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: page.scopeLabel
+                                    elide: Text.ElideRight
+                                    font.pixelSize: Style.fontRegular
+                                    font.family: Style.fontFor(text)
+                                    color: Style.textPrimary
+                                }
+                                Icon {
+                                    id: scopeChevron
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2); height: width
+                                    name: "down"
+                                    color: Style.textSecondary
+                                }
+                            }
+                        }
+                    }
+
+                    // The label names the choice; this says what it actually does.
+                    Label {
+                        width: parent.width
+                        text: page.scopeHint
+                        font.pixelSize: Style.fontXSmall
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
             Rectangle {
                 width: parent.width
                 height: units.gu(20)
                 radius: Style.thumbRadius
                 // Outlined while empty, filled once an image sits behind it.
-                color: page.coverImageUrl.length > 0 ? Style.iconBackground : "transparent"
-                border.width: page.coverImageUrl.length > 0 ? 0 : units.dp(1.5)
+                color: page.effectiveCoverUrl.length > 0 ? Style.iconBackground : "transparent"
+                border.width: page.effectiveCoverUrl.length > 0 ? 0 : units.dp(1.5)
                 border.color: Style.divider
                 clip: true
 
                 Image {
                     anchors.fill: parent
-                    source: page.coverImageUrl
+                    source: page.effectiveCoverUrl
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     autoTransform: true     // honour EXIF orientation
-                    visible: page.coverImageUrl.length > 0
+                    visible: page.effectiveCoverUrl.length > 0
+                }
+
+                // Says why a picture is here that the author never picked. On a dark
+                // pill, not outlined text: the image behind it is arbitrary, so
+                // nothing else guarantees contrast.
+                Rectangle {
+                    anchors {
+                        left: parent.left; bottom: parent.bottom
+                        leftMargin: Style.spacingS; bottomMargin: Style.spacingS
+                    }
+                    z: 2
+                    visible: page.coverImageUrl.length === 0 && page.derivedCoverUrl.length > 0
+                    width: derivedHint.width + Style.spacingM
+                    height: units.gu(2.5)
+                    radius: Style.pillRadius
+                    color: Qt.rgba(0, 0, 0, 0.65)
+
+                    Label {
+                        id: derivedHint
+                        anchors.centerIn: parent
+                        text: Lang.tr("From your article")
+                        font.pixelSize: Style.fontXSmall
+                        font.weight: Font.DemiBold
+                        color: "#FFFFFF"
+                    }
                 }
 
                 AbstractButton {
-                    visible: page.coverImageUrl.length > 0
+                    visible: page.effectiveCoverUrl.length > 0
                     anchors {
                         top: parent.top; right: parent.right
                         topMargin: Style.spacingS; rightMargin: Style.spacingS
                     }
                     width: units.gu(4); height: width
                     z: 2
-                    onClicked: page.coverImageUrl = ""
+                    onClicked: { page.coverImageUrl = ""; page.coverCleared = true; }
 
                     Rectangle {
                         anchors.fill: parent
@@ -1165,7 +1378,7 @@ Page {
                 Column {
                     anchors.centerIn: parent
                     spacing: Style.spacingS
-                    visible: page.coverImageUrl.length === 0 && !page.uploading
+                    visible: page.effectiveCoverUrl.length === 0 && !page.uploading
 
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -1191,6 +1404,8 @@ Page {
 
                 MouseArea {
                     anchors.fill: parent
+                    // Keyed off the picked cover, not the effective one: a derived
+                    // thumbnail must stay tappable so it can be replaced.
                     enabled: !page.uploading && page.coverImageUrl.length === 0
                     onClicked: page.pickCoverImage()
                 }
@@ -1568,4 +1783,8 @@ Page {
             }
         }
     }
+
+    // Publishing-scope picker. ActionBottomSheet already renders as a dropdown
+    // anchored to the row on desktop and a bottom sheet on touch.
+    ActionBottomSheet { id: scopeSheet }
 }

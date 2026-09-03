@@ -49,6 +49,15 @@ QtObject {
     // Default page size for paginated lists.
     readonly property int pageSize: 10
 
+    // Country category buckets. A country has no categories of its own, and the
+    // union of its platforms' names is unusable as a filter (108 under Cambodia),
+    // so the backend expands one of these into the platform category names it
+    // covers via `category_bucket`. Must stay in step with serey-api's
+    // src/source/country_category_aliases.json, which defines the same 7.
+    readonly property var countryBuckets: [
+        "News", "Politics", "Economy", "Crypto", "Tech", "Society", "Sport"
+    ]
+
     // Upstream media host used to normalise some relative asset paths.
     readonly property string uploadHost: "https://upload.serey.io"
 
@@ -113,9 +122,14 @@ QtObject {
     readonly property string currentCommunityName: selectedSubCommunity
                                                    ? selectedSubCommunity.name
                                                    : communityName
-    readonly property string currentCommunityIconUrl: selectedSubCommunity
-                                                      ? (selectedSubCommunity.icon || "")
-                                                      : communityIcon(communityDns)
+    // Resolved through the cached tree, not the stored icon: sub-community records
+    // are built from several shapes and carry no dns, so a relative logo can't be
+    // made absolute from them alone (and Global would miss its bundled globe).
+    readonly property string currentCommunityIconUrl: {
+        if (!selectedSubCommunity) return communityIcon(communityDns);
+        var byId = communityIconFor(communityId);
+        return byId !== "" ? byId : resolveIconUrl(selectedSubCommunity.icon || "", "");
+    }
     readonly property string communityDns: sources[sourceIndex].dns
     readonly property string communityName: sources[sourceIndex].name
 
@@ -179,6 +193,33 @@ QtObject {
         return true;
     }
 
+    // "Global - Netherlands - Voetbal": every place a post with this ceiling can
+    // surface, outermost first, so an option names the places instead of
+    // describing them. `chain` is scopeChainFor()'s nearest-first list and
+    // `fromIndex` is where the ceiling sits in it; -1 means no ceiling, which
+    // also reaches the unscoped Global feed.
+    function scopePath(chain, fromIndex) {
+        if (!chain || chain.length === 0) return sources[0].name;
+        var names = [];
+        var start = fromIndex < 0 ? chain.length - 1 : fromIndex;
+        // The chain tops out at whatever parent we cached, often the country, so
+        // the Global feed has to be named explicitly. Skip it when the chain
+        // already carries the Global community itself.
+        if (fromIndex < 0 && chain[chain.length - 1].name !== sources[0].name)
+            names.push(sources[0].name);
+        for (var i = start; i >= 0; i--) names.push(chain[i].name);
+        return names.join(" - ");
+    }
+
+    // True for both spellings of Global: the id-0 pseudo-source (no filter) and
+    // the real Global community row, which the picker and mini-app navigation can
+    // select by id. They share a dns, so match on that rather than a hard-coded id.
+    function isGlobalCommunity(id) {
+        if (Number(id) === sources[0].id) return true;
+        var c = communityById[String(id)];
+        return !!c && (c.dns || "") === sources[0].dns;
+    }
+
     // Community id for a URL the mini app landed on, or "" if it names none
     function communityIdForUrl(u) {
         if (!u) return "";
@@ -193,6 +234,31 @@ QtObject {
             if (d && d === host) return k;
         }
         return "";
+    }
+
+    // The communities a post published into `id` can be capped at: that community
+    // first, then each ancestor up to the top-level country. Depth-agnostic on
+    // purpose - the tree has countries, SuperHubs, platforms and topics, and they
+    // don't sit at fixed levels, so the publishing-scope options are generated
+    // from the real chain rather than from hard-coded tiers.
+    // Returns [{ id, name }], nearest-first. Empty when the tree isn't cached yet.
+    function scopeChainFor(id) {
+        var out = [];
+        var idStr = String(id);
+        var guard = 0;
+        while (idStr && idStr !== "undefined" && guard++ < 12) {
+            var c = communityById[idStr];
+            if (!c) break;
+            var parentStr = parentCommunityById[idStr] !== undefined
+                            ? String(parentCommunityById[idStr]) : "";
+            // The root IS the Global community: every other community descends
+            // from it, so "Global and below" would read as a duplicate of
+            // "Everywhere". Flag it so callers can label it for what it actually
+            // is -- everywhere EXCEPT the unscoped Global feed.
+            out.push({ "id": Number(idStr), "name": c.title || "", "isRoot": parentStr === "" });
+            idStr = parentStr;
+        }
+        return out;
     }
 
     // Looks up a community's {title, icon, dns, ...} by id from the cached tree, or null if unknown
@@ -282,7 +348,24 @@ QtObject {
         // Global uses a bundled multi-flag globe icon instead of the backend logo.
         if (dns === sources[0].dns)
             return Qt.resolvedUrl("../../assets/global.png");
-        var u = iconByDns[dns];
-        return u ? u : "";
+        return resolveIconUrl(iconByDns[dns] || "", dns);
+    }
+
+    // Some communities store a site-relative logo ("/logo.png"); it only resolves
+    // against their own host, and QML would resolve it against the calling QML file.
+    function resolveIconUrl(icon, dns) {
+        if (!icon) return "";
+        if (/^[a-z]+:/.test(icon)) return icon;   // http(s), file (bundled asset), data
+        if (!dns) return "";
+        return "https://" + dns + (icon.charAt(0) === "/" ? "" : "/") + icon;
+    }
+
+    // Icon for any community id in the cached tree, absolute and Global-aware.
+    // "" when the id is unknown or the community has no logo.
+    function communityIconFor(id) {
+        var c = communityById[String(id)];
+        if (!c) return "";
+        var byDns = communityIcon(c.dns || "");
+        return byDns !== "" ? byDns : resolveIconUrl(c.icon || "", c.dns || "");
     }
 }

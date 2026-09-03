@@ -109,6 +109,12 @@ function createPost(baseUrl, params, token, onOk, onErr) {
         body.permlink = params.permlink;
     // Explicit bool so an edit can flip it either way; omitting it defaults true
     body.post_to_blockchain = (params.postToBlockchain !== false);
+    // Publishing scope: the ceiling community, null for everywhere. Only sent for
+    // a real community - Global is the combined feed, so capping there would just
+    // hide the post from the one feed it was posted to.
+    if (params.communityId)
+        body.publish_scope_community_id = Number(params.publishCeilingId) > 0
+                                          ? Number(params.publishCeilingId) : null;
     // Always send the post's own community_id, on create AND edit, so an edit keeps the post in
     // the same community it was originally posted to. Never send country_name alongside a real
     // id - only as a fallback when id is unknown (0/missing) - since sending both together was
@@ -140,6 +146,10 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
     };
     // "Post on the blockchain" toggle (see createPost): explicit bool, false = DB-only.
     body.post_to_blockchain = (params.postToBlockchain !== false);
+    // Publishing scope, same contract as createPost.
+    if (params.communityId)
+        body.publish_scope_community_id = Number(params.publishCeilingId) > 0
+                                          ? Number(params.publishCeilingId) : null;
     // Editing an existing video post: sending its permlink makes the backend update in place (same contract as createPost).
     if (params.permlink)
         body.permlink = params.permlink;

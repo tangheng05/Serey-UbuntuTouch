@@ -5,6 +5,12 @@ function toInt(v) {
     return isNaN(n) ? 0 : n;
 }
 
+// Publishing scope: the highest community the post may surface under (its
+// ceiling). 0 means no ceiling, i.e. everywhere including the Global feed.
+function publishCeiling(raw) {
+    return toInt(raw.publish_scope_community_id);
+}
+
 // Default true (on-chain); only an explicit false/"false"/0 means DB-only
 function onChainFlag(raw) {
     return raw.post_to_blockchain !== false
@@ -132,7 +138,10 @@ function toPost(raw) {
         community: raw.community_title || "",
         communityId: toInt(raw.community_id),
         checkmark: raw.checkmark_icon || "",
-        postToBlockchain: onChainFlag(raw)
+        postToBlockchain: onChainFlag(raw),
+        // Edit prefill: without this an edit would send the ceiling back as 0 and
+        // quietly widen a capped post's audience.
+        publishCeilingId: publishCeiling(raw)
     };
 }
 
@@ -161,7 +170,10 @@ function toGalleryPost(raw) {
         // Post's own community title, so editing keeps it in place.
         community: raw.community_title || "",
         checkmark: raw.checkmark_icon || "",
-        postToBlockchain: onChainFlag(raw)
+        postToBlockchain: onChainFlag(raw),
+        // Edit prefill: without this an edit would send the ceiling back as 0 and
+        // quietly widen a capped post's audience.
+        publishCeilingId: publishCeiling(raw)
     };
 }
 
@@ -219,7 +231,10 @@ function toVideo(raw) {
         primaryCategory: parseList(raw.categories)[0] || "",
         community: raw.community_title || "",
         communityId: toInt(raw.community_id),
-        postToBlockchain: onChainFlag(raw)
+        postToBlockchain: onChainFlag(raw),
+        // Edit prefill: without this an edit would send the ceiling back as 0 and
+        // quietly widen a capped post's audience.
+        publishCeilingId: publishCeiling(raw)
     };
 }
 

@@ -228,29 +228,6 @@ Item {
                         font.pixelSize: Style.fontXSmall
                         color: Style.textSecondary
                     }
-                    // Excerpt-only fallback (no thumbnail for the corner tag)
-                    Label {
-                        visible: (p.community || "") !== "" && (p.thumbnail || "") === ""
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "·"
-                        font.pixelSize: Style.fontXSmall
-                        color: Style.textSecondary
-                    }
-                    Label {
-                        visible: (p.community || "") !== "" && (p.thumbnail || "") === ""
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, units.gu(18))
-                        elide: Text.ElideRight
-                        text: p.community || ""
-                        font.pixelSize: Style.fontXSmall
-                        font.weight: Font.DemiBold
-                        font.family: Style.fontFor(text)
-                        color: Style.brand
-                        MouseArea {
-                            anchors { fill: parent; margins: -Style.spacingXs }
-                            onClicked: root.openPlatform()
-                        }
-                    }
                 }
             }
 
@@ -317,14 +294,17 @@ Item {
 
         Item {
             id: cover
-            visible: (p.thumbnail || "") !== ""
+            readonly property bool isPlaceholder: (p.thumbnail || "") === ""
             width: parent.width - Style.spacingM * 2
             x: Style.spacingM
-            height: visible ? width * 0.56 : 0
+            height: width * 0.56
 
             RoundedThumb {
                 anchors.fill: parent
-                source: p.thumbnail || ""
+                // A post with no picture falls back to the same Serey banner the web
+                // serves (public/thumbnails/thumbnail.png), so a card is never blank.
+                source: cover.isPlaceholder ? Qt.resolvedUrl("../../assets/thumbnail-fallback.png")
+                                            : p.thumbnail
                 autoTransform: true
                 decodeWidth: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
             }
@@ -404,20 +384,6 @@ Item {
                 }
             }
 
-            MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
-        }
-
-        Label {
-            visible: (p.thumbnail || "") === "" && (p.excerpt || "") !== ""
-            width: parent.width - Style.spacingM * 2
-            x: Style.spacingM
-            text: p.excerpt || ""
-            font.pixelSize: Style.fontRegular
-            font.family: Style.fontFor(text)
-            color: Style.textSecondary
-            wrapMode: Text.Wrap
-            maximumLineCount: 2
-            elide: Text.ElideRight
             MouseArea { anchors.fill: parent; onClicked: root.clicked(); onPressAndHold: root.moreClicked() }
         }
 

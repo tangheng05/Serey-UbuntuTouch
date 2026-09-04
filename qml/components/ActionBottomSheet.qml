@@ -129,7 +129,9 @@ Item {
                 delegate: Item {
                     id: rowBtn
                     width: col.width
-                    height: units.gu(7)
+                    // Grows for a label that needs its second line: a scope path like
+                    // "Global - Netherlands - Vrij Nederland" was being clipped mid-word.
+                    height: Math.max(units.gu(7), rowLabel.implicitHeight + Style.spacingM * 2)
                     // Missing before: no pressed feedback meant a working click could look inert.
                     Rectangle {
                         anchors.fill: parent
@@ -150,17 +152,24 @@ Item {
                         anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
                         spacing: Style.spacingM
                         Icon {
+                            id: rowIcon
                             anchors.verticalCenter: parent.verticalCenter
                             width: units.gu(2.4); height: width
                             name: modelData.iconName || ""
                             color: modelData.danger ? Style.danger : Style.textPrimary
                         }
                         Label {
+                            id: rowLabel
                             anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - rowIcon.width - parent.spacing
                             text: modelData.text || ""
                             font.pixelSize: Style.fontMedium
                             font.weight: Font.DemiBold
+                            font.family: Style.fontFor(text)
                             color: modelData.danger ? Style.danger : Style.textPrimary
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
                         }
                     }
                 }

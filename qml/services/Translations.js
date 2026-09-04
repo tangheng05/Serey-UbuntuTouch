@@ -20,7 +20,7 @@ var nl = {
     "Add image":                                        "Afbeelding toevoegen",
     "Add photo":                                        "Foto toevoegen",
     "Add thumbnail":                                     "Thumbnail toevoegen",
-    "From your article":                                 "Uit je artikel",
+    "From article":                                      "Uit artikel",
     "Add video":                                        "Video toevoegen",
     "Add your email":                                   "Voeg uw e-mail toe",
     "Address copied":                                   "Adres gekopieerd",
@@ -710,7 +710,7 @@ var nl = {
     "Payment detected. Monero can take 20–30 minutes to confirm. Keep this page open; your account is created automatically once confirmed.": "Betaling gedetecteerd. Monero kan er 20–30 minuten over doen om te bevestigen. Houd deze pagina open; uw account wordt automatisch aangemaakt zodra de betaling bevestigd is.",
     "The title and the link are permanently recorded on the blockchain. This allows you to prove that you are the creator and receive SRY rewards. The video itself simply remains on a server.": "De titel en de link worden voor altijd vastgelegd in de blockchain. Zo kun je bewijzen dat jij de maker bent en ontvang je SRY-beloningen. De video zelf blijft gewoon op een server staan",
     "Choose the platform that you want to post in":     "Kies de platform waar je in wilt posten",
-    "Post on the blockchain":                           "Post op de blockchain",
+    "Post on the blockchain":                           "Op de blockchain plaatsen",
     "Preparing download…":                              "Download voorbereiden…",
     "Private key":                                      "Privésleutel",
     "Processing video…":                                "Video verwerken…",
@@ -767,8 +767,24 @@ var nl = {
     "%1 and below":                                     "%1 en lager",
     "Also shown in the Global feed.":                   "Ook te zien in de Global-feed.",
     "Everywhere except the Global feed.":               "Overal behalve de Global-feed.",
-    "Only people browsing %1.":                         "Alleen wie %1 bekijkt.",
-    "%1 and the platforms under it.":                   "%1 en de platforms daaronder."
+    "Only people browsing %1.":                         "Alleen mensen die %1 bekijken.",
+    "%1 and the platforms under it.":                   "%1 en de platforms daaronder.",
+    // Publish-time category sheet
+    "Preparing to publish":                             "Publiceren voorbereiden",
+    "Finding the right category…":                      "De juiste categorie zoeken…",
+    "Ready to publish":                                 "Klaar om te publiceren",
+    "Publish to %1?":                                   "Publiceren naar %1?",
+    "Choose other category":                            "Kies een andere categorie",
+    "Pick where this post belongs.":                    "Kies waar dit artikel thuishoort.",
+    "Trending now":                                     "Nu populair",
+    "Preview":                                          "Voorbeeld",
+    "now":                                              "nu",
+    // Stragglers that were still falling back to English
+    "DOWNLOADING":                                      "DOWNLOADEN",
+    "Upvotes":                                          "Stemmen",
+    "less":                                             "minder",
+    "OK":                                               "OK",
+    "Video (%1/1)":                                     "Video (%1/1)"
 };
 
 function tr(str, lang) {

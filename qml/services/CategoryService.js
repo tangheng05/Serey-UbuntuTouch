@@ -53,3 +53,33 @@ function listMarketplaceCategories(baseUrl, token, onOk, onErr) {
             onOk(names, raw);
         }, onErr);
 }
+
+// AI category suggestion, shown when the author taps Publish. Proxied by
+// serey-api (/serey-web/categorize-post) because the AI service's shared key
+// can't ship inside the app. Answers { category, subCategory } - both may be
+// empty, which just means the author picks for themselves.
+function categorize(baseUrl, token, params, onOk, onErr) {
+    // Only the opening of the article is sent: the classifier reads the first few
+    // hundred characters, so shipping the whole body would just slow the publish tap.
+    var article = String(params.article || "").slice(0, 2000);
+    Http.post(baseUrl, "/serey-web/categorize-post", {
+        community_id: params.communityId || 0,
+        community_name: params.communityName || "global",
+        article: article
+    }, token,
+    function (data) {
+        var d = (data && data.data) || data || {};
+        var cc = d.community_categories || [];
+        var main = cc[0] || null;
+        // The first entry wraps the category in a `categories` array; the second, when
+        // present, is the sub-category object itself.
+        var mainName = "";
+        if (main) {
+            var inner = (main.categories && main.categories[0]) || main;
+            mainName = (inner && (inner.name || inner)) || "";
+        }
+        var sub = cc[1] || null;
+        var subName = sub ? (sub.name || sub) : "";
+        onOk({ category: String(mainName || ""), subCategory: String(subName || "") });
+    }, onErr, 10000);   // publishing must not hang on the model; the caller falls back to the list
+}

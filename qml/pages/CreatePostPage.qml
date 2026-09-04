@@ -1,4 +1,5 @@
 import QtQuick 2.7
+import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import Lomiri.Components.Popups 1.3 as Popups
 import "../Theme"
@@ -15,6 +16,11 @@ Page {
     // Optional sub-category under the selected main category, sent in `subcategories`.
     property string selectedSubCategory: ""
     property bool catSheetOpen: false
+    // The category sheet opens at publish time, in one of three modes:
+    // "loading" while the AI classifies, "suggested" once it answered, "choose" for the list.
+    property string catSheetMode: "choose"
+    // True once the AI actually returned a category, so the sheet can offer "Back" to it.
+    property bool catSuggested: false
     // On-screen-keyboard height; the formatting toolbar rides above it so B/I/U stay reachable while typing.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
     readonly property int titleMaxLength: 250
@@ -390,9 +396,9 @@ Page {
         onFailed: Toast.error(message)
     }
 
-    // Inserts a new image block right after the currently-focused text segment (splitting mid-paragraph
-    // would need real HTML document surgery QML doesn't expose, so images land as their own block instead,
-    // same as most block-based editors). Always leaves a fresh empty text segment after it to keep typing in.
+    // Inserts an image block AT THE CARET: the focused segment is split there, so a picture
+    // dropped at the top of a paragraph lands at the top, not after the whole thing. The text
+    // that followed the caret becomes the segment after the image, which is where typing resumes.
     function _insertBodyImage(url) {
         Qt.inputMethod.commit();
         var parts = page.bodyParts.slice();
@@ -402,9 +408,18 @@ Page {
         // Belt and braces: pull the segment's true current text straight off its live TextArea rather
         // than trusting partData.html, in case onTextChanged hasn't caught up with the commit above yet.
         var activeLoader = bodyRepeater.itemAt(afterIdx);
-        if (activeLoader && activeLoader.item)
-            parts[afterIdx] = { type: "text", html: activeLoader.item.text };
-        parts.splice(afterIdx + 1, 0, { type: "image", url: url }, { type: "text", html: "" });
+        var before = "";
+        var after = "";
+        if (activeLoader && activeLoader.item) {
+            var ta = activeLoader.item;
+            var cp = ta.cursorPosition;
+            var len = ta.length !== undefined ? ta.length : ta.text.length;
+            // getFormattedText keeps the bold/italic runs; plain slicing would drop them.
+            before = cp > 0 ? ta.getFormattedText(0, cp) : "";
+            after = cp < len ? ta.getFormattedText(cp, len) : "";
+            parts[afterIdx] = { type: "text", html: before };
+        }
+        parts.splice(afterIdx + 1, 0, { type: "image", url: url }, { type: "text", html: after });
         page.bodyParts = parts;
         page.activeTextIndex = afterIdx + 2;
         page._pendingFocusIndex = afterIdx + 2;
@@ -548,13 +563,9 @@ Page {
                                                 ? page.coverImageUrl
                                                 : (page.coverCleared ? "" : page.derivedCoverUrl)
 
-    function publish() {
-        if (!Session.isLoggedIn) {
-            Toast.error(Lang.tr("Please log in first."));
-            return;
-        }
-        // Assemble the body from its text/image blocks; pull each text segment's live content off
-        // its actual delegate rather than the (possibly stale) bodyParts copy.
+    // Assemble the body from its text/image blocks; pull each text segment's live content off
+    // its actual delegate rather than the (possibly stale) bodyParts copy.
+    function _composeBody() {
         var body = "";
         for (var i = 0; i < page.bodyParts.length; i++) {
             var part = page.bodyParts[i];
@@ -569,7 +580,77 @@ Page {
                 body += page._richHtmlToSimple(html);
             }
         }
-        body = body.trim();
+        return body.trim();
+    }
+
+    property bool previewOpen: false
+    // Snapshot of the body taken when the preview opens: the live text lives on the
+    // segment delegates, which the preview's own Repeater can't read.
+    property var previewParts: []
+
+    function openPreview() {
+        var parts = [];
+        for (var i = 0; i < page.bodyParts.length; i++) {
+            var part = page.bodyParts[i];
+            if (part.type === "image" || part.type === "embed") {
+                parts.push({ type: part.type, url: part.url, html: "" });
+            } else {
+                var loader = bodyRepeater.itemAt(i);
+                var html = loader && loader.item ? loader.item.text : (part.html || "");
+                parts.push({ type: "text", url: "", html: page._richHtmlToSimple(html) });
+            }
+        }
+        page.previewParts = parts;
+        page.previewOpen = true;
+    }
+
+    // Publish taps land here, mirroring the web: the AI proposes a category first and the
+    // author confirms or overrides it. Nothing to propose (edit, or a community with no
+    // categories) publishes straight away - publish() falls back to "general".
+    function beginPublish() {
+        if (!Session.isLoggedIn) {
+            Toast.error(Lang.tr("Please log in first."));
+            return;
+        }
+        if (page.isEdit || page.categories.length === 0) {
+            page.publish();
+            return;
+        }
+        page.catSuggested = false;
+        page.catSheetMode = "loading";
+        catSheet.open();
+        CategoryService.categorize(Config.baseUrl, Session.token, {
+            communityId: page.postCommunityId,
+            communityName: page.catCommunityName,
+            article: page._composeBody()
+        },
+        function (res) {
+            if (!page.catSheetOpen) return;   // author closed the sheet while we waited
+            // Match against the community's own names: the AI answers with the backend's
+            // spelling, and publish() sends the name as-is.
+            var cat = page._matchName(page.categories, res.category);
+            if (cat.length > 0) {
+                page.selectedCategory = cat;
+                page.selectedSubCategory = page._matchName(page.subcatsByCat[cat] || [], res.subCategory);
+                page.catSuggested = true;
+                page.catSheetMode = "suggested";
+            } else {
+                page.catSheetMode = "choose";
+            }
+        },
+        function (err) {
+            if (!page.catSheetOpen) return;
+            // A failed suggestion is not a failed publish: fall through to the manual list.
+            page.catSheetMode = "choose";
+        });
+    }
+
+    function publish() {
+        if (!Session.isLoggedIn) {
+            Toast.error(Lang.tr("Please log in first."));
+            return;
+        }
+        var body = page._composeBody();
         // Cover image is NOT prepended into the body: it's sent below via `images`, which is what
         // both the API/web thumbnail and PostDetailPage's own cover frame derive from. Baking it
         // into the body too just duplicated it inline above the article text.
@@ -685,7 +766,7 @@ Page {
         page._insertBodyEmbed(url);
     }
 
-    // Same shape as _insertBodyImage
+    // Same shape as _insertBodyImage, caret split included
     function _insertBodyEmbed(url) {
         Qt.inputMethod.commit();
         var parts = page.bodyParts.slice();
@@ -693,9 +774,15 @@ Page {
         if (afterIdx < 0 || afterIdx >= parts.length || parts[afterIdx].type !== "text")
             afterIdx = parts.length - 1;
         var activeLoader = bodyRepeater.itemAt(afterIdx);
-        if (activeLoader && activeLoader.item)
-            parts[afterIdx] = { type: "text", html: activeLoader.item.text };
-        parts.splice(afterIdx + 1, 0, { type: "embed", url: url }, { type: "text", html: "" });
+        var after = "";
+        if (activeLoader && activeLoader.item) {
+            var ta = activeLoader.item;
+            var cp = ta.cursorPosition;
+            var len = ta.length !== undefined ? ta.length : ta.text.length;
+            parts[afterIdx] = { type: "text", html: cp > 0 ? ta.getFormattedText(0, cp) : "" };
+            after = cp < len ? ta.getFormattedText(cp, len) : "";
+        }
+        parts.splice(afterIdx + 1, 0, { type: "embed", url: url }, { type: "text", html: after });
         page.bodyParts = parts;
         page.activeTextIndex = afterIdx + 2;
         page._pendingFocusIndex = afterIdx + 2;
@@ -789,67 +876,225 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            Rectangle {
+            // Title and thumbnail sit side by side: the cover slot is a small square beside the title.
+            Row {
+                id: titleRow
                 width: parent.width
-                height: titleField.height + Style.spacingM * 2 + counterLabel.height + Style.spacingXs
-                radius: Style.cardRadius
-                color: "transparent"
-                border.width: units.dp(1.5)
-                border.color: titleField.activeFocus ? Style.brand : Style.divider
+                spacing: Style.spacingS
+                readonly property real thumbW: units.gu(12)
 
-                // Declared FIRST so it sits under the input, catching taps in the dead space
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        titleField.forceActiveFocus();
-                        titleField.cursorPosition = titleField.length;
-                        Qt.inputMethod.show();
+                Rectangle {
+                    id: titleBox
+                    width: parent.width - titleRow.thumbW - titleRow.spacing
+                    height: titleField.height + Style.spacingM * 2 + counterLabel.height + Style.spacingXs
+                    radius: Style.cardRadius
+                    color: "transparent"
+                    border.width: units.dp(1.5)
+                    border.color: titleField.activeFocus ? Style.brand : Style.divider
+
+                    // Declared FIRST so it sits under the input, catching taps in the dead space
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            titleField.forceActiveFocus();
+                            titleField.cursorPosition = titleField.text.length;
+                            Qt.inputMethod.show();
+                        }
+                    }
+
+                    // TextArea, not TextField: a headline runs past one line and a field would
+                    // scroll it sideways, hiding the start of the author's own title. Still one
+                    // logical line - Return is swallowed and pasted newlines collapse to spaces.
+                    TextArea {
+                        id: titleField
+                        anchors {
+                            top: parent.top; topMargin: Style.spacingM
+                            left: parent.left; right: parent.right
+                            leftMargin: Style.spacingM; rightMargin: Style.spacingM
+                        }
+                        font.pixelSize: Style.fontMedium
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                        selectByMouse: true
+                        selectionColor: Style.brand
+                        // Wrap (not WordWrap): a run with no spaces must still break instead of overflowing.
+                        wrapMode: Text.Wrap
+                        // Two lines, then it scrolls: enough to read a headline without the box eating the composer.
+                        autoSize: true
+                        maximumLineCount: 2
+
+                        Keys.onReturnPressed: event.accepted = true
+                        Keys.onEnterPressed: event.accepted = true
+
+                        // TextArea has no maximumLength, so the cap is enforced here. Both edits
+                        // keep the caret where the author was typing.
+                        onTextChanged: {
+                            if (text.indexOf("\n") >= 0) {
+                                var cp = cursorPosition;
+                                text = text.replace(/\s*\n+\s*/g, " ");
+                                cursorPosition = Math.min(cp, text.length);
+                            }
+                            if (text.length > page.titleMaxLength) {
+                                var at = cursorPosition;
+                                text = text.substring(0, page.titleMaxLength);
+                                cursorPosition = Math.min(at, text.length);
+                            }
+                        }
+
+                        StyleHints {
+                            backgroundColor: "transparent"
+                            borderColor: "transparent"
+                            frameSpacing: 0
+                            overlaySpacing: 0
+                        }
+                    }
+
+                    Label {
+                        anchors {
+                            left: parent.left; top: parent.top
+                            leftMargin: Style.spacingM; topMargin: Style.spacingM
+                        }
+                        visible: titleField.text.length === 0 && !titleField.activeFocus && !Qt.inputMethod.visible
+                        text: Lang.tr("Enter title")
+                        color: Style.textSecondary
+                        font.pixelSize: Style.fontMedium
+                        font.family: Style.fontFor(text)
+                    }
+
+                    Label {
+                        id: counterLabel
+                        anchors {
+                            right: parent.right; bottom: parent.bottom
+                            rightMargin: Style.spacingM; bottomMargin: Style.spacingS
+                        }
+                        text: titleField.text.length + "/" + page.titleMaxLength
+                        font.pixelSize: Style.fontXSmall
+                        color: titleField.text.length >= page.titleMaxLength ? Style.danger : Style.textSecondary
                     }
                 }
 
-                // Lomiri TextField (not plain TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste.
-                TextField {
-                    id: titleField
-                    anchors {
-                        top: parent.top; topMargin: Style.spacingM
-                        left: parent.left; right: parent.right
-                        leftMargin: Style.spacingM; rightMargin: Style.spacingM
-                    }
-                    font.pixelSize: Style.fontMedium
-                    font.family: Style.fontFor(text)
-                    color: Style.textPrimary
+                Rectangle {
+                    width: titleRow.thumbW
+                    // Matches the title box, but stops growing with it: a wrapped title
+                    // shouldn't stretch the cover slot into a tall strip.
+                    height: Math.min(titleBox.height, units.gu(12))
+                    radius: Style.thumbRadius
+                    // Outlined while empty, filled once an image sits behind it.
+                    color: page.effectiveCoverUrl.length > 0 ? Style.iconBackground : "transparent"
+                    border.width: page.effectiveCoverUrl.length > 0 ? 0 : units.dp(1.5)
+                    border.color: Style.divider
                     clip: true
-                    maximumLength: page.titleMaxLength
-                    hasClearButton: false
-                    StyleHints {
-                        backgroundColor: "transparent"
-                        borderColor: "transparent"
-                        frameSpacing: 0
-                        overlaySpacing: 0
-                    }
-                }
 
-                Label {
-                    anchors {
-                        left: parent.left; top: parent.top
-                        leftMargin: Style.spacingM; topMargin: Style.spacingM
+                    Image {
+                        anchors.fill: parent
+                        source: page.effectiveCoverUrl
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        autoTransform: true     // honour EXIF orientation
+                        visible: page.effectiveCoverUrl.length > 0
                     }
-                    visible: titleField.text.length === 0 && !titleField.activeFocus && !Qt.inputMethod.visible
-                    text: Lang.tr("Enter title")
-                    color: Style.textSecondary
-                    font.pixelSize: Style.fontMedium
-                    font.family: Style.fontFor(text)
-                }
 
-                Label {
-                    id: counterLabel
-                    anchors {
-                        right: parent.right; bottom: parent.bottom
-                        rightMargin: Style.spacingM; bottomMargin: Style.spacingS
+                    // Says why a picture is here that the author never picked. On a dark
+                    // pill, not outlined text: the image behind it is arbitrary, so
+                    // nothing else guarantees contrast.
+                    Rectangle {
+                        anchors {
+                            left: parent.left; bottom: parent.bottom
+                            leftMargin: Style.spacingS; bottomMargin: Style.spacingS
+                        }
+                        z: 2
+                        visible: page.coverImageUrl.length === 0 && page.derivedCoverUrl.length > 0
+                        // Bounded by the slot: the pill used to run past its edge and get clipped.
+                        width: Math.min(derivedHint.implicitWidth + Style.spacingM,
+                                        parent.width - Style.spacingS * 2)
+                        height: units.gu(2.5)
+                        radius: Style.pillRadius
+                        color: Qt.rgba(0, 0, 0, 0.65)
+
+                        Label {
+                            id: derivedHint
+                            anchors.centerIn: parent
+                            width: parent.width - Style.spacingXs * 2
+                            horizontalAlignment: Text.AlignHCenter
+                            elide: Text.ElideRight
+                            text: Lang.tr("From article")
+                            font.pixelSize: Style.fontXSmall
+                            font.weight: Font.DemiBold
+                            font.family: Style.fontFor(text)
+                            color: "#FFFFFF"
+                        }
                     }
-                    text: titleField.text.length + "/" + page.titleMaxLength
-                    font.pixelSize: Style.fontXSmall
-                    color: titleField.text.length >= page.titleMaxLength ? Style.danger : Style.textSecondary
+
+                    AbstractButton {
+                        visible: page.effectiveCoverUrl.length > 0
+                        anchors {
+                            top: parent.top; right: parent.right
+                            topMargin: Style.spacingS; rightMargin: Style.spacingS
+                        }
+                        width: units.gu(3); height: width
+                        z: 2
+                        onClicked: { page.coverImageUrl = ""; page.coverCleared = true; }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: Qt.rgba(0, 0, 0, 0.5)
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(1.5); height: width
+                            name: "close"
+                            color: Style.textOnBrand
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: Qt.rgba(1, 1, 1, 0.7)
+                        visible: page.uploading
+
+                        ActivityIndicator {
+                            anchors.centerIn: parent
+                            running: page.uploading
+                        }
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: Style.spacingS
+                        visible: page.effectiveCoverUrl.length === 0 && !page.uploading
+
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: units.gu(3.5); height: width
+                            radius: width / 2
+                            color: Style.iconBackground
+
+                            Icon {
+                                anchors.centerIn: parent
+                                width: units.gu(2); height: width
+                                name: "add"
+                                color: Style.textPrimary
+                            }
+                        }
+
+                        Label {
+                            width: titleRow.thumbW - Style.spacingS * 2
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            text: Lang.tr("Add thumbnail")
+                            font.pixelSize: Style.fontXSmall
+                            color: Style.textSecondary
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        // Keyed off the picked cover, not the effective one: a derived
+                        // thumbnail must stay tappable so it can be replaced.
+                        enabled: !page.uploading && page.coverImageUrl.length === 0
+                        onClicked: page.pickCoverImage()
+                    }
                 }
             }
 
@@ -897,7 +1142,7 @@ Page {
                             onLoaded: {
                                 if (partIndex === page._pendingFocusIndex) {
                                     item.forceActiveFocus();
-                                    item.cursorPosition = item.length;
+                                    item.cursorPosition = 0;
                                     page._pendingFocusIndex = -1;
                                 }
                             }
@@ -1139,46 +1384,6 @@ Page {
                 }
             }
 
-            // Category selector hidden for communities that haven't defined any categories yet (publish() falls back to "general").
-            AbstractButton {
-                width: parent.width
-                height: units.gu(6)
-                visible: page.categories.length > 0
-                onClicked: page.catSheetOpen = true
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Style.cardRadius
-                    color: "transparent"
-                    border.width: units.dp(1.5)
-                    border.color: Style.divider
-                }
-
-                Row {
-                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
-
-                    Label {
-                        width: parent.width - catChevron.width
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: page.selectedCategory.length > 0
-                            ? (page.selectedSubCategory.length > 0
-                               ? (page.selectedCategory + "  ›  " + page.selectedSubCategory)
-                               : page.selectedCategory)
-                            : Lang.tr("Select category")
-                        font.pixelSize: Style.fontRegular
-                        font.family: Style.fontFor(text)
-                        color: page.selectedCategory.length > 0 ? Style.textPrimary : Style.textSecondary
-                    }
-                    Icon {
-                        id: catChevron
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: units.gu(2); height: width
-                        name: "next"
-                        color: Style.textSecondary
-                    }
-                }
-            }
-
             // Bare row, no card: the toggle reads as a form setting rather than a section.
             Item {
                 width: parent.width
@@ -1297,127 +1502,29 @@ Page {
                 }
             }
 
-            Rectangle {
+
+            Row {
                 width: parent.width
-                height: units.gu(20)
-                radius: Style.thumbRadius
-                // Outlined while empty, filled once an image sits behind it.
-                color: page.effectiveCoverUrl.length > 0 ? Style.iconBackground : "transparent"
-                border.width: page.effectiveCoverUrl.length > 0 ? 0 : units.dp(1.5)
-                border.color: Style.divider
-                clip: true
+                spacing: Style.spacingS
 
-                Image {
-                    anchors.fill: parent
-                    source: page.effectiveCoverUrl
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    autoTransform: true     // honour EXIF orientation
-                    visible: page.effectiveCoverUrl.length > 0
+                // Secondary: outlined, so only the publish action carries a fill.
+                SecondaryButton {
+                    id: previewBtn
+                    width: (parent.width - Style.spacingS) * 0.36
+                    // Nothing written yet is nothing to preview.
+                    enabled: page.canPublish
+                    text: Lang.tr("Preview")
+                    onClicked: page.openPreview()
                 }
 
-                // Says why a picture is here that the author never picked. On a dark
-                // pill, not outlined text: the image behind it is arbitrary, so
-                // nothing else guarantees contrast.
-                Rectangle {
-                    anchors {
-                        left: parent.left; bottom: parent.bottom
-                        leftMargin: Style.spacingS; bottomMargin: Style.spacingS
-                    }
-                    z: 2
-                    visible: page.coverImageUrl.length === 0 && page.derivedCoverUrl.length > 0
-                    width: derivedHint.width + Style.spacingM
-                    height: units.gu(2.5)
-                    radius: Style.pillRadius
-                    color: Qt.rgba(0, 0, 0, 0.65)
-
-                    Label {
-                        id: derivedHint
-                        anchors.centerIn: parent
-                        text: Lang.tr("From your article")
-                        font.pixelSize: Style.fontXSmall
-                        font.weight: Font.DemiBold
-                        color: "#FFFFFF"
-                    }
+                PrimaryButton {
+                    width: parent.width - previewBtn.width - Style.spacingS
+                    enabled: page.canPublish
+                    busy: page.submitting
+                    text: page.submitting ? (page.isEdit ? Lang.tr("Saving…") : Lang.tr("Posting…"))
+                                          : (page.isEdit ? Lang.tr("Save") : Lang.tr("Publish"))
+                    onClicked: page.beginPublish()
                 }
-
-                AbstractButton {
-                    visible: page.effectiveCoverUrl.length > 0
-                    anchors {
-                        top: parent.top; right: parent.right
-                        topMargin: Style.spacingS; rightMargin: Style.spacingS
-                    }
-                    width: units.gu(4); height: width
-                    z: 2
-                    onClicked: { page.coverImageUrl = ""; page.coverCleared = true; }
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: width / 2
-                        color: Qt.rgba(0, 0, 0, 0.5)
-                    }
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(2); height: width
-                        name: "close"
-                        color: Style.textOnBrand
-                    }
-                }
-
-                Rectangle {
-                    anchors.fill: parent
-                    color: Qt.rgba(1, 1, 1, 0.7)
-                    visible: page.uploading
-
-                    ActivityIndicator {
-                        anchors.centerIn: parent
-                        running: page.uploading
-                    }
-                }
-
-                Column {
-                    anchors.centerIn: parent
-                    spacing: Style.spacingS
-                    visible: page.effectiveCoverUrl.length === 0 && !page.uploading
-
-                    Rectangle {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: units.gu(5); height: width
-                        radius: width / 2
-                        color: Style.iconBackground
-
-                        Icon {
-                            anchors.centerIn: parent
-                            width: units.gu(2.5); height: width
-                            name: "add"
-                            color: Style.textPrimary
-                        }
-                    }
-
-                    Label {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: Lang.tr("Add thumbnail")
-                        font.pixelSize: Style.fontSmall
-                        color: Style.textSecondary
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    // Keyed off the picked cover, not the effective one: a derived
-                    // thumbnail must stay tappable so it can be replaced.
-                    enabled: !page.uploading && page.coverImageUrl.length === 0
-                    onClicked: page.pickCoverImage()
-                }
-            }
-
-            PrimaryButton {
-                width: parent.width
-                enabled: page.canPublish
-                busy: page.submitting
-                text: page.submitting ? (page.isEdit ? Lang.tr("Saving…") : Lang.tr("Posting…"))
-                                      : (page.isEdit ? Lang.tr("Save") : Lang.tr("Publish"))
-                onClicked: page.publish()
             }
 
             Item { width: 1; height: Style.spacingM }
@@ -1543,14 +1650,258 @@ Page {
         ActivityIndicator { anchors.centerIn: parent; running: page.submitting }
     }
 
+    // --- Preview -------------------------------------------------------------
+    // The article as a reader meets it: same cover frame, title and body blocks the
+    // detail page draws, so what the author checks here is what gets published.
+    Rectangle {
+        id: preview
+        anchors.fill: parent
+        visible: page.previewOpen
+        color: Style.surface
+        z: 150
+
+        // Swallows taps so nothing behind the preview reacts.
+        MouseArea { anchors.fill: parent }
+
+        Item {
+            id: previewHeader
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: units.gu(6)
+
+            Label {
+                anchors.centerIn: parent
+                text: Lang.tr("Preview")
+                font.pixelSize: Style.fontMedium
+                font.weight: Font.DemiBold
+                font.family: Style.fontFor(text)
+                color: Style.textPrimary
+            }
+            AbstractButton {
+                anchors { left: parent.left; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                width: units.gu(4); height: width
+                onClicked: page.previewOpen = false
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.2); height: width
+                    name: "close"
+                    color: Style.textPrimary
+                }
+            }
+            Rectangle {
+                anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
+                height: units.dp(1); color: Style.divider
+            }
+        }
+
+        Flickable {
+            anchors {
+                top: previewHeader.bottom; left: parent.left; right: parent.right
+                bottom: previewFooter.top
+            }
+            contentWidth: width
+            contentHeight: previewCol.height + Style.spacingL * 2
+            clip: true
+
+            Column {
+                id: previewCol
+                width: Math.min(parent.width - Style.spacingM * 2, Config.readingMaxWidth)
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: Style.spacingM
+                spacing: Style.spacingM
+
+                // Same order PostDetailPage reads in: category eyebrow, title, byline,
+                // rule, then the article.
+                Row {
+                    visible: page.selectedCategory.length > 0
+                    height: visible ? catEyebrow.height : 0
+                    spacing: Style.spacingXs
+
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.dp(10); height: units.dp(10)
+                        radius: units.dp(2)
+                        color: Style.accentRed
+                    }
+                    Label {
+                        id: catEyebrow
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.selectedCategory.toUpperCase()
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.Bold
+                        font.family: Style.fontFor(text)
+                        color: Style.accentRed
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: page.selectedSubCategory.length > 0
+                        text: "› " + page.selectedSubCategory.toUpperCase()
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.Bold
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                    }
+                }
+
+                Label {
+                    width: parent.width
+                    text: titleField.text.trim().length > 0 ? titleField.text.trim() : Lang.tr("Enter title")
+                    font.pixelSize: Style.fontTitle
+                    font.weight: Font.DemiBold
+                    font.family: Style.fontFor(text)
+                    color: Style.textPrimary
+                    wrapMode: Text.Wrap
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: Style.spacingS
+
+                    Item {
+                        id: previewAvatar
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(4.25); height: width
+
+                        // Letter tint while the author has no picture, like the detail page.
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: Style.avatarTint(Session.username)
+                            visible: Session.avatarUrl.length === 0
+
+                            Label {
+                                anchors.centerIn: parent
+                                text: Session.username.length > 0
+                                    ? Session.username.charAt(0).toUpperCase() : "?"
+                                font.pixelSize: Style.fontMedium
+                                font.bold: true
+                                color: Style.brand
+                            }
+                        }
+
+                        CircleImage {
+                            anchors.fill: parent
+                            visible: Session.avatarUrl.length > 0
+                            source: Session.avatarUrl
+                            decode: units.gu(6)
+                        }
+                    }
+
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Session.username + "  ·  " + Lang.tr("now")
+                        font.pixelSize: Style.fontSmall
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                    }
+                }
+
+                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+                // Only when the author actually picked one: the detail page draws no
+                // placeholder cover, so a stand-in banner here would preview a lie.
+                RoundedThumb {
+                    visible: page.effectiveCoverUrl.length > 0
+                    width: parent.width
+                    height: visible ? width * 0.56 : 0
+                    source: page.effectiveCoverUrl
+                    autoTransform: true
+                    decodeWidth: units.gu(90)
+                }
+
+                Repeater {
+                    model: page.previewParts
+
+                    // Plain Item with both children rather than a Loader: a sized Loader
+                    // resizes its item to itself, so measuring the Loader off the item was
+                    // circular and every block collapsed onto the one above it.
+                    delegate: Item {
+                        id: blockRow
+                        readonly property bool isImage: modelData.type === "image"
+                        width: previewCol.width
+                        height: blockRow.isImage ? blockImage.height : blockText.height
+
+                        Label {
+                            id: blockText
+                            visible: !blockRow.isImage
+                            width: parent.width
+                            // The composer stores rich text; render it, don't show its tags.
+                            textFormat: Text.RichText
+                            text: !blockRow.isImage
+                                ? (modelData.type === "embed"
+                                   ? ('<a href="' + modelData.url + '">' + modelData.url + '</a>')
+                                   : modelData.html)
+                                : ""
+                            font.pixelSize: Style.fontRegular
+                            font.family: Style.fontFor(text)
+                            color: Style.textPrimary
+                            wrapMode: Text.Wrap
+                            onLinkActivated: Qt.openUrlExternally(link)
+                        }
+
+                        Image {
+                            id: blockImage
+                            visible: blockRow.isImage
+                            width: parent.width
+                            height: (visible && sourceSize.height > 0)
+                                ? width * (sourceSize.height / sourceSize.width) : 0
+                            source: blockRow.isImage ? modelData.url : ""
+                            fillMode: Image.PreserveAspectFit
+                            sourceSize.width: units.gu(90)
+                            asynchronous: true
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            id: previewFooter
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: previewPublish.height + Style.spacingM * 2
+            color: Style.surface
+
+            Rectangle {
+                anchors { top: parent.top; left: parent.left; right: parent.right }
+                height: units.dp(1); color: Style.divider
+            }
+
+            PrimaryButton {
+                id: previewPublish
+                anchors { verticalCenter: parent.verticalCenter; horizontalCenter: parent.horizontalCenter }
+                width: Math.min(parent.width - Style.spacingM * 2, units.gu(60))
+                enabled: page.canPublish
+                busy: page.submitting
+                text: page.isEdit ? Lang.tr("Save") : Lang.tr("Publish")
+                onClicked: { page.previewOpen = false; page.beginPublish(); }
+            }
+        }
+    }
+
     // --- Category picker bottom sheet ----------------------------------------
     Item {
         id: catSheet
         anchors.fill: parent
         visible: page.catSheetOpen
         z: 200
-        onVisibleChanged: if (visible) { catBdFade.start(); catSlideAnim.start(); }
-        function closeAnimated() { catBdFadeOut.start(); catSlideOut.start(); }
+
+        // Pointer devices get the Lomiri dialog shape for this confirmation (centred,
+        // modal, dimmed page); touch keeps the bottom sheet it can reach with a thumb.
+        readonly property bool asDialog: Config.desktopMode
+
+        function open() { page.catSheetOpen = true; }
+
+        onVisibleChanged: {
+            if (!visible) return;
+            catBdFade.start();
+            // A previous sheet-mode close leaves the slide offset in place; the dialog
+            // never touches it, so clear it or the card opens pushed down the page.
+            catSlideT.y = 0;
+            if (catSheet.asDialog) catDialogIn.start(); else catSlideAnim.start();
+        }
+        function closeAnimated() {
+            catBdFadeOut.start();
+            if (catSheet.asDialog) catDialogOut.start(); else catSlideOut.start();
+        }
 
         Rectangle {
             id: catBd
@@ -1562,25 +1913,54 @@ Page {
         NumberAnimation { id: catBdFade; target: catBd; property: "opacity"; from: 0; to: 1; duration: 200 }
         NumberAnimation { id: catBdFadeOut; target: catBd; property: "opacity"; to: 0; duration: 200 }
 
+        // Soft elevation so the dialog card reads as lifted off the composer.
+        DropShadow {
+            anchors.fill: catSheetRect
+            visible: catSheet.asDialog && catSheetRect.opacity > 0
+            source: catSheetRect
+            radius: 16
+            samples: 33
+            horizontalOffset: 0
+            verticalOffset: 6
+            color: Qt.rgba(0, 0, 0, 0.22)
+            transparentBorder: true
+            cached: true
+        }
+
         Rectangle {
             id: catSheetRect
             // Full-width sheet on phone, centered width-capped card on desktop
             readonly property bool wide: Config.wideMode
-            // Centered + explicit width avoids mixing left/right/horizontalCenter, which QML warns on
-            anchors {
-                horizontalCenter: parent.horizontalCenter
-                bottom: parent.bottom
-                bottomMargin: catSheetRect.wide ? units.gu(4) : 0
-            }
-            width: catSheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(45)) : parent.width
-            height: catSheetCol.height + units.gu(4)
+            // x/y rather than anchors: anchors can't be conditionally unset from a ternary,
+            // and the two modes place the card very differently. Both stay bindings so the
+            // card re-places itself when a mode swap changes its height.
+            x: (parent.width - width) / 2
+            y: catSheet.asDialog
+                ? Math.max(Style.spacingM, (catSheet.height - height) / 2)
+                : parent.height - height - (catSheetRect.wide ? units.gu(4) : 0)
+            width: catSheet.asDialog ? Math.min(parent.width - units.gu(8), units.gu(42))
+                 : catSheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(45)) : parent.width
+            height: catSheetCol.height + (catSheet.asDialog ? units.gu(2.5) : units.gu(4))
             radius: units.gu(1)
             color: Style.surface
             transform: Translate { id: catSlideT; y: 0 }
             NumberAnimation { id: catSlideAnim; target: catSlideT; property: "y"; from: catSheetRect.height; to: 0; duration: 300; easing.type: Easing.OutCubic }
             NumberAnimation { id: catSlideOut; target: catSlideT; property: "y"; to: catSheetRect.height; duration: 250; easing.type: Easing.InCubic; onStopped: page.catSheetOpen = false }
 
+            // The dialog fades up in place; a 300ms slide belongs to the touch sheet.
+            ParallelAnimation {
+                id: catDialogIn
+                NumberAnimation { target: catSheetRect; property: "opacity"; from: 0; to: 1; duration: 120; easing.type: Easing.OutQuad }
+                NumberAnimation { target: catSheetRect; property: "scale"; from: 0.97; to: 1; duration: 120; easing.type: Easing.OutQuad }
+            }
+            SequentialAnimation {
+                id: catDialogOut
+                NumberAnimation { target: catSheetRect; property: "opacity"; to: 0; duration: 100; easing.type: Easing.InQuad }
+                ScriptAction { script: page.catSheetOpen = false }
+            }
+
             Rectangle {
+                visible: !catSheet.asDialog
                 anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
                 width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
                 color: Style.lightGray
@@ -1588,14 +1968,22 @@ Page {
 
             Column {
                 id: catSheetCol
-                anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
+                anchors {
+                    top: parent.top; left: parent.left; right: parent.right
+                    topMargin: catSheet.asDialog ? Style.spacingS : Style.spacingL
+                }
                 spacing: 0
 
                 Item {
                     width: parent.width; height: units.gu(5)
                     Label {
                         anchors.centerIn: parent
-                        text: Lang.tr("Select Category")
+                        text: page.catSheetMode === "loading" ? Lang.tr("Preparing to publish")
+                            : page.catSheetMode === "suggested" ? Lang.tr("Publish to %1?").arg(page.postCommunityName)
+                            : Lang.tr("Select Category")
+                        width: parent.width - units.gu(9)
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
                         font.pixelSize: Style.fontMedium
                         font.weight: Font.DemiBold
                         color: Style.textPrimary
@@ -1610,11 +1998,108 @@ Page {
 
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
+                Item {
+                    width: parent.width
+                    visible: page.catSheetMode === "choose"
+                    height: visible ? hintLabel.implicitHeight + Style.spacingM * 2 : 0
+
+                    Label {
+                        id: hintLabel
+                        anchors {
+                            left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
+                            leftMargin: Style.spacingM; rightMargin: Style.spacingM
+                        }
+                        horizontalAlignment: Text.AlignHCenter
+                        text: Lang.tr("Pick where this post belongs.")
+                        font.pixelSize: Style.fontXSmall
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                // While the AI classifies the article. Closing here posts nothing.
+                Item {
+                    width: parent.width
+                    visible: page.catSheetMode === "loading"
+                    height: visible ? units.gu(14) : 0
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: Style.spacingM
+
+                        ActivityIndicator {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            running: page.catSheetMode === "loading"
+                        }
+                        Label {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: Lang.tr("Finding the right category…")
+                            font.pixelSize: Style.fontSmall
+                            font.family: Style.fontFor(text)
+                            color: Style.textSecondary
+                        }
+                    }
+                }
+
+                // What the AI picked. One tap publishes; "Choose other category" opens the list.
+                Item {
+                    width: parent.width
+                    visible: page.catSheetMode === "suggested"
+                    height: visible ? suggestCol.implicitHeight + Style.spacingL * 2 : 0
+
+                    Column {
+                        id: suggestCol
+                        anchors {
+                            left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
+                            leftMargin: Style.spacingM; rightMargin: Style.spacingM
+                        }
+                        spacing: Style.spacingS
+
+                        Label {
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            text: Lang.tr("Category")
+                            font.pixelSize: Style.fontSmall
+                            font.family: Style.fontFor(text)
+                            color: Style.textSecondary
+                            wrapMode: Text.WordWrap
+                        }
+                        // The pick as a chip, not a line of text: it is the one thing in the
+                        // card the author has to read before publishing.
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: Math.min(parent.width, pickedLabel.implicitWidth + Style.spacingL)
+                            height: units.gu(4.5)
+                            radius: Style.pillRadius
+                            color: Qt.rgba(Style.brand.r, Style.brand.g, Style.brand.b, 0.12)
+
+                            Label {
+                                id: pickedLabel
+                                anchors.centerIn: parent
+                                width: parent.width - Style.spacingM
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                                text: page.selectedSubCategory.length > 0
+                                    ? (page.selectedCategory + "  ›  " + page.selectedSubCategory)
+                                    : page.selectedCategory
+                                font.pixelSize: Style.fontMedium
+                                font.weight: Font.DemiBold
+                                font.family: Style.fontFor(text)
+                                color: Style.brand
+                            }
+                        }
+                    }
+                }
+
                 // Scrollable list: caps sheet height so long sub-category lists scroll, not overflow
                 Flickable {
                     id: catListFlick
                     width: parent.width
-                    height: Math.min(catListCol.height, catSheet.height * 0.65)
+                    visible: page.catSheetMode === "choose"
+                    height: visible ? Math.min(catListCol.height,
+                                               catSheet.asDialog ? units.gu(34) : catSheet.height * 0.5)
+                                    : 0
                     contentHeight: catListCol.height
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
@@ -1669,7 +2154,6 @@ Page {
                                 onClicked: {
                                     page.selectedCategory = catRow.catName
                                     page.selectedSubCategory = ""
-                                    catSheet.closeAnimated()
                                 }
                             }
                             Row {
@@ -1727,7 +2211,6 @@ Page {
                                 onClicked: {
                                     page.selectedCategory = catRow.catName
                                     page.selectedSubCategory = ""
-                                    catSheet.closeAnimated()
                                 }
                                 Label {
                                     anchors { left: parent.left; leftMargin: Style.spacingM + units.gu(3); verticalCenter: parent.verticalCenter }
@@ -1752,7 +2235,6 @@ Page {
                                     onClicked: {
                                         page.selectedCategory = catRow.catName
                                         page.selectedSubCategory = subName
-                                        catSheet.closeAnimated()
                                     }
                                     Label {
                                         anchors { left: parent.left; leftMargin: Style.spacingM + units.gu(3); right: subTick.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
@@ -1780,6 +2262,54 @@ Page {
                         Item { width: 1; height: Style.spacingM }
                     }   // catListCol
                 }       // catListFlick
+
+                // Publishing happens from the sheet, the way the web modal does it.
+                Column {
+                    width: parent.width - Style.spacingM * 2
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: page.catSheetMode !== "loading"
+                    spacing: Style.spacingS
+
+                    Item { width: 1; height: Style.spacingS }
+
+                    PrimaryButton {
+                        width: parent.width
+                        enabled: page.canPublish && page.selectedCategory.length > 0
+                        busy: page.submitting
+                        text: page.submitting ? Lang.tr("Posting…") : Lang.tr("Publish")
+                        onClicked: {
+                            page.catSheetOpen = false;
+                            page.publish();
+                        }
+                    }
+
+                    // Filled grey, stacked under the primary: the HIG's secondary action,
+                    // same button shape as Publish so the pair reads as one stack.
+                    AbstractButton {
+                        id: altCatBtn
+                        width: parent.width
+                        height: units.gu(5)
+                        // Back only exists when there is a suggestion to go back to.
+                        visible: page.catSheetMode === "choose" ? page.catSuggested : true
+                        onClicked: page.catSheetMode = (page.catSheetMode === "choose") ? "suggested" : "choose"
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Style.cardRadius
+                            color: altCatBtn.pressed ? Style.pressed : Style.iconBackground
+                            Behavior on color { ColorAnimation { duration: 120 } }
+
+                            Label {
+                                anchors.centerIn: parent
+                                text: page.catSheetMode === "choose" ? Lang.tr("Back") : Lang.tr("Choose other category")
+                                font.pixelSize: Style.fontMedium
+                                font.weight: Font.DemiBold
+                                font.family: Style.fontFor(text)
+                                color: Style.textPrimary
+                            }
+                        }
+                    }
+                }
             }
         }
     }

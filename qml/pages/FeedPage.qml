@@ -27,7 +27,7 @@ Page {
     readonly property string emptyDetailMessage: Lang.tr("Select a post to read")
     readonly property bool splitOpen: !!(page.pageStack && page.pageStack.columns > 1)
 
-    property Item keyboardFocusItem: list
+    property Item keyboardFocusItem: emptyState.visible ? emptyState : list
     // Leaving the feed closes the article it opened beside it, in one step.
     function closeFeed() {
         if (page.pageStack.popMaster) page.pageStack.popMaster();
@@ -35,6 +35,9 @@ Page {
     }
     // Row cursor needs keyNavigationFocus, which requires a focus REASON (see NewsPage).
     function focusListKeyNav() {
+        // An empty feed shows the discover state instead of the list; focusing an empty
+        // list is what made F6 look broken here.
+        if (emptyState.visible && emptyState.focusFirst()) return;
         if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0;
         var it = list.currentItem;
         if (!it) { list.forceActiveFocus(); return; }
@@ -782,6 +785,7 @@ Page {
     }
     // Empty + logged in = follows nobody; offer the fix instead of a dead end.
     FeedEmptyState {
+        id: emptyState
         anchors { top: topBar.bottom; bottom: parent.bottom; left: parent.left; right: parent.right }
         leadingWidth: 0
         visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
@@ -796,6 +800,11 @@ Page {
                 if (ed && ed.saved) ed.saved.connect(function () { page.refresh(); });
             }, caller);
         }
+        // Suggested article / video: same detail pages the feed itself opens.
+        onPostRequested: page.openDetail(Qt.resolvedUrl("PostDetailPage.qml"),
+            { author: post.author, permlink: post.permlink, title: post.title, seedPost: post })
+        onVideoRequested: page.openDetail(Qt.resolvedUrl("VideoDetailPage.qml"), { video: video })
+        onLoginRequested: page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"))
         // Same as picking the platform from the community pill.
         onCommunityRequested: {
             if (!Config.selectCommunityById(community.id)) {

@@ -101,5 +101,5 @@ function flagCodeFromTitle(title) {
 // Full flagcdn URL for a country title, or "" if the title doesn't resolve.
 function flagUrl(title) {
     var code = flagCodeFromTitle(title);
-    return code ? ("https://flagcdn.com/w160/" + code + ".png") : "";
+    return code ? ("https://flagcdn.com/" + code + ".svg") : "";
 }

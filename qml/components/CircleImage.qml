@@ -15,6 +15,7 @@ Item {
         id: mask
         anchors.fill: parent
         radius: width / 2
+        antialiasing: true
         visible: false
     }
 

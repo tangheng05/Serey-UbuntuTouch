@@ -7,6 +7,7 @@ import "../Session"
 import "../components"
 import "../services/PostService.js" as PostService
 import "../services/CategoryService.js" as CategoryService
+import "../services/Mappers.js" as Mappers
 
 Page {
     id: page
@@ -115,11 +116,58 @@ Page {
     }
 
     // Single writer into the real bodyParts array (by index, so it actually persists).
+    // True once the author has actually changed the body. A late detail response must
+    // not overwrite their typing, so the re-prefill below checks this first.
+    property bool _bodyTouched: false
+    // Set while prefilling: the segments' onTextChanged fires as they load, which would
+    // otherwise read as the author typing.
+    property bool _prefilling: false
+
     function _setPartHtml(idx, html) {
         if (idx < 0 || idx >= page.bodyParts.length) return;
         if (page.bodyParts[idx].type !== "text") return;
         page.bodyParts[idx].html = html;
+        if (!page._prefilling) page._bodyTouched = true;
         page._bodyRev++;
+    }
+
+    // Body -> alternating text/image blocks, one real Image item per <img>.
+    function _prefillBody(post) {
+        var b = (post && post.body) || "";
+        page._prefilling = true;
+        var parts = [];
+        var lastIndex = 0;
+        var imgRe = /<img[^>]*src=["']([^"']*)["'][^>]*\/?>/gi;
+        var m;
+        while ((m = imgRe.exec(b)) !== null) {
+            parts.push({ type: "text", html: b.substring(lastIndex, m.index) });
+            parts.push({ type: "image", url: m[1] });
+            lastIndex = imgRe.lastIndex;
+        }
+        parts.push({ type: "text", html: b.substring(lastIndex) });
+        page.bodyParts = parts;
+        page._bodyRev++;
+
+        // `coverImage` is what the post actually stores; `thumbnail` may be a body image the
+        // feed derived. Prefilling from the derived one re-published it as a real cover, so
+        // an author could never take a cover off: save, reopen, and it was back.
+        var stored = (post && post.coverImage !== undefined)
+            ? (post.coverImage || "")
+            : (post && post.thumbnail) || "";
+        var storedIsBodyImage = false;
+        for (var pi = 0; pi < parts.length; pi++) {
+            if (parts[pi].type === "image" && parts[pi].url === stored) { storedIsBodyImage = true; break; }
+        }
+        page.coverImageUrl = storedIsBodyImage ? "" : stored;
+        // No cover on the post means the author has none, not "derive one from the body":
+        // treat the body's first picture as already dismissed so a save keeps it that way.
+        if (page.isEdit && stored.length === 0) {
+            var derived = "";
+            for (var di = 0; di < parts.length; di++)
+                if (parts[di].type === "image" && (parts[di].url || "").length > 0) { derived = parts[di].url; break; }
+            page.coverDismissedUrls = derived.length > 0 ? [derived] : [];
+        }
+        Qt.callLater(function () { page._prefilling = false; });
     }
 
     function _bodyHasContent() {
@@ -146,11 +194,11 @@ Page {
     readonly property string catCommunityName: page.isEdit ? ((page.editPost && page.editPost.community) || Config.currentCommunityName)
                                              : page.targetCommunity ? page.targetCommunity.name
                                                                     : Config.currentCommunityName
-    // Cached record for the edited post's platform, for its logo in the row below.
-    readonly property var editCommunityInfo: page.isEdit && page.editPost && page.editPost.communityId
-                                             ? Config.communityInfoFor(page.editPost.communityId) : null
-    readonly property string editCommunityIcon: page.editCommunityInfo
-                                                ? (page.editCommunityInfo.icon || "")
+    // Logo for the edited post's platform. communityIconFor(), not the cached record's raw
+    // `icon`: that hands back the backend logo for Global (where the app shows its bundled
+    // globe) and leaves site-relative paths unresolved.
+    readonly property string editCommunityIcon: (page.isEdit && page.editPost && page.editPost.communityId)
+                                                ? Config.communityIconFor(page.editPost.communityId)
                                                 : (page.catCommunityName === Config.currentCommunityName
                                                    ? Config.currentCommunityIconUrl : "")
 
@@ -242,35 +290,8 @@ Page {
     Component.onCompleted: {
         if (page.editPost) {
             titleField.text = page.editPost.title || "";
-            var b = page.editPost.body || "";
-            // Older posts baked their cover image in as a leading <img>; strip it only when it actually
-            // matches this post's own thumbnail (restored separately below), never a genuine first body
-            // image the user actually typed there.
-            var thumb = page.editPost.thumbnail || "";
-            if (thumb.length > 0) {
-                var leadMatch = b.match(/^\s*<img[^>]*src=["']([^"']*)["'][^>]*>\s*/i);
-                if (leadMatch && leadMatch[1] === thumb) b = b.substring(leadMatch[0].length);
-            }
-            // Split the body into alternating text/image blocks, one real Image item per <img>.
-            var parts = [];
-            var lastIndex = 0;
-            var imgRe = /<img[^>]*src=["']([^"']*)["'][^>]*\/?>/gi;
-            var m;
-            while ((m = imgRe.exec(b)) !== null) {
-                parts.push({ type: "text", html: b.substring(lastIndex, m.index) });
-                parts.push({ type: "image", url: m[1] });
-                lastIndex = imgRe.lastIndex;
-            }
-            parts.push({ type: "text", html: b.substring(lastIndex) });
-            page.bodyParts = parts;
-            // A thumbnail that is still one of the body's own images was auto-derived, not a cover the
-            // user picked. Re-sending it as `images` turned it into a real cover, so deleting that image
-            // from the body made it reappear on top of the article.
-            var thumbIsBodyImage = false;
-            for (var pi = 0; pi < parts.length; pi++) {
-                if (parts[pi].type === "image" && parts[pi].url === thumb) { thumbIsBodyImage = true; break; }
-            }
-            page.coverImageUrl = thumbIsBodyImage ? "" : thumb;
+            // The body is taken as-is: this composer never bakes the cover into it.
+            page._prefillBody(page.editPost);
             // primaryCategory is a scalar since the categories array is wrapped by the feed ListModel and loses [] indexing.
             page.selectedCategory = page.editPost.primaryCategory || "";
             // Best-effort sub-category prefill (field name varies across sources).
@@ -283,30 +304,32 @@ Page {
             // Prefill the toggle from the saved post (default on if absent).
             page.postToBlockchain = (page.editPost.postToBlockchain !== false);
             page.publishCeilingId = Number(page.editPost.publishCeilingId || 0);
-            // Some list endpoints (e.g. list-by-author, used by the Profile page) don't return
-            // community_id/community_title per row, so editPost can arrive with neither set.
-            // publish() then falls back to Config.communityName, which can be a different
-            // community than the one this post actually lives in -> backend rejects the save
-            // with "invalid community". Re-fetch the authoritative values from the post's own
-            // detail endpoint whenever they're missing, regardless of which page opened the editor.
-            if (!(page.editPost.communityId > 0) || !page.editPost.community) {
-                var author = page.editPost.author || "";
-                var permlink = page.editPost.permlink || "";
-                if (author && permlink) {
-                    PostService.detail(Config.baseUrl, author, permlink, Session.token,
-                        function (result) {
-                            var p = result && result.post;
-                            if (!p || !page.editPost) return;
-                            page.editPost = Object.assign({}, page.editPost, {
-                                communityId: p.communityId || page.editPost.communityId,
-                                community: p.community || page.editPost.community
-                            });
-                            // Feed rows can omit the ceiling too; the detail
-                            // response is authoritative, so re-prefill from it.
-                            page.publishCeilingId = Number(p.publishCeilingId || 0);
-                        },
-                        function (err) { /* best-effort; publish() still has its old fallback */ });
-                }
+            // Always re-read the post from its own detail endpoint. Feed rows carry a
+            // SHORTENED body (and often no community_id/community_title), so editing from a
+            // card used to open the editor with pictures and text the article really has
+            // missing - and the next save wrote that truncated version back.
+            var author = page.editPost.author || "";
+            var permlink = page.editPost.permlink || "";
+            if (author && permlink) {
+                PostService.detail(Config.baseUrl, author, permlink, Session.token,
+                    function (result) {
+                        var p = result && result.post;
+                        if (!p || !page.editPost) return;
+                        page.editPost = Object.assign({}, page.editPost, {
+                            communityId: p.communityId || page.editPost.communityId,
+                            community: p.community || page.editPost.community,
+                            body: p.body || page.editPost.body,
+                            thumbnail: p.thumbnail || page.editPost.thumbnail
+                        });
+                        // Feed rows can omit the ceiling too; the detail
+                        // response is authoritative, so re-prefill from it.
+                        page.publishCeilingId = Number(p.publishCeilingId || 0);
+                        // Only while the author hasn't started editing: their work wins over
+                        // a response that arrived late.
+                        if (!page._bodyTouched && (p.body || "") !== "")
+                            page._prefillBody(page.editPost);
+                    },
+                    function (err) { /* best-effort; publish() still has its old fallback */ });
             }
         } else {
             page._applyRememberedScope();
@@ -389,7 +412,7 @@ Page {
                 Toast.success(Lang.tr("Image added"));
             } else {
                 page.coverImageUrl = url;
-                page.coverCleared = false;
+                page.coverDismissedUrls = [];
                 Toast.success(Lang.tr("Cover image uploaded"));
             }
         }
@@ -423,6 +446,7 @@ Page {
         page.bodyParts = parts;
         page.activeTextIndex = afterIdx + 2;
         page._pendingFocusIndex = afterIdx + 2;
+        page._bodyTouched = true;
         page._bodyRev++;
     }
 
@@ -445,6 +469,7 @@ Page {
         if (parts.length === 0) parts = [{ type: "text", html: "" }];
         page.bodyParts = parts;
         page.activeTextIndex = Math.min(page.activeTextIndex, parts.length - 1);
+        page._bodyTouched = true;
         page._bodyRev++;
     }
 
@@ -552,16 +577,29 @@ Page {
                 return parts[i].url;
         return "";
     }
-    // Set when the author clears the slot, which suppresses the derived fallback
-    // for the rest of the session: clearing has to mean "no thumbnail", not
-    // "re-derive the same picture I just dismissed". Picking one clears the flag.
-    property bool coverCleared: false
+    // Pictures the author dismissed from the slot, remembered by URL rather than as a
+    // blanket "cleared" flag: clearing must not re-derive the same image, but adding a
+    // NEW body picture afterwards should fill the empty slot again. Both the shown cover
+    // and the body's current first image go in, because a stored cover is often a
+    // re-upload of that same picture under a different URL - matching only the shown one
+    // let clearing an edit's cover silently fall back to the body image and save it again.
+    property var coverDismissedUrls: []
+
+    function _dismissCover() {
+        var list = page.coverDismissedUrls.slice();
+        var shown = page.effectiveCoverUrl;
+        var derived = page.derivedCoverUrl;
+        if (shown.length > 0 && list.indexOf(shown) < 0) list.push(shown);
+        if (derived.length > 0 && list.indexOf(derived) < 0) list.push(derived);
+        page.coverDismissedUrls = list;
+        page.coverImageUrl = "";
+    }
 
     // What actually gets published, and what the thumbnail slot shows. A picked
     // cover always wins over the derived one.
     readonly property string effectiveCoverUrl: page.coverImageUrl.length > 0
-                                                ? page.coverImageUrl
-                                                : (page.coverCleared ? "" : page.derivedCoverUrl)
+        ? page.coverImageUrl
+        : (page.coverDismissedUrls.indexOf(page.derivedCoverUrl) >= 0 ? "" : page.derivedCoverUrl)
 
     // Assemble the body from its text/image blocks; pull each text segment's live content off
     // its actual delegate rather than the (possibly stale) bodyParts copy.
@@ -587,6 +625,9 @@ Page {
     // Snapshot of the body taken when the preview opens: the live text lives on the
     // segment delegates, which the preview's own Repeater can't read.
     property var previewParts: []
+    // The cover is auto-derived from the body's first picture, so drawing both would
+    // show the same image twice - PostDetailPage skips the cover for the same reason.
+    property bool previewBodyHasImage: false
 
     function openPreview() {
         var parts = [];
@@ -600,6 +641,10 @@ Page {
                 parts.push({ type: "text", url: "", html: page._richHtmlToSimple(html) });
             }
         }
+        var hasImage = false;
+        for (var j = 0; j < parts.length; j++)
+            if (parts[j].type === "image") { hasImage = true; break; }
+        page.previewBodyHasImage = hasImage;
         page.previewParts = parts;
         page.previewOpen = true;
     }
@@ -678,8 +723,26 @@ Page {
             if (!page.targetIsGlobal)
                 Session.savePostScope(page.postCommunityId, page.publishCeilingId);
             Toast.success(page.isEdit ? Lang.tr("Post updated!") : Lang.tr("Post published!"));
+
+            // The API answers with the stored row; it carries the permlink the article
+            // now lives at, which is what the detail page needs.
+            var created = (data && (data.post || (data.data && data.data.db_data))) || null;
+            var fresh = (!page.isEdit && created && created.permlink) ? Mappers.toPost(created) : null;
+
+            // Browse where the post landed, so the feed behind the article is the one
+            // holding it (Main also flips News to Latest off this signal).
+            if (fresh && page.postCommunityId > 0)
+                Config.selectCommunityById(page.postCommunityId);
+
+            // pageStack goes stale for the popped page, so keep our own handle.
+            var stack = page.pageStack;
             page.saved(!page.isEdit);
-            page.pageStack.pop();
+            stack.pop();
+            // Straight into the published article; Back then lands on that feed.
+            if (fresh)
+                stack.push(Qt.resolvedUrl("PostDetailPage.qml"),
+                           { author: fresh.author, permlink: fresh.permlink,
+                             title: fresh.title, seedPost: fresh });
         },
         function (err) {
             page.submitting = false;
@@ -786,6 +849,7 @@ Page {
         page.bodyParts = parts;
         page.activeTextIndex = afterIdx + 2;
         page._pendingFocusIndex = afterIdx + 2;
+        page._bodyTouched = true;
         page._bodyRev++;
     }
 
@@ -902,6 +966,16 @@ Page {
                         }
                     }
 
+                    // Measured once, imperatively cheap: binding a TextMetrics to the live text
+                    // would re-trigger itself (see the TextMetrics binding-loop note).
+                    Label {
+                        id: titleLineMetrics
+                        visible: false
+                        text: "Ag"
+                        font.pixelSize: Style.fontMedium
+                        font.family: Style.fontFor(text)
+                    }
+
                     // TextArea, not TextField: a headline runs past one line and a field would
                     // scroll it sideways, hiding the start of the author's own title. Still one
                     // logical line - Return is swallowed and pasted newlines collapse to spaces.
@@ -919,9 +993,10 @@ Page {
                         selectionColor: Style.brand
                         // Wrap (not WordWrap): a run with no spaces must still break instead of overflowing.
                         wrapMode: Text.Wrap
-                        // Two lines, then it scrolls: enough to read a headline without the box eating the composer.
-                        autoSize: true
-                        maximumLineCount: 2
+                        // Fixed at two lines rather than autoSize: autoSize settled a hair short of
+                        // the second line, so a wrapped headline was clipped while padding sat unused
+                        // below it. A constant height also stops the box jumping as the title grows.
+                        height: titleLineMetrics.implicitHeight * 2 + units.gu(1)
 
                         Keys.onReturnPressed: event.accepted = true
                         Keys.onEnterPressed: event.accepted = true
@@ -975,9 +1050,9 @@ Page {
 
                 Rectangle {
                     width: titleRow.thumbW
-                    // Matches the title box, but stops growing with it: a wrapped title
-                    // shouldn't stretch the cover slot into a tall strip.
-                    height: Math.min(titleBox.height, units.gu(12))
+                    // Exactly the title box: the two read as one pair, and the box no longer
+                    // grows without bound now that the title is fixed at two lines.
+                    height: titleBox.height
                     radius: Style.thumbRadius
                     // Outlined while empty, filled once an image sits behind it.
                     color: page.effectiveCoverUrl.length > 0 ? Style.iconBackground : "transparent"
@@ -1003,7 +1078,10 @@ Page {
                             leftMargin: Style.spacingS; bottomMargin: Style.spacingS
                         }
                         z: 2
-                        visible: page.coverImageUrl.length === 0 && page.derivedCoverUrl.length > 0
+                        // Keyed off what the slot is actually SHOWING: after the author clears
+                        // the cover, effectiveCoverUrl is empty even though a body image still
+                        // exists, and the pill was labelling an empty "Add thumbnail" slot.
+                        visible: page.coverImageUrl.length === 0 && page.effectiveCoverUrl.length > 0
                         // Bounded by the slot: the pill used to run past its edge and get clipped.
                         width: Math.min(derivedHint.implicitWidth + Style.spacingM,
                                         parent.width - Style.spacingS * 2)
@@ -1033,7 +1111,8 @@ Page {
                         }
                         width: units.gu(3); height: width
                         z: 2
-                        onClicked: { page.coverImageUrl = ""; page.coverCleared = true; }
+                        // Remember which pictures were dismissed, so only those stay gone.
+                        onClicked: page._dismissCover()
 
                         Rectangle {
                             anchors.fill: parent
@@ -1199,6 +1278,22 @@ Page {
                     // Auto-expand to fit content; the Column sizes off each segment's real height.
                     autoSize: true
                     maximumLineCount: 0
+                    // Focus comes from the tap handler below, not from the press: pressing to
+                    // scroll used to focus the segment and throw the keyboard up mid-flick.
+                    activeFocusOnPress: false
+
+                    // A drag makes the Flickable steal the grab, which cancels this handler, so
+                    // clicked() only fires on a real tap. Disabled once focused so the toolkit's
+                    // own selection handles and caret dragging work untouched.
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: !partArea.activeFocus
+                        onClicked: {
+                            partArea.forceActiveFocus();
+                            partArea.cursorPosition = partArea.positionAt(mouse.x, mouse.y);
+                            Qt.inputMethod.show();
+                        }
+                    }
                     Component.onCompleted: { text = partData.html; partArea._prevText = text; Qt.callLater(_fitHeight); }
                     property string _prevText: ""
                     property bool _linkifyBusy: false
@@ -1800,7 +1895,7 @@ Page {
                 // Only when the author actually picked one: the detail page draws no
                 // placeholder cover, so a stand-in banner here would preview a lie.
                 RoundedThumb {
-                    visible: page.effectiveCoverUrl.length > 0
+                    visible: page.effectiveCoverUrl.length > 0 && !page.previewBodyHasImage
                     width: parent.width
                     height: visible ? width * 0.56 : 0
                     source: page.effectiveCoverUrl
@@ -1842,11 +1937,16 @@ Page {
                             id: blockImage
                             visible: blockRow.isImage
                             width: parent.width
-                            height: (visible && sourceSize.height > 0)
-                                ? width * (sourceSize.height / sourceSize.width) : 0
+                            // Ratio off implicitWidth/Height, like the editor's own image block:
+                            // sourceSize.height stays 0 once sourceSize.width is set, so keying the
+                            // height off it left every body image at zero height (invisible).
+                            height: !blockRow.isImage ? 0
+                                : (status === Image.Ready && implicitWidth > 0)
+                                  ? width * implicitHeight / implicitWidth
+                                  : units.gu(20)
                             source: blockRow.isImage ? modelData.url : ""
                             fillMode: Image.PreserveAspectFit
-                            sourceSize.width: units.gu(90)
+                            autoTransform: true
                             asynchronous: true
                         }
                     }

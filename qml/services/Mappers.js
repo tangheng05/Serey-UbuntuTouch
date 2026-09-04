@@ -77,18 +77,24 @@ function firstEmbedThumb(desc) {
     return idm ? ("https://img.youtube.com/vi/" + idm[1] + "/hqdefault.jpg") : "";
 }
 
-// Pick a thumbnail for a post: explicit list field, else first <img>, else first embedded video.
-function firstImage(raw) {
+// Only what is stored on the post; firstImage() below is the display fallback chain.
+function storedCover(raw) {
     var imgs = parseList(raw.image_url);
-    if (imgs.length)
-        return fixThumb(imgs[0]);
-    if (raw.thumbnail_url)
-        return fixThumb(raw.thumbnail_url);
-    var desc = raw.description || raw.post_description || "";
-    var m = /<img[^>]+src=["']([^"']+)["']/i.exec(desc);
-    if (m)
-        return fixThumb(m[1]);
-    return firstEmbedThumb(desc);
+    if (imgs.length) return fixThumb(imgs[0]);
+    if (raw.thumbnail_url) return fixThumb(raw.thumbnail_url);
+    return "";
+}
+
+// Pick a thumbnail for a post: the stored cover, else an embedded video's thumb.
+// Deliberately NOT the body's first <img>: the web keys its card off json_meta.image
+// alone, so deriving here made a removed cover look like it came back - the card kept
+// showing the article's own picture. Cover-less posts fall back to the Serey banner
+// PostCard draws, which is what the web shows too.
+function firstImage(raw) {
+    var stored = storedCover(raw);
+    if (stored)
+        return stored;
+    return firstEmbedThumb(raw.description || raw.post_description || "");
 }
 
 // Normalise a voters/flaggers list to plain usernames; the API sends either ["alice"] or [{voter:"alice"}] depending on endpoint.
@@ -120,6 +126,10 @@ function toPost(raw) {
         body: raw.description || "",
         excerpt: stripHtml(raw.short_desc || raw.description || "", 180),
         thumbnail: firstImage(raw),
+        // The cover the author actually stored (json_meta.image), with no body-image
+        // fallback: the editor needs to tell "no cover set" from "we derived one", or
+        // removing a cover looks impossible - the derived one comes straight back.
+        coverImage: storedCover(raw),
         authorImage: raw.author_image_url || "",
         date: raw.publish_date || "",
         votes: toInt(raw.voter_count),

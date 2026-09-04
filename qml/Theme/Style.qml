@@ -128,7 +128,18 @@ QtObject {
     }
 
     // Helpers: relative timestamp formatted as "just now / Xm / Xh / Xd ago / DD Mon [YYYY]".
+    // Bumped every minute so every formatTimeAgo() binding re-runs: Date.now() is not
+    // reactive, so a post published a moment ago read "just now" until the feed reloaded.
+    property int timeRev: 0
+    property Timer _timeTicker: Timer {
+        interval: 60000
+        running: true
+        repeat: true
+        onTriggered: style.timeRev++
+    }
+
     function formatTimeAgo(dateStr) {
+        style.timeRev;      // dependency only; the value is unused
         if (!dateStr)
             return "";
         var diff = (Date.now() - new Date(dateStr).getTime()) / 1000;

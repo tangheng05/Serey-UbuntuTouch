@@ -1800,6 +1800,8 @@ Page {
                         font.family: Style.fontFor(text)
                         font.pixelSize: Style.fontRegular
                         onAccepted: page.submitComment()
+                        // Force-raise OSK so kbHeight isn't stale
+                        onActiveFocusChanged: if (activeFocus) Qt.inputMethod.show()
                         // Up steps back to the downvote button; Escape returns to the article.
                         Keys.onUpPressed: {
                             if (page.showSidePanel) {

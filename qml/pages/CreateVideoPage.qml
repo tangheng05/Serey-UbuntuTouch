@@ -417,7 +417,6 @@ Page {
                     font.family: Style.fontFor(text)
                     font.pixelSize: Style.fontRegular
                     color: Style.textPrimary
-                    placeholderText: Lang.tr("Describe your video...")
                     StyleHints {
                         backgroundColor: "transparent"
                         borderColor: "transparent"
@@ -427,6 +426,18 @@ Page {
                         var cp = cursorPosition;
                         text = text.substring(0, page.descMaxLength);
                         cursorPosition = Math.min(cp, text.length);
+                    }
+
+                    // Custom placeholder, grey, like FormField/MultilineField
+                    Label {
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: Style.spacingS }
+                        text: Lang.tr("Describe your video...")
+                        visible: descField.text.length === 0 && !descField.inputMethodComposing
+                        wrapMode: Text.Wrap
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                        opacity: descField.activeFocus ? 0.8 : 0.6
                     }
                 }
                 Label {

@@ -117,8 +117,8 @@ MainView {
     // Hide shell header while Feed page is open
     readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3 && !feedPageOpen
     // Wide windows keep the rail inside pushed pages too: it's app chrome there.
-    // Feed page stays a first-class browsing surface, not a deep detail push
-    readonly property bool showNavBar: root.wideMode || activeColumns > 1 || activeDepth <= 1 || root.feedPageOpen
+    // Feed page hides the nav bar / side rail so it's an edge-to-edge surface
+    readonly property bool showNavBar: !root.feedPageOpen && (root.wideMode || activeColumns > 1 || activeDepth <= 1)
 
     // Nav tabs hidden for the current platform (custom_menu.is_hidden)
     property var navVisibility: ({})

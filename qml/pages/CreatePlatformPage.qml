@@ -42,6 +42,8 @@ Page {
     property bool countryPickerOpen: false
 
     // Step 2 - branding
+    // Used when the owner skips upload, so the community isn't left without any icon/logo
+    readonly property string defaultBrandUrl: "https://upload.serey.io/images/e5129a31-2868-428c-a4ea-8d9a0dcb62dc-1788508734703.png"
     property string iconUrl: ""
     property string logoUrl: ""
     property string footerUrl: ""
@@ -184,8 +186,8 @@ Page {
             independent: independent,
             countryId: country ? country.id : null,
             categoryId: categoryId,
-            iconUrl: iconUrl,
-            logoUrl: logoUrl,
+            iconUrl: iconUrl || page.defaultBrandUrl,
+            logoUrl: logoUrl || page.defaultBrandUrl,
             footerLogoUrl: footerUrl
         }, function (res) {
             page.creating = false;
@@ -200,7 +202,7 @@ Page {
                     id: res.id,
                     title: res.title || page.nameText,
                     dns: page.createdDns,
-                    icon: res.iconUrl || iconUrl || logoUrl || "",
+                    icon: res.iconUrl || iconUrl || logoUrl || page.defaultBrandUrl,
                     allowPost: false,
                     videoAllowPost: false
                 });

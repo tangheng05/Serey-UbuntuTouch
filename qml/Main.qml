@@ -653,6 +653,18 @@ MainView {
         }
         // An offline panel asked for the on-device library.
         function onOpenLibrary() { root.openLibrary(); }
+        // Blog card tapped in the mini app WebView: read it natively. Pushed on the
+        // active stack so Back returns to the homepage the tap came from.
+        function onOpenPost(post) {
+            var stack = root.activeStack;
+            if (!stack) return;
+            stack.push(Qt.resolvedUrl("pages/PostDetailPage.qml"), {
+                author: String(post.author || ""),
+                permlink: String(post.permlink || ""),
+                title: String(post.title || ""),
+                allowSidePanel: false
+            });
+        }
         function onEditCaption(post) {
             var stack = root.activeStack;
             if (stack) stack.push(Qt.resolvedUrl("pages/EditCaptionPage.qml"), { post: post });

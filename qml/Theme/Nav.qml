@@ -39,6 +39,9 @@ QtObject {
     // Any offline panel can offer the on-device library without knowing its own stack
     signal openLibrary()
 
+    // Mini app WebView tapped a blog card; Main pushes the native reader on the active tab
+    signal openPost(var post)
+
     // Edit a video's caption: emitted from feed cards, the reel menu and the action sheet, none of
     // which know their own stack. Main pushes the editor onto whichever tab is active.
     signal editCaption(var post)

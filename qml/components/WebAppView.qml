@@ -73,6 +73,8 @@ FocusScope {
     // The mini app also switches community without the bridge; the shell must follow
     signal siteNavigated(string url)
     signal openExternalBrowserRequested(string url)
+    // Mini app tapped a blog card: open it in the native reader instead of its own modal
+    signal openPostRequested(var params)
     // params: { subscription_plan_id, method: "crypto"|"stripe" }
     signal buyPlanRequested(var params)
     signal stripeCheckoutIntercepted(string url)
@@ -616,6 +618,14 @@ FocusScope {
                 } else {
                     webAppView.buyPlanRequested(params);
                     _sendResponse(id, { status: "ok", message: "Handled natively" });
+                }
+                break;
+            case "openPost":
+                if (params.author && params.permlink) {
+                    webAppView.openPostRequested(params);
+                    _sendResponse(id, { status: "ok", message: "Post opened" });
+                } else {
+                    _sendError(id, "Missing author or permlink");
                 }
                 break;
             case "openExternalBrowser":

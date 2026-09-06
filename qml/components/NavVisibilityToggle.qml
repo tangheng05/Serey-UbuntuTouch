@@ -11,6 +11,9 @@ Item {
     property string navKey: ""
     property string navLabel: ""
     property string navIcon: ""
+    // Where the switch sits when no custom_menu row exists yet. Homepage passes true
+    // for a community with no homepage of its own; everything else defaults to shown.
+    property bool defaultHidden: false
 
     width: parent ? parent.width : units.gu(40)
     height: units.gu(6.5)
@@ -30,7 +33,7 @@ Item {
                 for (var i = 0; i < rows.length; i++)
                     if (rows[i].key === root.navKey) { row = rows[i]; break }
                 root._rowId = row ? row.id : null
-                root.hidden = !!(row && row.is_hidden)
+                root.hidden = row ? !!row.is_hidden : root.defaultHidden
             },
             function () { root.busy = false /* non-fatal: defaults to visible */ })
     }
@@ -61,6 +64,8 @@ Item {
     }
 
     Component.onCompleted: root.load()
+    // The default can land after load() has already run (it needs its own lookup).
+    onDefaultHiddenChanged: if (!root._rowId) root.hidden = root.defaultHidden
 
     Label {
         anchors { left: parent.left; leftMargin: Style.spacingM; right: toggleSwitch.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }

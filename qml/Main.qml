@@ -17,6 +17,7 @@ import "services/PostService.js" as PostService
 import "services/VideoService.js" as VideoService
 import "services/PlatformService.js" as PlatformService
 import "services/CustomMenuService.js" as CustomMenuService
+import "services/HomepageService.js" as HomepageService
 
 MainView {
     id: root
@@ -134,18 +135,56 @@ MainView {
             },
             function () { root.navVisibility = {} /* non-fatal: every tab defaults to visible */ })
     }
+    // Does the selected community have a homepage of its own? -1 until resolved.
+    // Drives the Homepage tab's default: communities that never built one would
+    // just land the user on the generic Serey page, so the tab stays away.
+    property int homepageAvailable: -1
+    function _loadHomepageAvailability() {
+        var id = Config.communityId
+        var settled = HomepageService.known(id)
+        root.homepageAvailable = settled === null ? -1 : (settled ? 1 : 0)
+        if (settled !== null) return
+        HomepageService.hasHomepage(Config.baseUrl, id, function (has) {
+            if (id !== Config.communityId) return   // community switched while we waited
+            root.homepageAvailable = has ? 1 : 0
+            root._redirectIfCurrentTabHidden()
+        })
+    }
+    // 1 shown, 0 hidden, -1 undecided. Mirrored to Config so HomepagePage can hold its
+    // web view off rather than load a generic page it is about to be redirected away from.
+    readonly property int _homepageTabState: {
+        if (root._tabHidden(root._tabs[0])) return 0
+        // Shown, but "no row yet and no answer yet" is not a decision: don't load on a maybe.
+        var undecided = root.homepageAvailable < 0
+                        && !root.navVisibility.hasOwnProperty(root._tabs[0].key)
+        return undecided ? -1 : 1
+    }
+    Binding { target: Config; property: "homepageTabState"; value: root._homepageTabState }
+
     // Hop off a tab that just got hidden
     function _redirectIfCurrentTabHidden() {
         if (!root._tabHidden(root._tabs[root.currentTab])) return
+        // Mid-flow on a pushed page (My Feed, an article): let it finish, we re-check on the way out.
+        var stack = root._stackForTab(root.currentTab)
+        if (stack && stack.depth > 1) return
         var fallback = !root._tabHidden(root._tabs[1]) ? 1 : -1
         if (fallback < 0)
             for (var i = 0; i < root._tabs.length; i++)
                 if (!root._tabHidden(root._tabs[i])) { fallback = i; break }
         if (fallback >= 0 && fallback !== root.currentTab) root.switchTab(fallback)
     }
+    // Only the Homepage tab hides itself while you're on it, and only its stack can
+    // strand you on a hidden root. Watching activeDepth instead loops: the redirect
+    // moves currentTab, which activeDepth is bound to.
+    Connections {
+        target: homeStack
+        function onDepthChanged() {
+            if (root.currentTab === 0 && homeStack.depth <= 1) root._redirectIfCurrentTabHidden();
+        }
+    }
     Connections {
         target: Config
-        function onCommunityIdChanged() { root._loadNavVisibility(); }
+        function onCommunityIdChanged() { root._loadNavVisibility(); root._loadHomepageAvailability(); }
     }
     Connections {
         target: Nav
@@ -154,6 +193,7 @@ MainView {
 
     Component.onCompleted: {
         root._loadNavVisibility();
+        root._loadHomepageAvailability();
         // Expired tokens caught lazily via 401; only clear if rejected token is still current
         Http.setUnauthorizedHandler(function (tokenUsed) {
             if (!Session.isLoggedIn) return;
@@ -878,21 +918,32 @@ MainView {
     // fromKeyboard gates the visible keyboard-cursor ring: mouse clicks move focus quietly.
     function switchTab(i, fromKeyboard) { root.currentTab = i; Qt.callLater(function () { root.focusActiveContent(!!fromKeyboard); }); }
 
-    Shortcut { sequence: "Ctrl+1"; enabled: root.showNavBar; onActivated: root.switchTab(0, true) }
-    Shortcut { sequence: "Ctrl+2"; enabled: root.showNavBar; onActivated: root.switchTab(1, true) }
-    Shortcut { sequence: "Ctrl+3"; enabled: root.showNavBar; onActivated: root.switchTab(2, true) }
-    Shortcut { sequence: "Ctrl+4"; enabled: root.showNavBar; onActivated: root.switchTab(3, true) }
+    // A hidden tab has no button to land on, so its shortcut goes dead with it.
+    Shortcut { sequence: "Ctrl+1"; enabled: root.showNavBar && !root._tabHidden(root._tabs[0]); onActivated: root.switchTab(0, true) }
+    Shortcut { sequence: "Ctrl+2"; enabled: root.showNavBar && !root._tabHidden(root._tabs[1]); onActivated: root.switchTab(1, true) }
+    Shortcut { sequence: "Ctrl+3"; enabled: root.showNavBar && !root._tabHidden(root._tabs[2]); onActivated: root.switchTab(2, true) }
+    Shortcut { sequence: "Ctrl+4"; enabled: root.showNavBar && !root._tabHidden(root._tabs[3]); onActivated: root.switchTab(3, true) }
+
+    // Ctrl+Tab walks the tabs you can actually see
+    function _stepVisibleTab(dir) {
+        var n = root._tabs.length;
+        for (var i = 1; i <= n; i++) {
+            var t = (root.currentTab + dir * i + n * i) % n;
+            if (!root._tabHidden(root._tabs[t])) return t;
+        }
+        return root.currentTab;
+    }
 
     // Ctrl+Tab cycling via StandardKey; shortcuts fire before focused item, so it's the only way in from the Homepage view
     Shortcut {
         sequence: StandardKey.NextChild
         enabled: root.showNavBar
-        onActivated: root.switchTab((root.currentTab + 1) % root._tabs.length, true)
+        onActivated: root.switchTab(root._stepVisibleTab(1), true)
     }
     Shortcut {
         sequence: StandardKey.PreviousChild
         enabled: root.showNavBar
-        onActivated: root.switchTab((root.currentTab - 1 + root._tabs.length) % root._tabs.length, true)
+        onActivated: root.switchTab(root._stepVisibleTab(-1), true)
     }
 
     // F6 jumps to the tab nav from anywhere; escape hatch from the Homepage view which swallows Tab/arrows
@@ -931,7 +982,13 @@ MainView {
         { label: Lang.tr("Settings"), icon: "settings" }
     ]
     // Tab indices stay fixed even when hidden
-    function _tabHidden(t) { return !!(t.key && root.navVisibility[t.key]); }
+    function _tabHidden(t) {
+        if (!t.key) return false;
+        // An explicit custom_menu row is the owner's call, either way.
+        if (root.navVisibility.hasOwnProperty(t.key)) return !!root.navVisibility[t.key];
+        // No row: Homepage is hidden unless this community actually built one.
+        return t.key === "homepage" && root.homepageAvailable === 0;
+    }
     readonly property int _visibleTabCount: {
         var n = 0;
         for (var i = 0; i < root._tabs.length; i++) if (!root._tabHidden(root._tabs[i])) n++;

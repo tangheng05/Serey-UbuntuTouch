@@ -102,6 +102,12 @@ QtObject {
     // Mirrored from Main.currentTab; HomepagePage reads it to suspend its WebView while another tab shows (two live Chromium views crashed the app).
     property int currentTab: 0
 
+    // Mirrored from Main: is the Homepage tab shown for the selected community?
+    // 1 shown, 0 hidden (no homepage of its own), -1 not resolved yet. HomepagePage
+    // keeps its web view unloaded until it's 1, so a community without a homepage
+    // never flashes the generic Serey landing page on the way to being redirected.
+    property int homepageTabState: -1
+
     // Mirrored from Main.wideMode
     property bool wideMode: false
     // Mirrored from Main.desktopMode

@@ -590,6 +590,7 @@ var nl = {
     "Subscribe to platforms to see their posts in your feed.": "Abonneer u op platforms om artikelen in uw feed te zien.",
     "Write your first post":                            "Schrijf je eerste artikel",
     "That platform isn't available right now.":         "Dat platform is momenteel niet beschikbaar.",
+    "This platform has no homepage of its own yet, so the tab stays hidden and the app opens on News. Build one in the CMS, or switch it on here to show the default Serey page.": "Dit platform heeft nog geen eigen homepage, dus het tabblad blijft verborgen en de app opent op Nieuws. Maak er een in de CMS, of zet hem hier aan om de standaardpagina van Serey te tonen.",
     "This platform doesn't allow posting. Choose another.": "Dit platform staat posten niet toe. Kies een ander platform.",
     "This platform doesn't allow video uploads. Choose another.": "Dit platform staat video-uploads niet toe. Kies een ander platform.",
     "Couldn't subscribe. Try again.":                   "Abonneren mislukt. Probeer het opnieuw.",

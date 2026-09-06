@@ -13,6 +13,12 @@ Page {
         return Config.homeLandingPageUrl + "/" + Config.communityId
              + "?community_id=" + Config.communityId;
     }
+    // "" keeps WebAppView from loading at all. This tab still hosts My Feed and
+    // notification pushes for a community whose Homepage is hidden, so the page
+    // exists but must not fetch a landing page nobody is going to see.
+    function loadUrl() {
+        return Config.homepageTabState === 1 ? siteUrl() : "";
+    }
 
     // Zero-height header: the global AppHeader is the real top bar.
     header: Item { height: 0 }
@@ -37,7 +43,7 @@ Page {
         anchors.fill: parent
         // Freeze this Chromium renderer while another tab is showing so it doesn't compete for GPU/shared memory with the video player's WebView.
         suspended: Config.currentTab !== 0
-        url: page.siteUrl()
+        url: page.loadUrl()
         authToken: Session.token
         username: Session.username
         apiBaseV2: Config.baseUrl

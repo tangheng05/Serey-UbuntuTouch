@@ -42,18 +42,18 @@ Page {
             navIcon: "home"
             defaultHidden: page.noHomepage
         }
+        // Lomiri Label has no padding in Components 1.3; inset with x/width, space with Items.
+        Item { width: 1; height: Style.spacingS; visible: page.noHomepage }
         Label {
             visible: page.noHomepage
-            width: parent.width
-            leftPadding: Style.spacingM
-            rightPadding: Style.spacingM
-            topPadding: Style.spacingS
-            bottomPadding: Style.spacingM
+            width: parent.width - Style.spacingM * 2
+            x: Style.spacingM
             wrapMode: Text.WordWrap
             text: Lang.tr("This platform has no homepage of its own yet, so the tab stays hidden and the app opens on News. Build one in the CMS, or switch it on here to show the default Serey page.")
             font.pixelSize: Style.fontSmall
             font.family: Style.fontFor(text)
             color: Style.textSecondary
         }
+        Item { width: 1; height: Style.spacingM; visible: page.noHomepage }
     }
 }

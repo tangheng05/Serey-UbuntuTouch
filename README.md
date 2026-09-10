@@ -121,3 +121,11 @@ plugins/Serey/FileUtils   Small C++ plugin for chunked file reads during large
 
 po/                       gettext catalogues (currently Dutch) plus the template.
 ```
+
+## License
+
+Released under the [GNU General Public License v3.0](LICENSE).
+
+Bundled third-party components keep their own terms: the Noto fonts in
+`assets/fonts/` under the SIL Open Font License (`assets/fonts/OFL.txt`), and
+`qml/services/QrCodeGen.js` under the MIT license.

@@ -120,38 +120,4 @@ plugins/Serey/FileUtils   Small C++ plugin for chunked file reads during large
                           video uploads, so the whole file is not held in memory.
 
 po/                       gettext catalogues (currently Dutch) plus the template.
-docs/                     Architecture, API reference, notifications, milestones.
 ```
-
-## Documentation
-
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — the hybrid design and its rationale
-- [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) — endpoints the app uses, including
-  the auth and device-JWT trap
-- [`docs/NOTIFICATIONS_FLOW_FOR_UBUNTU_TOUCH.md`](docs/NOTIFICATIONS_FLOW_FOR_UBUNTU_TOUCH.md)
-  — push and background-poll delivery
-- [`docs/MILESTONES.md`](docs/MILESTONES.md) — project milestones
-
-## Notes for contributors
-
-- `Mappers.js` is the single place that knows the API's quirks. Some list fields
-  come back as stringified Python lists (for example `image_url = "['https://...']"`)
-  and nulls arrive as the string `"None"`. Keep that normalisation in the mapper so
-  the QML always works with clean objects.
-- The session is persisted in SQLite, not `Qt.labs.Settings`. Settings only flushes
-  on a clean shutdown, so a swipe-kill would otherwise drop the token.
-- Do not verify the stored token by calling `POST /auth/authenticated` on launch.
-  That route also runs a device-JWT check the native client cannot satisfy and
-  always returns 401, which would log the user out on every relaunch. Trust the
-  stored token; the endpoints the app uses only need a normal JWT.
-- The feed list endpoints accept `?community_id=`, which filters server-side and
-  recursively so a parent community includes its children. Community id `0` is the
-  combined Global feed (no filter).
-- Text that may contain Khmer needs `font.family: Style.fontFor(text)` set
-  explicitly. Qt's automatic glyph fallback ignores app-bundled fonts, so the
-  bundled Khmer face only applies where the family is set.
-- Lomiri Components 1.3 `Label` has no padding properties. Inset text with
-  `x`/`width` and space it with `Item`s instead.
-
-The app identity is `serey.serey-io`, and it must match across `manifest.json.in`,
-`Main.qml`, and `serey.desktop`.

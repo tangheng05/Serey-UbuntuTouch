@@ -7,6 +7,9 @@ QtObject {
     // What kind of content the menu opened for ("blog"|"gallery"|"video"); drives owner actions like hiding Edit for video.
     property string kind: "blog"
 
+    // fires on every open(), even a re-open while already visible
+    signal opened()
+
     signal hideRequested(string author, string permlink)
     signal editRequested(var post)
     signal postDeleted(string author, string permlink)
@@ -17,9 +20,7 @@ QtObject {
     // Emitted when a detail page's comment count changes so feed pages can patch the row's count without a full reload.
     signal commentCountChanged(string permlink, int count)
 
-    // Step the sheet should open on (see PostActionSheet.step). Lets a caller that
-    // already has its own buttons for the menu rows jump straight to a sub-flow
-    // (report reasons / block or delete confirm) instead of via the main menu.
+    // Step the sheet should open on; lets a caller jump straight to a sub-flow
     property int startStep: 0
 
     function open(postData, postKind, atStep) {
@@ -27,6 +28,7 @@ QtObject {
         kind = postKind || "blog";
         startStep = atStep || 0;
         visible = true;
+        opened();
     }
     function close() {
         visible = false;

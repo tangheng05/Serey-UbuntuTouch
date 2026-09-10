@@ -1,5 +1,7 @@
 import QtQuick 2.7
+import QtQuick.Window 2.2
 import QtQuick.Layouts 1.3
+import QtGraphicalEffects 1.0
 import Lomiri.Components 1.3
 import Lomiri.Components.Popups 1.3
 import "../Theme"
@@ -12,17 +14,26 @@ import "../services/FollowService.js" as FollowService
 import "../services/YouTube.js" as YouTube
 import "../services/VoteService.js" as VoteService
 import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/BlockedUsers.js" as BlockedUsers
 
 Page {
     id: page
 
     property var video: ({})
+    // Hides votes/SEREY value/comments, skips live fetch
+    property bool offlineMode: false
     // Caps the title/author/action-row block on wide windows
     readonly property real maxContentWidth: units.gu(60)
     property bool playing: false
+    // Opening a related video pushes another copy of this page and leaves this one alive
+    // underneath, still playing. Drop the player when the page is covered: it stops the
+    // audio and keeps a second Chromium view from coexisting with the new one.
+    onVisibleChanged: if (!visible) page.playing = false
     property bool nativeMode: false     // QtMultimedia (efficient, mp4/webm/m4v)
     property bool webVideoMode: false   // Chromium HTML5 <video> (mov / native fallback)
     property bool isFullscreen: false   // player reparented to fill the whole screen
+    // Mirrors VideoWebView.scrubbing (webLoader is recreated on every play, so it can't be bound to)
+    property bool scrubbing: false
     property bool isFollowing: false
     property bool descSheetOpen: false
 
@@ -33,6 +44,10 @@ Page {
     property string payout:   ""
     // Off-chain videos skip the vote-weight popover/award (see doUpvote)
     readonly property bool onChain: !page.video || page.video.postToBlockchain !== false
+    // The chain stops accepting votes once a post pays out at 7 days, so both vote
+    // buttons go dead from then on (off-chain videos never pay out, so they stay live).
+    readonly property bool payoutClosed: page.onChain && page.video
+                                         && Config.isPayoutClosed(page.video.date || "")
 
     // Download state, shared by the header action and the in-content download button.
     readonly property string dlPermlink: (page.video && page.video.permlink) || ""
@@ -49,10 +64,137 @@ Page {
     property int commentCount: video ? (video.comments || 0) : 0
     property bool posting: false
     property var replyTarget: null
+    // Set while editing one of your own comments: the same composer, in edit mode.
+    property var editTarget: null
     // On-screen-keyboard height; the comment composer rides above it.
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
     property var moreVideos: []
+    // Gates the rail's empty state so it can't flash while the request is in flight
+    property bool relatedLoading: false
+
+    // Desktop-only "•••" dropdown in the header (see videoMoreHeaderBtn).
+    property bool headerMenuOpen: false
+    property int headerMenuIndex: -1
+
+    readonly property string shareUrl: (page.video && page.video.author && page.video.permlink)
+        ? ("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink) : ""
+    readonly property bool isOwn: Session.isLoggedIn && !!(page.video && page.video.author) && page.video.author === Session.username
+
+    // Category tag; "video" is a routing tag, not a topic, so never the label
+    function _realCategories() {
+        var c = (page.video && page.video.categories) || [];
+        var out = [];
+        for (var i = 0; i < c.length; i++)
+            if (String(c[i]).toLowerCase() !== "video") out.push(c[i]);
+        return out;
+    }
+    function maincategory() { return page._realCategories()[0] || ""; }
+    function subcategories() { return page._realCategories().slice(1); }
+
+    // Row data for the desktop "•••" dropdown; report/delete/block/edit-caption stay on the mobile sheet
+    function headerMenuItems() {
+        var items = [
+            { icon: "stock_link", label: Lang.tr("Copy link"), action: "copyLink" },
+            { icon: "external-link", label: Lang.tr("Open in browser"), action: "openBrowser" }
+        ];
+        if (page.canDownload) {
+            items.push({ icon: page.dlSaved ? "tick" : "save",
+                         label: page.dlBusy ? Lang.tr("Downloading… %1%").arg(page.dlPct)
+                              : (page.dlSaved ? Lang.tr("Remove download") : Lang.tr("Save video offline")),
+                         action: "toggleDownload" });
+        }
+        // The one divider in this menu: things you do with the video above,
+        // things you do against it below. Don't fence single items off.
+        items.push({ divider: true });
+        if (page.isOwn) {
+            items.push({ icon: "edit", label: Lang.tr("Edit caption"), action: "editCaption" });
+            items.push({ icon: "delete", label: Lang.tr("Delete video"), danger: true, action: "delete" });
+        } else {
+            items.push({ icon: "close", label: Lang.tr("Hide this video"), action: "hide" });
+            items.push({ icon: "dialog-warning-symbolic", label: Lang.tr("Report video"), action: "report" });
+        }
+        return items;
+    }
+    function runHeaderMenuAction(action) {
+        if (action === "copyLink") { Clipboard.push(page.shareUrl); Toast.show(Lang.tr("Link copied")); }
+        else if (action === "openBrowser") Qt.openUrlExternally(page.shareUrl);
+        else if (action === "toggleDownload") page.doDownloadToggle();
+        else if (action === "editCaption") Nav.editCaption(page.video);
+        else if (action === "delete") PostActions.open(page.video, "video", 2);
+        else if (action === "hide") {
+            HiddenPosts.hide(page.video.permlink || "");
+            PostActions.hideRequested(page.video.author || "", page.video.permlink || "");
+            page.pageStack.pop();
+        }
+        else if (action === "report") PostActions.open(page.video, "video", 1);
+    }
+    // Flattened, keyboard-navigable rows for headerMenu, Block appended last.
+    // No divider: Block belongs with Hide/Report in the negative group.
+    function headerMenuRows() {
+        var items = page.headerMenuItems();
+        if (!page.isOwn)
+            items.push({ icon: "", label: Lang.tr("Block %1").arg(page.video.author || ""), danger: true, action: "block", custom: "block" });
+        return items;
+    }
+    function headerMenuMove(delta) {
+        var rows = page.headerMenuRows();
+        var i = page.headerMenuIndex;
+        for (var n = 0; n < rows.length; n++) {
+            i = (i + delta + rows.length) % rows.length;
+            if (!rows[i].divider) { page.headerMenuIndex = i; return; }
+        }
+    }
+    function headerMenuActivate() {
+        var rows = page.headerMenuRows();
+        if (page.headerMenuIndex < 0 || page.headerMenuIndex >= rows.length) return;
+        var row = rows[page.headerMenuIndex];
+        page.headerMenuOpen = false;
+        if (row.action === "block") PostActions.open(page.video, "video", 3);
+        else page.runHeaderMenuAction(row.action);
+    }
+
+    // Opened inside a stack that already owns a third column (Settings > Downloaded
+    // Content): its rail would make a fourth, and related videos are the wrong offer
+    // next to a download you saved to watch offline.
+    property bool allowSidePanel: true
+
+    // Right rail (related/vote/comments): desktop only, tablet has no room for it
+    readonly property bool showSidePanel: Config.desktopMode && page.allowSidePanel
+                                          && !!(page.video && page.video.permlink)
+    // Resizable via the drag handle below; clamped so the article column always keeps a sane minimum width.
+    property real sidePanelWidth: units.gu(34)
+    readonly property real _minSidePanelW: units.gu(26)
+    readonly property real _maxSidePanelW: Math.max(_minSidePanelW, Math.min(page.width * 0.5, page.width - units.gu(40)))
+    readonly property real _sidePanelW: Math.max(_minSidePanelW, Math.min(_maxSidePanelW, sidePanelWidth))
+
+    // Keyboard: Right enters side panel, Down/Up walk related/vote/downvote/composer
+    function focusSidePanel() {
+        if (!page.showSidePanel) return;
+        page._sidePanelFocusRing = true;
+        sidePanelFlick.forceActiveFocus();
+        page.sidePanelIndex = 0;
+    }
+    // keyboard nav only, not for taps
+    property bool _sidePanelFocusRing: false
+    property int sidePanelIndex: -1
+    readonly property int _voteUpIdx: page.moreVideos.length
+    readonly property int _voteDownIdx: page.moreVideos.length + 1
+    readonly property int _sidePanelItemCount: page.moreVideos.length + 2
+    function openRelatedVideo(v) {
+        page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v });
+    }
+    function sidePanelActivate() {
+        if (page.sidePanelIndex < 0) return;
+        if (page.sidePanelIndex < page.moreVideos.length) page.openRelatedVideo(page.moreVideos[page.sidePanelIndex]);
+        else if (page.sidePanelIndex === page._voteUpIdx) page.doUpvote();
+        else if (page.sidePanelIndex === page._voteDownIdx) page.doFlag();
+    }
+    // Down past the last item (downvote) hands off to the comment composer for typing.
+    function sidePanelFocusComposer() {
+        page.sidePanelIndex = -1;
+        panelComposer.forceActiveFocus();
+    }
 
     // Caption edited elsewhere; swap in a fresh object so bindings re-evaluate
     Connections {
@@ -170,18 +312,20 @@ Page {
     function setFullscreen(on) {
         page.isFullscreen = on;
         webLoader.parent = on ? fsHost : stage;
+        // Reparenting drops focus. Hand it back to the player, which owns the shortcuts;
+        // only the native (.mov) player, which has none, falls back to the QML key handler.
+        var it = webLoader.item;
+        if (it && it.focusWeb) it.focusWeb();
+        else if (on) fsKeys.forceActiveFocus();
     }
 
-    // Space-bar playback control: starts playback if it hasn't begun, else
-    // toggles pause on whichever player is live. Cross-origin embeds (YouTube
-    // iframe) can't be driven from outside; their own controls apply.
+    // Space-bar: starts playback or toggles pause. YouTube answers too now that it runs
+    // through the IFrame API; other embeds (TikTok/Facebook) stay cross-origin and ignore it.
     function togglePlayPause() {
         if (!page.playing) { page.startPlay(); return; }
         var it = webLoader.item;
-        if (!it) return;
-        if (page.nativeMode || page.webVideoMode)
+        if (it && typeof it.togglePause === "function")
             it.togglePause();
-        // else: cross-origin embed (YouTube) can't be controlled from outside.
     }
 
     // Native (.mov) player failed: retry via Chromium's <video> before falling back to the system handler.
@@ -222,99 +366,93 @@ Page {
         page.voteBusy = false;
         if (r.payout) page.payout = r.payout;
     }
-    function _voteFail(e) {
+    // wasRemove distinguishes "already voted" from "already removed": both say "already",
+    // but re-adding the vote after a removal is exactly backwards.
+    function _voteFail(e, wasRemove, snap) {
         page.voteBusy = false;
+        // A timeout means we stopped waiting, not that the chain refused it: the broadcast is
+        // usually still landing, so keep what the tap already showed.
+        if (e && e.timeout) return;
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
-        if (msg.indexOf("already") >= 0) {
-            if (!page.upvoted) { page.voteCount++; page.upvoted = true; page._voteCache(); }
-            return;
-        }
-        Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
+        // "Already voted" / "already removed" is the server agreeing with our optimistic state.
+        if (msg.indexOf("already") >= 0) return;
+        if (snap) page._rollbackVote(snap);
+        if (e && e.status === 401) return;   // Http.js already toasted the logout
+        Toast.error(Lang.tr(VoteService.friendlyError(e)));
+    }
+    // Optimistic, same as the blog VoteBar: count, icon and toast land on the tap and the chain
+    // broadcast runs behind them. Waiting on it made a vote feel like it took twenty seconds.
+    function _snapVote() {
+        return { upvoted: page.upvoted, flagged: page.flagged, votes: page.voteCount, payout: page.payout };
+    }
+    function _rollbackVote(s) {
+        page.upvoted = s.upvoted; page.flagged = s.flagged;
+        page.voteCount = s.votes; page.payout = s.payout;
+        page._voteCache();
     }
     function _sendUpvote(weight) {
+        var snap = page._snapVote();
+        if (!page.upvoted) page.voteCount++;
+        page.upvoted = true; page.flagged = false;
+        page._voteCache();
+        Toast.success(Lang.tr("Thanks for your vote!"));
         page.voteBusy = true;
         VoteService.upvote(Config.baseUrl, page.video.author, page.video.permlink, "post", weight, Session.token,
-            function (r) {
-                if (!page.upvoted) page.voteCount++;
-                page.upvoted = true; page.flagged = false;
-                page._voteApply(r); page._voteCache();
-                Toast.success(Lang.tr("Upvoted %1%").arg(weight));
-            }, page._voteFail);
+            function (r) { page._voteApply(r); page._voteCache(); },
+            function (e) { page._voteFail(e, false, snap); });
     }
-    function doUpvote() {
+    // caller = the button to anchor the weight popover to; keyboard activation has none,
+    // so it falls back to the inline vote button.
+    function doUpvote(caller) {
+        if (page.payoutClosed) {
+            Toast.show(Lang.tr("Voting closed: this post paid out after %1 days.").arg(Config.payoutWindowDays));
+            return;
+        }
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
         if (page.voteBusy) return;
         if (page.upvoted) {
+            var snap = page._snapVote();
+            page.upvoted = false;
+            page.voteCount = Math.max(0, page.voteCount - 1);
+            page._voteCache();
+            Toast.show(Lang.tr("Vote removed"));
             page.voteBusy = true;
             VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
-                function (r) { page.upvoted = false; page.voteCount = Math.max(0, page.voteCount - 1); page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
-                page._voteFail);
+                function (r) { page._voteApply(r); page._voteCache(); },
+                function (e) { page._voteFail(e, true, snap); });
         } else if (!page.onChain) {
             // Off-chain (DB-only) video: plain one-tap like, no weight popover, matching fe-serey-web's simpleVote.
             page._sendUpvote(100);
         } else {
-            PopupUtils.open(voteWeightDialog);
+            var p = PopupUtils.open(Qt.resolvedUrl("../components/VoteWeightPopover.qml"),
+                                    caller || videoUpvoteBtn);
+            if (p) p.accepted.connect(page._sendUpvote);
         }
     }
     function doFlag() {
+        if (page.payoutClosed) {
+            Toast.show(Lang.tr("Voting closed: this post paid out after %1 days.").arg(Config.payoutWindowDays));
+            return;
+        }
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
         if (page.voteBusy) return;
+        var snap = page._snapVote();
         page.voteBusy = true;
         if (page.flagged) {
+            page.flagged = false;
+            page._voteCache();
+            Toast.show(Lang.tr("Vote removed"));
             VoteService.removeVote(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
-                function (r) { page.flagged = false; page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Vote removed")); },
-                page._voteFail);
+                function (r) { page._voteApply(r); page._voteCache(); },
+                function (e) { page._voteFail(e, true, snap); });
         } else {
+            if (page.upvoted) page.voteCount = Math.max(0, page.voteCount - 1);
+            page.flagged = true; page.upvoted = false;
+            page._voteCache();
+            Toast.show(Lang.tr("Thanks for your feedback!"));
             VoteService.flag(Config.baseUrl, page.video.author, page.video.permlink, "post", Session.token,
-                function (r) {
-                    if (page.upvoted) page.voteCount = Math.max(0, page.voteCount - 1);
-                    page.flagged = true; page.upvoted = false;
-                    page._voteApply(r); page._voteCache(); Toast.show(Lang.tr("Flagged"));
-                }, page._voteFail);
-        }
-    }
-
-    Component {
-        id: voteWeightDialog
-        Dialog {
-            id: vwDlg
-            title: Lang.tr("Vote Weight")
-            property int selectedWeight: 100
-            Label {
-                width: parent.width
-                text: vwDlg.selectedWeight + "%"
-                font.pixelSize: Style.fontTitle
-                font.weight: Font.Bold
-                color: Style.brand
-                horizontalAlignment: Text.AlignHCenter
-            }
-            Slider {
-                id: vwSlider
-                width: parent.width
-                minimumValue: 1; maximumValue: 100; value: 100; live: true
-                onValueChanged: vwDlg.selectedWeight = Math.round(value)
-                function formatValue(v) { return Math.round(v) + "%" }
-            }
-            Row {
-                width: parent.width
-                spacing: Style.spacingS
-                Repeater {
-                    model: [25, 50, 75, 100]
-                    delegate: AbstractButton {
-                        width: (parent.width - Style.spacingS * 3) / 4
-                        height: units.gu(4)
-                        onClicked: { vwSlider.value = modelData; vwDlg.selectedWeight = modelData; }
-                        Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: vwDlg.selectedWeight === modelData ? Style.brand : Style.iconBackground }
-                        Label { anchors.centerIn: parent; text: modelData + "%"; font.pixelSize: Style.fontSmall; font.weight: Font.DemiBold; color: vwDlg.selectedWeight === modelData ? Style.textOnBrand : Style.textPrimary }
-                    }
-                }
-            }
-            Row {
-                width: parent.width
-                spacing: Style.spacingM
-                Button { width: (parent.width - Style.spacingM) / 2; text: Lang.tr("Cancel"); onClicked: PopupUtils.close(vwDlg) }
-                Button { width: (parent.width - Style.spacingM) / 2; text: Lang.tr("Vote"); color: Style.brand; onClicked: { PopupUtils.close(vwDlg); page._sendUpvote(vwDlg.selectedWeight); } }
-            }
+                function (r) { page._voteApply(r); page._voteCache(); },
+                function (e) { page._voteFail(e, false, snap); });
         }
     }
 
@@ -322,7 +460,8 @@ Page {
 
     Rectangle {
         id: videoDetailHeader
-        anchors { top: parent.top; left: parent.left; right: parent.right }
+        // Only the article column: the right rail gets its own header row (below).
+        anchors { top: parent.top; left: parent.left; right: page.showSidePanel ? sidePanel.left : parent.right }
         height: units.gu(6) + units.dp(1)
         color: Style.surface
         z: 10
@@ -336,7 +475,7 @@ Page {
         }
 
         Label {
-            anchors { left: videoBackBtn.right; leftMargin: Style.spacingS; right: videoShareHeaderBtn.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+            anchors { left: videoBackBtn.right; leftMargin: Style.spacingS; right: videoHeaderActions.left; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
             text: Lang.tr("Video")
             font.pixelSize: Style.fontLarge
             font.weight: Font.Light
@@ -344,46 +483,203 @@ Page {
             elide: Text.ElideRight
         }
 
-        AbstractButton {
-            id: videoShareHeaderBtn
-            anchors { right: videoMoreHeaderBtn.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: units.gu(4)
-            enabled: !!(page.video && page.video.author && page.video.permlink)
-            onClicked: Share.open("https://serey.io/video-component/watch?author=" + page.video.author + "&permalink=" + page.video.permlink, videoShareHeaderBtn)
-            Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
-        }
-
-        AbstractButton {
-            id: videoMoreHeaderBtn
+        // Same shape as PostDetailPage's header; tablet promotes bookmark + open-in-browser
+        Row {
+            id: videoHeaderActions
             anchors { right: parent.right; rightMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
-            width: units.gu(4); height: units.gu(4)
-            onClicked: PostActions.open(page.video, "video")
-            Column {
-                anchors.centerIn: parent
-                spacing: units.dp(3)
-                Repeater {
-                    model: 3
-                    delegate: Rectangle {
-                        width: units.dp(4); height: units.dp(4)
-                        radius: width / 2
-                        color: Style.textSecondary
-                        anchors.horizontalCenter: parent.horizontalCenter
+            spacing: Style.spacingXs
+
+            AbstractButton {
+                id: videoSaveHeaderBtn
+                visible: Config.tabletMode && page.canDownload
+                width: units.gu(4); height: units.gu(4)
+                onClicked: page.runHeaderMenuAction("toggleDownload")
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.2); height: width
+                    visible: !page.dlBusy
+                    // Same save/tick pair the "..." menu and action sheet use; a
+                    // bookmark glyph here read as a different action than the row below it.
+                    name: page.dlSaved ? "tick" : "save"
+                    color: page.dlSaved ? Style.brand : Style.textPrimary
+                }
+                // Live progress
+                Label {
+                    anchors.centerIn: parent
+                    visible: page.dlBusy
+                    text: page.dlPct + "%"
+                    font.pixelSize: Style.fontXSmall
+                    font.weight: Font.DemiBold
+                    color: Style.textSecondary
+                }
+            }
+
+            AbstractButton {
+                id: videoBrowserHeaderBtn
+                visible: Config.tabletMode && page.shareUrl.length > 0
+                width: units.gu(4); height: units.gu(4)
+                onClicked: Qt.openUrlExternally(page.shareUrl)
+                Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "external-link"; color: Style.textPrimary }
+            }
+
+            AbstractButton {
+                id: videoShareHeaderBtn
+                visible: !Config.wideMode
+                width: units.gu(4); height: units.gu(4)
+                enabled: !!(page.video && page.video.author && page.video.permlink)
+                onClicked: Share.open(page.shareUrl, videoShareHeaderBtn)
+                Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "share"; color: Style.textPrimary }
+            }
+
+            AbstractButton {
+                id: videoMoreHeaderBtn
+                width: units.gu(4); height: units.gu(4)
+                // Desktop: compact dropdown. Phone: full sheet (needs more room than a dropdown row)
+                onClicked: Config.wideMode ? (page.headerMenuOpen = !page.headerMenuOpen) : PostActions.open(page.video, "video")
+                Column {
+                    anchors.centerIn: parent
+                    spacing: units.dp(3)
+                    Repeater {
+                        model: 3
+                        delegate: Rectangle {
+                            width: units.dp(4); height: units.dp(4)
+                            radius: width / 2
+                            color: Style.textSecondary
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
                     }
                 }
             }
         }
 
+        // ----- Desktop dropdown menu; Down/Up/Enter/Escape drive keyboard nav -----
         Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: units.dp(1)
-            color: Style.divider
+            id: headerMenu
+            visible: page.headerMenuOpen
+            z: 20
+            // Anchored to the Row (not button): "..." is its last item, edges coincide
+            anchors { top: videoHeaderActions.bottom; right: videoHeaderActions.right; topMargin: Style.spacingXs }
+            // gu(24) fit the English labels only; translations run longer.
+            width: units.gu(30)
+            height: headerMenuCol.height
+            radius: Style.cardRadius
+            color: Style.surface
+            border.width: units.dp(1)
+            border.color: Style.divider
+
+            activeFocusOnTab: true
+            Keys.onEscapePressed: page.headerMenuOpen = false
+            Keys.onDownPressed: page.headerMenuMove(1)
+            Keys.onUpPressed: page.headerMenuMove(-1)
+            Keys.onReturnPressed: page.headerMenuActivate()
+            Keys.onEnterPressed: page.headerMenuActivate()
+            onVisibleChanged: if (visible) { page.headerMenuIndex = -1; headerMenu.forceActiveFocus(); }
+
+            Column {
+                id: headerMenuCol
+                width: parent.width
+
+                Repeater {
+                    // {divider:true} | {icon, label, danger, action, custom}
+                    model: page.headerMenuRows()
+                    delegate: Item {
+                        width: headerMenuCol.width
+                        height: modelData.divider ? units.dp(1) : units.gu(5.5)
+
+                        Rectangle {
+                            visible: !!modelData.divider
+                            anchors.fill: parent
+                            color: Style.divider
+                        }
+
+                        Rectangle {
+                            visible: !modelData.divider && index === page.headerMenuIndex
+                            anchors.fill: parent
+                            color: Style.iconBackground
+                        }
+
+                        AbstractButton {
+                            visible: !modelData.divider
+                            anchors.fill: parent
+                            onClicked: {
+                                page.headerMenuOpen = false;
+                                if (modelData.action === "block") PostActions.open(page.video, "video", 3);
+                                else page.runHeaderMenuAction(modelData.action);
+                            }
+                            Row {
+                                anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                                spacing: Style.spacingM
+                                // No "block" glyph in the Suru icon set (same reason PostActionSheet draws its own).
+                                Icon {
+                                    visible: modelData.custom !== "block"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2.2); height: width
+                                    name: modelData.icon || ""
+                                    color: modelData.danger ? Style.danger : Style.textPrimary
+                                }
+                                Item {
+                                    visible: modelData.custom === "block"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: units.gu(2.2); height: width
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        radius: width / 2
+                                        color: "transparent"
+                                        border.width: units.dp(1.5)
+                                        border.color: Style.danger
+                                    }
+                                    Rectangle {
+                                        anchors.centerIn: parent
+                                        width: parent.width * 0.7; height: units.dp(1.5)
+                                        color: Style.danger
+                                        rotation: 45
+                                    }
+                                }
+                                Label {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    // Bounded + elided so no translation can spill past the panel.
+                                    width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
+                                    elide: Text.ElideRight
+                                    text: modelData.label || ""
+                                    font.pixelSize: Style.fontSmall
+                                    font.family: Style.fontFor(text)   // labels carry usernames
+                                    color: modelData.danger ? Style.danger : Style.textPrimary
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
+    // Dismiss header dropdown on outside click; page-level so it catches clicks anywhere
+    MouseArea {
+        visible: page.headerMenuOpen
+        z: 9
+        anchors.fill: parent
+        onClicked: page.headerMenuOpen = false
+    }
+
+    // Single full-width divider avoids a mismatched double line at the header seam
+    Rectangle {
+        z: 9
+        anchors {
+            top: parent.top
+            topMargin: videoDetailHeader.height
+            left: parent.left
+            right: page.showSidePanel ? sidePanel.left : parent.right
+        }
+        height: units.dp(1)
+        color: Style.divider
+    }
+
     function loadComments() {
+        if (page.offlineMode) return;   // offline
         PostService.detail(Config.baseUrl, video.author, video.permlink, Session.token,
             function (result) {
                 if (!result) return;   // empty/failed detail fetch, keep current state
+                if (!page) return;     // popped while the fetch was in flight
                 var replies, serverCount, voters, me2;
                 replies = result.replies || [];
                 page.comments = replies;
@@ -470,15 +766,48 @@ Page {
             page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: page.video.author });
     }
 
-    function startReply(comment) { page.replyTarget = comment; composer.forceActiveFocus(); Qt.inputMethod.show(); }
+    function startReply(comment) {
+        page.editTarget = null;
+        page.replyTarget = comment;
+        (page.showSidePanel ? panelComposer : composer).forceActiveFocus();
+        Qt.inputMethod.show();
+    }
     function cancelReply() { page.replyTarget = null; }
 
+    // Edit runs through the composer, pre-filled, instead of a second field in the row.
+    function startEdit(comment) {
+        page.replyTarget = null;
+        page.editTarget = comment;
+        var box = page.showSidePanel ? panelComposer : composer;
+        box.text = comment.body || "";
+        box.forceActiveFocus();
+        Qt.inputMethod.show();
+    }
+    function cancelEdit() {
+        page.editTarget = null;
+        (page.showSidePanel ? panelComposer : composer).text = "";
+    }
+
     function submitComment() {
-        var text = composer.text.trim();
+        // Enter bypasses the Send button's enabled state, so a fast double tap posted twice.
+        if (page.posting) return;
+        var activeComposer = page.showSidePanel ? panelComposer : composer;
+        // Word prediction can commit the first word before AutoCapitalize sees it, so the
+        // send path capitalizes too; both are no-ops when the text already starts upper.
+        var text = Style.sentenceCase(activeComposer.text.trim());
         if (text.length === 0) return;
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
             page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"));
+            return;
+        }
+        // Same box, same Send: an edit updates instead of posting a new comment.
+        if (page.editTarget) {
+            var edited = page.editTarget;
+            page.editTarget = null;
+            activeComposer.text = "";
+            page.editComment(edited.permlink, text,
+                             edited.parentAuthor || "", edited.parentPermlink || "");
             return;
         }
         var target = page.replyTarget;
@@ -491,7 +820,7 @@ Page {
             Session.token,
             function () {
                 page.posting = false;
-                composer.text = "";
+                activeComposer.text = "";
                 var mine = { author: Session.username, permlink: "", body: text,
                              parentAuthor: parentAuthor, parentPermlink: parentPermlink,
                              date: Lang.tr("just now"), votes: 0, voters: [], replies: [],
@@ -513,7 +842,7 @@ Page {
 
     function _initVideoState() {
         page.isFollowing = false;
-        if (Session.isLoggedIn && video.author && video.author !== Session.username) {
+        if (!page.offlineMode && Session.isLoggedIn && video.author && video.author !== Session.username) {
             FollowService.status(Config.baseUrl, Session.username, video.author,
                 function (following) { page.isFollowing = following; },
                 function (err) { /* keep false */ });
@@ -545,17 +874,93 @@ Page {
         page.loadComments();
     }
 
+    // Shared by mobile description sheet and wide-mode block; strips unsupported markup
+    function formatVideoBody() {
+        var t = page.video.body || "";
+        t = t.replace(/<br\s*\/?>/gi, "\n");
+        t = t.replace(/<\/p>/gi, "\n");
+        t = t.replace(/<(?!\/?(?:b|i|u|a)\b)[^>]+>/g, "");
+        t = t.replace(/&nbsp;/g, " ");
+        t = t.replace(/&amp;/g, "&");
+        // Decode numeric entities (smart quotes etc.) that StyledText can't render; keep &,<,> encoded.
+        t = t.replace(/&#(\d+);/g, function (mm, n) {
+            var code = parseInt(n, 10);
+            return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+        });
+        t = t.replace(/&#x([0-9a-fA-F]+);/gi, function (mm, n) {
+            var code = parseInt(n, 16);
+            return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
+        });
+        t = t.replace(/\n{3,}/g, "\n\n");
+        return t.trim();
+    }
+
+    // Topic of a video row. categories[0] is often the "video" routing tag, not a
+    // topic; use the mapper's scalar since `categories` is ListModel-wrapped here.
+    function _topicOf(v) {
+        var c = String((v && v.primaryCategory) || "");
+        return c.toLowerCase() === "video" ? "" : c;
+    }
+
+    readonly property int _relatedWanted: 3
+
+    // Same topic first, then anything else from the pool, so the rail is rarely empty.
+    function _fillRelated(pool, cat, out, seen, hidden, blocked, sameCatOnly) {
+        for (var i = 0; i < pool.length && out.length < page._relatedWanted; i++) {
+            var v = pool[i];
+            if (!v || !v.permlink || seen[v.permlink]) continue;
+            if (hidden[v.permlink] || blocked[v.author || ""]) continue;
+            if (sameCatOnly && cat !== "" && page._topicOf(v) !== cat) continue;
+            seen[v.permlink] = true;
+            out.push(v);
+        }
+    }
+
+    // Right rail. Cache first (the video feed the viewer came from is already in FeedCache),
+    // network only when that isn't enough. It used to be the 3 newest videos site-wide,
+    // which is why an unrelated Khmer upload sat under a Russian post.
     function _loadMoreVideos() {
-        var myPermlink = page.video ? page.video.permlink : "";
-        VideoService.listVideos(Config.baseUrl, { limit: 6, offset: 0 }, Session.token,
+        // Narrow mode shows these below comments now too; offline still skips it
+        if (!page.allowSidePanel) return;
+        var me = page.video || {};
+        var cat = page._topicOf(me);
+        var hidden = HiddenPosts.loadAll();
+        var blocked = BlockedUsers.loadAll();
+        var out = [];
+        var seen = {};
+        seen[me.permlink || ""] = true;
+        var key = "relatedvid:" + (me.communityId || 0) + ":"
+                  + (Session.isLoggedIn && Session.username ? Session.username : "__guest__");
+
+        // The video feed cache describes the community being browsed, so only trust it when
+        // that matches this video (Global carries everything, so it always does).
+        var pool = [];
+        if (Config.communityId === 0 || Config.communityId === (me.communityId || 0))
+            pool = FeedCache.peek(FeedCache.videoKey(Config.communityId)) || [];
+        var prev = FeedCache.peek(key);      // an earlier video already paid for this one
+        if (prev) pool = pool.concat(prev);
+
+        page._fillRelated(pool, cat, out, seen, hidden, blocked, true);
+        if (out.length < page._relatedWanted)
+            page._fillRelated(pool, cat, out, seen, hidden, blocked, false);
+        if (out.length > 0) page.moreVideos = out;
+        if (out.length >= page._relatedWanted) return;
+
+        page.relatedLoading = true;
+        var p = { limit: 12, offset: 0 };
+        if (me.communityId > 0) p.community_id = me.communityId;
+        else p.exclude_home = 1;
+        FeedCache.request(key,
+            function (ok, err) { return VideoService.listVideos(Config.baseUrl, p, Session.token, ok, err); },
             function (result) {
                 if (!page) return;   // page torn down before the response arrived
-                var filtered = result.filter(function (v) {
-                    return v.permlink !== myPermlink;
-                });
-                page.moreVideos = filtered.slice(0, 5);
+                page.relatedLoading = false;
+                page._fillRelated(result, cat, out, seen, hidden, blocked, true);
+                if (out.length < page._relatedWanted)
+                    page._fillRelated(result, cat, out, seen, hidden, blocked, false);
+                page.moreVideos = out;
             },
-            function (err) { /* ignore */ });
+            function (err) { if (page) page.relatedLoading = false; });
     }
 
     Component.onCompleted: {
@@ -585,22 +990,23 @@ Page {
         }
     }
 
-    // The scroll view owns arrow-key focus so a keyboard user can scroll the page;
-    // AdaptiveStack.focusDetail() targets this when entering from the video list.
+    // Scroll view owns arrow-key focus; AdaptiveStack.focusDetail() targets this
     property Item keyboardFocusItem: scroll
 
     Flickable {
         id: scroll
-        anchors { top: videoDetailHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: videoDetailHeader.bottom; left: parent.left; right: page.showSidePanel ? sidePanel.left : parent.right; bottom: parent.bottom }
         contentWidth: width
         contentHeight: contentCol.height
         clip: true
+        // A drag on the player's timeline crossed this Flickable's threshold and got stolen,
+        // so the scrub stopped after a few pixels (fullscreen reparents out of here, which is
+        // why it worked there). The WebView reports the drag; freeze scrolling while it runs.
+        interactive: !page.scrubbing
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
-        // Keyboard parity with PostDetailPage's reading keys, plus video-specific
-        // Space/Enter = play-pause (a video page's Space belongs to the player,
-        // not page-scrolling; PageDown/PageUp still scroll).
+        // Same reading keys as PostDetailPage, but Space/Enter = play-pause here
         activeFocusOnTab: true
         function _kbScroll(dy) {
             var maxY = Math.max(0, scroll.contentHeight - scroll.height);
@@ -618,23 +1024,26 @@ Page {
             else if (event.key === Qt.Key_Space
                   || event.key === Qt.Key_Return
                   || event.key === Qt.Key_Enter)    { page.togglePlayPause(); event.accepted = true; }
-            // Escape leaves fullscreen first; otherwise Left/Escape hand focus
-            // back to the master list so the viewer can pick the next video.
+            // Escape leaves fullscreen first, else Left/Escape hand focus back to the master list
             else if (event.key === Qt.Key_Escape && page.isFullscreen) { page.setFullscreen(false); event.accepted = true; }
             else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { Nav.focusMaster(); event.accepted = true; }
+            // Right steps into the side panel (related videos/vote/comments).
+            else if (event.key === Qt.Key_Right && page.showSidePanel) { page.focusSidePanel(); event.accepted = true; }
         }
-        // Focus lands on the flick when the video opens (guarded so it never
-        // steals focus from the comment composer).
-        onVisibleChanged: if (visible && !composer.activeFocus) Qt.callLater(scroll.forceActiveFocus)
-        Component.onCompleted: if (visible && !composer.activeFocus) scroll.forceActiveFocus()
+        // No auto-focus-on-load: used to steal focus even for mouse opens (see keyboardFocusItem)
+
+        // closes open comment menu on outside tap
+        MouseArea {
+            width: scroll.contentWidth; height: scroll.contentHeight
+            enabled: CommentMenu.openKey !== ""
+            onClicked: CommentMenu.openKey = ""
+        }
 
         Column {
             id: contentCol
             width: scroll.width
 
-            // Player wrapper: the stage centers in the full-width row, capped by
-            // viewport height so the title and vote row stay above the fold on
-            // wide windows; leftover width becomes padding. Phones stay full-width.
+            // Stage caps at viewport height so title/vote row stay above the fold on wide windows
             Item {
                 id: stageWrap
                 width: parent.width
@@ -643,9 +1052,7 @@ Page {
                 Rectangle {
                     id: stage
                     anchors.horizontalCenter: parent.horizontalCenter
-                    // Height-cap keeps the title/description + upvote row above
-                    // the fold; then give back 50% of the side padding (Lomiri
-                    // prescribes no fixed media size). Stays 16:9.
+                    // Height-cap keeps title/description above the fold; gives back 50% side padding
                     readonly property real _capW: Math.min(stageWrap.width, scroll.height * 0.5 * 16 / 9)
                     width: _capW + (stageWrap.width - _capW) * 0.5
                     height: width * 9 / 16
@@ -683,6 +1090,8 @@ Page {
                     id: webLoader
                     anchors.fill: parent
                     active: page.playing
+                    // Unloading mid-drag would otherwise leave the page unscrollable.
+                    onActiveChanged: if (!active) page.scrubbing = false
                     // Native player only for nativeMode; webVideoMode and embed playback both use the WebView (HTML5 <video> vs iframe).
                     source: page.playing
                         ? (page.nativeMode ? Qt.resolvedUrl("../components/VideoNativePlayer.qml")
@@ -700,8 +1109,14 @@ Page {
                             item.embedUrl = page.embedSrc();
                         }
                         // Both WebView modes (<video> + YouTube iframe) can request fullscreen; the native player can't.
-                        if (!page.nativeMode)
+                        if (!page.nativeMode) {
+                            page.scrubbing = false;
+                            item.scrubbingChanged.connect(function () { page.scrubbing = item.scrubbing; });
                             item.fullscreenToggled.connect(page.setFullscreen);
+                            // Play was a click on the poster, so the shortcuts should work
+                            // straight away without a second click into the video.
+                            item.focusWeb();
+                        }
                     }
                     onStatusChanged: {
                         if (status === Loader.Error) {
@@ -727,6 +1142,40 @@ Page {
                 width: parent.width
                 spacing: 0
 
+            // Category tag above the title, same as PostDetailPage.
+            Row {
+                visible: page.maincategory().length > 0
+                x: Style.spacingM
+                spacing: Style.spacingXs
+
+                Rectangle {
+                    width: units.dp(10); height: units.dp(10)
+                    radius: units.dp(2)
+                    color: Style.accentRed
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Label {
+                    text: page.maincategory().toUpperCase()
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.Bold
+                    font.family: Style.fontFor(text)
+                    color: Style.accentRed
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Label {
+                    visible: text.length > 0
+                    text: page.subcategories().length > 0
+                          ? ("› " + page.subcategories().join(" · ").toUpperCase()) : ""
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.Bold
+                    font.family: Style.fontFor(text)
+                    color: Style.textSecondary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            Item { width: 1; height: Style.spacingXs; visible: page.maincategory().length > 0 }
+
             Label {
                 width: parent.width - Style.spacingM * 2
                 x: Style.spacingM
@@ -742,7 +1191,7 @@ Page {
 
             Item {
                 width: parent.width
-                height: units.gu(5)
+                height: units.gu(7)
 
                 Row {
                     id: authorRow
@@ -754,7 +1203,7 @@ Page {
                     spacing: Style.spacingS
 
                     Item {
-                        width: units.gu(3.5); height: width
+                        width: units.gu(5.5); height: width
                         anchors.verticalCenter: parent.verticalCenter
 
                         Rectangle {
@@ -765,7 +1214,7 @@ Page {
                             Label {
                                 anchors.centerIn: parent
                                 text: (page.video.author || "?").charAt(0).toUpperCase()
-                                font.pixelSize: Style.fontSmall
+                                font.pixelSize: Style.fontMedium
                                 font.bold: true
                                 color: Style.brand
                             }
@@ -774,17 +1223,28 @@ Page {
                             id: authorAvatar
                             anchors.fill: parent
                             source: page.video.authorImage || ""
-                            decode: units.gu(7)
+                            decode: units.gu(11)
                             visible: loaded
                         }
                     }
 
-                    Label {
+                    // Name above, timestamp below, instead of the date sitting off on the trailing edge.
+                    Column {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: page.video.author || ""
-                        font.pixelSize: Style.fontSmall
-                        font.weight: Font.DemiBold
-                        color: Style.textPrimary
+                        spacing: units.dp(2)
+
+                        Label {
+                            text: page.video.author || ""
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            color: Style.textPrimary
+                        }
+                        Label {
+                            id: dateLabel
+                            text: Style.formatTimeAgo(page.video.date || "")
+                            font.pixelSize: Style.fontSmall
+                            color: Style.textSecondary
+                        }
                     }
                 }
 
@@ -795,18 +1255,9 @@ Page {
                     onClicked: page.openProfile()
                 }
 
-                // Metadata sits with "...more" on the trailing edge, leaving the leading
-                // side for identity: avatar + name + Follow.
-                Label {
-                    id: dateLabel
-                    anchors { right: moreBtn.left; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    text: Style.formatTimeAgo(page.video.date || "")
-                    font.pixelSize: Style.fontSmall
-                    color: Style.textSecondary
-                }
-
                 AbstractButton {
                     id: moreBtn
+                    visible: !Config.wideMode && !page.offlineMode
                     anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: moreLabel.implicitWidth
                     height: units.gu(4)
@@ -821,19 +1272,20 @@ Page {
                     }
                 }
 
-                // Follow acts on the AUTHOR, so it sits beside the name (not the
-                // header or vote row, which are video actions). Outside authorRow on
-                // purpose: the profile MouseArea spans that Row and would swallow the tap.
+                // Hidden offline
                 AbstractButton {
                     id: followBtn
-                    visible: (page.video.author || "") !== "" && page.video.author !== Session.username
+                    visible: !page.offlineMode && (page.video.author || "") !== "" && page.video.author !== Session.username
                     anchors { left: authorRow.right; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    width: followInner.implicitWidth
-                    // Keeps Lomiri's gu(4) minimum touch target while the visible mark
-                    // stays light; matches the "...more" link's weight, in brand colour.
+                    width: followInner.implicitWidth + Style.spacingM * 2
                     height: units.gu(4)
                     onClicked: page.toggleFollow()
 
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: height / 2
+                        color: page.isFollowing ? Style.iconBackground : Style.brand
+                    }
                     Row {
                         id: followInner
                         anchors.centerIn: parent
@@ -842,14 +1294,14 @@ Page {
                             anchors.verticalCenter: parent.verticalCenter
                             width: units.gu(1.8); height: width
                             name: "contact"
-                            color: page.isFollowing ? Style.textSecondary : Style.brand
+                            color: page.isFollowing ? Style.textSecondary : Style.textOnBrand
                         }
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
                             text: page.isFollowing ? Lang.tr("Following") : Lang.tr("Follow")
                             font.pixelSize: Style.fontSmall
                             font.weight: Font.DemiBold
-                            color: page.isFollowing ? Style.textSecondary : Style.brand
+                            color: page.isFollowing ? Style.textSecondary : Style.textOnBrand
                         }
                     }
                 }
@@ -857,19 +1309,20 @@ Page {
 
             Item { width: 1; height: Style.spacingS }
 
-            // Vote row: actions on the VIDEO itself. Share/Download live in the page
-            // header's action slots; Follow sits on the author row above.
+            // Hidden offline
             RowLayout {
+                visible: !page.showSidePanel && !page.offlineMode
                 x: Style.spacingM
                 width: parent.width - Style.spacingM * 2
                 height: units.gu(4.5)
                 spacing: Style.spacingS
 
                 AbstractButton {
+                    id: videoUpvoteBtn
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: upvoteInner.implicitWidth + Style.spacingM
-                    enabled: !page.voteBusy
-                    onClicked: page.doUpvote()
+                    opacity: page.voteBusy || page.payoutClosed ? 0.45 : 1
+                    onClicked: page.doUpvote(videoUpvoteBtn)
                     Row {
                         id: upvoteInner
                         anchors.centerIn: parent
@@ -892,7 +1345,7 @@ Page {
                 AbstractButton {
                     Layout.preferredHeight: units.gu(4.5)
                     Layout.preferredWidth: units.gu(3.5)
-                    enabled: !page.voteBusy
+                    opacity: page.voteBusy || page.payoutClosed ? 0.45 : 1
                     onClicked: page.doFlag()
                     Icon {
                         anchors.centerIn: parent
@@ -902,24 +1355,59 @@ Page {
                     }
                 }
 
-                ActivityIndicator {
-                    visible: page.voteBusy
-                    running: page.voteBusy
-                    Layout.preferredHeight: units.gu(2.5)
-                    Layout.preferredWidth: units.gu(2.5)
-                }
-
                 Item { Layout.fillWidth: true }
+
+                CoinValue { visible: page.onChain && page.payout.length > 0; value: page.payout }
             }
 
-            Item { width: 1; height: Style.spacingM }
+            // Inline, not behind "...more"
+            Column {
+                visible: Config.wideMode || page.offlineMode
+                width: parent.width
+                spacing: Style.spacingM
 
-            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+                Item { width: 1; height: Style.spacingXs }
+
+                Label {
+                    x: Style.spacingM
+                    text: Lang.tr("Description")
+                    font.pixelSize: Style.fontMedium
+                    font.weight: Font.DemiBold
+                    color: Style.textPrimary
+                }
+
+                Rectangle {
+                    visible: (page.video.body || "").length > 0
+                    width: parent.width - Style.spacingM * 2
+                    x: Style.spacingM
+                    height: inlineBodyLabel.height + Style.spacingM * 2
+                    radius: Style.cardRadius
+                    color: Style.iconBackground
+
+                    Label {
+                        id: inlineBodyLabel
+                        anchors {
+                            left: parent.left; right: parent.right
+                            top: parent.top
+                            margins: Style.spacingM
+                        }
+                        text: page.formatVideoBody()
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFor(text)
+                        color: Style.textPrimary
+                        wrapMode: Text.Wrap
+                        textFormat: Text.StyledText
+                        onLinkActivated: Qt.openUrlExternally(link)
+                    }
+                }
+
+            }
 
             Item { width: 1; height: Style.spacingS }
 
-            // Comments header, tappable, opens the comment sheet
+            // Hidden offline
             AbstractButton {
+                visible: !page.showSidePanel && !page.offlineMode
                 width: parent.width
                 height: units.gu(5)
                 onClicked: page.commentSheetOpen = true
@@ -960,6 +1448,37 @@ Page {
                 }
             }
 
+            // Phone only; tablet has no room and wide mode has the side panel instead
+            Column {
+                visible: !page.showSidePanel && !Config.tabletMode && page.moreVideos.length > 0
+                width: parent.width
+                spacing: Style.spacingS
+
+                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+                Item { width: 1; height: Style.spacingXs }
+
+                Label {
+                    x: Style.spacingM
+                    text: Lang.tr("Related videos")
+                    font.pixelSize: Style.fontMedium
+                    font.weight: Font.DemiBold
+                    color: Style.textPrimary
+                }
+
+                // Same card the Video feed itself uses, not a compact row
+                Repeater {
+                    model: page.moreVideos
+                    delegate: VideoCard {
+                        width: parent.width
+                        video: modelData
+                        onClicked: page.openRelatedVideo(modelData)
+                        onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
+                            { username: modelData.author })
+                        onMoreClicked: PostActions.open(modelData, "video")
+                    }
+                }
+            }
+
             } // metaCol
             } // metaBlock
 
@@ -967,13 +1486,515 @@ Page {
         }
     }
 
+    // Draggable splitter; runs full page height so both header rows sit side by side
+    Rectangle {
+        id: sidePanelDivider
+        z: 11
+        anchors { top: parent.top; bottom: parent.bottom; right: sidePanel.left }
+        // Hairline, same as PostDetailPage's splitter; the gu(1.5) drag area below is the grab target
+        width: units.dp(1)
+        visible: page.showSidePanel
+        color: sidePanelDragArea.containsMouse || sidePanelDragArea.pressed ? Style.brand : Style.divider
+    }
+    MouseArea {
+        id: sidePanelDragArea
+        visible: page.showSidePanel
+        anchors { top: parent.top; bottom: parent.bottom }
+        x: sidePanel.x - width / 2
+        width: units.gu(1.5)
+        hoverEnabled: true
+        preventStealing: true
+        cursorShape: Qt.SplitHCursor
+        onPositionChanged: {
+            if (!pressed) return;
+            var pagePointX = mapToItem(page, mouse.x, 0).x;
+            page.sidePanelWidth = Math.max(page._minSidePanelW, Math.min(page._maxSidePanelW, page.width - pagePointX));
+        }
+    }
+
+    // --- Right rail (wide mode): related videos, upvote/downvote, comments, composer ---
+    Rectangle {
+        id: sidePanel
+        anchors { top: parent.top; right: parent.right; bottom: parent.bottom }
+        width: page.showSidePanel ? page._sidePanelW : 0
+        visible: page.showSidePanel
+        clip: true
+        color: Style.surface
+
+        Rectangle {
+            id: sidePanelHeader
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: videoDetailHeader.height
+            color: Style.surface
+
+            Label {
+                anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                text: Lang.tr("Related")
+                font.pixelSize: Style.fontSmall
+                font.weight: Font.Bold
+                color: Style.textSecondary
+            }
+        }
+
+        // Keyboard focus ring; must live inside sidePanel, since anchors only reach a
+        // parent or sibling and the page-scope copy could never resolve the flick.
+        Rectangle {
+            anchors.fill: sidePanelFlick
+            visible: page.showSidePanel && sidePanelFlick.activeFocus && page._sidePanelFocusRing
+            color: "transparent"
+            border.width: units.dp(2)
+            border.color: Style.brand
+            z: 12
+        }
+
+        Flickable {
+            id: sidePanelFlick
+            anchors { top: sidePanelHeader.bottom; left: parent.left; right: parent.right; bottom: sideComposerBar.top }
+            contentWidth: width
+            contentHeight: sidePanelCol.height + Style.spacingM * 2
+            clip: true
+
+            activeFocusOnTab: true
+            function _kbScroll(dy) {
+                var maxY = Math.max(0, sidePanelFlick.contentHeight - sidePanelFlick.height);
+                sidePanelFlick.contentY = Math.max(0, Math.min(maxY, sidePanelFlick.contentY + dy));
+            }
+            // Scrolls the highlighted item (related-video row or the vote row) into view.
+            function _revealSelected() {
+                var it = page.sidePanelIndex < page.moreVideos.length
+                    ? relatedRepeater.itemAt(page.sidePanelIndex) : sidePanelVoteRow;
+                if (!it) return;
+                var top = it.mapToItem(sidePanelFlick.contentItem, 0, 0).y;
+                var bottom = top + it.height;
+                if (bottom > sidePanelFlick.contentY + sidePanelFlick.height)
+                    sidePanelFlick.contentY = bottom - sidePanelFlick.height;
+                else if (top < sidePanelFlick.contentY)
+                    sidePanelFlick.contentY = top;
+            }
+            Keys.onPressed: {
+                var pageStep = sidePanelFlick.height * 0.9;
+                if (event.key === Qt.Key_Down) {
+                    if (page.sidePanelIndex < page._sidePanelItemCount - 1) {
+                        page.sidePanelIndex = page.sidePanelIndex + 1;
+                        sidePanelFlick._revealSelected();
+                    } else {
+                        page.sidePanelFocusComposer();
+                    }
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Up && page.sidePanelIndex > 0) {
+                    page.sidePanelIndex = page.sidePanelIndex - 1;
+                    sidePanelFlick._revealSelected(); event.accepted = true;
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    page.sidePanelActivate(); event.accepted = true;
+                } else if (event.key === Qt.Key_PageDown) { sidePanelFlick._kbScroll(pageStep);  event.accepted = true; }
+                else if (event.key === Qt.Key_PageUp)   { sidePanelFlick._kbScroll(-pageStep); event.accepted = true; }
+                else if (event.key === Qt.Key_Home)     { sidePanelFlick.contentY = 0; event.accepted = true; }
+                else if (event.key === Qt.Key_End)      { sidePanelFlick._kbScroll(sidePanelFlick.contentHeight); event.accepted = true; }
+                else if (event.key === Qt.Key_Left || event.key === Qt.Key_Escape) { page.sidePanelIndex = -1; scroll.forceActiveFocus(); event.accepted = true; }
+            }
+
+            Column {
+                id: sidePanelCol
+                x: Style.spacingM
+                y: Style.spacingM
+                width: parent.width - Style.spacingM * 2
+                spacing: Style.spacingM
+
+                Repeater {
+                    id: relatedRepeater
+                    model: page.moreVideos
+                    delegate: AbstractButton {
+                        id: relatedBtn
+                        width: sidePanelCol.width
+                        height: units.gu(7)
+                        onClicked: page.openRelatedVideo(modelData)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Style.cardRadius
+                            color: (index === page.sidePanelIndex || relatedHover.containsMouse) ? Style.iconBackground : "transparent"
+                            border.width: index === page.sidePanelIndex ? units.dp(2) : 0
+                            border.color: Style.brand
+                        }
+                        MouseArea {
+                            id: relatedHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            propagateComposedEvents: true
+                            onClicked: (mouse) => { mouse.accepted = false; }
+                        }
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: units.dp(4)
+                            spacing: Style.spacingS
+
+                            Item {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(9); height: units.gu(6.5)
+                                Rectangle { anchors.fill: parent; radius: Style.thumbRadius; color: Style.iconBackground }
+                                Image {
+                                    id: relatedThumbImg
+                                    anchors.fill: parent
+                                    source: modelData.thumbnail || ""
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    // Cap the decode: these are gu(9) thumbs, not full-size covers
+                                    sourceSize.width: units.gu(18)
+                                    visible: false
+                                }
+                                Rectangle {
+                                    id: relatedThumbMask
+                                    anchors.fill: parent
+                                    radius: Style.thumbRadius
+                                    visible: false
+                                }
+                                OpacityMask {
+                                    anchors.fill: parent
+                                    source: relatedThumbImg
+                                    maskSource: relatedThumbMask
+                                    visible: (modelData.thumbnail || "") !== ""
+                                }
+                                Icon {
+                                    anchors.centerIn: parent
+                                    width: units.gu(2); height: width
+                                    name: "media-playback-start"
+                                    color: Qt.rgba(1, 1, 1, 0.85)
+                                    visible: (modelData.thumbnail || "") === ""
+                                }
+                            }
+                            Label {
+                                width: parent.width - units.gu(9) - Style.spacingS
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.title || ""
+                                font.pixelSize: Style.fontSmall
+                                font.weight: Font.DemiBold
+                                font.family: Style.fontFor(text)
+                                color: Style.textPrimary
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 3
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+
+                RelatedSkeleton {
+                    width: sidePanelCol.width
+                    // showSidePanel too: an invisible ancestor doesn't stop the pulse animations
+                    visible: page.showSidePanel && page.moreVideos.length === 0 && page.relatedLoading
+                    thumbWidth: units.gu(9)
+                }
+
+                Label {
+                    width: sidePanelCol.width
+                    visible: !page.relatedLoading && page.moreVideos.length === 0
+                    text: Lang.tr("No related videos yet")
+                    font.pixelSize: Style.fontSmall
+                    color: Style.textSecondary
+                    wrapMode: Text.Wrap
+                }
+
+                // Upvote/downvote, mirroring the main vote row but living here in wide mode
+                RowLayout {
+                    id: sidePanelVoteRow
+                    width: sidePanelCol.width
+                    height: units.gu(4.5)
+                    spacing: Style.spacingS
+
+                    AbstractButton {
+                        id: panelUpvoteBtn
+                        Layout.preferredHeight: units.gu(4.5)
+                        Layout.preferredWidth: panelUpvoteInner.implicitWidth + Style.spacingM
+                        opacity: page.voteBusy || page.payoutClosed ? 0.45 : 1
+                        onClicked: page.doUpvote(panelUpvoteBtn)
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Style.cardRadius
+                            color: "transparent"
+                            border.width: page.sidePanelIndex === page._voteUpIdx ? units.dp(2) : 0
+                            border.color: Style.brand
+                        }
+                        Row {
+                            id: panelUpvoteInner
+                            anchors.centerIn: parent
+                            spacing: Style.spacingXs
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2.5); height: width
+                                name: "thumb-up"
+                                color: page.upvoted ? Style.brand : Style.textSecondary
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: page.voteCount
+                                font.pixelSize: Style.fontRegular
+                                color: page.upvoted ? Style.brand : Style.textPrimary
+                            }
+                        }
+                    }
+
+                    AbstractButton {
+                        Layout.preferredHeight: units.gu(4.5)
+                        Layout.preferredWidth: units.gu(3.5)
+                        opacity: page.voteBusy || page.payoutClosed ? 0.45 : 1
+                        onClicked: page.doFlag()
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Style.cardRadius
+                            color: "transparent"
+                            border.width: page.sidePanelIndex === page._voteDownIdx ? units.dp(2) : 0
+                            border.color: Style.brand
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.5); height: width
+                            name: "thumb-down"
+                            color: page.flagged ? Style.danger : Style.textSecondary
+                        }
+                    }
+
+                    // Same filling-cell trick as VoteBar: one spacing charge, so the pill
+                    // keeps its unit word and still clears the rail (window) edge.
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: units.gu(3.5)
+                        visible: page.onChain && page.payout.length > 0
+
+                        CoinValue {
+                            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                            readonly property real edgeGap: Style.spacingS
+                            anchors.rightMargin: edgeGap
+                            availableWidth: parent.width - edgeGap
+                            width: Math.min(implicitWidth, Math.max(units.gu(8), parent.width - edgeGap))
+                            value: page.payout
+                            // Narrow rail: may drop the unit word if the row can't fit it.
+                            compact: true
+                        }
+                    }
+                }
+
+                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+                Label {
+                    width: parent.width
+                    text: Lang.tr("COMMENTS (%1)").arg(page.commentCount)
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.Bold
+                    color: Style.textSecondary
+                }
+
+                Label {
+                    width: parent.width
+                    visible: page.comments.length === 0
+                    text: Lang.tr("No comments yet. Be the first!")
+                    textSize: Label.Small
+                    color: Style.textSecondary
+                }
+
+                Repeater {
+                    model: page.comments
+                    // Wrapper carries the between-comments rule; a flush-left body needs
+                    // the separation that the avatar indent used to provide.
+                    delegate: Column {
+                        width: sidePanelCol.width
+                        spacing: Style.spacingS
+
+                        Rectangle {
+                            visible: index > 0
+                            width: parent.width
+                            height: units.dp(1)
+                            color: Style.divider
+                        }
+
+                        CommentItem {
+                            width: parent.width
+                            compact: true
+                            comment: modelData
+                            onDeleted: page.removeComment(permlink)
+                            onEditRequested: page.startEdit(comment)
+                            onReplyRequested: page.startReply(comment)
+                            onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: author })
+                        }
+                    }
+                }
+            }
+        }
+
+        // Click anywhere grabs keyboard focus; press passes through unaccepted for buttons below
+        MouseArea {
+            anchors.fill: sidePanelFlick
+            propagateComposedEvents: true
+            onPressed: { page._sidePanelFocusRing = false; sidePanelFlick.forceActiveFocus(); mouse.accepted = false; }
+        }
+
+        // Sticky comment composer, pinned to the bottom of the panel.
+        Rectangle {
+            id: sideComposerBar
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            anchors.bottomMargin: page.kbHeight
+            Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+            height: panelComposerArea.height + Style.spacingS * 2
+            color: Style.surface
+
+            Rectangle {
+                anchors { top: parent.top; left: parent.left; right: parent.right }
+                height: units.dp(1)
+                color: Style.divider
+            }
+            Rectangle {
+                anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
+                width: units.dp(1)
+                color: Style.divider
+            }
+
+            Column {
+                id: panelComposerArea
+                x: Style.spacingS
+                y: Style.spacingS
+                width: parent.width - Style.spacingS * 2
+                spacing: units.dp(4)
+
+                Row {
+                    visible: page.replyTarget !== null || page.editTarget !== null
+                    width: parent.width
+                    spacing: Style.spacingS
+
+                    Label {
+                        text: page.editTarget ? Lang.tr("Editing your comment")
+                            : page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                        font.pixelSize: Style.fontSmall
+                        color: Style.textSecondary
+                    }
+                    AbstractButton {
+                        width: panelCancelLabel.implicitWidth
+                        height: panelCancelLabel.implicitHeight
+                        onClicked: page.editTarget ? page.cancelEdit() : page.cancelReply()
+                        Label {
+                            id: panelCancelLabel
+                            text: Lang.tr("Cancel")
+                            font.pixelSize: Style.fontSmall
+                            font.weight: Font.DemiBold
+                            color: Style.brand
+                        }
+                    }
+                }
+
+                Item {
+                    width: parent.width
+                    height: units.gu(5)
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Style.cardRadius
+                        color: Style.iconBackground
+                        border.width: units.dp(1)
+                        border.color: Style.divider
+                    }
+
+                    TextField {
+                        id: panelComposer
+                    // Stands in for the keyboard's auto-shift on the first letter.
+                    AutoCapitalize { field: panelComposer }
+                        anchors { left: parent.left; leftMargin: Style.spacingM; right: panelSendButton.left; rightMargin: Style.spacingXs; verticalCenter: parent.verticalCenter }
+                        height: parent.height - units.dp(2)
+                        StyleHints {
+                            backgroundColor: "transparent"
+                            borderColor: "transparent"
+                            color: Style.textPrimary
+                        }
+                        hasClearButton: false
+                        placeholderText: !Session.isLoggedIn ? Lang.tr("Log in to comment…")
+                                       : page.editTarget ? Lang.tr("Edit your comment…")
+                                                         : Lang.tr("Post a comment…")
+                        font.family: Style.fontFor(text)
+                        font.pixelSize: Style.fontRegular
+                        onAccepted: page.submitComment()
+                        // Up steps back to the downvote button; Escape returns to the video.
+                        Keys.onUpPressed: {
+                            if (page.showSidePanel) {
+                                page.sidePanelIndex = page._voteDownIdx;
+                                page._sidePanelFocusRing = true;
+                                sidePanelFlick.forceActiveFocus();
+                                sidePanelFlick._revealSelected();
+                            }
+                        }
+                        Keys.onEscapePressed: { page.sidePanelIndex = -1; scroll.forceActiveFocus(); }
+                    }
+
+                    AbstractButton {
+                        id: panelSendButton
+                        anchors { right: parent.right; rightMargin: units.dp(3); verticalCenter: parent.verticalCenter }
+                        width: units.gu(3.8); height: width
+                        enabled: !page.posting && panelComposer.displayText.trim().length > 0
+                        onClicked: page.submitComment()
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: panelSendButton.enabled ? Style.brand : "transparent"
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            width: units.gu(2.2); height: width
+                            name: "send"
+                            color: panelSendButton.enabled ? Style.textOnBrand : Style.textSecondary
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        anchors.fill: scroll
+        visible: scroll.activeFocus
+        color: "transparent"
+        border.width: units.dp(2)
+        border.color: Style.brand
+        // Above sidePanelDivider's z:11, else the divider paints over this border's right edge.
+        z: 12
+    }
     // Fullscreen host: setFullscreen() reparents the player Loader in here to fill the screen, above content and bottom sheets (z 1500).
     Item {
         id: fsHost
+        parent: (page.isFullscreen && Window.contentItem) ? Window.contentItem : page
         anchors.fill: parent
         z: 2000
         visible: page.isFullscreen
         Rectangle { anchors.fill: parent; color: "black" }
+
+        // Fallback only (native player): never given focus while a web player holds it,
+        // since taking it would disable that player's own shortcuts.
+        Item {
+            id: fsKeys
+            anchors.fill: parent
+            Keys.onPressed: {
+                if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
+                    page.setFullscreen(false);
+                    event.accepted = true;
+                }
+            }
+        }
+
+        // Native way out: YouTube's own exit control only renders at some player sizes, and QtWebEngine never exits on Escape by itself.
+        AbstractButton {
+            anchors { left: parent.left; top: parent.top; margins: units.gu(1.5) }
+            width: units.gu(5); height: width
+            z: 10
+            onClicked: page.setFullscreen(false)
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: Qt.rgba(0, 0, 0, 0.55)
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(2.5); height: width
+                    name: "view-restore"
+                    color: "white"
+                }
+            }
+        }
     }
 
     Item {
@@ -1067,7 +2088,7 @@ Page {
                             width: cmtCol.width
                             comment: modelData
                             onDeleted: page.removeComment(permlink)
-                            onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
+                            onEditRequested: page.startEdit(comment)
                             onReplyRequested: page.startReply(comment)
                         }
                     }
@@ -1086,21 +2107,22 @@ Page {
                 Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
                 Row {
-                    visible: page.replyTarget !== null
+                    visible: page.replyTarget !== null || page.editTarget !== null
                     width: parent.width - Style.spacingM * 2
                     x: Style.spacingM
                     spacing: Style.spacingS
                     Item { width: 1; height: units.gu(3) }
 
                     Label {
-                        text: page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                        text: page.editTarget ? Lang.tr("Editing your comment")
+                            : page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
                         font.pixelSize: Style.fontSmall
                         color: Style.textSecondary
                     }
                     AbstractButton {
                         width: cmtCancelLabel.implicitWidth
                         height: cmtCancelLabel.implicitHeight
-                        onClicked: page.cancelReply()
+                        onClicked: page.editTarget ? page.cancelEdit() : page.cancelReply()
                         Label {
                             id: cmtCancelLabel
                             text: Lang.tr("Cancel")
@@ -1121,6 +2143,8 @@ Page {
                     // Lomiri TextField (not a raw TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste; StyleHints keep the gray-pill look.
                     TextField {
                         id: composer
+                        // Stands in for the keyboard's auto-shift on the first letter.
+                        AutoCapitalize { field: composer }
                         width: parent.width - cmtSendBtn.width - Style.spacingS
                         height: units.gu(5)
                         StyleHints {
@@ -1129,7 +2153,9 @@ Page {
                             color: Style.textPrimary
                         }
                         hasClearButton: false
-                        placeholderText: Session.isLoggedIn ? Lang.tr("Post a comment…") : Lang.tr("Log in to comment…")
+                        placeholderText: !Session.isLoggedIn ? Lang.tr("Log in to comment…")
+                                       : page.editTarget ? Lang.tr("Edit your comment…")
+                                                         : Lang.tr("Post a comment…")
                         font.family: Style.fontFor(text)
                         font.pixelSize: Style.fontRegular
                         onAccepted: page.submitComment()
@@ -1138,7 +2164,7 @@ Page {
                     AbstractButton {
                         id: cmtSendBtn
                         width: units.gu(5); height: units.gu(5)
-                        enabled: !page.posting && composer.text.trim().length > 0
+                        enabled: !page.posting && composer.displayText.trim().length > 0
                         onClicked: page.submitComment()
 
                         Rectangle {
@@ -1266,14 +2292,14 @@ Page {
                                 spacing: units.dp(2)
                                 Label {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: page.video.votes || "0"
+                                    text: page.voteCount
                                     font.pixelSize: Style.fontMedium
                                     font.weight: Font.DemiBold
                                     color: Style.textPrimary
                                 }
                                 Label {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: Lang.tr("Likes")
+                                    text: Lang.tr("Upvotes")
                                     font.pixelSize: Style.fontSmall
                                     color: Style.textSecondary
                                 }
@@ -1345,25 +2371,7 @@ Page {
                                 top: parent.top
                                 margins: Style.spacingM
                             }
-                            text: {
-                                var t = page.video.body || "";
-                                t = t.replace(/<br\s*\/?>/gi, "\n");
-                                t = t.replace(/<\/p>/gi, "\n");
-                                t = t.replace(/<(?!\/?(?:b|i|u|a)\b)[^>]+>/g, "");
-                                t = t.replace(/&nbsp;/g, " ");
-                                t = t.replace(/&amp;/g, "&");
-                                // Decode numeric entities (smart quotes etc.) that StyledText can't render; keep &,<,> encoded.
-                                t = t.replace(/&#(\d+);/g, function (mm, n) {
-                                    var code = parseInt(n, 10);
-                                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
-                                });
-                                t = t.replace(/&#x([0-9a-fA-F]+);/gi, function (mm, n) {
-                                    var code = parseInt(n, 16);
-                                    return (code === 38 || code === 60 || code === 62) ? mm : String.fromCharCode(code);
-                                });
-                                t = t.replace(/\n{3,}/g, "\n\n");
-                                return t.trim();
-                            }
+                            text: page.formatVideoBody()
                             font.pixelSize: Style.fontRegular
                             font.family: Style.fontFor(text)
                             color: Style.textPrimary

@@ -6,8 +6,7 @@ import "../Session"
 import "../components"
 import "../services/CustomMenuService.js" as CustomMenuService
 
-// CRUD for the current community's navbar/menu items (/custom-menu). Reorder via
-// up/down buttons calling update-positions; create/edit via a Dialog.
+// CRUD for the current community's navbar/menu items (/custom-menu)
 Page {
     id: page
 

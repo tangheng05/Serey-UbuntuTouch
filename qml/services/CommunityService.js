@@ -2,8 +2,7 @@
 .import "Http.js" as Http
 .import "Mappers.js" as M
 
-// Mirror of serey-api's HIDDEN_FEED_DNS (drives ?exclude_home=1); client-side
-// community pickers must honour the same rule. Drifts if the backend constant changes.
+// Mirror of serey-api's HIDDEN_FEED_DNS; drifts if the backend constant changes
 var HIDDEN_FEED_DNS = "cambodia.serey.io";
 
 function listAll(baseUrl, onOk, onErr) {
@@ -13,8 +12,7 @@ function listAll(baseUrl, onOk, onErr) {
             var seen = {};
             var out = [];
             var hubs = {};
-            // { id: true } for the hidden community AND every descendant,
-            // the same subtree serey-api's getHiddenFeedIds() resolves.
+            // { id: true } for hidden community and every descendant
             var hiddenIds = {};
 
             function collectSubtree(node, acc) {
@@ -22,12 +20,9 @@ function listAll(baseUrl, onOk, onErr) {
                 var kids = node.child_communities || [];
                 for (var i = 0; i < kids.length; i++) collectSubtree(kids[i], acc);
             }
-            // Every community visited (top-level AND nested at any depth),
-            // keyed by numeric id, so callers can resolve a community's
-            // name/icon without a dedicated "get community by id" endpoint.
+            // Every community visited, keyed by numeric id (no "get by id" endpoint)
             var byId = {};
-            // child id -> parent id, so a community picked deep in the tree can be
-            // walked back up to the country row the picker indexes by.
+            // child id -> parent id, to walk back up to the country row
             var parents = {};
 
             function collectHubs(node) {
@@ -91,8 +86,7 @@ function videoAllowPostMap(list) {
     return map;
 }
 
-// Backend requires community_id (strict number) + logo_url + footer_logo_url.
-// The mobile CMS only captures one image, so the same URL goes to all three fields.
+// Backend requires community_id + logo_url + footer_logo_url; same URL goes to all three
 function updateLogo(baseUrl, token, communityId, logoUrl, onOk, onErr) {
     Http.post(baseUrl, "/community/update-logo",
               { community_id: communityId, logo_url: logoUrl, footer_logo_url: logoUrl, icon_url: logoUrl }, token,

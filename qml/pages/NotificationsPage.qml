@@ -99,6 +99,7 @@ Page {
         page.inflight = NotificationService.listSerey(
             Config.baseUrl, Session.token, 20, page.offset,
             function (items) {
+                if (!page) return   // backed out while the fetch was in flight
                 page.loading = false
                 page.inflight = null
                 if (items.length === 0) { page.endReached = true; return }
@@ -129,6 +130,7 @@ Page {
                 page.offset += items.length
             },
             function (err) {
+                if (!page) return   // backed out while the fetch was in flight
                 page.loading = false
                 page.inflight = null
                 // Auto-retry once on server errors (500) before showing the error state.
@@ -373,29 +375,6 @@ Page {
             color: Style.textSecondary
         }
 
-        Column {
-            anchors.centerIn: parent
-            visible: page.errorMsg.length > 0 && notifModel.count === 0
-            spacing: Style.spacingM
-
-            Label {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: page.errorMsg
-                font.pixelSize: Style.fontSmall
-                font.family: Style.fontFor(text)
-                color: Style.danger
-                wrapMode: Text.Wrap
-                width: list.width - Style.spacingM * 2
-                horizontalAlignment: Text.AlignHCenter
-            }
-            PrimaryButton {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: units.gu(20)
-                text: Lang.tr("Retry")
-                onClicked: page.reload()
-            }
-        }
-
         footer: Item {
             width: list.width
             height: page.loading ? units.gu(6) : 0
@@ -405,6 +384,14 @@ Page {
                 running: page.loading
             }
         }
+    }
+
+    // Shared error/offline panel, same as every other list in the app.
+    ErrorState {
+        anchors.fill: list
+        visible: page.errorMsg.length > 0 && notifModel.count === 0
+        message: page.errorMsg
+        onRetry: page.reload()
     }
 
     Item {

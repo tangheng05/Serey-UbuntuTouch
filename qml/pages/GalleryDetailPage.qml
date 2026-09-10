@@ -23,6 +23,8 @@ Page {
     property bool posting: false
     property string errorMsg: ""
     property var replyTarget: null
+    // Set while editing one of your own comments: the same composer, in edit mode.
+    property var editTarget: null
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
     readonly property var imgs: post && post.images ? post.images : []
@@ -116,6 +118,7 @@ Page {
     }
 
     function startReply(comment) {
+        page.editTarget = null;
         page.replyTarget = comment;
         composer.forceActiveFocus();
         Qt.inputMethod.show();
@@ -123,6 +126,20 @@ Page {
 
     function cancelReply() {
         page.replyTarget = null;
+    }
+
+    // Edit runs through the composer, pre-filled, instead of a second field in the row.
+    function startEdit(comment) {
+        page.replyTarget = null;
+        page.editTarget = comment;
+        composer.text = comment.body || "";
+        composer.forceActiveFocus();
+        Qt.inputMethod.show();
+    }
+
+    function cancelEdit() {
+        page.editTarget = null;
+        composer.text = "";
     }
 
     function _appendReply(list, parentPermlink, reply) {
@@ -140,12 +157,25 @@ Page {
     }
 
     function submitComment() {
-        var text = composer.text.trim();
+        // Enter bypasses the Send button's enabled state, so a fast double tap posted twice.
+        if (page.posting) return;
+        // Word prediction can commit the first word before AutoCapitalize sees it, so the
+        // send path capitalizes too; both are no-ops when the text already starts upper.
+        var text = Style.sentenceCase(composer.text.trim());
         if (text.length === 0)
             return;
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
             page.pushLogin();
+            return;
+        }
+        // Same box, same Send: an edit updates instead of posting a new comment.
+        if (page.editTarget) {
+            var edited = page.editTarget;
+            page.editTarget = null;
+            composer.text = "";
+            page.editComment(edited.permlink, text,
+                             edited.parentAuthor || "", edited.parentPermlink || "");
             return;
         }
         var target = page.replyTarget;
@@ -198,19 +228,25 @@ Page {
         opacity: 0
         NumberAnimation on opacity { from: 0; to: 1; duration: 250; easing.type: Easing.OutQuad }
 
+        // closes open comment menu on outside tap
+        MouseArea {
+            width: scroll.contentWidth; height: scroll.contentHeight
+            enabled: CommentMenu.openKey !== ""
+            onClicked: CommentMenu.openKey = ""
+        }
+
         Column {
             id: contentCol
             width: scroll.width
 
-            AbstractButton {
+            Item {
                 width: parent.width
                 height: units.gu(6)
-                onClicked: page.openProfile()
 
                 Row {
-                    anchors.fill: parent
-                    anchors.leftMargin: Style.spacingM
-                    anchors.rightMargin: Style.spacingM
+                    id: authorRow
+                    // No right anchor: the row hugs the avatar + name, so the dead space beside it doesn't open the profile.
+                    anchors { left: parent.left; top: parent.top; bottom: parent.bottom; leftMargin: Style.spacingM }
                     spacing: Style.spacingS
 
                     CircleImage {
@@ -250,6 +286,12 @@ Page {
                             color: Style.textSecondary
                         }
                     }
+                }
+
+                MouseArea {
+                    anchors { left: authorRow.left; top: parent.top; bottom: parent.bottom }
+                    width: authorRow.width
+                    onClicked: page.openProfile()
                 }
             }
 
@@ -330,7 +372,7 @@ Page {
                     width: contentCol.width
                     comment: modelData
                     onDeleted: page.removeComment(permlink)
-                    onEdited: page.editComment(permlink, newBody, parentAuthor, parentPermlink)
+                    onEditRequested: page.startEdit(comment)
                     onReplyRequested: page.startReply(comment)
                     onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"), { username: author })
                 }
@@ -380,6 +422,7 @@ Page {
             permlink: page.permlink
             voteType: "post"
             onChain: page.post ? (page.post.postToBlockchain !== false) : true
+            createdAt: page.post ? (page.post.date || "") : ""
             votes: page.post ? page.post.votes : 0
             voters: page.post ? (page.post.voters || []) : []
             flaggers: page.post && page.post.flaggers ? page.post.flaggers.length : 0
@@ -392,20 +435,21 @@ Page {
         }
 
         Row {
-            visible: page.replyTarget !== null
+            visible: page.replyTarget !== null || page.editTarget !== null
             width: parent.width - Style.spacingM * 2
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.spacingS
 
             Label {
-                text: page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
+                text: page.editTarget ? Lang.tr("Editing your comment")
+                    : page.replyTarget ? Lang.tr("Replying to @%1").arg(page.replyTarget.author) : ""
                 font.pixelSize: Style.fontSmall
                 color: Style.textSecondary
             }
             AbstractButton {
                 width: cancelLabel.implicitWidth
                 height: cancelLabel.implicitHeight
-                onClicked: page.cancelReply()
+                onClicked: page.editTarget ? page.cancelEdit() : page.cancelReply()
                 Label {
                     id: cancelLabel
                     text: Lang.tr("Cancel")
@@ -424,6 +468,8 @@ Page {
             // Lomiri TextField (not a raw TextInput): only the styled component wires up native long-press selection + Cut/Copy/Paste; StyleHints keep the gray-pill look.
             TextField {
                 id: composer
+                // Stands in for the keyboard's auto-shift on the first letter.
+                AutoCapitalize { field: composer }
                 width: parent.width - sendButton.width - Style.spacingS
                 height: units.gu(5)
                 StyleHints {
@@ -432,9 +478,9 @@ Page {
                     color: Style.textPrimary
                 }
                 hasClearButton: false
-                placeholderText: Session.isLoggedIn
-                    ? Lang.tr("Post a comment…")
-                    : Lang.tr("Log in to comment…")
+                placeholderText: !Session.isLoggedIn ? Lang.tr("Log in to comment…")
+                               : page.editTarget ? Lang.tr("Edit your comment…")
+                                                 : Lang.tr("Post a comment…")
                 font.family: Style.fontFor(text)
                 font.pixelSize: Style.fontRegular
                 onAccepted: page.submitComment()
@@ -443,7 +489,7 @@ Page {
             AbstractButton {
                 id: sendButton
                 width: units.gu(5); height: units.gu(5)
-                enabled: !page.posting && composer.text.trim().length > 0
+                enabled: !page.posting && composer.displayText.trim().length > 0
                 onClicked: page.submitComment()
 
                 Rectangle {

@@ -8,20 +8,17 @@ Item {
     property var model: []
     property int currentIndex: 0
     signal selected(int index)
-    // Emitted when a keyboard user presses Down on the strip; the host page
-    // should move focus back to its content list.
+    // Emitted when a keyboard user presses Down; host page moves focus back to its list
     signal focusList()
 
-    // Focus the active section's key area (hosts call this from the list's
-    // Up-at-top handler so the strip is reachable without Tab-cycling).
+    // Focus active section's key area; hosts call this so the strip is reachable without Tab-cycling
     function focusCurrent() { _focusTab(Math.max(0, currentIndex)) }
     function _focusTab(i) {
         var it = rep.itemAt(i);
         if (it) it.keyArea.forceActiveFocus();
     }
 
-    // Matches PageHeader's own height (Ambiance style: titleAreaHeight gu(6) + 1dp divider)
-    // so the master-pane tab strip and the detail-pane PageHeader line up in split/wide layouts.
+    // Matches PageHeader's height so master and detail panes line up in split layouts
     implicitHeight: units.gu(6) + units.dp(1)
 
     RowLayout {
@@ -39,8 +36,7 @@ Item {
                 property bool active: index === root.currentIndex
                 property alias keyArea: keyTap
 
-                // Keyboard-focus cue: a soft brand-tint pill hugging the label.
-                // (KeyTapArea's boxy ring clashed with the active underline.)
+                // Keyboard-focus cue: brand-tint pill; KeyTapArea's ring clashed with the underline
                 Rectangle {
                     anchors.centerIn: parent
                     width: tabLabel.implicitWidth + units.gu(3)
@@ -50,9 +46,7 @@ Item {
                     opacity: 0.12
                     visible: keyTap.activeFocus
                 }
-                // Controlled component: only emit; the parent updates the bound property.
-                // Writing currentIndex here would break the binding, leaving the
-                // highlight stuck on the old tab after a programmatic change.
+                // Controlled component: only emit; writing currentIndex here would break the binding
                 onClicked: root.selected(index)
 
                 Label {

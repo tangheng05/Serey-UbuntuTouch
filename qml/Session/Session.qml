@@ -10,7 +10,14 @@ QtObject {
     // Not persisted; refetched each launch via AccountService.profile()
     property string avatarUrl: ""
     property bool pushEnabled: true
+    // user_devices row (UUID) for this login; lets Active sessions mark "This device". "" = unknown (pre-existing session).
+    property string deviceId: ""
     property string language: "en"   // "en" or "nl"
+    // True once the language was picked by hand in Settings; blocks the geo default from
+    // overwriting that choice on later launches.
+    property bool languageChosen: false
+    // epoch ms of last push-token registration
+    property double lastPushRegisterAt: 0
 
     readonly property bool isLoggedIn: token.length > 0
 
@@ -34,12 +41,26 @@ QtObject {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
                 var rs = tx.executeSql("SELECT k, v FROM auth");
+                var sawLanguage = false, sawChosen = false;
                 for (var i = 0; i < rs.rows.length; i++) {
                     var row = rs.rows.item(i);
+                    if (row.k === "language") sawLanguage = true;
+                    if (row.k === "languageChosen") sawChosen = true;
                     if (row.k === "token") session.token = row.v;
                     else if (row.k === "username") session.username = row.v;
                     else if (row.k === "pushEnabled") session.pushEnabled = (row.v !== "false");
                     else if (row.k === "language") session.language = row.v;
+                    else if (row.k === "languageChosen") session.languageChosen = (row.v === "true");
+                    else if (row.k === "lastPushRegisterAt") session.lastPushRegisterAt = Number(row.v) || 0;
+                    else if (row.k === "deviceId") session.deviceId = row.v || "";
+                }
+                // Installs from before the geo default: a language row could only come from
+                // the Settings picker, so honour it as an explicit choice rather than
+                // overwriting it on the next launch. Both writers store the flag now, so its
+                // absence is what dates the row.
+                if (sawLanguage && !sawChosen) {
+                    session.languageChosen = true;
+                    tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('languageChosen', 'true')");
                 }
             });
         } catch (e) {
@@ -47,7 +68,7 @@ QtObject {
         }
     }
 
-    // Write then read back and verify; a silent write failure is how an old account resurrects next launch.
+    // Write then read back to catch a silent write failure
     function _writeAuthOnce() {
         _db().transaction(function (tx) {
             tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
@@ -90,11 +111,22 @@ QtObject {
                      + "' will not survive an app restart");
     }
 
-    function setAuth(newToken, newUsername) {
-        // Username first: token fires onTokenChanged synchronously, and listeners fetch the profile by username immediately.
+    function setAuth(newToken, newUsername, newDeviceId) {
+        // Username first: token fires onTokenChanged synchronously
         username = newUsername;
         token = newToken;
         _save();
+        setDeviceId(newDeviceId || "");
+    }
+
+    function setDeviceId(id) {
+        deviceId = id;
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
+                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('deviceId', ?)", [String(id)]);
+            });
+        } catch (e) { console.warn("Session save deviceId error: " + e); }
     }
 
     function setPushEnabled(enabled) {
@@ -107,14 +139,77 @@ QtObject {
         } catch (e) { console.warn("Session save pushEnabled error: " + e); }
     }
 
-    function setLanguage(lang) {
-        language = lang;
+    function setLastPushRegisterAt(ts) {
+        lastPushRegisterAt = ts;
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
-                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('language', ?)", [lang]);
+                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES('lastPushRegisterAt', ?)", [String(ts)]);
             });
-        } catch (e) { console.warn("Session save language error: " + e); }
+        } catch (e) { console.warn("Session save lastPushRegisterAt error: " + e); }
+    }
+
+    function _saveKey(k, v) {
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
+                tx.executeSql("INSERT OR REPLACE INTO auth(k, v) VALUES(?, ?)", [k, v]);
+            });
+        } catch (e) { console.warn("Session save " + k + " error: " + e); }
+    }
+
+    // Explicit pick from Settings: remembered as the user's own choice.
+    function setLanguage(lang) {
+        language = lang;
+        languageChosen = true;
+        _saveKey("language", lang);
+        _saveKey("languageChosen", "true");
+    }
+
+    // Geo default (Main.qml, from the detected country). Yields to an explicit pick, and is
+    // still persisted so a launch with no network keeps the language it settled on.
+    function setLanguageAuto(lang) {
+        if (languageChosen || lang === language) return;
+        language = lang;
+        _saveKey("language", lang);
+        // Stamped false, not left absent: _load() reads a missing flag as a pre-geo manual pick.
+        _saveKey("languageChosen", "false");
+    }
+
+    // Composer default for the publishing-scope toggle, remembered per account AND
+    // per community: "everything I post to this platform stays here" is a stable
+    // intent, but it must not leak into the user's other communities. Keyed by a
+    // joined string so neither half can bind as "" (which LocalStorage stores as NULL).
+    function _scopeKey(communityId) {
+        return (session.username || "__guest__") + ":" + String(communityId);
+    }
+
+    // Value is the publishing-scope ceiling: a community id, or 0 for "everywhere".
+    function savePostScope(communityId, ceilingId) {
+        if (!(Number(communityId) > 0)) return;
+        try {
+            _db().transaction(function (tx) {
+                tx.executeSql("CREATE TABLE IF NOT EXISTS post_scope(k TEXT PRIMARY KEY, v TEXT)");
+                tx.executeSql("INSERT OR REPLACE INTO post_scope(k, v) VALUES(?, ?)",
+                              [session._scopeKey(communityId), String(Number(ceilingId) || 0)]);
+            });
+        } catch (e) { console.warn("Session savePostScope error: " + e); }
+    }
+
+    // The remembered ceiling id (0 = everywhere), or undefined when this community
+    // has no saved choice yet - the caller needs "never chosen" to stay distinct
+    // from a deliberate "everywhere".
+    function loadPostScope(communityId) {
+        if (!(Number(communityId) > 0)) return undefined;
+        var out;
+        try {
+            _db().readTransaction(function (tx) {
+                var rs = tx.executeSql("SELECT v FROM post_scope WHERE k = ?",
+                                       [session._scopeKey(communityId)]);
+                if (rs.rows.length > 0) out = Number(rs.rows.item(0).v) || 0;
+            });
+        } catch (e) { /* table absent until the first save; undefined is the right answer */ }
+        return out;
     }
 
     function saveVote(author, permlink, upvoted, flagged, votes) {
@@ -148,11 +243,12 @@ QtObject {
         token = "";
         username = "";
         avatarUrl = "";
-        // Logout deletes the stored credentials rather than persisting empty strings, since _save()'s write-verify would log a spurious failure for an empty session.
+        deviceId = "";
+        // Deletes credentials rather than persisting empty (avoids a spurious write-verify failure)
         try {
             _db().transaction(function (tx) {
                 tx.executeSql("CREATE TABLE IF NOT EXISTS auth(k TEXT PRIMARY KEY, v TEXT)");
-                tx.executeSql("DELETE FROM auth WHERE k IN ('token','username')");
+                tx.executeSql("DELETE FROM auth WHERE k IN ('token','username','deviceId')");
             });
         } catch (e) { console.warn("Session clear error: " + e); }
     }

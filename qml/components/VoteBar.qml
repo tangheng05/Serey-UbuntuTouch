@@ -25,9 +25,18 @@ RowLayout {
     property bool busy: false
     // Off-chain (DB-only) posts: like/dislike stay, but weight popover and payout pill are suppressed, mirroring the web's simpleVote/showCoins.
     property bool onChain: true
+    // Post date (Mappers `date`). With onChain it decides whether the 7-day payout
+    // window has closed; the chain refuses votes after payout, so the buttons go dead.
+    property string createdAt: ""
+    readonly property bool payoutClosed: bar.onChain && Config.isPayoutClosed(bar.createdAt)
     property bool showComments: true
     property bool showShare: true
     property bool showVotersLabel: false
+    // Narrow host (detail side rail): shortens the coin pill (icon only, no unit word) so
+    // the row still fits. Alignment is unchanged, the pill stays on the bar's right edge.
+    property bool compact: false
+    // Keyboard nav highlight, set by a host page's arrow-key handling: 0 = upvote, 1 = downvote, -1 = none.
+    property int keyboardHighlight: -1
 
     readonly property bool allowFlag: author !== Session.username
     readonly property string shareUrl: (author.length > 0 && permlink.length > 0)
@@ -38,9 +47,7 @@ RowLayout {
 
     spacing: Style.spacingM
 
-    // "alice, bob, carol and 4 more" summary for the voters popover. `voters` may be
-    // a plain array or a dynamicRoles-wrapped ListModel (.count/.get(i) instead of
-    // .length/[i]); handle both shapes.
+    // "alice, bob and 4 more" summary; `voters` may be a plain array or a wrapped ListModel
     function _votersText() {
         var v = bar.voters;
         if (!v) return "";
@@ -51,8 +58,7 @@ RowLayout {
         for (var i = 0; i < limit; i++) {
             var item = (typeof v.get === "function") ? v.get(i) : v[i];
             var name = (item && item.modelData !== undefined) ? item.modelData : item;
-            // Only accept real usernames; a ListModel-wrapped entry is a QML
-            // object that would stringify as "@QQmlDM..." garbage.
+            // Only accept real usernames; a ListModel-wrapped entry stringifies as garbage
             if (typeof name === "string" && name.length > 0) shown.push("@" + name);
         }
         if (shown.length === 0) return "";
@@ -62,21 +68,63 @@ RowLayout {
     }
 
     function _guard() {
+        if (bar.payoutClosed) {
+            Toast.show(Lang.tr("Voting closed: this post paid out after %1 days.").arg(Config.payoutWindowDays));
+            return false;
+        }
         if (!Session.isLoggedIn) {
             Toast.error(Lang.tr("Please log in first."));
             bar.requireLogin();
             return false;
         }
-        return !bar.busy;
+        // Offline, the vote would sit out the whole broadcast timeout with the button dimmed.
+        if (!Net.online) {
+            Toast.error(Lang.tr("You're offline. Try again once you're back on a network."));
+            return false;
+        }
+        // An on-chain broadcast can take 20s+; without a word the button reads as broken.
+        // Once per busy period, so repeated taps don't stack toasts.
+        if (bar.busy) {
+            if (!bar._blockedNoticeShown) {
+                bar._blockedNoticeShown = true;
+                Toast.show(Lang.tr("Still sending your last vote..."));
+            }
+            return false;
+        }
+        return true;
     }
-    // Reconcile server-confirmed fields after an optimistic vote. Count isn't taken
-    // from r.voterCount: the async chain broadcast means the immediate response still
-    // carries the pre-vote count, so the optimistic +/-1 stands.
-    function _apply(r) {
+    property bool _blockedNoticeShown: false
+
+    // A ListView recycles this bar onto another row mid-request. `busy` is imperative state
+    // that must not ride along, or the new row's button is dead until the old post's vote
+    // returns (observed: a 24s remove-vote killing upvote on two unrelated posts).
+    function _rebound() {
         bar.busy = false;
+        bar._replayTap = false;
+    }
+    onBusyChanged: if (!busy) bar._blockedNoticeShown = false
+    onAuthorChanged: bar._rebound()
+    onPermlinkChanged: bar._rebound()
+
+    // Identifies the post a request was sent for; a reply arriving after recycling belongs
+    // to a post this bar no longer shows, so it must not write payout/flaggers into it.
+    function _reqKey() { return bar.author + "/" + bar.permlink; }
+    function _stale(key) { return key !== bar._reqKey(); }
+    // A tap that arrived mid-broadcast, replayed once this one lands.
+    property bool _replayTap: false
+    function _finishBusy() {
+        bar.busy = false;
+        if (bar._replayTap) {
+            bar._replayTap = false;
+            bar.doUpvote();
+        }
+    }
+    // Reconcile server-confirmed fields; count isn't taken from r.voterCount, which lags the broadcast
+    function _apply(r) {
         bar.flaggers = r.flaggerCount;
         if (r.payout)
             bar.payout = r.payout;
+        bar._finishBusy();
     }
     // Snapshot / restore for optimistic rollback when an on-chain broadcast fails.
     function _snapshot() {
@@ -100,34 +148,70 @@ RowLayout {
             bar.votes   = saved.votes;
         }
     }
-    // A 401 is already surfaced (and the session cleared) by Http.js's global
-    // unauthorized handler in Main.qml, so re-toasting it here would double up.
-    // The server sends one for a rotated posting key, not just an expired token.
+    // A 401 is already surfaced by Http.js's global unauthorized handler; don't double-toast
     function _isHandledAuthFailure(e) {
         return !!e && e.status === 401;
     }
-    // Shared failure handler: undo the optimistic change, then surface the error
-    // (unless it's the globally-handled 401).
+    // Shared failure handler: undo the optimistic change, surface error unless it's a 401
     function _failReverting(e, snap) {
+        // A timeout means we stopped waiting, not that the vote was refused: the chain
+        // broadcast is usually still landing. Rolling back and shouting about it was the
+        // "couldn't record that vote" toast users saw for votes that went through.
+        if (e && e.timeout) { bar._finishBusy(); return; }
         bar.busy = false;
+        bar._replayTap = false;   // the state the queued tap assumed just got rolled back
         _rollback(snap);
         if (_isHandledAuthFailure(e))
             return;
-        Toast.error((e && e.message) ? e.message : Lang.tr("Action failed."));
+        Toast.error(Lang.tr(VoteService.friendlyError(e)));
     }
-    // "Already voted" means the server already has our vote, so the optimistic
-    // upvote is already correct: keep it, no rollback. Kept separate from
-    // flag/removeVote so a failed unvote can't flip the UI to "liked".
+    // "You have already removed vote" is the server agreeing the vote is gone, so our
+    // optimistic un-vote is right. Reverting it put the row back to blue with the old
+    // count, which is the opposite of what happened on chain.
+    function _failRemove(e, snap) {
+        var msg = (e && e.message) ? e.message.toLowerCase() : "";
+        if (!_isHandledAuthFailure(e) && msg.indexOf("already") >= 0) {
+            bar._cache();
+            bar._finishBusy();
+            return;
+        }
+        bar._failReverting(e, snap);
+    }
+    // "Already voted" means our optimistic upvote is already correct: keep it, no rollback
     function _failUpvote(e, snap) {
         var msg = (e && e.message) ? e.message.toLowerCase() : "";
         if (!_isHandledAuthFailure(e) && msg.indexOf("already") >= 0) {
-            bar.busy = false;
+            bar._finishBusy();   // our optimistic upvote stands, so a queued undo is still valid
+            return;
+        }
+        bar._failReverting(e, snap);
+    }
+
+    // Same deal for the flag direction: "already voted in a similar way" is the
+    // server confirming the flag is on chain, even when the feed's flaggers list
+    // (server-cached) hasn't caught up. Reverting turned the icon grey again a
+    // second after the tap.
+    function _failFlag(e, snap) {
+        var msg = (e && e.message) ? e.message.toLowerCase() : "";
+        if (!_isHandledAuthFailure(e) && msg.indexOf("already") >= 0) {
+            bar._finishBusy();
             return;
         }
         bar._failReverting(e, snap);
     }
 
     function doUpvote() {
+        // Tapping again during a broadcast almost always means "undo that". Refusing for the
+        // 20s+ a chain write can take reads as a broken button, so queue it and replay on
+        // completion. Only the direct remove path: replaying a first-time upvote would pop
+        // the weight popover long after the tap that asked for it.
+        if (Session.isLoggedIn && bar.busy) {
+            if (bar.upvoted && !bar._replayTap) {
+                bar._replayTap = true;
+                Toast.show(Lang.tr("Will apply once your current vote finishes."));
+            }
+            return;
+        }
         if (!_guard())
             return;
         if (bar.upvoted) {
@@ -136,7 +220,9 @@ RowLayout {
             // Comments and off-chain posts: simple one-tap like, no weight popover
             bar._sendUpvote(100);
         } else {
-            PopupUtils.open(voteWeightDialog);
+            // Anchored to the button, so the post stays visible while you pick a weight
+            var p = PopupUtils.open(Qt.resolvedUrl("VoteWeightPopover.qml"), upvoteBtn);
+            if (p) p.accepted.connect(bar._sendUpvote);
         }
     }
 
@@ -148,110 +234,32 @@ RowLayout {
         bar._cache();
         Toast.show(Lang.tr("Vote removed"));
         bar.busy = true;
+        var key = bar._reqKey();
         VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-            function (r) { _apply(r); bar._cache(); },
-            function (e) { bar._failReverting(e, snap); });
+            function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
+            function (e) { if (bar._stale(key)) return; bar._failRemove(e, snap); });
     }
 
-    // Optimistic upvote: count it, turn blue, and toast immediately; the chain
-    // broadcast runs in the background so the user never waits on confirmation.
+    // Optimistic upvote: count and toast immediately, broadcast runs in the background
     function _sendUpvote(weight) {
         var snap = _snapshot();
         if (!bar.upvoted) bar.votes = bar.votes + 1;
         bar.upvoted = true;
         bar.flagged = false;
         bar._cache();
-        Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Upvoted %1%").arg(weight));
+        Toast.success(bar.voteType === "comment" ? Lang.tr("Liked") : Lang.tr("Thanks for your vote!"));
         bar.busy = true;
+        var key = bar._reqKey();
         VoteService.upvote(Config.baseUrl, author, permlink, voteType, weight, Session.token,
-            function (r) { _apply(r); bar._cache(); },
-            function (e) { bar._failUpvote(e, snap); });
+            function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
+            function (e) { if (bar._stale(key)) return; bar._failUpvote(e, snap); });
     }
 
-    Component {
-        id: voteWeightDialog
-        Dialog {
-            id: dialog
-            title: Lang.tr("Vote Weight")
-
-            property int selectedWeight: 100
-
-            Label {
-                width: parent.width
-                text: dialog.selectedWeight + "%"
-                font.pixelSize: Style.fontTitle
-                font.weight: Font.Bold
-                color: Style.brand
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Slider {
-                id: weightSlider
-                width: parent.width
-                minimumValue: 1
-                maximumValue: 100
-                value: 100
-                live: true
-                onValueChanged: dialog.selectedWeight = Math.round(value)
-
-                function formatValue(v) { return Math.round(v) + "%" }
-            }
-
-            Row {
-                width: parent.width
-                spacing: Style.spacingS
-
-                Repeater {
-                    model: [25, 50, 75, 100]
-                    delegate: AbstractButton {
-                        width: (parent.width - Style.spacingS * 3) / 4
-                        height: units.gu(4)
-                        onClicked: {
-                            weightSlider.value = modelData;
-                            dialog.selectedWeight = modelData;
-                        }
-
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: Style.cardRadius
-                            color: dialog.selectedWeight === modelData ? Style.brand : Style.iconBackground
-                        }
-                        Label {
-                            anchors.centerIn: parent
-                            text: modelData + "%"
-                            font.pixelSize: Style.fontSmall
-                            font.weight: Font.DemiBold
-                            color: dialog.selectedWeight === modelData ? Style.textOnBrand : Style.textPrimary
-                        }
-                    }
-                }
-            }
-
-            Row {
-                width: parent.width
-                spacing: Style.spacingM
-
-                Button {
-                    width: (parent.width - Style.spacingM) / 2
-                    text: Lang.tr("Cancel")
-                    onClicked: PopupUtils.close(dialog)
-                }
-                Button {
-                    width: (parent.width - Style.spacingM) / 2
-                    text: Lang.tr("Vote")
-                    color: Style.brand
-                    onClicked: {
-                        PopupUtils.close(dialog);
-                        bar._sendUpvote(dialog.selectedWeight);
-                    }
-                }
-            }
-        }
-    }
     function doFlag() {
         if (!allowFlag || !_guard())
             return;
         var snap = _snapshot();
+        var key = bar._reqKey();
         if (bar.flagged) {
             // Optimistic un-flag.
             bar.flagged = false;
@@ -259,19 +267,19 @@ RowLayout {
             Toast.show(Lang.tr("Vote removed"));
             bar.busy = true;
             VoteService.removeVote(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { _apply(r); bar._cache(); },
-                function (e) { bar._failReverting(e, snap); });
+                function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
+                function (e) { if (bar._stale(key)) return; bar._failRemove(e, snap); });
         } else {
             // Optimistic flag; a flag clears any existing upvote.
             if (bar.upvoted) bar.votes = Math.max(0, bar.votes - 1);
             bar.flagged = true;
             bar.upvoted = false;
             bar._cache();
-            Toast.show(Lang.tr("Flagged"));
+            Toast.show(Lang.tr("Thanks for your feedback!"));
             bar.busy = true;
             VoteService.flag(Config.baseUrl, author, permlink, voteType, Session.token,
-                function (r) { _apply(r); bar._cache(); },
-                function (e) { bar._failReverting(e, snap); });
+                function (r) { if (bar._stale(key)) return; _apply(r); bar._cache(); },
+                function (e) { if (bar._stale(key)) return; bar._failFlag(e, snap); });
         }
     }
 
@@ -280,7 +288,18 @@ RowLayout {
         id: upvoteBtn
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: upRow.implicitWidth
+        // Dimmed while the broadcast is out, or once the payout window has closed:
+        // taps are refused either way, and a solid button lies about that
+        opacity: bar.busy || bar.payoutClosed ? 0.45 : 1
+        Behavior on opacity { NumberAnimation { duration: 120 } }
         onClicked: bar.doUpvote()
+        Rectangle {
+            anchors.fill: parent
+            radius: Style.cardRadius
+            color: "transparent"
+            border.width: bar.keyboardHighlight === 0 ? units.dp(2) : 0
+            border.color: Style.brand
+        }
         Row {
             id: upRow
             anchors.verticalCenter: parent.verticalCenter
@@ -301,9 +320,7 @@ RowLayout {
             }
         }
 
-        // Mouse hover (desktop) or press-and-hold (touch) reveals who upvoted.
-        // Topmost MouseArea gets the press first; a short tap is unaccepted so
-        // it falls through to upvoteBtn's own click, only the hold is caught here.
+        // Hover/press-and-hold reveals who upvoted; short taps fall through to upvoteBtn's click
         MouseArea {
             anchors.fill: parent
             hoverEnabled: true
@@ -321,9 +338,7 @@ RowLayout {
             id: votersPopup
             visible: false
             anchors { bottom: parent.top; bottomMargin: Style.spacingXs }
-            // Centered on the button but clamped inside the bar (a centered long list
-            // would run off the screen's left edge). x is in upvoteBtn coordinates,
-            // hence the -upvoteBtn.x offsets for the bar's own edges.
+            // Centered on the button but clamped inside the bar so a long list can't run off-screen
             x: {
                 var centered = (upvoteBtn.width - width) / 2;
                 var minX = -upvoteBtn.x;
@@ -350,10 +365,20 @@ RowLayout {
     }
 
     AbstractButton {
+        id: downvoteBtn
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: downRow.implicitWidth
         visible: bar.allowFlag
+        opacity: bar.busy || bar.payoutClosed ? 0.45 : 1
+        Behavior on opacity { NumberAnimation { duration: 120 } }
         onClicked: bar.doFlag()
+        Rectangle {
+            anchors.fill: parent
+            radius: Style.cardRadius
+            color: "transparent"
+            border.width: bar.keyboardHighlight === 1 ? units.dp(2) : 0
+            border.color: Style.brand
+        }
         Row {
             id: downRow
             anchors.verticalCenter: parent.verticalCenter
@@ -401,10 +426,11 @@ RowLayout {
     }
 
     AbstractButton {
+        id: shareBtn
         visible: bar.showShare && bar.shareUrl.length > 0
         Layout.preferredHeight: units.gu(3.5)
         Layout.preferredWidth: units.gu(3)
-        onClicked: Share.open(bar.shareUrl)
+        onClicked: Share.open(bar.shareUrl, shareBtn)
         Icon {
             anchors.centerIn: parent
             width: units.gu(2.5); height: width
@@ -413,10 +439,25 @@ RowLayout {
         }
     }
 
-    Item { Layout.fillWidth: true }
-
-    CoinValue {
+    // One filling cell rather than a spacer plus a fixed pill: the row's spacing is then
+    // charged once instead of twice, which is the difference between the pill keeping its
+    // "SEREY" unit word in the detail side rail and having to drop it.
+    Item {
+        Layout.fillWidth: true
+        Layout.preferredHeight: units.gu(3.5)
         visible: bar.onChain && bar.payout.length > 0 && bar.voteType !== "comment"
-        value: bar.payout
+
+        CoinValue {
+            id: payoutPill
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            // In a side rail the bar's right edge is the window frame, so keep a little air
+            // there. Elsewhere the pill sits flush, level with the vote icons on the left.
+            readonly property real edgeGap: bar.compact ? Style.spacingS : 0
+            anchors.rightMargin: edgeGap
+            availableWidth: parent.width - edgeGap
+            width: Math.min(implicitWidth, Math.max(units.gu(8), parent.width - edgeGap))
+            value: bar.payout
+            compact: bar.compact
+        }
     }
 }

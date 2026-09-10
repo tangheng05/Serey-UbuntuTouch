@@ -1,8 +1,10 @@
 import QtQuick 2.7
-import QtGraphicalEffects 1.0
+import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
+import "../services/HiddenPosts.js" as HiddenPosts
+import "../services/YouTube.js" as YouTube
 
 AbstractButton {
     id: root
@@ -14,16 +16,98 @@ AbstractButton {
     signal authorClicked()
     signal moreClicked()
 
-    // Primes the shared follow-state store so a swiped-open Follow action (VideoPage's
-    // trailing ListItemActions) can render its already-following color immediately.
-    onVChanged: {
-        if (Session.isLoggedIn && v.author && v.author !== Session.username)
-            FollowStore.load(Config.baseUrl, Session.username, v.author);
+    readonly property bool isOwn: Session.isLoggedIn && !!(v.author) && v.author === Session.username
+
+    // Compact anchored dropdown (mirrors PostCard's cardMenu); desktop only, phone/tablet use the full sheet
+    property bool compactMenu: Config.desktopMode
+    property bool menuOpen: false
+    Component.onDestruction: root.menuOpen = false
+
+    function _isDirectFile(u) { return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || ""); }
+    readonly property string _remoteUrl: {
+        if (v.platform === "SEREY") return v.videoLink || v.embedUrl || "";
+        if (root._isDirectFile(v.videoLink)) return v.videoLink;
+        if (root._isDirectFile(v.embedUrl)) return v.embedUrl;
+        return "";
+    }
+    readonly property string _youtubeId: {
+        if (v.platform === "YOUTUBE" && (v.videoId || "").length === 11) return v.videoId;
+        var s = (v.embedUrl || "") + " " + (v.videoLink || "");
+        var m = s.match(/(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+        return m ? m[1] : "";
+    }
+    readonly property bool _isYouTube: v.platform === "YOUTUBE" && root._youtubeId.length > 0
+    readonly property bool _canDownload: root._remoteUrl.length > 0 || root._isYouTube
+    readonly property bool _dlSaved: (Downloads.rev, Downloads.isSaved(v.permlink || ""))
+    // this card's in-flight download
+    readonly property var _dlActive: (Downloads.rev, Downloads.activeFor(v.permlink || ""))
+    readonly property bool _dlBusy: !!root._dlActive || root._ytExtracting
+    property bool _ytExtracting: false
+
+    function toggleDownload() {
+        var pl = v.permlink || "";
+        if (pl.length === 0 || root._ytExtracting) return;
+        if (root._dlSaved) { Downloads.remove(pl); return; }
+        if (root._remoteUrl.length > 0) {
+            Downloads.start(v, root._remoteUrl);
+            return;
+        }
+        if (root._isYouTube) {
+            root._ytExtracting = true;
+            Toast.show(Lang.tr("Preparing download…"));
+            YouTube.extract(root._youtubeId, function (result, errMsg) {
+                root._ytExtracting = false;
+                if (result && result.url) {
+                    Downloads.start(v, result.url);
+                } else {
+                    Toast.error(Lang.tr("This YouTube video can't be downloaded."));
+                }
+            });
+        }
     }
 
-    // Keyboard: VideoCard itself (an AbstractButton / FocusScope) is the single
-    // tab-stop so its own ring shows; the ContextActionArea child is made
-    // non-focusable below. Enter activates natively, MENU opens the context menu.
+    // The "..." button, so a sheet opened from this card's menu drops under it.
+    readonly property alias menuAnchor: moreBtn
+
+    function menuItems() {
+        var items = [];
+        if (root._canDownload) {
+            items.push({ icon: root._dlSaved ? "tick" : "save",
+                         label: root._dlSaved ? Lang.tr("Remove download") : Lang.tr("Save video offline"),
+                         action: "toggleDownload" });
+            items.push({ divider: true });
+        }
+        if (root.isOwn) {
+            items.push({ icon: "edit", label: Lang.tr("Edit caption"), action: "editCaption" });
+            items.push({ icon: "delete", label: Lang.tr("Delete video"), danger: true, action: "delete" });
+        } else {
+            items.push({ icon: "close", label: Lang.tr("Hide this video"), action: "hide" });
+            items.push({ icon: "dialog-warning-symbolic", label: Lang.tr("Report video"), action: "report" });
+        }
+        return items;
+    }
+
+    function runMenuAction(action) {
+        if (action === "toggleDownload") root.toggleDownload();
+        else if (action === "editCaption") Nav.editCaption(root.v);
+        else if (action === "delete") PostActions.open(root.v, "video", 2);
+        else if (action === "hide") {
+            HiddenPosts.hide(v.permlink || "");
+            PostActions.hideRequested(v.author || "", v.permlink || "");
+        }
+        else if (action === "report") PostActions.open(root.v, "video", 1);
+    }
+
+    // Reparent onto the window while open so the menu isn't clipped by the list row (see PostCard)
+    readonly property Item _menuOverlayParent: (root.menuOpen && root.Window.window)
+        ? root.Window.window.contentItem : root
+    readonly property point _moreBtnBottomRight: (root.menuOpen && moreBtn)
+        ? moreBtn.mapToItem(root._menuOverlayParent, moreBtn.width, moreBtn.height) : Qt.point(0, 0)
+
+    // Priming moved to the swipe action itself: a card shows no follow state, so doing it here
+    // cost a /follow/status request per author while scrolling.
+
+    // VideoCard itself is the single tab-stop so its ring shows; child area is non-focusable
     activeFocusOnTab: true
 
     onPressAndHold: root.moreClicked()
@@ -57,57 +141,10 @@ AbstractButton {
             width: parent.width
             height: width * 0.56
 
-            Rectangle {
-                id: thumbBg
-                anchors.fill: parent
-                radius: Style.thumbRadius
-                color: Style.iconBackground
-            }
-
-            // Double-buffered like PostCard's cover: the hidden loader fetches the new
-            // source while thumbImg keeps the last-good frame, so a row swap never
-            // blanks to black while the phone re-downloads an evicted image.
-            Image {
-                id: thumbLoader
+            RoundedThumb {
                 anchors.fill: parent
                 source: v.localThumb || v.thumbnail || ""
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                // HIG scaling: snap the decode size to a breakpoint instead of `width * N` so the image isn't re-rasterized on every width change.
-                sourceSize.width: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
-                visible: false
-                onStatusChanged: {
-                    if (status === Image.Ready) thumbImg.source = source;
-                    else if (status === Image.Error || String(source).length === 0) thumbImg.source = "";
-                }
-            }
-            Image {
-                id: thumbImg
-                anchors.fill: parent
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                sourceSize.width: thumbLoader.sourceSize.width
-                visible: false
-                // Fade fully out while the loader replaces a stale frame; a dimmed
-                // ghost of the previous content read as the wrong thumbnail (see PostCard).
-                readonly property bool transitioning:
-                    thumbLoader.status === Image.Loading && status === Image.Ready
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-                opacity: status === Image.Ready ? (transitioning ? 0.0 : 1.0) : 0.0
-            }
-
-            Rectangle {
-                id: thumbMask
-                anchors.fill: parent
-                radius: Style.thumbRadius
-                visible: false
-            }
-
-            OpacityMask {
-                anchors.fill: parent
-                source: thumbImg
-                maskSource: thumbMask
-                opacity: thumbImg.opacity
+                decodeWidth: root.width > units.gu(70) ? units.gu(90) : units.gu(45)
             }
 
             Rectangle {
@@ -212,10 +249,24 @@ AbstractButton {
                 id: moreBtn
                 anchors.top: parent.top
                 width: units.gu(3.5); height: units.gu(3.5)
-                onClicked: root.moreClicked()
+                onClicked: root.compactMenu ? (root.menuOpen = !root.menuOpen) : root.moreClicked()
+
+                // dots -> progress ring while downloading
+                CircularProgress {
+                    anchors.centerIn: parent
+                    visible: !!root._dlActive
+                    value: root._dlActive ? root._dlActive.progress : 0
+                }
+
+                ActivityIndicator {
+                    anchors.centerIn: parent
+                    visible: root._ytExtracting
+                    running: root._ytExtracting
+                }
 
                 Column {
                     anchors.centerIn: parent
+                    visible: !root._dlBusy
                     spacing: units.dp(3)
                     Repeater {
                         model: 3
@@ -238,17 +289,13 @@ AbstractButton {
         color: Style.divider
     }
 
-    // Pointer parity: right-click opens the context menu. Keyboard is handled by
-    // the AbstractButton root (single focus owner), so this must NOT be a
-    // tab-stop or it competes and hides the ring.
+    // Pointer parity: right-click opens context menu; must NOT be a tab-stop or it hides the ring
     ContextActionArea {
         activeFocusOnTab: false
         onTriggered: root.moreClicked()
     }
 
-    // Keyboard-focus ring. VideoCard is a FocusScope and takes focus itself
-    // (unlike PostCard's child-ring setup), so draw the ring here; activeFocus
-    // is true whether the button or its ContextActionArea child holds focus.
+    // VideoCard is a FocusScope and takes focus itself, so draw the ring here (unlike PostCard)
     Rectangle {
         anchors.fill: parent
         anchors.margins: units.dp(1)
@@ -258,5 +305,112 @@ AbstractButton {
         border.color: Style.brand
         radius: units.gu(0.5)
         z: 100
+    }
+
+    // Dismiss on outside click; fills the whole window while open once reparented
+    MouseArea {
+        parent: root._menuOverlayParent
+        visible: root.menuOpen
+        z: 999
+        anchors.fill: parent
+        onClicked: root.menuOpen = false
+    }
+
+    Rectangle {
+        id: cardMenu
+        parent: root._menuOverlayParent
+        visible: root.menuOpen
+        z: 1000
+        x: Math.min(root._moreBtnBottomRight.x - width, root._menuOverlayParent.width - width - Style.spacingXs)
+        y: root._moreBtnBottomRight.y + Style.spacingXs
+        // Cap against the overlay, not the card: gu(20) truncated translated labels.
+        width: Math.min(units.gu(30), root._menuOverlayParent.width - Style.spacingM * 2)
+        height: cardMenuCol.height
+        radius: Style.cardRadius
+        color: Style.surface
+        border.width: units.dp(1)
+        border.color: Style.divider
+
+        Column {
+            id: cardMenuCol
+            width: parent.width
+
+            Repeater {
+                // {divider:true} | {icon, label, danger, action}
+                model: root.menuItems()
+                delegate: Item {
+                    width: cardMenuCol.width
+                    height: modelData.divider ? units.dp(1) : units.gu(5.5)
+
+                    Rectangle {
+                        visible: !!modelData.divider
+                        anchors.fill: parent
+                        color: Style.divider
+                    }
+
+                    AbstractButton {
+                        visible: !modelData.divider
+                        anchors.fill: parent
+                        onClicked: { root.menuOpen = false; root.runMenuAction(modelData.action); }
+                        Row {
+                            anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2.2); height: width
+                                name: modelData.icon || ""
+                                color: modelData.danger ? Style.danger : Style.textPrimary
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                // Bounded + elided so no translation can spill past the panel.
+                                width: Math.max(0, parent.width - units.gu(2.2) - parent.spacing)
+                                elide: Text.ElideRight
+                                text: modelData.label || ""
+                                font.pixelSize: Style.fontSmall
+                                font.family: Style.fontFor(text)   // labels carry usernames
+                                color: modelData.danger ? Style.danger : Style.textPrimary
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { visible: !root.isOwn; width: parent.width; height: units.dp(1); color: Style.divider }
+            // No "block" glyph in the Suru icon set (same reason PostActionSheet draws its own).
+            AbstractButton {
+                visible: !root.isOwn
+                width: parent.width
+                height: units.gu(5.5)
+                onClicked: { root.menuOpen = false; PostActions.open(root.v, "video", 3); }
+                Row {
+                    anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                    spacing: Style.spacingM
+                    Item {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2.2); height: width
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: units.dp(1.5)
+                            border.color: Style.danger
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: parent.width * 0.7; height: units.dp(1.5)
+                            color: Style.danger
+                            rotation: 45
+                        }
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Lang.tr("Block %1").arg(v.author || "")
+                        font.pixelSize: Style.fontSmall
+                        color: Style.danger
+                    }
+                }
+            }
+        }
     }
 }

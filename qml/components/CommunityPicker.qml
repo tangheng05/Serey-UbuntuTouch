@@ -18,8 +18,7 @@ Item {
     property var cache: ({})
     property int loadingIndex: -1
 
-    // cache/expandedIndex are keyed by row index, so they go stale when Config.sources
-    // is rebuilt (indices shift after platform create/delete). Drop and re-fetch.
+    // Keyed by row index, so they go stale when Config.sources is rebuilt; drop and re-fetch
     property Connections _sourcesWatcher: Connections {
         target: Config
         function onSourcesChanged() {
@@ -28,9 +27,7 @@ Item {
             picker.loadingIndex = -1
         }
     }
-    // Geo hint: hoist the detected country to the top, expanded, rest behind "See more".
-    // Reorders the VIEW ONLY; state stays keyed by the real Config.sources index, carried
-    // per display row as `_realIndex`. No detection -> detectedIndex -1, normal list.
+    // Geo hint: hoist detected country to top, expanded; reorders the VIEW ONLY, state stays keyed by `_realIndex`
     readonly property int detectedIndex: Config.indexForCountryCode(Config.detectedCountryCode)
     property bool showAll: false
     readonly property var displaySources: picker._buildDisplaySources()
@@ -47,8 +44,7 @@ Item {
         var di = picker.detectedIndex
         if (di < 0) return out          // undetected: today's list, untouched
 
-        // Global stays pinned at the top (default combined feed); the geo hint
-        // slots in BELOW it. (di is never 0: _indexForCountry skips Global.)
+        // Global stays pinned at top (default combined feed); geo hint slots in BELOW it
         var mine = out.splice(di, 1)[0]
         out.splice(1, 0, mine)
         // Collapsed: Global + the user's country. The rest are one tap away.
@@ -60,20 +56,36 @@ Item {
     property int subscribedRev: 0
     property bool subscriptionsLoaded: false
 
+    // Desktop anchors a dropdown under the header pill; a modal is slower to
+    // dismiss and hides the page you're choosing for. Touch keeps the sheet.
+    property Item anchorItem: null
+    readonly property bool asDropdown: Config.desktopMode && !!anchorItem
+    readonly property real dropWidth: units.gu(50)
+    property real _dropX: 0
+    property real _dropY: 0
+
     function open() {
         picker._closing = false
         closeGuard.stop()
         picker.visible = true
+        // mapToItem can't be a live binding, so resolve the anchor at open time.
+        if (picker.asDropdown) {
+            var p = picker.anchorItem.mapToItem(picker, 0, picker.anchorItem.height)
+            picker._dropX = Math.max(Style.spacingS,
+                                     Math.min(p.x, picker.width - picker.dropWidth - Style.spacingS))
+            picker._dropY = p.y + Style.spacingXs
+        }
+        sheet.opacity = 1; sheet.scale = 1
+        // A prior sheet-mode close leaves cpTranslate.y at its slide-out offset (cpDropIn never
+        // touches it), so a dropdown-mode open right after would render the panel pushed way down.
+        cpTranslate.y = 0
         cpBackdropFade.start()
-        cpSlide.start()
+        if (picker.asDropdown) cpDropIn.start(); else cpSlide.start()
         if (Session.isLoggedIn && !subscriptionsLoaded) _loadSubscriptions()
-        // Geo-detected country opens expanded: it's the one row we're confident
-        // the user wants, and collapsed it would show nothing but its own name.
-        // Only when the user hasn't already expanded something themselves.
+        // Geo-detected country opens expanded, unless the user already expanded something
         if (picker.detectedIndex > 0 && picker.expandedIndex === -1)
             picker._toggleExpand(picker.detectedIndex)
-        // Keyboard users can open this via the header pill (Enter): own the keys
-        // while open so Escape dismisses and Tab can't tunnel to the page below.
+        // Own the keys while open so Escape dismisses and Tab can't tunnel to the page below
         picker._prevFocus = Window.activeFocusItem
         picker.forceActiveFocus()
         // Cursor starts on the active source; the ring only shows once a key is pressed.
@@ -82,15 +94,14 @@ Item {
     }
     function close()         { picker._closing = false; closeGuard.stop(); picker.visible = false }
 
-    // Closing but still visible until cpSlideOut finishes. The backdrop MouseArea still
-    // hit-tests at opacity 0, so it must be disabled while the exit animation runs.
+    // Closing but visible until cpSlideOut finishes; backdrop hit-tests at opacity 0 so disable it
     property bool _closing: false
 
     function closeAnimated() {
         if (picker._closing) return
         picker._closing = true
         cpBackdropFadeOut.start()
-        cpSlideOut.start()
+        if (picker.asDropdown) cpDropOut.start(); else cpSlideOut.start()
         closeGuard.restart()
     }
 
@@ -102,15 +113,13 @@ Item {
         onTriggered: if (picker.visible) picker.close()
     }
 
-    // Rows live in nested Repeaters (source > category > community), so the cursor is
-    // data coordinates, not Items; it survives delegate recreation. cat/com -1 = source row.
+    // Cursor is data coordinates, not Items, so it survives delegate recreation; cat/com -1 = source row
     property int navSrc: -1
     property int navCat: -1
     property int navCom: -1
     property bool navActive: false
 
-    // Selectable rows in visual order (category headers excluded). Walks displaySources,
-    // not Config.sources, so the cursor visits what's on screen; `src` stays the REAL index.
+    // Walks displaySources, not Config.sources, so cursor visits what's on screen; `src` stays REAL index
     function _navEntries() {
         var out = [], srcs = picker.displaySources || []
         for (var d = 0; d < srcs.length; d++) {
@@ -151,8 +160,14 @@ Item {
             flickable.contentY = y + it.height - flickable.height
     }
 
+    // Banned: gray the row out and toast instead of navigating.
+    function _isBanned(id, title) { return Config.isBannedFromCommunity(id, title) }
+    function _warnBanned() { Toast.error(Lang.tr("You're banned from this community.")) }
+
     // Shared by pointer and keyboard so the two paths can't drift.
     function _selectSource(i) {
+        var s = Config.sources[i]
+        if (picker._isBanned(s.id, s.name)) { picker._warnBanned(); return }
         Config.sourceIndex = i
         Config.selectedSubCommunity = null
         picker.expandedIndex = -1
@@ -164,6 +179,8 @@ Item {
         else { picker.expandedIndex = i; picker._fetch(i) }
     }
     function _selectCommunity(m) {
+        var id = String(m.id || m._id || "")
+        if (picker._isBanned(id, m.title || m.name)) { picker._warnBanned(); return }
         Config.selectedSubCommunity = {
             id: String(m.id || m._id || ""),
             name: m.title || m.name || "",
@@ -178,15 +195,13 @@ Item {
 
     // Whatever held keyboard focus before the picker opened; restored on close.
     property var _prevFocus: null
-    // True when a platform was actually chosen (vs. cancel/Escape). Focus then belongs
-    // in the reloaded feed, not back on the pill, whose KeyTapArea has no arrow nav.
+    // True when a platform was chosen (vs. cancel/Escape); focus then goes to the reloaded feed
     property bool _chose: false
     onVisibleChanged: {
         if (visible) return
         var prev = _prevFocus, chose = _chose
         _prevFocus = null; _chose = false
-        // Deferred: a synchronous grab while this sheet is still tearing down lands
-        // nowhere, leaving the keyboard dead until a click.
+        // Deferred: a synchronous grab mid-teardown lands nowhere, leaving keyboard dead
         Qt.callLater(function () {
             if (chose) { Nav.focusContent(); return }
             try { if (prev && prev.visible) prev.forceActiveFocus() } catch (e) { /* item destroyed since */ }
@@ -243,9 +258,31 @@ Item {
         }
     }
 
+    // A hung fetch leaves the row spinning: QML's XHR ignores its own `timeout` when the
+    // connection stalls instead of being refused, so nothing ever answers. Give up here and
+    // the row falls back to its "tap to try again" state (cache stays undefined).
+    Timer {
+        id: fetchWatchdog
+        interval: 20000
+        repeat: false
+        onTriggered: picker.loadingIndex = -1
+    }
+
+    // Offline the spinner would only outlive the outage; drop it and show the retry row.
+    property Connections _netWatcher: Connections {
+        target: Net
+        function onOnlineChanged() {
+            if (Net.online) return
+            fetchWatchdog.stop()
+            picker.loadingIndex = -1
+        }
+    }
+
     function _fetch(srcIndex) {
         if (picker.cache[srcIndex] !== undefined) return
+        if (!Net.online) { picker.loadingIndex = -1; return }
         picker.loadingIndex = srcIndex
+        fetchWatchdog.restart()
 
         // Fetch communities, then categories, then group the former by the latter; Global uses categories/list directly since list-by-parent-id/1 returns only hubs.
 
@@ -321,8 +358,15 @@ Item {
             for (var k in picker.cache) nc[k] = picker.cache[k]
             nc[si] = cats
             picker.cache = nc
+            fetchWatchdog.stop()
             picker.loadingIndex = -1
         }
+
+        // Offline, every request "returns" an empty list. Caching that left the row stuck on
+        // "No platforms found" for the rest of the session, so a failure stays uncached and
+        // the next expand tries again.
+        function _abandon() { fetchWatchdog.stop(); picker.loadingIndex = -1 }
+        function _ok(xhr) { return xhr.status >= 200 && xhr.status < 300 }
 
         if (srcIndex === 0) {
             // Global: fetch both Netherlands (99) and US (26) and combine
@@ -330,10 +374,13 @@ Item {
             for (var ri = 1; ri < Config.sources.length; ri++)
                 regionalIds.push(Config.sources[ri].id)
             var allComms = [], pending = regionalIds.length
+            var anyRegionalFailed = false
 
             function _onRegionalDone() {
                 pending--
                 if (pending > 0) return
+                // Don't cache a network failure as "Global has no platforms".
+                if (anyRegionalFailed && allComms.length === 0) { _abandon(); return }
                 if (allComms.length === 0) { _store(0, []); return }
                 var xhrCat = new XMLHttpRequest()
                 xhrCat.open("GET", Config.baseUrl + "/community/categories/list?limit=100")
@@ -341,6 +388,7 @@ Item {
                 xhrCat.timeout = 15000
                 xhrCat.onreadystatechange = function () {
                     if (xhrCat.readyState !== XMLHttpRequest.DONE) return
+                    if (!_ok(xhrCat)) { _abandon(); return }
                     var cats = []
                     try {
                         var arr = _parseCategoryList(JSON.parse(xhrCat.responseText))
@@ -361,7 +409,8 @@ Item {
                     xhr.timeout = 15000
                     xhr.onreadystatechange = function () {
                         if (xhr.readyState !== XMLHttpRequest.DONE) return
-                        try {
+                        if (!_ok(xhr)) { anyRegionalFailed = true }
+                        else try {
                             var d = JSON.parse(xhr.responseText)
                             var comms = d.data || d.communities || d.results || []
                             for (var c = 0; c < comms.length; c++) allComms.push(comms[c])
@@ -380,6 +429,7 @@ Item {
             xhrP.timeout = 15000
             xhrP.onreadystatechange = function () {
                 if (xhrP.readyState !== XMLHttpRequest.DONE) return
+                if (!_ok(xhrP)) { _abandon(); return }
                 var sourceComms = []
                 try {
                     var d = JSON.parse(xhrP.responseText)
@@ -395,6 +445,7 @@ Item {
                 xhrC.timeout = 15000
                 xhrC.onreadystatechange = function () {
                     if (xhrC.readyState !== XMLHttpRequest.DONE) return
+                    if (!_ok(xhrC)) { _abandon(); return }
                     var cats = []
                     try {
                         var arr = _parseCategoryList(JSON.parse(xhrC.responseText))
@@ -415,39 +466,80 @@ Item {
     Rectangle {
         id: cpBackdrop
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.4)
+        // A dropdown doesn't dim the page; the backdrop stays only to catch the
+        // click-outside and swallow wheel events.
+        color: picker.asDropdown ? "transparent" : Qt.rgba(0, 0, 0, 0.4)
         opacity: 0
         // enabled gate: see picker._closing
         MouseArea {
             anchors.fill: parent
             enabled: !picker._closing
             onClicked: picker.closeAnimated()
+            onWheel: wheel.accepted = true   // don't let scroll fall through to the page below
         }
     }
     NumberAnimation { id: cpBackdropFade;    target: cpBackdrop; property: "opacity"; from: 0; to: 1;  duration: 200 }
     NumberAnimation { id: cpBackdropFadeOut; target: cpBackdrop; property: "opacity"; to: 0;            duration: 200 }
 
+    // Soft elevation so the dropdown reads as floating above the page (the full-width
+    // sheet already sits on a dimmed backdrop and doesn't need it).
+    DropShadow {
+        anchors.fill: sheet
+        visible: picker.asDropdown && sheet.opacity > 0
+        source: sheet
+        radius: 16
+        samples: 33
+        horizontalOffset: 0
+        verticalOffset: 6
+        color: Qt.rgba(0, 0, 0, 0.22)
+        transparentBorder: true
+        cached: true
+    }
+
     Rectangle {
         id: sheet
         readonly property bool wide: Config.wideMode
-        // Centered + explicit width handles both cases (full-width on phone, capped
-        // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
-        anchors {
-            horizontalCenter: parent.horizontalCenter
-            bottom: parent.bottom
-            bottomMargin: sheet.wide ? units.gu(4) : 0
-        }
-        width: sheet.wide ? Math.min(parent.width - units.gu(4), units.gu(60)) : parent.width
-        height: Math.min(sheetContent.height + units.gu(4), picker.height * 0.82)
-        radius: units.gu(1)
+        // x/y rather than anchors: anchors can't be conditionally unset from a
+        // ternary in this codebase, and the two modes place the panel differently.
+        x: picker.asDropdown ? picker._dropX : (parent.width - width) / 2
+        y: picker.asDropdown ? picker._dropY
+                             : parent.height - height - (sheet.wide ? units.gu(4) : 0)
+        width: picker.asDropdown ? picker.dropWidth
+             : sheet.wide ? Math.min(parent.width - units.gu(4), units.gu(60))
+             : parent.width
+        // The sheet's gu(4) pads the drag handle and title; a dropdown has neither,
+        // so the same padding just left a dead band under the last row.
+        height: Math.min(sheetContent.height + (picker.asDropdown ? units.gu(1) : units.gu(4)),
+                         picker.asDropdown
+                           ? Math.max(units.gu(20), picker.height - picker._dropY - Style.spacingM)
+                           : picker.height * 0.82)
+        // Match the header dropdown in VideoDetailPage, not the sheet.
+        radius: picker.asDropdown ? Style.cardRadius : units.gu(1)
         color: Style.surface
+        // Without a dimmed backdrop the panel needs its own edge to sit on the page.
+        border.width: picker.asDropdown ? units.dp(1) : 0
+        border.color: Style.divider
         clip: true
+        transformOrigin: Item.TopLeft
 
         transform: Translate { id: cpTranslate; y: 0 }
         NumberAnimation { id: cpSlide;    target: cpTranslate; property: "y"; from: sheet.height + units.gu(4); to: 0;              duration: 300; easing.type: Easing.OutCubic }
         NumberAnimation { id: cpSlideOut; target: cpTranslate; property: "y"; to: sheet.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: picker.close() }
 
+        // Dropdowns snap open from their anchor; a 300ms slide would feel slow.
+        ParallelAnimation {
+            id: cpDropIn
+            NumberAnimation { target: sheet; property: "opacity"; from: 0; to: 1; duration: 120; easing.type: Easing.OutQuad }
+            NumberAnimation { target: sheet; property: "scale";   from: 0.97; to: 1; duration: 120; easing.type: Easing.OutQuad }
+        }
+        ParallelAnimation {
+            id: cpDropOut
+            onStopped: picker.close()
+            NumberAnimation { target: sheet; property: "opacity"; to: 0; duration: 100; easing.type: Easing.InQuad }
+        }
+
         Rectangle {
+            visible: !picker.asDropdown
             anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
             width: units.gu(4.5); height: units.dp(4); radius: units.dp(2)
             color: Style.lightGray
@@ -464,8 +556,11 @@ Item {
                 id: sheetContent
                 width: flickable.width
 
-                Item { width: 1; height: Style.spacingL }
+                // Title + close are modal furniture; a dropdown is labelled by the
+                // pill it hangs from and closes on click-outside or Escape.
+                Item { width: 1; height: Style.spacingL; visible: !picker.asDropdown }
                 Row {
+                    visible: !picker.asDropdown
                     width: parent.width - Style.spacingM * 2
                     x: Style.spacingM
                     Label {
@@ -482,11 +577,11 @@ Item {
                         Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width; name: "close"; color: Style.textTitle }
                     }
                 }
-                Item { width: 1; height: Style.spacingM }
+                Item { width: 1; height: Style.spacingM; visible: !picker.asDropdown }
+                Item { width: 1; height: Style.spacingS;  visible: picker.asDropdown }
 
                 Repeater {
-                    // Display order, which may differ from Config.sources when a
-                    // country is geo-detected; srcIndex carries the real index.
+                    // Display order may differ from Config.sources when geo-detected; srcIndex is real index
                     model: picker.displaySources
 
                     delegate: Column {
@@ -497,6 +592,7 @@ Item {
                         property int srcIndex: modelData._realIndex
                         property bool isExpanded: picker.expandedIndex === sourceCol.srcIndex
                         property var cats: picker.cache[sourceCol.srcIndex] || []
+                        readonly property bool isBanned: picker._isBanned(modelData.id, modelData.name)
 
                         Item {
                             id: sourceRow
@@ -517,6 +613,7 @@ Item {
                             Row {
                                 anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
                                 spacing: Style.spacingM
+                                opacity: sourceCol.isBanned ? 0.4 : 1
 
                                 Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
@@ -529,6 +626,7 @@ Item {
                                         id: srcIcon
                                         anchors { fill: parent; margins: units.dp(2) }
                                         source: Config.communityIcon(modelData.dns)
+                                        // Flags/globe: crop-to-fill
                                     }
                                     Icon {
                                         anchors.centerIn: parent
@@ -618,6 +716,24 @@ Item {
                                     text: Lang.tr("No platforms found")
                                     font.pixelSize: Style.fontSmall
                                     color: Style.textSecondary
+                                }
+                            }
+
+                            // Fetch failed, so nothing is cached: say so and let the row retry,
+                            // rather than leaving an expanded row that is simply blank.
+                            Item {
+                                visible: picker.cache[sourceCol.srcIndex] === undefined
+                                width: parent.width; height: units.gu(5)
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: Net.online ? Lang.tr("Couldn't load. Tap to try again.")
+                                                     : Lang.tr("You're offline. Tap to try again.")
+                                    font.pixelSize: Style.fontSmall
+                                    color: Style.textSecondary
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: picker._fetch(sourceCol.srcIndex)
                                 }
                             }
 
@@ -725,6 +841,7 @@ Item {
                                             property var hubChildren: commBtn.isSuperhub
                                                                       ? (Config.superhubChildrenById[commBtn.commId] || [])
                                                                       : []
+                                            readonly property bool isBanned: picker._isBanned(commBtn.commId, commBtn.commName)
 
                                             Rectangle {
                                                 anchors {
@@ -736,6 +853,7 @@ Item {
                                                 }
                                                 radius: Style.cardRadius
                                                 color: Style.surface
+                                                opacity: commBtn.isBanned ? 0.45 : 1
                                                 border.width: commBtn.isSelected ? units.dp(2) : units.dp(1)
                                                 border.color: commBtn.isSelected ? Style.brand : Style.divider
 
@@ -773,6 +891,8 @@ Item {
                                                             id: subIcon
                                                             anchors { fill: parent; margins: units.dp(2) }
                                                             source: commBtn.commIcon
+                                                            // Wordmark logo: fit, not crop
+                                                            fillMode: Image.PreserveAspectFit
                                                         }
                                                     }
 
@@ -780,6 +900,7 @@ Item {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: parent.width - units.gu(5.5) - subBtn.width
                                                                - (hubBadge.visible ? hubBadge.width + Style.spacingM : 0)
+                                                               - (ownerBadge.visible ? ownerBadge.width + Style.spacingM : 0)
                                                                - Style.spacingM * 2
                                                         text: commBtn.commName
                                                         font.pixelSize: Style.fontRegular
@@ -797,7 +918,7 @@ Item {
                                                         width: hubLbl.width + units.gu(1.6)
                                                         height: units.gu(2.6)
                                                         radius: Style.pillRadius
-                                                        color: "#FCE7F3"
+                                                        color: Qt.rgba(Style.brand.r, Style.brand.g, Style.brand.b, 0.14)
 
                                                         Label {
                                                             id: hubLbl
@@ -805,6 +926,28 @@ Item {
                                                             text: "HUB"
                                                             font.pixelSize: Style.fontXSmall
                                                             font.weight: Font.Bold
+                                                            font.letterSpacing: units.dp(0.5)
+                                                            color: Style.brand
+                                                        }
+                                                    }
+
+                                                    // Owner badge: you manage this community.
+                                                    Rectangle {
+                                                        id: ownerBadge
+                                                        visible: !!Config.ownedCommunityIdSet[commBtn.commId]
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: ownerLbl.width + units.gu(1.6)
+                                                        height: units.gu(2.6)
+                                                        radius: Style.pillRadius
+                                                        color: "#FCE7F3"
+
+                                                        Label {
+                                                            id: ownerLbl
+                                                            anchors.centerIn: parent
+                                                            text: Lang.tr("Owner")
+                                                            font.pixelSize: Style.fontXSmall
+                                                            font.weight: Font.Bold
+                                                            font.family: Style.fontFor(text)
                                                             font.letterSpacing: units.dp(0.5)
                                                             color: "#DB2777"
                                                         }
@@ -855,6 +998,7 @@ Item {
                                                     property bool cSelected: Config.selectedSubCommunity
                                                                              && Config.selectedSubCommunity.id === childBtn.cId
                                                     property bool cSubscribed: picker.subscribedRev >= 0 && !!picker.subscribedMap[childBtn.cId]
+                                                    readonly property bool isBanned: picker._isBanned(childBtn.cId, childBtn.cName)
 
                                                     // Connector: vertical line down the indent gutter + short elbow into the card
                                                     Rectangle {
@@ -881,12 +1025,14 @@ Item {
                                                         }
                                                         radius: Style.cardRadius
                                                         color: Style.surface
+                                                        opacity: childBtn.isBanned ? 0.45 : 1
                                                         border.width: childBtn.cSelected ? units.dp(2) : units.dp(1)
                                                         border.color: childBtn.cSelected ? Style.brand : Style.divider
 
                                                         MouseArea {
                                                             anchors.fill: parent
                                                             onClicked: {
+                                                                if (picker._isBanned(childBtn.cId, childBtn.cName)) { picker._warnBanned(); return }
                                                                 Config.selectedSubCommunity = {
                                                                     id: childBtn.cId,
                                                                     name: childBtn.cName,
@@ -910,18 +1056,41 @@ Item {
                                                                 CircleImage {
                                                                     anchors { fill: parent; margins: units.dp(2) }
                                                                     source: childBtn.cIcon
+                                                                    fillMode: Image.PreserveAspectFit
                                                                 }
                                                             }
 
                                                             Label {
                                                                 anchors.verticalCenter: parent.verticalCenter
                                                                 width: parent.width - units.gu(4.5) - childSubBtn.width - Style.spacingM * 2
+                                                                       - (childOwnerBadge.visible ? childOwnerBadge.width + Style.spacingM : 0)
                                                                 text: childBtn.cName
                                                                 font.pixelSize: Style.fontRegular
                                                                 font.weight: childBtn.cSelected ? Font.DemiBold : Font.Normal
                                                                 font.family: Style.fontFor(text)
                                                                 color: childBtn.cSelected ? Style.brand : Style.textPrimary
                                                                 elide: Text.ElideRight
+                                                            }
+
+                                                            // Owner badge: you manage this community.
+                                                            Rectangle {
+                                                                id: childOwnerBadge
+                                                                visible: !!Config.ownedCommunityIdSet[childBtn.cId]
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                width: childOwnerLbl.width + units.gu(1.6)
+                                                                height: units.gu(2.4)
+                                                                radius: Style.pillRadius
+                                                                color: "#FCE7F3"
+                                                                Label {
+                                                                    id: childOwnerLbl
+                                                                    anchors.centerIn: parent
+                                                                    text: Lang.tr("Owner")
+                                                                    font.pixelSize: Style.fontXSmall
+                                                                    font.weight: Font.Bold
+                                                                    font.family: Style.fontFor(text)
+                                                                    font.letterSpacing: units.dp(0.5)
+                                                                    color: "#DB2777"
+                                                                }
                                                             }
 
                                                             Rectangle {
@@ -961,8 +1130,7 @@ Item {
                     }
                 }
 
-                // See more: shown only while the geo hint collapses the list;
-                // expanding is one-way for the session.
+                // See more: shown only while geo hint collapses the list; expanding is one-way
                 AbstractButton {
                     id: seeMoreBtn
                     visible: picker.detectedIndex >= 0 && !picker.showAll

@@ -1,13 +1,10 @@
 .pragma library
 
-// Country detection: a native client can't read cf-ipcountry (origin-only header),
-// so use Cloudflare's client-facing /cdn-cgi/trace (loc=XX), falling back to
-// serey.io's own geo route. Not via Http.js: no auth, must never trip the 401 handler.
+// Country detection via Cloudflare's /cdn-cgi/trace, falling back to serey.io's geo route
 var TRACE_URL = "https://serey.io/cdn-cgi/trace";
 var FALLBACK_URL = "https://serey.io/api/geo/detect-country";
 
-// Cloudflare reports XX when it can't place the IP (Tor, some VPNs); the web
-// guards on it too, so treat it as "not detected" rather than a country.
+// Cloudflare reports XX when it can't place the IP; treat as "not detected"
 function _clean(code) {
     if (!code) return "";
     var c = String(code).trim().toUpperCase();
@@ -23,8 +20,7 @@ function _parseTrace(body) {
     return "";
 }
 
-// onOk(iso2Uppercase) on success. Detection is a nice-to-have: every failure
-// path just calls onErr (optional) and callers keep the undetected layout.
+// onOk(iso2Uppercase) on success; detection is a nice-to-have, failures are silent
 function detectCountry(onOk, onErr) {
     function fail() { if (onErr) onErr(); }
 
@@ -35,8 +31,7 @@ function detectCountry(onOk, onErr) {
             if (f.status !== 200) { fail(); return; }
             try {
                 var d = JSON.parse(f.responseText);
-                // Unknown IPs answer status:true with NO countryCode, so check
-                // countryCode itself (country is null outside a 6-entry map).
+                // Unknown IPs answer status:true with NO countryCode
                 var code = (d && d.status) ? _clean(d.countryCode) : "";
                 if (code) onOk(code); else fail();
             } catch (e) { fail(); }

@@ -5,8 +5,7 @@ import "../Theme"
 Item {
     id: toaster
     anchors.fill: parent
-    // Above every overlay sheet (sheets are 1500, Stripe checkout 1600); toasts
-    // fire while a sheet is open and must not be hidden behind it.
+    // Above every overlay sheet (up to 1600) since toasts fire while a sheet is open
     z: 2000
 
     Rectangle {
@@ -19,7 +18,7 @@ Item {
         width: Math.min(toaster.width - units.gu(4), label.implicitWidth + units.gu(4))
         height: label.implicitHeight + units.gu(2)
         radius: units.gu(0.75)
-        color: Toast.isError ? Style.danger : Style.toastBg
+        color: Style.toastBg
         opacity: 0
         visible: opacity > 0
 
@@ -39,7 +38,7 @@ Item {
 
     Timer {
         id: hideTimer
-        interval: 2600
+        interval: 5000
         onTriggered: fadeOut.start()
     }
 

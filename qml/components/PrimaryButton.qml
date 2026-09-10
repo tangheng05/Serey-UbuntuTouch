@@ -11,13 +11,12 @@ AbstractButton {
     width: parent ? parent.width : units.gu(40)
     height: units.gu(5)
     enabled: !busy
+    opacity: enabled ? 1.0 : 0.5    // Suru dims the whole control rather than washing the fill
 
     Rectangle {
         anchors.fill: parent
         radius: Style.cardRadius
-        color: !root.enabled ? Qt.rgba(0, 0.51, 0.98, 0.45)
-              : root.pressed  ? Style.brandDark
-              : Style.brand
+        color: root.pressed ? Style.brandDark : Style.brand
         Behavior on color { ColorAnimation { duration: 120 } }
 
         Row {

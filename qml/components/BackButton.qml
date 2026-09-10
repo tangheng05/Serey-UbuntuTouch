@@ -2,11 +2,7 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Back chevron matching Lomiri's PageHeader leading action: themed "back" icon, no chip
- * (the old self-drawn arrow on a white Rectangle was invisible in dark mode).
- * overlay: dark scrim circle + white icon for buttons floating over media.
- */
+// Back chevron matching Lomiri's PageHeader; overlay mode adds a scrim for media buttons
 AbstractButton {
     id: root
 

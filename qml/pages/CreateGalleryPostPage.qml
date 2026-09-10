@@ -269,6 +269,7 @@ Page {
                 }
 
                 Item {
+                    id: addTile
                     visible: page.imageUrls.length < page.maxImages
                     width: (parent.width - Style.spacingS * 2) / 3
                     height: width
@@ -302,10 +303,17 @@ Page {
                                     color: Style.textOnBrand
                                 }
                             }
+                            // Bounded to the tile: translations run longer than "Add photo".
                             Label {
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                width: addTile.width - Style.spacingS
                                 text: Lang.tr("Add photo")
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
                                 font.pixelSize: Style.fontXSmall
+                                font.family: Style.fontFor(text)
                                 color: Style.textSecondary
                             }
                         }

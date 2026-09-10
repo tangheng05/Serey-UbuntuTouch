@@ -30,9 +30,7 @@ function status(baseUrl, viewerUsername, author, onOk, onErr) {
         });
 }
 
-// Returns { username: true } for everyone the user follows (not paginated).
-// My Feed needs this: there is NO following-filtered video endpoint, so videos
-// are filtered against this set client-side.
+// { username: true } for everyone followed; used to filter videos client-side (no such endpoint)
 function listAllFollowings(baseUrl, token, onOk, onErr) {
     return Http.get(baseUrl, "/follow/list-all-followings", {}, token,
         function (data) {

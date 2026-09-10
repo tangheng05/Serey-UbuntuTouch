@@ -17,6 +17,13 @@ Item {
     property bool loading: false
     property bool posting: false
     property var replyTarget: null
+    // Set while editing one of your own comments: the same composer, in edit mode.
+    property var editTarget: null
+
+    // Docked mode: a side panel the caller positions (wide-window reels) instead of a
+    // modal bottom sheet, so it sits beside the video rather than on top of it.
+    property bool docked: false
+    property rect dockRect: Qt.rect(0, 0, 0, 0)
 
     readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
 
@@ -24,13 +31,15 @@ Item {
 
     function open(a, p) {
         sheet.author = a; sheet.permlink = p;
-        sheet.comments = []; sheet.replyTarget = null; composer.text = "";
+        sheet.comments = []; sheet.replyTarget = null; sheet.editTarget = null; composer.text = "";
         sheet.visible = true;
-        backdropFade.start(); panelAnim.to = 0; panelAnim.start();
+        if (sheet.docked) panel.panelOff = 0;
+        else { backdropFade.start(); panelAnim.to = 0; panelAnim.start(); }
         sheet.load();
     }
     function close() {
         Qt.inputMethod.hide();
+        if (sheet.docked) { sheet.visible = false; return; }
         backdropFadeOut.start(); panelAnim.to = panel.height; panelAnim.start();
     }
 
@@ -99,12 +108,38 @@ Item {
                 Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update comment."));
             });
     }
-    function startReply(c) { sheet.replyTarget = c; composer.forceActiveFocus(); }
+    function startReply(c) {
+        sheet.editTarget = null; sheet.replyTarget = c;
+        composer.forceActiveFocus();
+        Qt.inputMethod.show();
+    }
+    // Edit runs through this composer, pre-filled, instead of a second field in the row.
+    function startEdit(c) {
+        sheet.replyTarget = null;
+        sheet.editTarget = c;
+        composer.text = c.body || "";
+        composer.forceActiveFocus();
+        Qt.inputMethod.show();
+    }
+    function cancelEdit() { sheet.editTarget = null; composer.text = ""; }
 
     function submit() {
-        var text = composer.text.trim();
+        // Enter bypasses the Send button's enabled state, so a fast double tap posted twice.
+        if (sheet.posting) return;
+        // Word prediction can commit the first word before AutoCapitalize sees it, so the
+        // send path capitalizes too; both are no-ops when the text already starts upper.
+        var text = Style.sentenceCase(composer.text.trim());
         if (text.length === 0) return;
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in first.")); return; }
+        // Same box, same Send: an edit updates instead of posting a new comment.
+        if (sheet.editTarget) {
+            var edited = sheet.editTarget;
+            sheet.editTarget = null;
+            composer.text = "";
+            sheet.editComment(edited.permlink, text,
+                              edited.parentAuthor || "", edited.parentPermlink || "");
+            return;
+        }
         var target = sheet.replyTarget;
         var pa = target ? target.author : sheet.author;
         var pp = target ? target.permlink : sheet.permlink;
@@ -132,6 +167,8 @@ Item {
     Rectangle {
         id: backdrop
         anchors.fill: parent
+        // Docked panels don't dim or swallow clicks: the reel behind stays swipeable.
+        visible: !sheet.docked
         color: Qt.rgba(0, 0, 0, 0.5)
         opacity: 0
         MouseArea { anchors.fill: parent; onClicked: sheet.close() }
@@ -142,13 +179,22 @@ Item {
 
     Rectangle {
         id: panel
-        // Anchored above the keyboard; height clamps so it never runs off the top when the OSK is up.
-        // Convergence: centered, gu-capped panel on wide windows.
-        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: sheet.kbHeight }
-        width: Math.min(parent.width, Config.sheetMaxWidth)
-        height: Math.min(sheet.height * 0.72, sheet.height - sheet.kbHeight - units.gu(2))
+        // Geometry, not anchors: docked and sheet modes differ on every edge, and an
+        // anchor set can't be swapped from a ternary (see the AnchorChanges note in CLAUDE.md).
+        x: sheet.docked ? sheet.dockRect.x : (parent.width - width) / 2
+        y: sheet.docked ? sheet.dockRect.y : (parent.height - height)
+        width: sheet.docked ? sheet.dockRect.width : Math.min(parent.width, Config.sheetMaxWidth)
+        height: sheet.docked ? sheet.dockRect.height : Math.min(sheet.height * 0.72, sheet.height - units.gu(2))
         color: Style.surface
-        radius: Style.cardRadius
+        // Docked, it's a right rail flush with the window edge, like VideoDetailPage's side panel.
+        radius: sheet.docked ? 0 : Style.cardRadius
+
+        Rectangle {
+            visible: sheet.docked
+            anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
+            width: units.dp(1)
+            color: Style.divider
+        }
 
         // Slide via a translate (0 = open, height = hidden below screen).
         property real panelOff: height
@@ -162,7 +208,17 @@ Item {
             anchors { left: parent.left; right: parent.right; top: parent.top }
             height: units.gu(6)
             color: "transparent"
+            // Docked reuses the rail's section heading; the modal keeps its centered title.
             Label {
+                visible: sheet.docked
+                anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                text: Lang.tr("COMMENTS (%1)").arg(sheet.comments.length)
+                font.pixelSize: Style.fontSmall
+                font.weight: Font.Bold
+                color: Style.textSecondary
+            }
+            Label {
+                visible: !sheet.docked
                 anchors.centerIn: parent
                 text: Lang.tr("Comments")
                 font.pixelSize: Style.fontMedium
@@ -171,6 +227,8 @@ Item {
                 color: Style.textPrimary
             }
             AbstractButton {
+                // Docked, the panel is permanent furniture like the video rail, so there's nothing to dismiss.
+                visible: !sheet.docked
                 anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                 width: units.gu(4); height: width
                 onClicked: sheet.close()
@@ -186,13 +244,27 @@ Item {
             clip: true
             model: sheet.comments
             spacing: 0
-            delegate: CommentItem {
+            // Docked mirrors the side panel: compact rows separated by a rule, no avatar indent.
+            delegate: Column {
                 width: cList.width
-                comment: modelData
-                topLevel: true
-                onDeleted: sheet.removeComment(permlink)
-                onEdited: sheet.editComment(permlink, newBody, parentAuthor, parentPermlink)
-                onReplyRequested: sheet.startReply(comment)
+                spacing: sheet.docked ? Style.spacingS : 0
+
+                Rectangle {
+                    visible: sheet.docked && index > 0
+                    width: parent.width
+                    height: units.dp(1)
+                    color: Style.divider
+                }
+
+                CommentItem {
+                    width: parent.width
+                    compact: sheet.docked
+                    comment: modelData
+                    topLevel: true
+                    onDeleted: sheet.removeComment(permlink)
+                    onEditRequested: sheet.startEdit(comment)
+                    onReplyRequested: sheet.startReply(comment)
+                }
             }
         }
 
@@ -202,8 +274,19 @@ Item {
             visible: running
         }
         Label {
+            // Same copy and placement as the video side panel: top-left, not centered.
+            visible: sheet.docked && !sheet.loading && sheet.comments.length === 0
+            anchors { left: cList.left; right: cList.right; top: cList.top
+                      leftMargin: Style.spacingM; rightMargin: Style.spacingM; topMargin: Style.spacingS }
+            text: Lang.tr("No comments yet. Be the first!")
+            font.pixelSize: Style.fontSmall
+            font.family: Style.fontFor(text)
+            wrapMode: Text.Wrap
+            color: Style.textSecondary
+        }
+        Label {
             anchors.centerIn: cList
-            visible: !sheet.loading && sheet.comments.length === 0
+            visible: !sheet.docked && !sheet.loading && sheet.comments.length === 0
             text: Lang.tr("No comments yet")
             font.family: Style.fontFor(text)
             color: Style.textSecondary
@@ -212,64 +295,109 @@ Item {
         Column {
             id: composerBar
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            // Ride above the on-screen keyboard; cList above is anchored to composerBar.top
+            // and shrinks to keep both visible (same fix as VideoDetailPage's comment footer).
+            anchors.bottomMargin: sheet.kbHeight
+            Behavior on anchors.bottomMargin { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
             spacing: 0
 
-            Rectangle {
-                width: parent.width
-                height: visible ? units.gu(4) : 0
-                visible: sheet.replyTarget !== null
-                color: Style.iconBackground
+            // "Replying to @x  Cancel", the same treatment as the video composers
+            Row {
+                visible: sheet.replyTarget !== null || sheet.editTarget !== null
+                x: Style.spacingS
+                width: parent.width - Style.spacingS * 2
+                height: visible ? units.gu(3) : 0
+                spacing: Style.spacingS
+
                 Label {
-                    anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    text: Lang.tr("Replying to @%1").arg(sheet.replyTarget ? sheet.replyTarget.author : "")
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: sheet.editTarget ? Lang.tr("Editing your comment")
+                        : Lang.tr("Replying to @%1").arg(sheet.replyTarget ? sheet.replyTarget.author : "")
                     font.pixelSize: Style.fontSmall
                     font.family: Style.fontFor(text)
                     color: Style.textSecondary
                 }
                 AbstractButton {
-                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    width: units.gu(3); height: width
-                    onClicked: sheet.replyTarget = null
-                    Icon { anchors.centerIn: parent; width: units.gu(2); height: width; name: "close"; color: Style.textSecondary }
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: cancelReplyLabel.implicitWidth
+                    height: cancelReplyLabel.implicitHeight
+                    onClicked: sheet.editTarget ? sheet.cancelEdit() : (sheet.replyTarget = null)
+                    Label {
+                        id: cancelReplyLabel
+                        text: Lang.tr("Cancel")
+                        font.pixelSize: Style.fontSmall
+                        font.weight: Font.DemiBold
+                        color: Style.brand
+                    }
                 }
             }
 
             Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
 
-            Row {
-                width: parent.width - Style.spacingM * 2
-                x: Style.spacingM
-                height: units.gu(7)
-                spacing: Style.spacingS
+            Item { width: 1; height: Style.spacingS }
+
+            // Same pill + round send button as VideoDetailPage's composers, so every
+            // comment box in the app looks alike.
+            Item {
+                x: Style.spacingS
+                width: parent.width - Style.spacingS * 2
+                height: units.gu(5)
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Style.cardRadius
+                    color: Style.iconBackground
+                    border.width: units.dp(1)
+                    border.color: Style.divider
+                }
 
                 TextField {
                     id: composer
-                    width: parent.width - sendBtn.width - Style.spacingS
-                    anchors.verticalCenter: parent.verticalCenter
-                    placeholderText: Lang.tr("Add a comment…")
+                    // Stands in for the keyboard's auto-shift on the first letter.
+                    AutoCapitalize { field: composer }
+                    anchors { left: parent.left; leftMargin: Style.spacingM
+                              right: sendBtn.left; rightMargin: Style.spacingXs
+                              verticalCenter: parent.verticalCenter }
+                    height: parent.height - units.dp(2)
+                    StyleHints {
+                        backgroundColor: "transparent"
+                        borderColor: "transparent"
+                        color: Style.textPrimary
+                    }
+                    hasClearButton: false
+                    placeholderText: !Session.isLoggedIn ? Lang.tr("Log in to comment…")
+                                   : sheet.editTarget ? Lang.tr("Edit your comment…")
+                                                      : Lang.tr("Post a comment…")
                     font.family: Style.fontFor(text)
+                    font.pixelSize: Style.fontRegular
                     onAccepted: sheet.submit()
+                    // A direct tap here can still leave the OSK unraised on some platforms,
+                    // which starves the panel's kbHeight math and lets the keyboard cover it.
+                    onActiveFocusChanged: if (activeFocus) Qt.inputMethod.show()
                 }
+
                 AbstractButton {
                     id: sendBtn
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: units.gu(8); height: units.gu(4.5)
-                    enabled: !sheet.posting && composer.text.trim().length > 0
+                    anchors { right: parent.right; rightMargin: units.dp(3); verticalCenter: parent.verticalCenter }
+                    width: units.gu(3.8); height: width
+                    enabled: !sheet.posting && composer.displayText.trim().length > 0
                     onClicked: sheet.submit()
+
                     Rectangle {
                         anchors.fill: parent
-                        radius: Style.cardRadius
-                        color: parent.enabled ? Style.brand : Style.iconBackground
+                        radius: width / 2
+                        color: sendBtn.enabled ? Style.brand : "transparent"
                     }
-                    Label {
+                    Icon {
                         anchors.centerIn: parent
-                        text: sheet.posting ? Lang.tr("…") : Lang.tr("Send")
-                        font.pixelSize: Style.fontSmall
-                        font.weight: Font.DemiBold
-                        color: parent.enabled ? Style.textOnBrand : Style.textSecondary
+                        width: units.gu(2.2); height: width
+                        name: "send"
+                        color: sendBtn.enabled ? Style.textOnBrand : Style.textSecondary
                     }
                 }
             }
+
+            Item { width: 1; height: Style.spacingS }
         }
     }
 }

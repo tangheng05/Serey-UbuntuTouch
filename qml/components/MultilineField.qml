@@ -15,7 +15,7 @@ Rectangle {
     height: Math.max(units.gu(10), input.contentHeight + Style.spacingM * 2)
     radius: Style.cardRadius
     color: Style.surface
-    border.width: units.dp(1.5)
+    border.width: units.dp(1)
     border.color: input.activeFocus ? Style.brand : Style.divider
     Behavior on border.color { ColorAnimation { duration: 120 } }
 
@@ -41,12 +41,13 @@ Rectangle {
             anchors.fill: parent
             text: root.placeholder
             // Per-field only, not Qt.inputMethod.visible, which would blank every other field's placeholder while any one is focused.
-            visible: input.text.length === 0 && !input.inputMethodComposing && !input.activeFocus
+            // Stays up while focused, like Suru's own field; it only clears once there's text.
+            visible: input.text.length === 0 && !input.inputMethodComposing
             wrapMode: Text.Wrap
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFor(text)
             color: Style.textSecondary
-            opacity: 0.7
+            opacity: input.activeFocus ? 0.8 : 0.6
         }
     }
 

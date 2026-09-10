@@ -13,30 +13,57 @@ Item {
     // Keep the outgoing transfer referenced until ContentHub picks it up.
     property var activeTransfer: null
 
+    // Anchored dropdown on desktop, full bottom sheet everywhere else. Same rule as the
+    // cards' compactMenu: a tablet is touch-first, so it gets sheets, not dropdowns.
+    readonly property bool compactMenu: Config.desktopMode
+
+    // The dropdown has no room for the peer grid, so "Share via…" opens it as a dialog.
+    property bool peerDialogOpen: false
+
+    function sendToPeer(peer) {
+        var transfer = peer.request();
+        // Set all 3 real ContentItem fields; different peers read different ones
+        transfer.items = [ linkItemComp.createObject(sheet, {
+            url: Share.url,
+            text: Share.url,
+            name: Share.url
+        }) ];
+        transfer.state = ContentTransfer.Charged;
+        sheet.activeTransfer = transfer;
+    }
+
     onVisibleChanged: {
-        if (visible && !Config.wideMode) { backdropFade.start(); slideIn.start(); }
+        if (!visible) sheet.peerDialogOpen = false;
+        if (visible && !sheet.compactMenu) { backdropFade.start(); slideIn.start(); }
     }
 
     function closeSheet() {
-        if (Config.wideMode) { Share.close(); return; }
+        if (sheet.compactMenu) { Share.close(); return; }
         backdropFadeOut.start();
         slideOut.start();
     }
 
     Component { id: linkItemComp; ContentItem {} }
 
-    // --- Wide mode: compact dropdown ---
+    // --- Desktop: compact dropdown ---
     Item {
-        visible: Config.wideMode
+        visible: sheet.compactMenu
         anchors.fill: parent
 
         MouseArea {
             anchors.fill: parent
-            onClicked: Share.close()
+            onClicked: sheet.peerDialogOpen ? (sheet.peerDialogOpen = false) : Share.close()
+        }
+
+        Rectangle {
+            visible: sheet.peerDialogOpen
+            anchors.fill: parent
+            color: Qt.rgba(0, 0, 0, 0.4)
         }
 
         Rectangle {
             id: dropdown
+            visible: !sheet.peerDialogOpen
             readonly property real dropW: units.gu(26)
             // Anchors under the button that opened it; falls back to centered if none passed.
             readonly property var _anchor: Share.anchorItem
@@ -47,9 +74,16 @@ Item {
                 ? Math.max(Style.spacingM, Math.min(parent.width - dropdown.dropW - Style.spacingM,
                     dropdown._anchorPos.x + dropdown._anchor.width - dropdown.dropW))
                 : (parent.width - dropdown.dropW) / 2
-            y: dropdown._anchorPos
-                ? dropdown._anchorPos.y + Style.spacingXs
-                : (parent.height - dropdown.height) / 2
+            // Below the button, but flipped above it when there's no room (the reels rail
+            // sits near the bottom edge, where dropping down ran the menu off screen).
+            y: {
+                if (!dropdown._anchorPos) return (parent.height - dropdown.height) / 2;
+                var below = dropdown._anchorPos.y + Style.spacingXs;
+                if (below + dropdown.height <= parent.height - Style.spacingM) return below;
+                var above = dropdown._anchorPos.y - dropdown._anchor.height
+                            - dropdown.height - Style.spacingXs;
+                return Math.max(Style.spacingM, above);
+            }
             width: dropW
             height: dropCol.height
             radius: units.dp(8)
@@ -106,6 +140,34 @@ Item {
 
                 AbstractButton {
                     width: parent.width; height: units.gu(6)
+                    onClicked: sheet.peerDialogOpen = true
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: units.dp(8)
+                        color: parent.pressed ? Style.divider : "transparent"
+                    }
+                    Row {
+                        anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
+                        spacing: Style.spacingM
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(2.2); height: width
+                            name: "share"
+                            color: Style.textPrimary
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Lang.tr("Share via…")
+                            font.pixelSize: Style.fontRegular
+                            color: Style.textPrimary
+                        }
+                    }
+                }
+
+                Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
+
+                AbstractButton {
+                    width: parent.width; height: units.gu(6)
                     onClicked: {
                         var url = Share.url;
                         Share.close();
@@ -137,9 +199,65 @@ Item {
         }
     }
 
-    // --- Narrow mode: full bottom sheet ---
+    // --- Desktop: ContentHub peers, as a dialog the dropdown has no room for ---
+    Rectangle {
+        visible: sheet.compactMenu && sheet.peerDialogOpen
+        anchors.centerIn: parent
+        width: Math.min(parent.width - Style.spacingL * 2, units.gu(60))
+        height: Math.min(parent.height - Style.spacingL * 2, units.gu(50))
+        radius: units.dp(12)
+        color: Style.surface
+        border.width: units.dp(1)
+        border.color: Style.divider
+
+        MouseArea { anchors.fill: parent /* swallow taps so the backdrop doesn't close it */ }
+
+        Rectangle {
+            id: peerHeader
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: units.gu(6)
+            color: "transparent"
+            Label {
+                anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                text: Lang.tr("Share")
+                font.pixelSize: Style.fontLarge
+                font.weight: Font.DemiBold
+                color: Style.textPrimary
+            }
+            AbstractButton {
+                anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                width: units.gu(4); height: width
+                onClicked: sheet.peerDialogOpen = false
+                Icon { anchors.centerIn: parent; width: units.gu(2.5); height: width
+                       name: "close"; color: Style.textPrimary }
+            }
+            Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                        height: units.dp(1); color: Style.divider }
+        }
+
+        Item {
+            anchors { left: parent.left; right: parent.right; top: peerHeader.bottom; bottom: parent.bottom }
+            clip: true
+
+            ContentPeerPicker {
+                anchors.fill: parent
+                contentType: ContentType.Links
+                handler: ContentHandler.Share
+                showTitle: false
+                visible: sheet.visible && sheet.compactMenu && sheet.peerDialogOpen
+                onPeerSelected: {
+                    sheet.sendToPeer(peer);
+                    sheet.peerDialogOpen = false;
+                    Share.close();
+                }
+                onCancelPressed: sheet.peerDialogOpen = false
+            }
+        }
+    }
+
+    // --- Phone and tablet: full bottom sheet ---
     Item {
-        visible: !Config.wideMode
+        visible: !sheet.compactMenu
         anchors.fill: parent
 
         Rectangle {
@@ -192,12 +310,9 @@ Item {
                     contentType: ContentType.Links
                     handler: ContentHandler.Share
                     showTitle: false
-                    visible: sheet.visible && !Config.wideMode
+                    visible: sheet.visible && !sheet.compactMenu
                     onPeerSelected: {
-                        var transfer = peer.request();
-                        transfer.items = [ linkItemComp.createObject(sheet, { url: Share.url }) ];
-                        transfer.state = ContentTransfer.Charged;
-                        sheet.activeTransfer = transfer;
+                        sheet.sendToPeer(peer);
                         sheet.closeSheet();
                     }
                     onCancelPressed: sheet.closeSheet()

@@ -10,12 +10,10 @@ import "../services/PlatformService.js" as PlatformService
 Page {
     id: page
 
-    // Filled from a fresh get-communities walk in loadContext; the startup cache
-    // can be stale right after creating a platform (used to render "Global").
+    // Filled from loadContext's walk; startup cache can be stale right after creating a platform
     property string platformNameValue: Config.communityInfoFor(Config.managedCommunityId)
         ? Config.communityInfoFor(Config.managedCommunityId).title : ""
-    // Parent is structural in the get-communities tree (no `country` field on
-    // the node); resolved by loadContext's tree walk.
+    // Parent is structural in the tree (no country field); resolved by loadContext's walk
     property string parentCountryName: ""
     property string parentCountryId: ""
     property string categoryName: ""
@@ -23,6 +21,7 @@ Page {
     property var categoryOptions: []   // [{ id, name }], community_category taxonomy
     property var countryOptions: []    // [{ id, name }], id is the UUID update-community-country needs
     property bool saving: false
+    property bool countryPickerOpen: false
 
     // Initial values captured on load; Save only sends what actually changed.
     property string _initialName: ""
@@ -30,8 +29,7 @@ Page {
     property int _initialCategoryId: 0
     property string _initialSeo: ""
 
-    // categoryId (from the community) and categoryOptions (from the taxonomy)
-    // arrive from two async calls in either order; sync whenever both are in.
+    // categoryId and categoryOptions arrive via two async calls in either order; sync when both land
     function _syncCategoryName() {
         for (var i = 0; i < page.categoryOptions.length; i++) {
             if (page.categoryOptions[i].id === page.categoryId) {
@@ -41,8 +39,7 @@ Page {
         }
     }
 
-    // The tree may only give the parent's TITLE; resolve its serey-countries
-    // UUID by name match once the country list is in (either call order).
+    // Tree may give only the parent's TITLE; resolve its UUID by name match once countries load
     function _syncCountryId() {
         if (page.parentCountryId.length > 0 || page.parentCountryName.length === 0) return
         for (var i = 0; i < page.countryOptions.length; i++) {
@@ -63,8 +60,7 @@ Page {
             function () { /* non-fatal: picker just stays empty */ })
     }
 
-    // Prefer Config's cache (kept fresh by updateCommunityFields) over ctx here;
-    // get-communities is cached server-side and can be stale right after a save.
+    // Prefer Config's cache over ctx; get-communities is server-cached and can be stale post-save
     function loadContext() {
         PlatformService.getCommunityContext(Config.baseUrl, Config.managedCommunityId,
             function (ctx) {
@@ -84,8 +80,7 @@ Page {
     }
 
     function loadCountries() {
-        // Country table rows with uuid ids, the country_id update-community-country
-        // needs (serey-countries only returns { icon_url, country_name }, no id).
+        // Country rows with uuid ids; serey-countries alone returns no id, only icon/name
         PlatformService.getCountries(Config.baseUrl,
             function (list) {
                 page.countryOptions = list
@@ -184,8 +179,8 @@ Page {
             }
             AbstractButton {
                 width: parent.width
-                height: units.gu(6)
-                onClicked: PopupUtils.open(parentCountryDialog)
+                height: units.gu(5)     // match FormField, these read as fields
+                onClicked: page.countryPickerOpen = true
                 Rectangle {
                     anchors.fill: parent
                     radius: Style.cardRadius
@@ -215,7 +210,7 @@ Page {
             }
             AbstractButton {
                 width: parent.width
-                height: units.gu(6)
+                height: units.gu(5)     // match FormField, these read as fields
                 onClicked: page.categoryOptions.length > 0
                     ? PopupUtils.open(categoryDialog)
                     : Toast.show(Lang.tr("Category list not available yet."))
@@ -298,27 +293,129 @@ Page {
         }
     }
 
-    Component {
-        id: parentCountryDialog
-        Dialog {
-            id: dlg
-            title: Lang.tr("Parent Country")
-            Repeater {
-                model: page.countryOptions
-                delegate: Button {
-                    width: parent.width
+    // Full-screen scrollable sheet: a Dialog+Repeater grows to fit every country with no
+    // scroll clip, so the list runs off-screen. A ListView bounded to the page is draggable
+    // AND wheel/trackpad-scrollable.
+    Rectangle {
+        visible: page.countryPickerOpen
+        anchors { top: page.header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        color: Style.surface
+        z: 10
+
+        MouseArea { anchors.fill: parent }
+
+        Item {
+            id: countryPickerHeader
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: units.gu(7)
+
+            AbstractButton {
+                id: countryPickerBack
+                anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                width: units.gu(6)
+                onClicked: page.countryPickerOpen = false
+                Icon {
+                    anchors.centerIn: parent
+                    name: "back"
+                    width: units.gu(2.5); height: width
+                    color: Style.textPrimary
+                }
+            }
+            Rectangle {
+                anchors {
+                    left: countryPickerBack.right
+                    right: parent.right; rightMargin: Style.spacingM
+                    verticalCenter: parent.verticalCenter
+                }
+                height: units.gu(4.5)
+                radius: Style.cardRadius
+                color: "transparent"
+                border.width: units.dp(1)
+                border.color: countrySearchField.activeFocus ? Style.brand : Style.divider
+
+                TextInput {
+                    id: countrySearchField
+                    anchors {
+                        left: parent.left; leftMargin: Style.spacingM
+                        right: parent.right; rightMargin: Style.spacingM
+                        verticalCenter: parent.verticalCenter
+                    }
+                    font.family: Style.fontFamily
+                    font.pixelSize: Style.fontRegular
+                    color: Style.textPrimary
+                    inputMethodHints: Qt.ImhNoPredictiveText
+                }
+                Label {
+                    anchors { left: countrySearchField.left; verticalCenter: parent.verticalCenter }
+                    visible: countrySearchField.text.length === 0 && !countrySearchField.inputMethodComposing
+                    text: Lang.tr("Search countries")
+                    color: Style.textSecondary
+                    font.pixelSize: Style.fontRegular
+                    font.family: Style.fontFor(text)
+                }
+            }
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                height: units.dp(1)
+                color: Style.divider
+            }
+        }
+
+        ListView {
+            anchors { top: countryPickerHeader.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+            bottomMargin: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
+            clip: true
+            model: {
+                var q = countrySearchField.text.toLowerCase()
+                if (q.length === 0) return page.countryOptions
+                var out = []
+                for (var i = 0; i < page.countryOptions.length; i++)
+                    if (page.countryOptions[i].name.toLowerCase().indexOf(q) >= 0)
+                        out.push(page.countryOptions[i])
+                return out
+            }
+            delegate: Item {
+                width: ListView.view.width
+                height: units.gu(6)
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: countryRowTap.pressed ? Style.pressed : "transparent"
+                }
+                Label {
+                    anchors {
+                        left: parent.left; leftMargin: Style.spacingM
+                        right: countryRowTick.left; rightMargin: Style.spacingS
+                        verticalCenter: parent.verticalCenter
+                    }
                     text: modelData.name
-                    color: page.parentCountryId === modelData.id ? Style.brand : Style.iconBackground
+                    elide: Text.ElideRight
+                    font.pixelSize: Style.fontRegular
+                    font.family: Style.fontFor(text)
+                    color: Style.textPrimary
+                }
+                Icon {
+                    id: countryRowTick
+                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    visible: page.parentCountryId === modelData.id
+                    name: "tick"
+                    width: units.gu(2.5); height: width
+                    color: Style.success
+                }
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: units.dp(1)
+                    color: Style.divider
+                }
+                MouseArea {
+                    id: countryRowTap
+                    anchors.fill: parent
                     onClicked: {
                         page.parentCountryId = modelData.id
                         page.parentCountryName = modelData.name
-                        PopupUtils.close(dlg)
+                        page.countryPickerOpen = false
                     }
                 }
-            }
-            Button {
-                text: Lang.tr("Cancel")
-                onClicked: PopupUtils.close(dlg)
             }
         }
     }

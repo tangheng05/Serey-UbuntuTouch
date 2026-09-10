@@ -17,14 +17,16 @@ Page {
     property bool loading: false
     property bool endReached: false
     property string errorMsg: ""
+    // Kept out of errorMsg (a plain string) so the "banned" message stays a live Lang.tr() binding
+    // and re-translates immediately on a language switch, instead of being baked in at reload() time.
+    property bool bannedHere: false
     // Request generation bumped on reload() so a late response from a previous community can't append stale rows into the freshly-cleared model.
     property int reqEpoch: 0
     property var inflight: null
     property var reels: []
     // True while the rows on screen came from FeedCache rather than the network.
     property bool showingCached: false
-    // The first page is fetched at this depth so the reel shelf (<=12 rows) and
-    // the list can share one response. Deeper pages go back to Config.pageSize.
+    // First page fetched deep enough for reel shelf + list to share one response
     readonly property int initialLimit: 30
     readonly property bool hasReels: reels && reels.length > 0
     readonly property int reelsInsertIndex: feedModel.count > 1 ? 1 : 0
@@ -40,6 +42,8 @@ Page {
     Connections {
         target: Config
         function onCommunityIdChanged() { page.reload(); }
+        // Account switch (or a fresh ban) can flip this for the SAME community id already on screen.
+        function onIsBannedFromCurrentCommunityChanged() { page.reload(); }
     }
 
     // Clears the highlighted row once the detail pane's back button returns here (split/wide layout).
@@ -94,17 +98,20 @@ Page {
         refreshing = false;
         errorMsg = "";
         page.showingCached = false;
-        // Only wipe when there's nothing cached to put in its place, or the list
-        // flashes empty between communities.
+        page.bannedHere = Config.isBannedFromCurrentCommunity;
+        if (page.bannedHere) {
+            reels = []; feedModel.clear();
+            page.endReached = true;
+            return;
+        }
+        // Only wipe if nothing cached, else list flashes empty between communities
         if (!_paintCached()) { reels = []; feedModel.clear(); }
         // In-place sync keeps the scroll offset, so reset it explicitly (see NewsPage).
         list.positionViewAtBeginning();
         _fetchInitial(false);
     }
 
-    // Paint the last-seen rows for this community so a relaunch (or switching
-    // back to a community already visited) shows videos at once instead of the
-    // skeleton, which is bound to `count === 0`.
+    // Paint last-seen rows so a relaunch shows videos instead of the skeleton
     function _paintCached() {
         var cached = FeedCache.peek(FeedCache.videoKey(Config.communityId));
         if (!cached) return false;
@@ -113,9 +120,7 @@ Page {
         return page.showingCached;
     }
 
-    // Overwrite rows in place rather than clear() + append: clearing destroys
-    // delegates and VideoCard thumbnails fade back in, flashing an unchanged
-    // list. Same reasoning (and shape) as NewsPage._syncRows.
+    // In-place overwrite avoids clear()+append thumbnail flash (see NewsPage._syncRows)
     function _rowDiffers(cur, next) {
         return cur.permlink !== next.permlink
             || cur.votes !== next.votes
@@ -133,18 +138,20 @@ Page {
             feedModel.remove(feedModel.count - 1);
     }
 
-    // One response drives both the list and the reel shelf (two concurrent
-    // requests paid the ~2.7s Global query twice). rawCount < 0 means "painted
-    // from cache": leave paging counters alone so the real response fetches page 0.
+    // One response drives list + reel shelf; rawCount < 0 means painted from cache
     function _applyRows(result, rawCount) {
         var hidden = HiddenPosts.loadAll();
         var blocked = BlockedUsers.loadAll();
         var rows = [];
         var out = [];
         var seen = {};
+        var seenRow = {};
         for (var i = 0; i < result.length; i++) {
             var v = result[i];
             if (hidden[v.permlink || ""] || blocked[v.author || ""]) continue;
+            // dedupe: backend can send one post as multiple rows
+            if (seenRow[v.permlink || ""]) continue;
+            seenRow[v.permlink || ""] = true;
             rows.push(v);
             // Reel shelf: Serey-hosted and playable only, deduped, capped at 12.
             if (out.length < 12 && v.platform === "SEREY" && (v.videoLink || "").length > 0
@@ -157,9 +164,7 @@ Page {
         page.reels = out;
         if (rawCount >= 0) {
             page.offset = rawCount;
-            // Compare against what we actually asked for, not pageSize: asking
-            // for 30 and getting 12 means the feed is exhausted, not that a
-            // second page is waiting.
+            // Compare against what we asked for, not pageSize, to detect exhaustion
             page.endReached = rawCount < page.initialLimit;
         }
     }
@@ -172,8 +177,7 @@ Page {
             params.community_id = Config.communityId;
         else
             params.exclude_home = 1;   // Global feed hides the Cambodia community + children
-        // Through FeedCache: stores the rows, and attaches to Main.qml's startup
-        // prefetch rather than firing the same 2.7s request again.
+        // Through FeedCache: attaches to Main.qml's startup prefetch, no duplicate request
         inflight = FeedCache.request(FeedCache.videoKey(Config.communityId),
             function (ok, err) { return VideoService.listVideos(Config.baseUrl, params, Session.token, ok, err); },
             function (result, rawCount) {
@@ -184,9 +188,7 @@ Page {
                 page.showingCached = false;
                 page._applyRows(result, rawCount);
                 if (!page.endReached && feedModel.count < Config.pageSize) page.loadMore();
-                // Deferred atYEnd recheck: the user can reach the end while this
-                // request was in flight (trigger fired into the loading guard);
-                // checked on a timer because atYEnd is stale until relayout (see NewsPage).
+                // Deferred atYEnd recheck: stale until relayout (see NewsPage)
                 endRecheck.restart();
             },
             function (err) {
@@ -195,7 +197,6 @@ Page {
                 page.loading = false;
                 page.refreshing = false;
                 // Keep cached rows on failure; only an empty list becomes an error
-                // (it used to fall through to EmptyState's "No videos" instead).
                 if (feedModel.count === 0) page.errorMsg = err.message;
             });
     }
@@ -204,6 +205,7 @@ Page {
     property bool refreshing: false
     function refresh() {
         if (page.refreshing) return;
+        if (Config.isBannedFromCurrentCommunity) return;
         page.refreshing = true;
         page.reqEpoch++;
         if (inflight) { inflight.abort(); inflight = null; }
@@ -212,6 +214,9 @@ Page {
 
     function loadMore() {
         if (loading || endReached) return;
+        if (Config.isBannedFromCurrentCommunity) { page.bannedHere = true; page.endReached = true; return; }
+        // Offline: every page request would just fail, and parking at the end retries forever.
+        if (!Net.online) return;
         // Page 0 is the shared list+reels fetch; only deeper pages come through here.
         if (page.offset === 0) { _fetchInitial(false); return; }
         loading = true;
@@ -229,9 +234,15 @@ Page {
                 loading = false;
                 var hidden = HiddenPosts.loadAll();
                 var blocked = BlockedUsers.loadAll();
-                for (var i = 0; i < result.length; i++)
-                    if (!hidden[result[i].permlink || ""] && !blocked[result[i].author || ""])
-                        feedModel.append(result[i]);
+                // dedupe against rows already on screen
+                var existing = {};
+                for (var e = 0; e < feedModel.count; e++) existing[feedModel.get(e).permlink] = true;
+                for (var i = 0; i < result.length; i++) {
+                    var pl = result[i].permlink || "";
+                    if (hidden[pl] || blocked[result[i].author || ""] || existing[pl]) continue;
+                    existing[pl] = true;
+                    feedModel.append(result[i]);
+                }
                 page.offset += rawCount;
                 if (rawCount < Config.pageSize) page.endReached = true;
                 // Keep paging if this page was filtered below a screenful (see refresh()).
@@ -260,12 +271,10 @@ Page {
         _fetchInitial(false);
         if (visible) list.forceActiveFocus();
     }
-    // Keyboard parity on arrival: the list takes arrow-key focus whenever this
-    // page is (re)shown, so keyboard nav works before the first click/tap.
+    // Keyboard parity: list takes arrow-key focus whenever this page is (re)shown
     onVisibleChanged: if (visible) {
         list.kbEngaged = false;
-        // Clear any card that kept scope focus from a previous keyboard session,
-        // else its ring reappears uninvited when the tab regains focus.
+        // Clear stale card focus, else its ring reappears when the tab regains focus
         if (list.currentItem) list.currentItem.focus = false;
         list.forceActiveFocus();
     }
@@ -273,9 +282,7 @@ Page {
     // This list owns arrow-key focus for master-detail keyboard nav (AdaptiveStack.focusMaster targets it).
     property Item keyboardFocusItem: list
 
-    // Same "no cursor on first Left" problem as NewsPage: the cursor is the
-    // VideoCard's own ring, gated on kbEngaged. Engage and focus the card directly;
-    // the wrapper's onActiveFocusChanged never fires if it already holds focus.
+    // Same "no cursor on first Left" issue as NewsPage; engage and focus card directly
     function focusListKeyNav() {
         if (list.currentIndex < 0 && list.count > 0) list.currentIndex = 0;
         list.kbEngaged = true;
@@ -292,9 +299,7 @@ Page {
         clip: true
         model: feedModel
         cacheBuffer: units.gu(16)
-        // The keyboard cursor visual is the VideoCard's own ring (the delegate
-        // forwards focus to the card, see rowWrap). kbEngaged gates that so the
-        // page's auto-focus on show never paints a ring for touch users.
+        // kbEngaged gates the VideoCard ring so touch-show never paints a cursor
         property bool kbEngaged: false
         Keys.onPressed: {
             if (!list.kbEngaged) {
@@ -342,13 +347,10 @@ Page {
             width: list.width
             readonly property bool showReelShelf: page.hasReels && index === page.reelsInsertIndex
             height: (showReelShelf ? reelsShelf.implicitHeight : 0) + videoRow.height
-            // Lets focusListKeyNav() reach the real focus owner: the ListView only
-            // hands focus to this wrapper, and the ring lives on the card.
+            // Lets focusListKeyNav() reach the real focus owner (the ring lives on the card)
             property alias rowCard: card
 
-            // The ListView focuses this plain wrapper (needed for the Reels shelf),
-            // so ListItem's key-nav frame never shows; hand focus to the VideoCard,
-            // which draws its own ring. Gated on kbEngaged (see above).
+            // Wrapper focus (needed for Reels shelf) is handed to the VideoCard's own ring
             onActiveFocusChanged: if (activeFocus && list.kbEngaged) card.forceActiveFocus()
 
             Item {
@@ -383,7 +385,7 @@ Page {
                         }
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: Lang.tr("Reels")
+                            text: Lang.tr("Serey Shorts")
                             font.pixelSize: Style.fontRegular
                             font.weight: Font.DemiBold
                             color: Style.textPrimary
@@ -414,7 +416,10 @@ Page {
                     delegate: AbstractButton {
                         width: reelsGrid.cellWidth
                         height: reelsGrid.cellHeight
-                        onClicked: page.pageStack.push(Qt.resolvedUrl("ReelsPage.qml"), { startIndex: index })
+                        // focusOnOpen: reels are driven by arrow keys, so leaving focus on
+                        // this grid would make the first keypress scroll the list instead.
+                        onClicked: page.pageStack.push(Qt.resolvedUrl("ReelsPage.qml"),
+                                                       { startIndex: index, focusOnOpen: true })
                         readonly property int rowIndex: index % reelsShelf.reelsRows
                         readonly property int colIndex: Math.floor(index / reelsShelf.reelsRows)
 
@@ -480,7 +485,10 @@ Page {
                 }
 
                 // HIG polarity: LEADING = negative (red), TRAILING = positive.
-                leadingActions: ListItemActions {
+                // Swipe is a touch affordance: on desktop the card's "..." menu already offers these.
+                leadingActions: Config.desktopMode ? null : swipeHideActions
+                ListItemActions {
+                    id: swipeHideActions
                     delegate: Rectangle {
                         width: units.gu(7)
                         height: parent ? parent.height : units.gu(6)
@@ -499,8 +507,7 @@ Page {
                             onTriggered: {
                                 var vm = feedModel.get(index);
                                 if (vm) {
-                                    // Persist to the local hidden-posts store so it stays hidden across
-                                    // restarts, matching the overflow-menu Hide (PostActionSheet).
+                                    // Persist so it stays hidden across restarts (matches PostActionSheet)
                                     HiddenPosts.hide(vm.permlink || "");
                                     PostActions.hideRequested(vm.author, vm.permlink);
                                 }
@@ -508,13 +515,21 @@ Page {
                         }
                     ]
                 }
-                trailingActions: ListItemActions {
+                trailingActions: Config.desktopMode ? null : swipeShareActions
+                ListItemActions {
+                    id: swipeShareActions
                     delegate: Item {
                         width: units.gu(7)
                         height: parent ? parent.height : units.gu(6)
                         // Reflects already-following on the "contact"/Follow action; every other action keeps the neutral color.
                         readonly property bool isFollowAction: action.iconName === "contact"
                         readonly property var _rowVideo: isFollowAction ? feedModel.get(index) : null
+                        // Only built when the row is swiped open, so this is one request per swipe
+                        Component.onCompleted: {
+                            if (isFollowAction && _rowVideo && Session.isLoggedIn
+                                    && _rowVideo.author && _rowVideo.author !== Session.username)
+                                FollowStore.load(Config.baseUrl, Session.username, _rowVideo.author);
+                        }
                         Icon {
                             anchors.centerIn: parent
                             width: units.gu(2.5); height: width
@@ -537,10 +552,10 @@ Page {
                         },
                         Action {
                             iconName: "share"
-                            text: Lang.tr("Share")
+                            text: Lang.tr("Share…")
                             onTriggered: {
                                 var vm = feedModel.get(index);
-                                if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink);
+                                if (vm) Share.open("https://serey.io/video-component/watch?author=" + vm.author + "&permalink=" + vm.permlink, card.menuAnchor);
                             }
                         }
                     ]
@@ -551,12 +566,15 @@ Page {
                     width: parent.width
                     video: feedModel.get(index)
                     onClicked: {
-                        // Push first: swapping the detail pane transiently drops the stack to
-                        // depth 0, which would race with the currentPageChanged reset below.
+                        // Push first: swapping the pane transiently drops stack to depth 0
                         var v = feedModel.get(index);
-                        // Pointer clicks don't move currentIndex, so the key-nav cursor would
-                        // sit at the top when Left brings focus back from the detail.
+                        // Pointer clicks don't move currentIndex; set it for key-nav cursor
                         list.currentIndex = index;
+                        // Drop tap-grabbed focus; deferred since currentIndex can re-grant it
+                        if (!list.kbEngaged) {
+                            card.focus = false;
+                            Qt.callLater(function () { card.focus = false; });
+                        }
                         page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: v });
                         page.openPermlink = v ? v.permlink : "";
                     }
@@ -597,15 +615,61 @@ Page {
         variant: "video"
         visible: page.loading && feedModel.count === 0
     }
+    // Paging is blocked while offline; pick it up again as soon as the network is back.
+    Connections {
+        target: Net
+        function onOnlineChanged() {
+            // Losing the network mid-request used to leave the spinner up until the HTTP
+            // timeout (~15s). Drop the request as soon as Net says we're offline, so the
+            // offline surface is immediate.
+            if (!Net.online) {
+                if (page.inflight) { page.inflight.abort(); page.inflight = null; }
+                page.loading = false;
+                page.refreshing = false;
+                if (feedModel.count === 0 && page.errorMsg === "")
+                    page.errorMsg = Lang.tr("There is currently no network connection.");
+                return;
+            }
+            if (feedModel.count === 0) page.reload();
+            else if (!page.loading && !page.endReached && list.atYEnd) page.loadMore();
+        }
+    }
+
+    // ErrorState carries the offline panel itself, so this covers both cases.
     ErrorState {
         anchors.fill: list
-        visible: page.errorMsg !== "" && feedModel.count === 0
-        message: page.errorMsg
+        autoRetry: false   // the Net handler above already reloads and resumes paging
+        // Offline is the cover below; this stays the online-error panel only.
+        visible: Net.online && (page.errorMsg !== "" || page.bannedHere) && feedModel.count === 0
+        // Live Lang.tr() binding (not baked into errorMsg) so a language switch re-translates immediately.
+        message: page.bannedHere ? Lang.tr("You're banned from this community.") : page.errorMsg
         onRetry: page.reload()
     }
+
+    // Offline shows the Homepage's panel over the whole list, cached rows and all, so the
+    // offline face of the app is the same everywhere (opaque, or rows read through it).
+    Rectangle {
+        id: offlineCover
+        anchors.fill: list
+        // The backdrop cuts in hard: cross-fading it let the feed show through the panel for
+        // the whole animation, which looked like a rendering fault. Only the panel's own
+        // content fades, so the feed is gone the instant we know we're offline.
+        visible: !Net.online
+        color: Style.surface
+        z: 2
+        // Swallow taps so the list can't be scrolled or opened behind the panel.
+        MouseArea { anchors.fill: parent }
+        OfflineState {
+            anchors.fill: parent
+            opacity: offlineCover.visible ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
+            onRetry: page.reload()
+        }
+    }
+
     EmptyState {
         anchors.fill: list
-        visible: !page.loading && page.errorMsg === "" && feedModel.count === 0
+        visible: !page.loading && page.errorMsg === "" && !page.bannedHere && feedModel.count === 0
         iconName: "camcorder"
         message: Lang.tr("No videos to show")
     }

@@ -1,8 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-// Landing page content and premium community settings. Field names inferred
-// from docs, not a backend schema; verify against a real response if in doubt.
+// Landing page and premium community settings; field names inferred from docs, not schema
 
 function getByCommunity(baseUrl, communityId, token, onOk, onErr) {
     Http.get(baseUrl, "/landing-page/get-by-community/" + communityId, {}, token, function (data) {

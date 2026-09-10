@@ -59,7 +59,7 @@ Page {
 
             PrimaryButton {
                 width: parent.width
-                text: Lang.tr("Create Serey account")
+                text: Lang.tr("Serey standard account")
                 onClicked: page.pageStack.push(Qt.resolvedUrl("SignupPage.qml"))
             }
             Label {
@@ -89,7 +89,7 @@ Page {
 
             SecondaryButton {
                 width: parent.width
-                text: Lang.tr("Self-custody")
+                text: Lang.tr("Self-custody account")
                 onClicked: page.pageStack.push(Qt.resolvedUrl("SelfCustodySignupPage.qml"))
             }
             Label {
@@ -100,6 +100,37 @@ Page {
                 font.family: Style.fontFor(text)
                 color: Style.textSecondary
                 wrapMode: Text.WordWrap
+            }
+
+            SecondaryButton {
+                width: parent.width
+                text: Lang.tr("Anonymous account")
+                onClicked: page.pageStack.push(Qt.resolvedUrl("AnonymousSignupPage.qml"))
+            }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: Lang.tr("No email. Pay a one-time fee in Monero, sign in with a private key.")
+                font.pixelSize: Style.fontXSmall
+                font.family: Style.fontFor(text)
+                color: Style.textSecondary
+                wrapMode: Text.WordWrap
+            }
+
+            // Got a free invite link from a community owner? Redeem it here.
+            AbstractButton {
+                width: parent.width
+                height: inviteLink.height + Style.spacingS * 2
+                onClicked: page.pageStack.push(Qt.resolvedUrl("RedeemInvitePage.qml"))
+                Label {
+                    id: inviteLink
+                    anchors.centerIn: parent
+                    text: Lang.tr("Have an invite code?")
+                    font.pixelSize: Style.fontSmall
+                    font.weight: Font.DemiBold
+                    font.family: Style.fontFor(text)
+                    color: Style.brand
+                }
             }
         }
     }

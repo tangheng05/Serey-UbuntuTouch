@@ -6,14 +6,14 @@ QtObject {
     id: config
 
     // App version shown in Settings and reported to the web bridge; keep in sync with manifest.json.in "version" on every release.
-    readonly property string appVersion: "1.1.4"
+    readonly property string appVersion: "1.1.15"
 
     // Single source of truth for the convergence breakpoint, shared by Main.qml and AdaptiveStack.qml so the two never drift out of sync.
     readonly property real convergenceBreakpoint: units.gu(80)
+    // Second tier: desktop is where a THIRD column fits (nav 20 + list 46 + article 50 + panel 34)
+    readonly property real desktopBreakpoint: units.gu(150)
 
-    // Convergence readability caps (HIG: adapt, not scale; don't let a column
-    // stretch edge-to-edge on a desktop window). Long-form reading/detail columns
-    // cap at readingMaxWidth centered; bottom sheets/pickers at sheetMaxWidth.
+    // Convergence readability caps: reading/detail columns cap at readingMaxWidth, sheets at sheetMaxWidth
     readonly property real readingMaxWidth: units.gu(80)
     readonly property real sheetMaxWidth: units.gu(50)
 
@@ -24,20 +24,39 @@ QtObject {
 
     readonly property bool showDevOptions: false   // set true locally to expose dev tools
 
-    // Homepage web-view tracing + page console forwarding. Chatty, so off for
-    // release. Flip on and: clickable logs | grep -E "WebAppView|SEREY_PROF"
+    // Homepage web-view tracing + console forwarding; chatty, off for release
     readonly property bool debugWebApp: false
-    // Runs the profiler's scroll benchmark once per load (p50/p90/p99 frame times,
-    // grep "scroll\[auto\]"). Scrolls the page out from under the user, so it's
-    // only for a measurement run, and it needs debugWebApp on as well.
+    // Scroll benchmark once per load; scrolls the page, needs debugWebApp on too
     readonly property bool debugScrollTest: false
     property bool useLocalDev: false
 
     readonly property string baseUrl: useLocalDev ? devBase : prodBase
     readonly property string baseUrlV1: useLocalDev ? devBaseV1 : prodBaseV1
 
+    // Steem pays out a post 7 days after publishing and stops accepting votes on it,
+    // so the vote buttons go dead once that window closes. Off-chain (DB-only) posts
+    // never pay out, so callers only apply this when the post is on-chain.
+    readonly property int payoutWindowDays: 7
+    function isPayoutClosed(dateStr) {
+        if (!dateStr)
+            return false;
+        var t = new Date(dateStr).getTime();
+        if (isNaN(t))
+            return false;
+        return (Date.now() - t) > payoutWindowDays * 86400000;
+    }
+
     // Default page size for paginated lists.
     readonly property int pageSize: 10
+
+    // Country category buckets. A country has no categories of its own, and the
+    // union of its platforms' names is unusable as a filter (108 under Cambodia),
+    // so the backend expands one of these into the platform category names it
+    // covers via `category_bucket`. Must stay in step with serey-api's
+    // src/source/country_category_aliases.json, which defines the same 7.
+    readonly property var countryBuckets: [
+        "News", "Politics", "Economy", "Crypto", "Tech", "Society", "Sport"
+    ]
 
     // Upstream media host used to normalise some relative asset paths.
     readonly property string uploadHost: "https://upload.serey.io"
@@ -63,9 +82,7 @@ QtObject {
     // The live source list, seeded with baseSources; Main.qml appends every other top-level country from the backend at startup. Indexed by sourceIndex everywhere.
     property var sources: baseSources
 
-    // Rebuild sources: the fixed three plus backend countries (deduped by dns).
-    // The list can shrink after a platform delete, so re-pin the selection by
-    // dns and fall back to Global if that dns disappeared.
+    // Rebuild sources; re-pin selection by dns, fall back to Global if it disappeared
     function appendCountries(extra) {
         var currentDns = sources[sourceIndex] ? sources[sourceIndex].dns : "";
         var seen = {};
@@ -87,6 +104,10 @@ QtObject {
 
     // Mirrored from Main.wideMode
     property bool wideMode: false
+    // Mirrored from Main.desktopMode
+    property bool desktopMode: false
+    // Split view, but not a full desktop window.
+    readonly property bool tabletMode: wideMode && !desktopMode
 
     property int sourceIndex: 0  // default to Global (combined feed, no community filter)
     // Set when user picks a sub-community from the picker; null = use top-level source.
@@ -101,18 +122,21 @@ QtObject {
     readonly property string currentCommunityName: selectedSubCommunity
                                                    ? selectedSubCommunity.name
                                                    : communityName
-    readonly property string currentCommunityIconUrl: selectedSubCommunity
-                                                      ? (selectedSubCommunity.icon || "")
-                                                      : communityIcon(communityDns)
+    // Resolved through the cached tree, not the stored icon: sub-community records
+    // are built from several shapes and carry no dns, so a relative logo can't be
+    // made absolute from them alone (and Global would miss its bundled globe).
+    readonly property string currentCommunityIconUrl: {
+        if (!selectedSubCommunity) return communityIcon(communityDns);
+        var byId = communityIconFor(communityId);
+        return byId !== "" ? byId : resolveIconUrl(selectedSubCommunity.icon || "", "");
+    }
     readonly property string communityDns: sources[sourceIndex].dns
     readonly property string communityName: sources[sourceIndex].name
 
-    // ISO-3166 alpha-2 from Cloudflare's edge, resolved once at startup (see
-    // GeoService.js). "" = not detected; treat as "no hint", never block on it.
+    // ISO-3166 alpha-2 from Cloudflare's edge; "" = not detected, treat as no hint
     property string detectedCountryCode: ""
 
-    // sources row for an ISO-3166 alpha-2 code, or -1. Skips row 0 (Global is
-    // not a country). Shared by Main and CommunityPicker so both agree.
+    // sources row for an ISO-3166 alpha-2 code, or -1; skips row 0 (Global)
     function indexForCountryCode(code) {
         if (!code) return -1;
         var want = String(code).toLowerCase();
@@ -131,22 +155,16 @@ QtObject {
     // Map of every community (string id -> {id,title,dns,icon,...}) at any nesting depth, unlike superhubChildrenById
     property var communityById: ({})
 
-    // { id: true } for the country hubs (tree top level). Not postable, so
-    // postable-platform lists must skip them; childCount alone can't tell
-    // (a country with no platforms yet looks exactly like a leaf).
+    // { id: true } for country hubs (tree top level), not postable; childCount alone can't tell
     property var topLevelCommunityIds: ({})
 
-    // { id: true } for the community the Global feed hides (?exclude_home=1)
-    // plus descendants; mirrors serey-api's getHiddenFeedIds(). Anything picking
-    // communities client-side must skip these.
+    // { id: true } for the community the Global feed hides plus descendants
     property var hiddenCommunityIds: ({})
 
     // child community id (string) -> parent id, from the same get-communities tree.
     property var parentCommunityById: ({})
 
-    // Select any community by id at any depth; keeps the pill and native feeds
-    // in step with the mini app. False when the id isn't in the cached tree
-    // (selection then stays put).
+    // Select any community by id at any depth; false when not in cached tree
     function selectCommunityById(id) {
         var idStr = String(id);
         if (idStr === "" || idStr === "undefined" || idStr === "null") return false;
@@ -159,8 +177,7 @@ QtObject {
         }
         var c = communityById[idStr];
         if (!c) return false;
-        // Point the top-level row at this community's country so the picker opens
-        // in the right place; the selection itself stays the community.
+        // Point top-level row at this community's country so the picker opens correctly
         var ancestor = idStr, guard = 0;
         while (parentCommunityById[ancestor] !== undefined && guard++ < 12)
             ancestor = parentCommunityById[ancestor];
@@ -176,13 +193,39 @@ QtObject {
         return true;
     }
 
-    // Community id for a URL the mini app landed on, or "" if it names none: the
-    // landing site's /<community_id> route, or a platform on its own subdomain.
+    // "Global - Netherlands - Voetbal": every place a post with this ceiling can
+    // surface, outermost first, so an option names the places instead of
+    // describing them. `chain` is scopeChainFor()'s nearest-first list and
+    // `fromIndex` is where the ceiling sits in it; -1 means no ceiling, which
+    // also reaches the unscoped Global feed.
+    function scopePath(chain, fromIndex) {
+        if (!chain || chain.length === 0) return sources[0].name;
+        var names = [];
+        var start = fromIndex < 0 ? chain.length - 1 : fromIndex;
+        // The chain tops out at whatever parent we cached, often the country, so
+        // the Global feed has to be named explicitly. Skip it when the chain
+        // already carries the Global community itself.
+        if (fromIndex < 0 && chain[chain.length - 1].name !== sources[0].name)
+            names.push(sources[0].name);
+        for (var i = start; i >= 0; i--) names.push(chain[i].name);
+        return names.join(" - ");
+    }
+
+    // True for both spellings of Global: the id-0 pseudo-source (no filter) and
+    // the real Global community row, which the picker and mini-app navigation can
+    // select by id. They share a dns, so match on that rather than a hard-coded id.
+    function isGlobalCommunity(id) {
+        if (Number(id) === sources[0].id) return true;
+        var c = communityById[String(id)];
+        return !!c && (c.dns || "") === sources[0].dns;
+    }
+
+    // Community id for a URL the mini app landed on, or "" if it names none
     function communityIdForUrl(u) {
         if (!u) return "";
         var m = String(u).match(/^https?:\/\/([^\/?#]+)([^?#]*)/);
         if (!m) return "";
-        // Path first: the landing host can itself be a community dns.
+        // Path first: landing host can itself be a community dns
         var seg = (m[2] || "").split("/")[1] || "";
         if (/^[0-9]+$/.test(seg)) return seg;
         var host = m[1].toLowerCase();
@@ -193,15 +236,38 @@ QtObject {
         return "";
     }
 
+    // The communities a post published into `id` can be capped at: that community
+    // first, then each ancestor up to the top-level country. Depth-agnostic on
+    // purpose - the tree has countries, SuperHubs, platforms and topics, and they
+    // don't sit at fixed levels, so the publishing-scope options are generated
+    // from the real chain rather than from hard-coded tiers.
+    // Returns [{ id, name }], nearest-first. Empty when the tree isn't cached yet.
+    function scopeChainFor(id) {
+        var out = [];
+        var idStr = String(id);
+        var guard = 0;
+        while (idStr && idStr !== "undefined" && guard++ < 12) {
+            var c = communityById[idStr];
+            if (!c) break;
+            var parentStr = parentCommunityById[idStr] !== undefined
+                            ? String(parentCommunityById[idStr]) : "";
+            // The root IS the Global community: every other community descends
+            // from it, so "Global and below" would read as a duplicate of
+            // "Everywhere". Flag it so callers can label it for what it actually
+            // is -- everywhere EXCEPT the unscoped Global feed.
+            out.push({ "id": Number(idStr), "name": c.title || "", "isRoot": parentStr === "" });
+            idStr = parentStr;
+        }
+        return out;
+    }
+
     // Looks up a community's {title, icon, dns, ...} by id from the cached tree, or null if unknown
     function communityInfoFor(id) {
         var c = communityById[String(id)];
         return c || null;
     }
 
-    // Patches edited fields into the cache in place (reassigning so bindings
-    // notice) instead of re-fetching get-communities, which is cached
-    // server-side and returns stale data for a bit right after a write.
+    // Patches fields into cache in place instead of re-fetching (server cache is stale after write)
     function updateCommunityFields(id, fields) {
         var idStr = String(id);
         var entry = communityById[idStr];
@@ -217,8 +283,7 @@ QtObject {
         updateCommunityFields(id, { title: title });
     }
 
-    // Insert/merge a community into the cache; used right after creating a
-    // platform (get-communities is server-cached and would still omit it).
+    // Insert/merge a community into cache; used right after creating a platform
     function addOrUpdateCommunity(entry) {
         if (!entry || entry.id === undefined || entry.id === null) return;
         var idStr = String(entry.id);
@@ -232,6 +297,19 @@ QtObject {
 
     // Community ids the signed-in user owns/manages, fetched from /user-permission/permission-by-current-user; empty when logged out.
     property var ownedCommunityIdSet: ({})
+
+    // Communities the signed-in user is BANNED from, fetched from /banning-user/list-by-current-user; empty when logged out.
+    // Id-keyed and title-keyed (lowercased) in parallel since ban rows don't always carry the numeric id.
+    property var bannedCommunityIdSet: ({})
+    property var bannedCommunityTitleSet: ({})
+    function isBannedFromCommunity(id, title) {
+        if (id && !!bannedCommunityIdSet[String(id)]) return true;
+        if (title && !!bannedCommunityTitleSet[String(title).toLowerCase()]) return true;
+        return false;
+    }
+    // Whatever community is actually selected right now (Global never counts: communityId 0).
+    readonly property bool isBannedFromCurrentCommunity: communityId > 0
+        && isBannedFromCommunity(communityId, currentCommunityName)
 
     // Whether the signed-in user owns/manages the selected community; OR-ed into the compose gates since an owner may post even when owner-only.
     readonly property bool isOwnerCurrent: communityId > 0
@@ -259,7 +337,8 @@ QtObject {
     // Same as allowPostByDns, for video posting
     property var videoAllowPostByDns: ({})
 
-    // Same as canPostCurrent, gates the Video upload FAB
+    // Same as canPostCurrent, for video. The Video tab's upload button no longer uses it
+    // (the picker filters by permission instead); kept as the per-source video-permission read.
     readonly property bool canPostVideoCurrent: communityId > 0
         && (isOwnerCurrent
             || (selectedSubCommunity ? !!selectedSubCommunity.videoAllowPost
@@ -269,7 +348,24 @@ QtObject {
         // Global uses a bundled multi-flag globe icon instead of the backend logo.
         if (dns === sources[0].dns)
             return Qt.resolvedUrl("../../assets/global.png");
-        var u = iconByDns[dns];
-        return u ? u : "";
+        return resolveIconUrl(iconByDns[dns] || "", dns);
+    }
+
+    // Some communities store a site-relative logo ("/logo.png"); it only resolves
+    // against their own host, and QML would resolve it against the calling QML file.
+    function resolveIconUrl(icon, dns) {
+        if (!icon) return "";
+        if (/^[a-z]+:/.test(icon)) return icon;   // http(s), file (bundled asset), data
+        if (!dns) return "";
+        return "https://" + dns + (icon.charAt(0) === "/" ? "" : "/") + icon;
+    }
+
+    // Icon for any community id in the cached tree, absolute and Global-aware.
+    // "" when the id is unknown or the community has no logo.
+    function communityIconFor(id) {
+        var c = communityById[String(id)];
+        if (!c) return "";
+        var byDns = communityIcon(c.dns || "");
+        return byDns !== "" ? byDns : resolveIconUrl(c.icon || "", c.dns || "");
     }
 }

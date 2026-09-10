@@ -15,6 +15,8 @@ import "services/BlockedUsers.js" as BlockedUsers
 import "services/PaymentService.js" as PaymentService
 import "services/PostService.js" as PostService
 import "services/VideoService.js" as VideoService
+import "services/PlatformService.js" as PlatformService
+import "services/CustomMenuService.js" as CustomMenuService
 
 MainView {
     id: root
@@ -28,10 +30,10 @@ MainView {
     // Convergence breakpoint shared with AdaptiveStack.qml via Config; drives the side nav rail, independent of any tab's column state.
     readonly property bool wideMode: width >= Config.convergenceBreakpoint
     Binding { target: Config; property: "wideMode"; value: root.wideMode }
+    readonly property bool desktopMode: width >= Config.desktopBreakpoint
+    Binding { target: Config; property: "desktopMode"; value: root.desktopMode }
 
-    // Follow the OS light/dark setting: bind the Style singleton's `dark` switch to
-    // the active Suru theme so every color token re-skins centrally (no call-site
-    // change). Luminance of the theme background works regardless of the theme name.
+    // Follow OS light/dark setting: bind Style.dark to the active Suru theme luminance
     Binding { target: Style; property: "dark"; value: root.theme.palette.normal.background.hslLightness < 0.5 }
 
     // Cut/Copy/Paste popover text color
@@ -40,10 +42,22 @@ MainView {
     }
 
     property int currentTab: 0
-    // No fade for the Homepage: animating opacity over the live Chromium view
-    // recomposites it every frame and the tab arrives visibly late.
+    property int _lastTab: 0
+    // No fade for Homepage: animating opacity over live Chromium recomposites every frame
     onCurrentTabChanged: {
+        // My Feed is a destination borrowed by whichever tab opened it, not that tab's own
+        // content; leaving would otherwise strand it there and hide the tab's list on return.
+        var prev = root._stackForTab(root._lastTab);
+        if (prev && prev.popMaster && prev.rootPage && prev.rootPage.isFeedPage)
+            prev.popMaster();
+        root._lastTab = currentTab;
+
         Config.currentTab = currentTab;
+        // The network can die while a tab just sits there (nothing requests, nothing fails),
+        // so arriving on a feed used to show cached rows until the watchdog caught up. Ask
+        // straight away: with no network at all this fails instantly and the panel is up
+        // before the first frame of the list.
+        if (currentTab !== 0) Net.probe();
         _ensureTab(currentTab);
         if (currentTab === 0) {
             tabFadeIn.stop();
@@ -76,11 +90,71 @@ MainView {
                               : currentTab === 1 ? newsStack.columns
                               : currentTab === 2 ? videoStack.columns
                               : settingsStack.columns
-    readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3
-    readonly property bool showNavBar: activeColumns > 1 || activeDepth <= 1
+    function _stackForTab(tab) {
+        return tab === 0 ? homeStack : tab === 1 ? newsStack : tab === 2 ? videoStack : settingsStack;
+    }
+    // Offline shortcut to what's on the device; opens on whichever tab asked for it.
+    function openLibrary() {
+        var stack = root.activeStack;
+        if (!stack) return;
+        var cur = stack.currentPage;
+        if (cur && cur.isLibraryPage) return;
+        stack.push(Qt.resolvedUrl("pages/DownloadedContentPage.qml"));
+    }
+    readonly property var activeStack: currentTab === 0 ? homeStack
+                                     : currentTab === 1 ? newsStack
+                                     : currentTab === 2 ? videoStack
+                                     : settingsStack
+    // My Feed draws the same iconFeed logo in its own header, and in split mode
+    // this header stays up, so the shortcut showed the logo twice and pointed at
+    // the page you were already on.
+    // rootPage, not currentPage: the feed holds the leading column while an article
+    // it opened is the current page.
+    readonly property bool feedPageOpen: {
+        var p = activeStack ? activeStack.rootPage : null;
+        return !!(p && p.isFeedPage);
+    }
+    // Hide shell header while Feed page is open
+    readonly property bool showHeader: (activeColumns > 1 || activeDepth <= 1) && currentTab !== 3 && !feedPageOpen
+    // Wide windows keep the rail inside pushed pages too: it's app chrome there.
+    // Feed page hides the nav bar / side rail so it's an edge-to-edge surface
+    readonly property bool showNavBar: !root.feedPageOpen && (root.wideMode || activeColumns > 1 || activeDepth <= 1)
+
+    // Nav tabs hidden for the current platform (custom_menu.is_hidden)
+    property var navVisibility: ({})
+    function _loadNavVisibility() {
+        CustomMenuService.listByWebsiteAndCommunity(Config.baseUrl,
+            { community_id: Config.communityId }, Session.token,
+            function (rows) {
+                var vis = {}
+                for (var i = 0; i < rows.length; i++)
+                    if (rows[i].key) vis[rows[i].key] = !!rows[i].is_hidden
+                root.navVisibility = vis
+                root._redirectIfCurrentTabHidden()
+            },
+            function () { root.navVisibility = {} /* non-fatal: every tab defaults to visible */ })
+    }
+    // Hop off a tab that just got hidden
+    function _redirectIfCurrentTabHidden() {
+        if (!root._tabHidden(root._tabs[root.currentTab])) return
+        var fallback = !root._tabHidden(root._tabs[1]) ? 1 : -1
+        if (fallback < 0)
+            for (var i = 0; i < root._tabs.length; i++)
+                if (!root._tabHidden(root._tabs[i])) { fallback = i; break }
+        if (fallback >= 0 && fallback !== root.currentTab) root.switchTab(fallback)
+    }
+    Connections {
+        target: Config
+        function onCommunityIdChanged() { root._loadNavVisibility(); }
+    }
+    Connections {
+        target: Nav
+        function onNavMenuChanged() { root._loadNavVisibility(); }
+    }
 
     Component.onCompleted: {
-        // Expired tokens are caught lazily via 401 (can't check up-front); only clear if the rejected token is still the current one.
+        root._loadNavVisibility();
+        // Expired tokens caught lazily via 401; only clear if rejected token is still current
         Http.setUnauthorizedHandler(function (tokenUsed) {
             if (!Session.isLoggedIn) return;
             if (tokenUsed !== Session.token) return;
@@ -88,26 +162,101 @@ MainView {
             Toast.error(Lang.tr("Your session expired. Please log in again."));
         });
 
+        // Every request doubles as a reachability sample, so the whole app knows it's offline.
+        Http.setNetworkStatusHandler(function (reachable) { Net.report(reachable); });
+        // Lets Net probe while a request is still hanging, instead of learning about a dead
+        // network only when that request times out 15s later.
+        Http.setPendingHandler(function (count) { Net.pending = count; });
+
         // Needed immediately: the header pill icons and can-post gates read it.
         _loadCommunities();
 
-        // Country hint for the community picker. Fire-and-forget: it only
-        // reorders that sheet, so a failure (offline, VPN, unknown IP) must
-        // leave the app exactly as it is today.
+        // Country hint for community picker; fire-and-forget, failure leaves app as-is
         GeoService.detectCountry(
             function (code) { Config.detectedCountryCode = code; root._applyGeoSource(); },
-            function () { /* no hint; Global stays selected, picker keeps its order */ });
+            // No hint: Global stays selected, so the community is settled now
+            function () { root._prefetchFeeds(); });
 
-        _prefetchFeeds();
+        _prefetchLate.start();
+        root._checkLaunchUrl();
+
+        // A signed-in session opens on My Feed rather than the Homepage mini app.
+        // Deferred by one loop pass so Session has finished restoring from SQLite
+        // (it loads in its own Component.onCompleted) and the tab stacks exist.
+        // Skipped for a notification cold start, which owns its own destination.
+        Qt.callLater(function () {
+            if (Session.isLoggedIn && root._launchNotifUrl() === "")
+                Nav.goToFeed();
+        });
     }
 
-    // Open on the user's own country instead of Global. Needs both the geo hint
-    // and the source list (they race), so it's called from whichever lands second.
-    // Only ever moves OFF Global: a community picked mid-flight must be kept.
+    // The notif= argument a push-notification tap launched us with, or "".
+    // Also gates the My-Feed default above: that launch owns its own destination.
+    function _launchNotifUrl() {
+        var args = Qt.application.arguments || [];
+        for (var i = 0; i < args.length; i++)
+            if (String(args[i]).indexOf("notif=") !== -1) return String(args[i]);
+        return "";
+    }
+
+    function _checkLaunchUrl() {
+        var url = root._launchNotifUrl();
+        if (url !== "") root._handleIncomingUrl(url);
+    }
+
+    function _extractNotifId(url) {
+        var m = String(url || "").match(/[?&#]notif=([^&]+)/);
+        return m ? decodeURIComponent(m[1]) : "";
+    }
+
+    function _handleIncomingUrl(url) {
+        var id = root._extractNotifId(url);
+        if (id) root._openNotification(id);
+    }
+
+    // resolves a tapped notification and navigates there
+    function _openNotification(notifId) {
+        if (!Session.isLoggedIn) return;
+        NotificationService.getById(Config.baseUrl, Session.token, notifId,
+            function (n) {
+                if (!n) return;
+                root.currentTab = 0;
+                root._ensureTab(0);
+                if (n.type === "FOLLOW") {
+                    homeStack.push(Qt.resolvedUrl("pages/ProfileViewPage.qml"), { username: n.actor });
+                    return;
+                }
+                var info = n.information || {};
+                var postAuthor = info.post_author || "";
+                var postPermlink = info.post_permlink || "";
+                var scrollPermlink = info.commented_on_permlink || "";
+                if (!postAuthor || !postPermlink) return;
+                PostService.detail(Config.baseUrl, postAuthor, postPermlink, Session.token,
+                    function (result) {
+                        var cats = (result.post && result.post.categories) || [];
+                        var isGallery = false;
+                        for (var c = 0; c < cats.length; c++) {
+                            if (cats[c].toLowerCase() === "gallery") { isGallery = true; break; }
+                        }
+                        if (isGallery) {
+                            homeStack.push(Qt.resolvedUrl("pages/GalleryDetailPage.qml"),
+                                { author: postAuthor, permlink: postPermlink });
+                        } else {
+                            homeStack.push(Qt.resolvedUrl("pages/PostDetailPage.qml"),
+                                { author: postAuthor, permlink: postPermlink, scrollToCommentPermlink: scrollPermlink });
+                        }
+                    },
+                    function (err) {
+                        homeStack.push(Qt.resolvedUrl("pages/PostDetailPage.qml"),
+                            { author: postAuthor, permlink: postPermlink });
+                    });
+            },
+            function (err) { /* silent — notification may be gone/read elsewhere */ });
+    }
+
+    // Open on the user's own country instead of Global; called from whichever of geo/sources lands second
     property bool _geoSourceApplied: false
-    // Explicit flag, NOT sources.length: `sources` is pre-seeded with baseSources,
-    // so a length check would read "loaded" before the country rows arrive and
-    // the geo hint would latch on no match.
+    // Explicit flag, not sources.length: sources is pre-seeded with baseSources
     property bool _communitiesLoaded: false
     function _applyGeoSource() {
         if (root._geoSourceApplied) return;
@@ -116,11 +265,30 @@ MainView {
         root._geoSourceApplied = true;   // both inputs are in: this is the decision
         if (i > 0 && Config.sourceIndex === 0 && !Config.selectedSubCommunity)
             Config.sourceIndex = i;
+        root._prefetchFeeds();
     }
 
-    // Fetch get-communities and rebuild the picker's sources + derived maps.
-    // Runs at startup and via Nav.refreshCommunities() after a platform
-    // create/delete (the picker otherwise only updated after a restart).
+    // The same country hint that picks the default community also picks the UI language:
+    // Dutch in the Netherlands, English everywhere else. Hooked to the property rather than
+    // the callbacks, so the startup fetch and the back-online retry are both covered.
+    // setLanguageAuto() no-ops once the language was chosen by hand in Settings.
+    Connections {
+        target: Config
+        function onDetectedCountryCodeChanged() {
+            var cc = Config.detectedCountryCode;
+            if (cc.length === 0) return;
+            Session.setLanguageAuto(cc === "NL" ? "nl" : "en");
+        }
+    }
+
+    // Backstop: geo or get-communities may never answer, and the feeds still want warming.
+    Timer {
+        id: _prefetchLate
+        interval: 2500
+        onTriggered: root._prefetchFeeds()
+    }
+
+    // Fetch get-communities and rebuild picker's sources + maps; runs at startup and on refreshCommunities()
     function _loadCommunities() {
         CommunityService.listAll(Config.baseUrl,
             function (list, superhubChildren, byId, hiddenIds, parents) {
@@ -141,7 +309,7 @@ MainView {
                 for (var b = 0; b < Config.baseSources.length; b++)
                     baseDns[Config.baseSources[b].dns] = true;
 
-                // Append every top-level country (except Cambodia) below the fixed rows; icons derive from a flagcdn flag since backend icon_url is empty.
+                // Append top-level countries below fixed rows; icons derive from flagcdn
                 var extra = [];
                 for (var i = 0; i < list.length; i++) {
                     var c = list[i];
@@ -155,17 +323,35 @@ MainView {
 
                 Config.iconByDns = icons;
                 Config.appendCountries(extra);
-                // The country rows just landed: if the geo hint beat them here,
-                // this is where it gets applied.
+                // Country rows just landed; apply geo hint if it beat them here
                 root._communitiesLoaded = true;
                 root._applyGeoSource();
             },
             function (err) { /* keep globe fallback */ });
     }
 
-    // After a platform create/delete: refresh now, then again past the server's
-    // 60s in-process cache TTL, since another API instance can still serve a
-    // stale local entry to the immediate re-fetch.
+    // Launched offline, every startup fetch failed silently and nothing ever asked again:
+    // the picker kept only its three seeded rows ("No platforms found" under a country) and
+    // the composer had no post targets. Pick up whatever is still missing once we're back.
+    Connections {
+        target: Net
+        function onOnlineChanged() {
+            if (!Net.online) return;
+            if (!root._communitiesLoaded) root._loadCommunities();
+            if (Config.detectedCountryCode === "")
+                GeoService.detectCountry(
+                    function (code) { Config.detectedCountryCode = code; root._applyGeoSource(); },
+                    function () { /* no hint; Global stays selected */ });
+            // Cheap and idempotent, and both no-op when logged out.
+            if (root.startupSettled) {
+                root._syncBlockedUsers();
+                root._syncOwnedCommunities();
+                root._syncBannedCommunities();
+            }
+        }
+    }
+
+    // After create/delete: refresh now, then again past the server's 60s cache TTL
     property Timer _communitiesRetry: Timer {
         interval: 65000
         repeat: false
@@ -179,10 +365,13 @@ MainView {
         }
     }
 
-    // Warm the News/Video feeds at launch so the tabs paint rows, not a skeleton
-    // (the Video request costs seconds server-side). Data only, never the pages;
-    // instantiating the tabs is what made the Homepage janky. FeedCache coalesces.
+    // Warm News/Video feeds at launch so tabs paint rows; data only, never the pages.
+    // Runs only once the community is settled: geo detection can move it, and rows cached
+    // under the pre-geo community are keyed where no page ever looks.
+    property bool _prefetched: false
     function _prefetchFeeds() {
+        if (root._prefetched) return;
+        root._prefetched = true;
         FeedCache.request(FeedCache.newsKey(0, Config.communityId),
             function (ok, err) {
                 var p = { limit: Config.pageSize, offset: 0 };
@@ -195,8 +384,7 @@ MainView {
 
         FeedCache.request(FeedCache.videoKey(Config.communityId),
             function (ok, err) {
-                // Must match VideoPage's first-page request (initialLimit) or the
-                // page's own fetch won't coalesce with this one.
+                // Must match VideoPage's first-page request (initialLimit) to coalesce
                 var p = { limit: 30, offset: 0 };
                 if (Config.communityId > 0) p.community_id = Config.communityId;
                 else p.exclude_home = 1;
@@ -216,6 +404,7 @@ MainView {
         onTriggered: {
             root.startupSettled = true;
             _initNotifications();
+            _maybeReRegisterPush();
             // The avatar isn't persisted with the session; refetch it.
             if (Session.isLoggedIn) {
                 AccountService.profile(Config.baseUrl, Session.username, Session.token,
@@ -224,6 +413,7 @@ MainView {
             }
             _syncBlockedUsers();
             _syncOwnedCommunities();
+            _syncBannedCommunities();
         }
     }
 
@@ -247,6 +437,26 @@ MainView {
             function (err) { /* offline / failed, keep last-known set */ });
     }
 
+    // Communities the user is banned from; gates entering/posting to them in the pickers.
+    function _syncBannedCommunities() {
+        if (!Session.isLoggedIn) {
+            Config.bannedCommunityIdSet = ({});
+            Config.bannedCommunityTitleSet = ({});
+            return;
+        }
+        PlatformService.listBannedCommunities(Config.baseUrl, Session.token,
+            function (list) {
+                var idSet = {}, titleSet = {};
+                for (var i = 0; i < list.length; i++) {
+                    if (list[i].id) idSet[list[i].id] = true;
+                    if (list[i].title) titleSet[list[i].title.toLowerCase()] = true;
+                }
+                Config.bannedCommunityIdSet = idSet;
+                Config.bannedCommunityTitleSet = titleSet;
+            },
+            function (err) { /* offline / failed, keep last-known set */ });
+    }
+
     // --- Push / local notification handles (created dynamically) ---
     property var  sysNotif:   null   // Lomiri.Notifications Notification
     property var  pushClient: null   // Ubuntu.PushNotifications PushClient
@@ -254,9 +464,7 @@ MainView {
     property var  notifSound: null
 
     function _showNotif(body) {
-        // Create the sound player lazily, NOT at startup: constructing a
-        // QtMultimedia Audio spins up media-hub's Hybris video sink, which
-        // SIGSEGVs on an icon relaunch after a kill. By now the window is up.
+        // Lazy, not at startup: constructing QtMultimedia Audio SIGSEGVs on an icon relaunch
         if (!root.notifSound) {
             try {
                 root.notifSound = Qt.createQmlObject(
@@ -279,13 +487,22 @@ MainView {
 
     function _registerPushToken(pt) {
         NotificationService.registerPushToken(Config.baseUrl, Session.token, pt,
-            function () { /* fire-and-forget */ },
+            function () { Session.setLastPushRegisterAt(Date.now()); },
             function ()  { /* silent; retried on next app launch */ })
     }
 
+    // re-send daily — catches a silently expired/rotated token
+    readonly property int pushReRegisterIntervalMs: 24 * 60 * 60 * 1000
+    function _maybeReRegisterPush() {
+        if (!Session.isLoggedIn || !root.pushClient) return;
+        var t = root.pushClient.token;
+        if (!t) return;
+        if (Date.now() - Session.lastPushRegisterAt < root.pushReRegisterIntervalMs) return;
+        root._registerPushToken(t);
+    }
+
     function _initNotifications() {
-        // The notification sound is deliberately NOT created here: constructing
-        // QtMultimedia Audio SIGSEGVs on an icon relaunch (see _showNotif).
+        // Notification sound deliberately not created here (see _showNotif)
 
         try {
             root.sysNotif = Qt.createQmlObject(
@@ -306,18 +523,24 @@ MainView {
                 if (Session.isLoggedIn) root._registerPushToken(t)
             })
 
+            // already shown by the OS — just clear, don't re-alert
             root.pushClient.notificationsChanged.connect(function () {
                 var notifs = root.pushClient.notifications
                 if (notifs.length > 0) {
-                    var msg = notifs.length === 1
-                        ? Lang.tr("You have 1 new notification")
-                        : Lang.tr("You have %1 new notifications").arg(notifs.length)
-                    root._showNotif(msg)
                     NotificationState.unread = -1
                     root.pushClient.clearAll()
                 }
             })
         } catch (e) { console.warn("Push: PushClient failed to create:", e) }
+    }
+
+    // re-check push token on foreground
+    Connections {
+        target: Qt.application
+        onStateChanged: {
+            if (Qt.application.state === Qt.ApplicationActive && root.startupSettled)
+                root._maybeReRegisterPush();
+        }
     }
 
     // Poll every 30 s while logged in; the first poll waits for startupSettled.
@@ -348,9 +571,7 @@ MainView {
         }
     }
 
-    // Background check for a pending crypto payment: activation only happens
-    // when our client polls check-status (no webhook), so this catches payments
-    // made after the sheet or app closed. PaymentSheet's own poll runs while open.
+    // Catches crypto payments made after the sheet or app closed; PaymentSheet polls while open
     Timer {
         id: cryptoPendingPoller
         interval: 60000
@@ -370,9 +591,7 @@ MainView {
                     } else if (status === "failed" || status === "refunded" || status === "expired") {
                         Payments.clearPendingCrypto()
                     } else {
-                        // Still waiting/confirming. Keep checking a day past
-                        // expiry: late blockchain confirmations can land after
-                        // the NOWPayments window.
+                        // Still waiting/confirming; keep checking a day past expiry for late confirmations
                         var exp = Date.parse(p.expiresAt)
                         if (!isNaN(exp) && Date.now() > exp + 24 * 3600 * 1000)
                             Payments.clearPendingCrypto()
@@ -385,7 +604,7 @@ MainView {
     Connections {
         target: Session
         // Keyed off the token (not isLoggedIn) so account switches resync; one account's blocks must never leak into another's feed.
-        function onTokenChanged() { root._syncBlockedUsers(); root._syncOwnedCommunities() }
+        function onTokenChanged() { root._syncBlockedUsers(); root._syncOwnedCommunities(); root._syncBannedCommunities() }
         function onIsLoggedInChanged() {
             if (!Session.isLoggedIn) {
                 NotificationState.unread = -1
@@ -405,8 +624,7 @@ MainView {
             while (settingsStack.depth > 1)
                 settingsStack.pop();
         }
-        // Buy-plan -> create-platform funnel: land on Settings with the wizard
-        // pushed (its own gate re-checks the now-active subscription).
+        // Buy-plan -> create-platform funnel; wizard re-checks the now-active subscription
         function onCreatePlatform() {
             root.currentTab = 3;
             root._ensureTab(3);
@@ -431,7 +649,33 @@ MainView {
                 settingsStack.pop();
             while (homeStack.depth > 1)
                 homeStack.pop();
-            homeStack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
+            homeStack.pushMaster(Qt.resolvedUrl("pages/FeedPage.qml"));
+        }
+        // An offline panel asked for the on-device library.
+        function onOpenLibrary() { root.openLibrary(); }
+        // Blog card tapped in the mini app WebView: read it natively. Pushed on the
+        // active stack so Back returns to the homepage the tap came from.
+        function onOpenPost(post) {
+            var stack = root.activeStack;
+            if (!stack) return;
+            stack.push(Qt.resolvedUrl("pages/PostDetailPage.qml"), {
+                author: String(post.author || ""),
+                permlink: String(post.permlink || ""),
+                title: String(post.title || ""),
+                allowSidePanel: false
+            });
+        }
+        function onEditCaption(post) {
+            var stack = root.activeStack;
+            if (stack) stack.push(Qt.resolvedUrl("pages/EditCaptionPage.qml"), { post: post });
+        }
+        // Invite link opened in-app: redeem it natively on the Homepage tab.
+        function onRedeemInvite(code) {
+            root.currentTab = 0;
+            root._ensureTab(0);
+            while (homeStack.depth > 1)
+                homeStack.pop();
+            homeStack.push(Qt.resolvedUrl("pages/RedeemInvitePage.qml"), { prefillCode: code });
         }
     }
 
@@ -445,19 +689,13 @@ MainView {
 
         center: AbstractButton {
             id: feedBtn
-            visible: Session.isLoggedIn
+            visible: Session.isLoggedIn && !root.feedPageOpen
             anchors.centerIn: parent
-            // Tap target fills the header height so it is comfortable to hit;
-            // the icon inside keeps its smaller visual size.
+            // Tap target fills header height for comfort; icon keeps smaller visual size
             width: units.gu(6)
             height: width
-            onClicked: {
-                var stack = root.currentTab === 0 ? homeStack
-                          : root.currentTab === 1 ? newsStack
-                          : root.currentTab === 2 ? videoStack
-                          : settingsStack;
-                stack.push(Qt.resolvedUrl("pages/FeedPage.qml"));
-            }
+            // Destination, not a detail: it takes the leading column and opens posts beside itself.
+            onClicked: root.activeStack.pushMaster(Qt.resolvedUrl("pages/FeedPage.qml"))
             Image {
                 anchors.centerIn: parent
                 width: root.wideMode ? units.gu(4.5) : units.gu(3.5)
@@ -483,6 +721,8 @@ MainView {
                 onClicked: {
                     // Target the News master page (not whatever's open in the detail column).
                     var np = newsStack.rootPage;
+                    // pin post mode
+                    postCommunityPicker.forVideo = false;
                     postCommunityPicker.openFor(function (target) {
                         var props = target ? { targetCommunity: target } : {};
                         var ed = newsStack.push(Qt.resolvedUrl("pages/CreatePostPage.qml"), props);
@@ -492,7 +732,8 @@ MainView {
                                 if (isNew && np.showLatest) np.showLatest();
                                 else if (np.reload) np.reload();
                             });
-                    });
+                    // desktop only: anchors the dropdown
+                    }, root.desktopMode ? composeBtn : null);
                 }
                 Rectangle {
                     anchors.fill: parent
@@ -511,20 +752,24 @@ MainView {
                 KeyTapArea { onActivated: composeBtn.clicked() }
             }
 
-            // Upload video (Video tab only), gated on the community's video posting permission.
+            // always shown; picker gates video permission
             AbstractButton {
                 id: uploadBtn
-                visible: Session.isLoggedIn && root.currentTab === 2 && Config.canPostVideoCurrent
+                visible: Session.isLoggedIn && root.currentTab === 2
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.wideMode ? units.gu(4.2) : units.gu(3.2)
                 height: width
                 onClicked: {
-                    // Target the Video master page: in split mode currentPage is
-                    // VideoDetailPage (no reload()), so the connect was silently
-                    // skipped and the feed never showed the new upload.
+                    // Target the Video master page; currentPage in split mode has no reload()
                     var vp = videoStack.rootPage;
-                    var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"));
-                    if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);
+                    postCommunityPicker.forVideo = true;
+                    postCommunityPicker.openFor(function (target) {
+                        postCommunityPicker.forVideo = false;
+                        var props = target ? { targetCommunity: target } : {};
+                        var ed = videoStack.push(Qt.resolvedUrl("pages/CreateVideoPage.qml"), props);
+                        if (ed && ed.saved && vp && vp.reload) ed.saved.connect(vp.reload);
+                    // desktop only: anchors the dropdown
+                    }, root.desktopMode ? uploadBtn : null);
                 }
                 Rectangle {
                     anchors.fill: parent
@@ -557,8 +802,7 @@ MainView {
 
         AdaptiveStack {
             id: homeStack
-            // The web app is the panel: never split. Sub-pages (My Feed, Login)
-            // cover it full-screen instead of shrinking it into a master column.
+            // The web app is the panel, never split; sub-pages cover it full-screen instead
             neverSplit: true
             anchors.fill: parent
             visible: root.currentTab === 0
@@ -583,37 +827,75 @@ MainView {
             id: settingsStack
             emptyDetailIconName: "settings"
             emptyDetailMessage: Lang.tr("Select a setting")
-            anchors.fill: parent
+            anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: accountPanelDivider.visible ? accountPanelDivider.left : parent.right }
             visible: root.currentTab === 3
+        }
+
+        // Desktop-only (not tablet)
+        readonly property bool _showAccountPanel: root.currentTab === 3 && root.desktopMode
+
+        // Draggable splitter (Account status rail)
+        readonly property real _minAccountPanelW: units.gu(30)
+        readonly property real _maxAccountPanelW: Math.max(_minAccountPanelW, Math.min(body.width * 0.55, body.width - units.gu(45)))
+        property real accountPanelWidth: units.gu(40)
+        readonly property real _accountPanelW: Math.max(_minAccountPanelW, Math.min(_maxAccountPanelW, accountPanelWidth))
+
+        Rectangle {
+            id: accountPanelDivider
+            anchors { top: parent.top; bottom: parent.bottom; right: accountStatusPanel.left }
+            width: units.dp(1)
+            visible: accountStatusPanel.visible
+            color: accountPanelDragArea.containsMouse || accountPanelDragArea.pressed ? Style.brand : Style.divider
+        }
+        MouseArea {
+            id: accountPanelDragArea
+            visible: accountStatusPanel.visible
+            anchors { top: parent.top; bottom: parent.bottom }
+            x: accountPanelDivider.x - width / 2
+            width: units.gu(1.5)
+            hoverEnabled: true
+            preventStealing: true
+            cursorShape: Qt.SplitHCursor
+            onPositionChanged: {
+                if (!pressed) return;
+                var pointX = mapToItem(body, mouse.x, 0).x;
+                body.accountPanelWidth = Math.max(body._minAccountPanelW, Math.min(body._maxAccountPanelW, body.width - pointX));
+            }
+        }
+
+        // Account status rail (outside settingsStack's own split)
+        AccountStatusPanel {
+            id: accountStatusPanel
+            anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
+            width: body._showAccountPanel ? body._accountPanelW : 0
+            visible: body._showAccountPanel
+            profile: settingsStack.rootPage ? settingsStack.rootPage.profile : null
+            pageStack: settingsStack
         }
     }
 
-    // Ctrl+1..4 switch tabs directly (morph-browser style); disabled while the
-    // nav is hidden. Switching must MOVE focus too, or it stays trapped in the
-    // Homepage Chromium view, which keeps eating keys while another tab shows.
-    function switchTab(i) { root.currentTab = i; Qt.callLater(root.focusActiveContent); }
+    // Ctrl+1..4 switch tabs; must MOVE focus too or it stays trapped in the Homepage Chromium view.
+    // fromKeyboard gates the visible keyboard-cursor ring: mouse clicks move focus quietly.
+    function switchTab(i, fromKeyboard) { root.currentTab = i; Qt.callLater(function () { root.focusActiveContent(!!fromKeyboard); }); }
 
-    Shortcut { sequence: "Ctrl+1"; enabled: root.showNavBar; onActivated: root.switchTab(0) }
-    Shortcut { sequence: "Ctrl+2"; enabled: root.showNavBar; onActivated: root.switchTab(1) }
-    Shortcut { sequence: "Ctrl+3"; enabled: root.showNavBar; onActivated: root.switchTab(2) }
-    Shortcut { sequence: "Ctrl+4"; enabled: root.showNavBar; onActivated: root.switchTab(3) }
+    Shortcut { sequence: "Ctrl+1"; enabled: root.showNavBar; onActivated: root.switchTab(0, true) }
+    Shortcut { sequence: "Ctrl+2"; enabled: root.showNavBar; onActivated: root.switchTab(1, true) }
+    Shortcut { sequence: "Ctrl+3"; enabled: root.showNavBar; onActivated: root.switchTab(2, true) }
+    Shortcut { sequence: "Ctrl+4"; enabled: root.showNavBar; onActivated: root.switchTab(3, true) }
 
-    // Ctrl+Tab tab cycling via StandardKey (platform-adaptive, same as morph-
-    // browser). Shortcuts fire before the focused item, so this is the only way
-    // to change tabs from inside the Homepage Chromium view.
+    // Ctrl+Tab cycling via StandardKey; shortcuts fire before focused item, so it's the only way in from the Homepage view
     Shortcut {
         sequence: StandardKey.NextChild
         enabled: root.showNavBar
-        onActivated: root.switchTab((root.currentTab + 1) % root._tabs.length)
+        onActivated: root.switchTab((root.currentTab + 1) % root._tabs.length, true)
     }
     Shortcut {
         sequence: StandardKey.PreviousChild
         enabled: root.showNavBar
-        onActivated: root.switchTab((root.currentTab - 1 + root._tabs.length) % root._tabs.length)
+        onActivated: root.switchTab((root.currentTab - 1 + root._tabs.length) % root._tabs.length, true)
     }
 
-    // F6 jumps to the tab nav from anywhere; an escape from the Homepage Chromium
-    // view, which swallows Tab and the arrows. Single target, like morph-browser.
+    // F6 jumps to the tab nav from anywhere; escape hatch from the Homepage view which swallows Tab/arrows
     Shortcut { sequence: "F6"; enabled: root.showNavBar; onActivated: root.focusNavRail() }
 
     // Focus the active tab's button in whichever nav layout is showing.
@@ -622,33 +904,39 @@ MainView {
         var it = rep.itemAt(root.currentTab);
         if (it) it.keyArea.forceActiveFocus();
     }
-    // Focus the active tab's content page (works on every tab incl. the
-    // Homepage web view; Nav.focusMaster only services split stacks).
-    function focusActiveContent() {
+    // Focus active tab's content page; fromKeyboard shows the list cursor ring, otherwise focus moves quietly (mouse entry)
+    function focusActiveContent(fromKeyboard) {
         var stack = root.currentTab === 0 ? homeStack
                   : root.currentTab === 1 ? newsStack
                   : root.currentTab === 2 ? videoStack
                   : settingsStack;
         var p = stack.rootPage;
         if (!p) return;
-        // Reaching content by keyboard should show the list cursor (same contract as
-        // AdaptiveStack.focusMaster); plain forceActiveFocus leaves it invisible.
-        if (p.focusListKeyNav) { p.focusListKeyNav(); return; }
+        if (fromKeyboard && p.focusListKeyNav) { p.focusListKeyNav(); return; }
         (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
     }
     Connections {
         target: Nav
         function onFocusNav() { root.focusNavRail(); }
         function onFocusContent() { root.focusActiveContent(); }
+        // Only the Settings tab currently has a persistent right rail outside its AdaptiveStack.
+        function onFocusRightPanel() { if (body._showAccountPanel) accountStatusPanel.focusPanel(); }
     }
 
-    // Shared by both nav layouts below, so the tab list only exists once.
+    // Shared by both nav layouts; `key` maps to a custom_menu row, Settings has none
     readonly property var _tabs: [
-        { label: Lang.tr("Homepage"), icon: "home" },
-        { label: Lang.tr("News"),     icon: "stock_note" },
-        { label: Lang.tr("Video"),    icon: "camcorder" },
+        { label: Lang.tr("Homepage"), icon: "home",       key: "homepage" },
+        { label: Lang.tr("News"),     icon: "stock_note", key: "blog" },
+        { label: Lang.tr("Video"),    icon: "camcorder",  key: "video" },
         { label: Lang.tr("Settings"), icon: "settings" }
     ]
+    // Tab indices stay fixed even when hidden
+    function _tabHidden(t) { return !!(t.key && root.navVisibility[t.key]); }
+    readonly property int _visibleTabCount: {
+        var n = 0;
+        for (var i = 0; i < root._tabs.length; i++) if (!root._tabHidden(root._tabs[i])) n++;
+        return n;
+    }
 
     // --- Bottom navigation (phone / narrow window) -------------------------
     Rectangle {
@@ -671,9 +959,12 @@ MainView {
                 id: navRep
                 model: root._tabs
                 delegate: AbstractButton {
-                    width: navBar.width / 4
+                    // Hidden tabs take no space in the Row
+                    visible: !root._tabHidden(modelData)
+                    width: navBar.width / Math.max(1, root._visibleTabCount)
                     height: navBar.height
-                    property bool active: root.currentTab === index
+                    // My Feed isn't any one tab's content, so no tab reads as selected while it's open.
+                    property bool active: root.currentTab === index && !root.feedPageOpen
                     property alias keyArea: navTap
 
                     Icon {
@@ -683,14 +974,13 @@ MainView {
                         name: modelData.icon
                         color: active ? Style.brand : Style.textSecondary
                     }
-                    onClicked: root.currentTab = index
+                    // Route click through switchTab() (moves focus too)
+                    onClicked: root.switchTab(index)
                     KeyTapArea {
                         id: navTap
-                        // Enter always drops into the tab's content, even when
-                        // the tab is already active (a tab change alone only
-                        // moves focus via the page's onVisibleChanged).
-                        onActivated: root.switchTab(index)
-                        // Horizontal bar: Left/Right walk the tabs.
+                        // Enter always drops into the tab's content, even when already active
+                        onActivated: root.switchTab(index, true)
+                        // Horizontal bar: Left/Right walk the tabs
                         onLeftPressed:  { var it = navRep.itemAt(index - 1); if (it) it.keyArea.forceActiveFocus(); }
                         onRightPressed: { var it = navRep.itemAt(index + 1); if (it) it.keyArea.forceActiveFocus(); }
                     }
@@ -699,11 +989,11 @@ MainView {
         }
     }
 
-    // Side navigation: a full-height vertical rail, matching Lomiri's desktop shell convention (convergence, not scaling).
+    // Side navigation: full-height vertical rail (convergence, not scaling); icon-only on tablet
     Rectangle {
         id: sideNavBar
         anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-        width: (root.showNavBar && root.wideMode) ? units.gu(9) : 0
+        width: (root.showNavBar && root.wideMode) ? (root.desktopMode ? units.gu(20) : units.gu(8)) : 0
         visible: root.showNavBar && root.wideMode
         color: Style.surface
 
@@ -721,37 +1011,53 @@ MainView {
                 id: railRep
                 model: root._tabs
                 delegate: AbstractButton {
+                    // Hidden tabs take no space in the Column
+                    visible: !root._tabHidden(modelData)
                     width: sideNavBar.width
-                    height: units.gu(7)
-                    property bool active: root.currentTab === index
+                    height: units.gu(6)
+                    // My Feed isn't any one tab's content, so no tab reads as selected while it's open.
+                    property bool active: root.currentTab === index && !root.feedPageOpen
                     property alias keyArea: railTap
 
-                    Icon {
-                        anchors.centerIn: parent
-                        width: units.gu(4)
-                        height: width
-                        name: modelData.icon
-                        color: active ? Style.brand : Style.textSecondary
+                    Row {
+                        // Centered icon-only (tablet) or left-aligned with label (desktop)
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: root.desktopMode ? units.gu(2) : (parent.width - width) / 2
+                        spacing: units.gu(1.5)
+
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: units.gu(3.2)
+                            height: width
+                            name: modelData.icon
+                            color: active ? Style.brand : Style.textSecondary
+                        }
+                        Label {
+                            visible: root.desktopMode
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.label
+                            font.pixelSize: Style.fontMedium
+                            font.weight: active ? Font.DemiBold : Font.Normal
+                            color: active ? Style.brand : Style.textSecondary
+                        }
                     }
-                    onClicked: root.currentTab = index
+                    // Same fix as navRep
+                    onClicked: root.switchTab(index)
                     KeyTapArea {
                         id: railTap
-                        // Enter always drops into the tab's content, even when
-                        // the tab is already active (a tab change alone only
-                        // moves focus via the page's onVisibleChanged).
-                        onActivated: root.switchTab(index)
-                        // Vertical rail: Up/Down walk the tabs; Right steps into
-                        // the active tab's content list (mirrors list -> detail).
+                        // Enter always drops into the tab's content, even when already active
+                        onActivated: root.switchTab(index, true)
+                        // Vertical rail: Up/Down walk the tabs; Right steps into content (mirrors list -> detail)
                         onUpPressed:   { var it = railRep.itemAt(index - 1); if (it) it.keyArea.forceActiveFocus(); }
                         onDownPressed: { var it = railRep.itemAt(index + 1); if (it) it.keyArea.forceActiveFocus(); }
-                        onRightPressed: root.focusActiveContent()
+                        onRightPressed: root.focusActiveContent(true)
                     }
                 }
             }
         }
     }
 
-    CommunityPicker { id: communityPicker }
+    CommunityPicker { id: communityPicker; anchorItem: appHeader.communityButton }
     PostCommunityPicker { id: postCommunityPicker }
     PostActionSheet { }
     ShareSheet { }

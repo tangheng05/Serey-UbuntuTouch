@@ -2,23 +2,21 @@ import QtQuick 2.7
 import Lomiri.Components 1.3
 import "../Theme"
 
-/*
- * Per-tab master-detail container: phones push full-screen, wide windows split list + detail.
- * Breakpoint crossings are pure geometry (no reparenting), so live WebViews survive resizes.
- * Two REAL PageStacks, not an AdaptivePageLayout shim (the shim desynced on push/pop/re-push).
- */
+// Per-tab master-detail: phones push full-screen, wide windows split list + detail (two real PageStacks, not AdaptivePageLayout)
 Item {
     id: root
 
     property bool singleColumnUntilPushed: false
-    // Never enter master-detail: the root fills the tab and every push covers it
-    // full-screen. Used by Homepage, where the web app itself is the panel.
+    // Never enter master-detail: root fills the tab, every push covers full-screen
     property bool neverSplit: false
+    // page-level override of neverSplit
+    readonly property var _neverSplitOverride: rootStack.currentPage ? rootStack.currentPage.neverSplitOverride : undefined
+    readonly property bool _effectiveNeverSplit: _neverSplitOverride !== undefined ? _neverSplitOverride : root.neverSplit
     property string emptyDetailIconName: ""
     property string emptyDetailMessage: ""
 
     // Resizable leading (master/list) panel: draggable when min != max.
-    property real listWidth: units.gu(40)
+    property real listWidth: units.gu(46)
     readonly property real _minListW: units.gu(30)
     readonly property real _maxListW: Math.max(_minListW, Math.min(width * 0.6, width - units.gu(45)))
     readonly property real _listW: Math.max(_minListW, Math.min(_maxListW, listWidth))
@@ -26,30 +24,25 @@ Item {
     // Real detail pages, excluding the invisible placeholder at detailStack[0].
     readonly property int _detailCount: Math.max(0, detailStack.depth - 1)
 
-    // Split on Config.wideMode (window width), not our own width: reading `width` here
-    // created a binding loop (width -> nav-rail presence -> columns -> split -> width),
-    // and wideMode aligns the split point with the nav rail's breakpoint.
-    readonly property bool split: !neverSplit && Config.wideMode
+    // Split on Config.wideMode, not own width: reading `width` here caused a binding loop
+    readonly property bool split: !_effectiveNeverSplit && Config.wideMode
                                   && (!singleColumnUntilPushed || _detailCount > 0)
     readonly property int columns: split ? 2 : 1
 
     // PageStack-compatible surface: the root page counts as depth 1.
-    readonly property int depth: (rootStack.depth > 0 ? 1 : 0) + _detailCount
+    readonly property int depth: rootStack.depth + _detailCount
     readonly property var currentPage: _detailCount > 0 ? detailStack.currentPage
                                                         : rootStack.currentPage
     // The tab's master/root page, regardless of what's in the detail column.
     readonly property var rootPage: rootStack.currentPage
 
-    // Invisible seed page: keeps every real detail at detailStack.depth >= 2 so
-    // Lomiri shows the native back button on the first-pushed detail too.
+    // Invisible seed page: keeps detail depth >= 2 so Lomiri shows the native back button
     Component {
         id: detailPlaceholder
         Page { visible: false; header: Item { height: 0 } }
     }
 
-    // First push is the tab root; later pushes land in the detail column. Only the root
-    // page's pageStack points here, so a master-list push REPLACES the current detail;
-    // navigation within a detail page uses detailStack directly and still stacks.
+    // First push is the tab root; later pushes land in detail and REPLACE the current one
     function push(pageUrl, properties) {
         var props = properties || {};
         if (rootStack.depth === 0) {
@@ -64,19 +57,35 @@ Item {
         return detailStack.push(pageUrl, props);
     }
 
+    // A destination, not a detail: takes over the LEADING column (Lomiri's
+    // addPageToCurrentColumn) and keeps the detail column for its own pushes. Without
+    // this, a page that is itself master-detail (My Feed) splits inside the detail
+    // column and you get two unrelated list columns side by side.
+    function pushMaster(pageUrl, properties) {
+        if (rootStack.depth === 0)
+            return push(pageUrl, properties);
+        while (detailStack.depth > 0) detailStack.pop();   // its selection, not ours
+        var pg = rootStack.push(pageUrl, properties || {});
+        // Lomiri sets pageStack to rootStack; re-point it so the page's pushes land in detail.
+        if (pg) pg.pageStack = root;
+        return pg;
+    }
+    // Leaving a destination drops the detail it opened along with it.
+    function popMaster() {
+        while (detailStack.depth > 0) detailStack.pop();
+        if (rootStack.depth > 1) rootStack.pop();
+    }
+
     function pop() {
         if (_detailCount > 0) detailStack.pop();
         else if (rootStack.depth > 1) rootStack.pop();
     }
 
-    // Keyboard master-detail: move focus between the two panels (split only). Pages
-    // opt in by exposing `property Item keyboardFocusItem` (the list/flick that should
-    // own arrow-key focus); otherwise the page itself is focused.
+    // Keyboard master-detail: move focus between panels; pages opt in via `keyboardFocusItem`
     function focusMaster() {
         var p = rootStack.currentPage;
         if (!p) return;
-        // List pages need the key-nav focus reason for Lomiri to paint the row
-        // cursor; plain forceActiveFocus leaves keyNavigationFocus false.
+        // List pages need key-nav focus reason; plain forceActiveFocus leaves keyNavigationFocus false
         if (p.focusListKeyNav) { p.focusListKeyNav(); return; }
         (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
     }
@@ -85,24 +94,22 @@ Item {
         if (!p) return;
         (p.keyboardFocusItem ? p.keyboardFocusItem : p).forceActiveFocus();
     }
-    // Only the visible, split stack reacts (one tab is visible at a time). If the
-    // open detail runs its OWN nested master-detail (My Feed), it exposes
-    // `_ownsKeyboardNav` and handles these itself; defer so focus stays inside it.
+    // Only the visible, split stack reacts.
     Connections {
         target: Nav
         function onFocusMaster() {
-            if (!(root.visible && root.split)) return;
-            var d = detailStack.currentPage;
-            if (d && d._ownsKeyboardNav) return;
-            root.focusMaster();
+            if (root.visible && root.split) root.focusMaster();
         }
         function onFocusDetail() {
-            if (!(root.visible && root.split && root._detailCount > 0)) return;
-            var d = detailStack.currentPage;
-            if (d && d._ownsKeyboardNav) return;
-            root.focusDetail();
+            if (root.visible && root.split && root._detailCount > 0) root.focusDetail();
         }
     }
+
+    // A destination in the leading column names its own detail placeholder.
+    readonly property string _emptyIcon: (rootStack.currentPage && rootStack.currentPage.emptyDetailIconName)
+                                         ? rootStack.currentPage.emptyDetailIconName : emptyDetailIconName
+    readonly property string _emptyMessage: (rootStack.currentPage && rootStack.currentPage.emptyDetailMessage)
+                                            ? rootStack.currentPage.emptyDetailMessage : emptyDetailMessage
 
     Item {
         id: listPane
@@ -113,12 +120,12 @@ Item {
         PageStack { id: rootStack; anchors.fill: parent }
     }
 
-    // Draggable separator between panels (split only). Thicker than a 1dp hairline
-    // so it reads as a grabbable splitter rather than a plain divider.
+    // Draggable separator between panels. Hairline like every other divider; the
+    // gu(1.5) MouseArea below plus the hover highlight carry the grabbable cue.
     Rectangle {
         id: paneDivider
         anchors { top: parent.top; bottom: parent.bottom; left: listPane.right }
-        width: units.dp(2)
+        width: units.dp(1)
         color: dragHandle.containsMouse || dragHandle.pressed ? Style.brand : Style.divider
         visible: root.split
     }
@@ -152,17 +159,17 @@ Item {
             Column {
                 anchors.centerIn: parent
                 spacing: units.gu(1)
-                visible: root.split && root._detailCount === 0 && root.emptyDetailMessage !== ""
+                visible: root.split && root._detailCount === 0 && root._emptyMessage !== ""
                 Icon {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: units.gu(6); height: width
-                    name: root.emptyDetailIconName
+                    name: root._emptyIcon
                     color: Style.textSecondary
                     opacity: 0.5
                 }
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: root.emptyDetailMessage
+                    text: root._emptyMessage
                     color: Style.textSecondary
                 }
             }

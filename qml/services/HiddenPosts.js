@@ -3,9 +3,7 @@
 
 var _db = null
 
-// Feeds call loadAll() on every response (several times per cold start), and it
-// does a full table scan. Only hide() changes the set, so memoise the map and
-// invalidate there.
+// loadAll() does a full table scan; memoise and invalidate only in hide()
 var _cache = null
 
 function _open() {

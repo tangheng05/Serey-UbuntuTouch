@@ -1,9 +1,7 @@
 .pragma library
 .import "Http.js" as Http
 
-// Buy-plan payments: NOWPayments crypto (/subscription/crypto/*, NOT
-// /crypto-subscription/*) and Stripe Checkout (redirect fixed to
-// /subscription/return). No KHQR by design. Field normalisation stays here.
+// Buy-plan payments: NOWPayments crypto and Stripe Checkout only, no KHQR
 
 // -> onOk([ "usdttrc20", "btc", ... ])  (lowercase NOWPayments currency codes)
 function getCurrencies(baseUrl, onOk, onErr) {
@@ -14,9 +12,7 @@ function getCurrencies(baseUrl, onOk, onErr) {
     }, onErr);
 }
 
-// -> onOk({ paymentId, payAddress, payAmount, payCurrency, expiresAt, paymentUrl, message })
-// expiresAt may be "" (callers fall back to ~15 min). A reused still-valid payment
-// can arrive without a pay_address; surfaced as an error so the sheet shows the message.
+// -> onOk({ paymentId, payAddress, payAmount, payCurrency, expiresAt, paymentUrl, message }); missing pay_address surfaces as error
 function createCryptoPayment(baseUrl, token, planId, payCurrency, onOk, onErr) {
     Http.post(baseUrl, "/subscription/crypto/create-payment",
               { subscription_plan_id: parseInt(planId), pay_currency: payCurrency },
@@ -41,8 +37,7 @@ function createCryptoPayment(baseUrl, token, planId, payCurrency, onOk, onErr) {
     }, onErr);
 }
 
-// -> onOk("waiting" | "confirming" | "confirmed" | "sending" | "finished"
-//         | "partially_paid" | "failed" | "refunded" | "expired")
+// -> onOk("waiting"|"confirming"|"confirmed"|"sending"|"finished"|"partially_paid"|"failed"|"refunded"|"expired")
 function checkCryptoStatus(baseUrl, token, paymentId, onOk, onErr) {
     Http.post(baseUrl, "/subscription/crypto/check-status",
               { payment_id: paymentId }, token, function (data) {
@@ -50,8 +45,7 @@ function checkCryptoStatus(baseUrl, token, paymentId, onOk, onErr) {
     }, onErr);
 }
 
-// Confirm (and server-side ACTIVATE) a completed Stripe session. Must be called
-// after the success redirect; don't trust the webhook alone. onOk(data) on any 2xx.
+// Confirm+activate a completed Stripe session; call after redirect, don't trust webhook alone
 function checkStripeStatus(baseUrl, token, sessionId, onOk, onErr) {
     Http.post(baseUrl, "/subscription/stripe/check-status",
               { session_id: sessionId }, token, onOk, onErr);

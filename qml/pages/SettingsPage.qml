@@ -16,6 +16,19 @@ Page {
     // Caps content to a centered column on tablet/desktop; phone gets the full width
     readonly property real maxContentWidth: units.gu(60)
 
+    // Single source of truth for the language picker; add a row here to support a new language.
+    readonly property var languageOptions: [
+        { code: "en", label: "English" },
+        { code: "nl", label: "Dutch" }
+    ]
+    function languageLabelFor(code) {
+        for (var i = 0; i < page.languageOptions.length; i++)
+            if (page.languageOptions[i].code === code) return page.languageOptions[i].label
+        return code
+    }
+    // Desktop-only accordion state for the inline language row.
+    property bool langExpanded: false
+
     property bool searching: false
     property bool searchOpen: false
     property int searchGeneration: 0
@@ -35,7 +48,6 @@ Page {
         var q = query.trim()
         if (q.length < 2) {
             searchModel.clear()
-            page.searchOpen = false
             return
         }
         page.searching = true
@@ -75,16 +87,14 @@ Page {
     // Suppress the default header and draw our own, since Page.header didn't render the right-side search action icon reliably.
     header: Item { height: 0 }
 
-    // Keyboard navigation: the rows live in a Column inside a Flickable (no
-    // ListView cursor), so the page keeps its own row cursor, same pattern as
-    // PostActionSheet (visibility-filtered rows, one reparenting ring).
+    // Column-in-Flickable has no ListView cursor, so keep our own (see PostActionSheet)
     property Item keyboardFocusItem: scroll
     property Item navCurrent: null
 
     function _navRows() {
         var c = [profileCardBtn, loginBtn, signupBtn, languageRow,
                  createPlatformRow, managePlatformRow, editProfileRow,
-                 passwordRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+                 passwordRow, sessionsRow, blockedRow, downloadsRow, bugReportRow, websiteRow, logoutRow];
         var rows = [];
         for (var i = 0; i < c.length; i++)
             if (c[i].visible) rows.push(c[i]);
@@ -107,9 +117,7 @@ Page {
             scroll.contentY = y + it.height - scroll.height;
     }
 
-    // Focus the row list when the tab is shown so keyboard nav works without a
-    // click; the cursor appears on first key press. (Merged into the single
-    // onVisibleChanged below; a Page allows only one handler per signal.)
+    // Focus the row list on show so keyboard nav works without a click first
     function _onShownForKeyboard() {
         if (!searchField.activeFocus) {
             page.navCurrent = null;
@@ -120,14 +128,12 @@ Page {
     Rectangle {
         id: settingsHeader
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        // Matches PageHeader's own height (Ambiance style: titleAreaHeight gu(6) + 1dp divider)
-        // so this row lines up with a pushed detail page's PageHeader (e.g. Edit profile) in split/wide layouts.
+        // Matches PageHeader's height so it lines up with a pushed detail page's header
         height: units.gu(6) + units.dp(1)
         color: Style.surface
         z: 50
 
-        // Centered column that caps at maxContentWidth; on phone widths this
-        // just equals settingsHeader's full width, so the layout is unchanged.
+        // Centered column caps at maxContentWidth; on phone this equals full width
         Item {
             id: headerContent
             anchors { top: parent.top; bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
@@ -146,7 +152,8 @@ Page {
                 visible: !page.searchActive
                 anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                 width: units.gu(4); height: width
-                onClicked: { page.searchActive = true; searchField.forceActiveFocus(); }
+                // searchOpen right away so tapping search shows the empty state, not nothing
+                onClicked: { page.searchActive = true; page.searchOpen = true; searchField.forceActiveFocus(); }
                 Icon {
                     anchors.centerIn: parent
                     width: units.gu(2.6); height: width
@@ -175,8 +182,7 @@ Page {
                 }
             }
 
-            // ----- Active state: back chevron + inline search field (Lomiri header
-            // search; the field expands into the header, per the HIG reference). -----
+            // ----- Active state: back chevron + inline search field (Lomiri HIG) -----
             AbstractButton {
                 id: searchBack
                 visible: page.searchActive
@@ -228,10 +234,9 @@ Page {
                             clip: true
                             inputMethodHints: Qt.ImhNoPredictiveText
                             onTextChanged: {
-                                if (searchField.text.trim().length < 2) {
-                                    page.searchOpen = false
+                                // Panel stays up (empty state) while the field is open.
+                                if (searchField.text.trim().length < 2)
                                     searchModel.clear()
-                                }
                                 searchDebounce.restart()
                             }
                             Keys.onReturnPressed: {
@@ -247,7 +252,7 @@ Page {
                             font.pixelSize: Style.fontRegular
                             font.family: Style.fontFor(text)
                             color: Style.textSecondary
-                            visible: searchField.text.length === 0
+                            visible: searchField.text.length === 0 && !searchField.inputMethodComposing
                         }
                     }
                 }
@@ -268,7 +273,7 @@ Page {
     }
 
     function refreshProfile() {
-        // Also reset `loading`: logging out mid-fetch would otherwise leave the earlier request's loading=true with profile nulled, a stuck spinner.
+        // Also reset `loading`: mid-fetch logout would otherwise leave a stuck spinner
         if (!Session.isLoggedIn) { profile = null; loading = false; return; }
         loading = true;
         errorMsg = "";
@@ -292,13 +297,14 @@ Page {
         Session.clear();
         FollowStore.reset();
         page.profile = null;
+        Toast.show(Lang.tr("Logged out"));
     }
 
     Component.onCompleted: {
         refreshProfile();
         var rows = [profileCardBtn, loginBtn, signupBtn, languageRow,
                     createPlatformRow, managePlatformRow, editProfileRow,
-                    passwordRow, blockedRow, downloadsRow, websiteRow, logoutRow];
+                    passwordRow, sessionsRow, blockedRow, downloadsRow, bugReportRow, websiteRow, logoutRow];
         for (var i = 0; i < rows.length; i++) {
             rows[i].pressedChanged.connect((function (row) {
                 return function () { if (row.pressed) page.navCurrent = null; };
@@ -353,14 +359,11 @@ Page {
         contentHeight: col.height
         clip: true
 
-        // Arrow cursor over the settings rows; Enter activates on release so
-        // the pushed sub-page / dialog doesn't inherit the tail of the press.
+        // Enter activates on release so pushed sub-page doesn't inherit the tail of the press
         activeFocusOnTab: true
         property bool _armed: false
         Keys.onPressed: {
-            // A row click gives that AbstractButton keyboard focus, so scroll loses
-            // activeFocus and the ring (gated on it) hides. Reclaim focus on the
-            // first nav key so the cursor reappears and keyboard nav resumes.
+            // A row click steals activeFocus (hiding the ring); reclaim it on next nav key
             if (!scroll.activeFocus) scroll.forceActiveFocus();
             if (event.key === Qt.Key_Down)      { page._navMove(1);  event.accepted = true; }
             else if (event.key === Qt.Key_Up)   { page._navMove(-1); event.accepted = true; }
@@ -368,7 +371,12 @@ Page {
                 scroll._armed = true; event.accepted = true;
             }
             else if (event.key === Qt.Key_Left) { Nav.focusNav();    event.accepted = true; }
-            else if (event.key === Qt.Key_Right){ Nav.focusDetail(); event.accepted = true; }
+            else if (event.key === Qt.Key_Right) {
+                // No sub-page pushed: hand off to the persistent Account rail (see Main.qml)
+                if (page.pageStack && page.pageStack.depth === 1) Nav.focusRightPanel();
+                else Nav.focusDetail();
+                event.accepted = true;
+            }
         }
         Keys.onReleased: {
             if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)
@@ -376,9 +384,7 @@ Page {
                 scroll._armed = false;
                 if (page.navCurrent) {
                     page.navCurrent.clicked();
-                    // If the row pushed a detail page (split mode), move focus into
-                    // it. No-op for dialog/external rows (nothing was pushed) and
-                    // for narrow mode (the pushed page auto-focuses itself).
+                    // Move focus into a pushed detail page; no-op for dialogs/narrow mode
                     Qt.callLater(function () { Nav.focusDetail(); });
                 }
                 event.accepted = true;
@@ -594,13 +600,171 @@ Page {
                 }
             }
 
+            // Touch/phone: original modal picker.
             SettingsRow {
                 id: languageRow
+                visible: !Config.desktopMode
                 iconName: "language-chooser"
                 label: Lang.tr("Language")
-                valueText: Session.language === "nl" ? "Dutch" : "English"
+                valueText: page.languageLabelFor(Session.language)
                 showChevron: true
                 onClicked: PopupUtils.open(langDialog)
+            }
+
+            // Desktop: inline accordion row. Plain MouseArea + in-flow expand, no floating
+            // overlay/clip/transform stack (that combo silently ate clicks in the dropdown attempt).
+            Item {
+                id: languageRowDesktop
+                visible: Config.desktopMode
+                width: parent.width
+                height: units.gu(7)
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: langRowMouse.pressed ? Style.pressed : "transparent"
+                }
+                Icon {
+                    id: langRowIcon
+                    anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    width: units.gu(2.6); height: width
+                    name: "language-chooser"
+                    color: Style.textSecondary
+                }
+                Label {
+                    anchors { left: langRowIcon.right; leftMargin: Style.spacingS; verticalCenter: parent.verticalCenter }
+                    text: Lang.tr("Language")
+                    font.pixelSize: Style.fontRegular
+                    font.family: Style.fontFor(text)
+                    color: Style.textPrimary
+                }
+                Row {
+                    anchors { right: parent.right; rightMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
+                    spacing: Style.spacingS
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.languageLabelFor(Session.language)
+                        font.pixelSize: Style.fontRegular
+                        font.family: Style.fontFor(text)
+                        color: Style.textSecondary
+                    }
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: units.gu(2); height: width
+                        name: "next"
+                        color: Style.textSecondary
+                        rotation: page.langExpanded ? 90 : 0
+                        Behavior on rotation { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                    }
+                }
+                Rectangle {
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: units.dp(1)
+                    color: Style.divider
+                    visible: !page.langExpanded
+                }
+                MouseArea {
+                    id: langRowMouse
+                    anchors.fill: parent
+                    onClicked: page.langExpanded = !page.langExpanded
+                }
+            }
+
+            // Expanding panel: English/Dutch options, pushed in-flow below the row.
+            Item {
+                id: langExpandPanel
+                visible: Config.desktopMode
+                width: parent.width
+                clip: true
+                height: page.langExpanded ? units.gu(12) : 0
+                Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+
+                Column {
+                    width: parent.width
+
+                    AbstractButton {
+                        id: enOptRow
+                        width: parent.width
+                        height: units.gu(6)
+                        onClicked: {
+                            page.langExpanded = false
+                            if (Session.language !== "en") {
+                                Session.setLanguage("en")
+                                Toast.show(Lang.tr("Language") + ": English")
+                            }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            color: enOptRow.pressed ? Style.pressed
+                                 : Session.language === "en" ? Style.iconBackground : "transparent"
+                        }
+                        Row {
+                            anchors { fill: parent; leftMargin: units.gu(6); rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - units.gu(2.4) - Style.spacingM
+                                text: "English"
+                                font.pixelSize: Style.fontRegular
+                                font.family: Style.fontFor(text)
+                                font.weight: Session.language === "en" ? Font.DemiBold : Font.Normal
+                                color: Session.language === "en" ? Style.brand : Style.textPrimary
+                            }
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2); height: width
+                                name: "tick"
+                                color: Style.brand
+                                visible: Session.language === "en"
+                            }
+                        }
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: units.dp(1); color: Style.divider
+                        }
+                    }
+
+                    AbstractButton {
+                        id: nlOptRow
+                        width: parent.width
+                        height: units.gu(6)
+                        onClicked: {
+                            page.langExpanded = false
+                            if (Session.language !== "nl") {
+                                Session.setLanguage("nl")
+                                Toast.show(Lang.tr("Language") + ": Dutch")
+                            }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            color: nlOptRow.pressed ? Style.pressed
+                                 : Session.language === "nl" ? Style.iconBackground : "transparent"
+                        }
+                        Row {
+                            anchors { fill: parent; leftMargin: units.gu(6); rightMargin: Style.spacingM }
+                            spacing: Style.spacingM
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - units.gu(2.4) - Style.spacingM
+                                text: "Dutch"
+                                font.pixelSize: Style.fontRegular
+                                font.family: Style.fontFor(text)
+                                font.weight: Session.language === "nl" ? Font.DemiBold : Font.Normal
+                                color: Session.language === "nl" ? Style.brand : Style.textPrimary
+                            }
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: units.gu(2); height: width
+                                name: "tick"
+                                color: Style.brand
+                                visible: Session.language === "nl"
+                            }
+                        }
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: units.dp(1); color: Style.divider
+                        }
+                    }
+                }
             }
 
             Component {
@@ -609,16 +773,12 @@ Page {
                     id: langDlg
                     title: Lang.tr("Language")
 
-                    // Keyboard nav: Up/Down move the selection, Enter activates,
-                    // Escape cancels. The ring adapts colour so it stays visible
-                    // even on the brand-blue active-language button.
+                    // Keyboard nav: Up/Down move selection, Enter activates, Escape cancels
                     property int selIndex: Session.language === "nl" ? 1 : 0
                     // Restore keyboard focus to the settings list when the dialog closes.
                     function _closeAndRestore() { PopupUtils.close(langDlg); Qt.callLater(function () { scroll.forceActiveFocus(); }); }
 
-                    // Zero-size focus holder: Keys on the Dialog root didn't reliably
-                    // own focus (the settings list behind the modal kept it), so this
-                    // grabs focus deferred and handles all keys without breaking layout.
+                    // Zero-size focus holder: Dialog root didn't reliably own focus otherwise
                     Item {
                         id: keyGrab
                         width: 0; height: 0
@@ -728,6 +888,17 @@ Page {
                 showChevron: true
                 onClicked: page.pageStack.push(Qt.resolvedUrl("ChangePasswordPage.qml"))
             }
+            // Two-step verification lives on the Password & Security page now,
+            // as a toggle; the design drops it from this list.
+            SettingsRow {
+                id: sessionsRow
+                visible: Session.isLoggedIn
+                showDivider: false
+                iconName: "computer-symbolic"
+                label: Lang.tr("Active sessions")
+                showChevron: true
+                onClicked: page.pageStack.push(Qt.resolvedUrl("ActiveSessionsPage.qml"))
+            }
             SettingsRow {
                 id: blockedRow
                 visible: Session.isLoggedIn
@@ -754,6 +925,21 @@ Page {
                 label: Lang.tr("Version")
                 valueText: Config.appVersion
             }
+            // Reporting needs a JWT (the backend has no anonymous route), so send guests to log in first.
+            SettingsRow {
+                id: bugReportRow
+                iconName: "dialog-warning-symbolic"
+                label: Lang.tr("Report Improvement")
+                showChevron: true
+                onClicked: {
+                    if (Session.isLoggedIn)
+                        page.pageStack.push(Qt.resolvedUrl("BugReportPage.qml"));
+                    else {
+                        Toast.show(Lang.tr("Log in to send a report."));
+                        page.pageStack.push(Qt.resolvedUrl("LoginPage.qml"));
+                    }
+                }
+            }
             SettingsRow {
                 id: websiteRow
                 iconName: "external-link"
@@ -775,9 +961,7 @@ Page {
         }
     }
 
-    // Keyboard cursor: one ring reparented into the selected row. Fallback parent
-    // is `page`, NOT the Column `col` (an anchored child disables its layout).
-    // Only visible once a key has moved the cursor, so touch users never see it.
+    // Keyboard cursor ring; falls back to `page`, not Column `col` (breaks its layout)
     Rectangle {
         parent: page.navCurrent ? page.navCurrent : page
         anchors.fill: parent
@@ -799,14 +983,15 @@ Page {
 
     Rectangle {
         id: searchOverlay
-        visible: page.searchOpen && (searchModel.count > 0 || page.searching)
+        visible: page.searchOpen
         anchors {
             top: parent.top
             topMargin: units.gu(7)
             horizontalCenter: parent.horizontalCenter
         }
         width: Math.min(parent.width, page.maxContentWidth) - Style.spacingM * 2
-        height: Math.min(searchModel.count * units.gu(7.5), units.gu(40))
+        height: searchModel.count > 0 ? Math.min(searchModel.count * units.gu(7.5), units.gu(40))
+                                      : units.gu(14)
         radius: units.gu(1)
         color: Style.surface
         clip: true
@@ -825,6 +1010,26 @@ Page {
             anchors.centerIn: parent
             running: page.searching && searchModel.count === 0
             visible: running
+        }
+
+        Column {
+            anchors.centerIn: parent
+            spacing: Style.spacingS
+            visible: !page.searching && searchModel.count === 0
+
+            Icon {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: units.gu(4); height: width
+                name: "find"
+                color: Style.textSecondary
+            }
+            Label {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: Lang.tr("No results found")
+                font.pixelSize: Style.fontSmall
+                font.family: Style.fontFor(text)
+                color: Style.textSecondary
+            }
         }
 
         ListView {

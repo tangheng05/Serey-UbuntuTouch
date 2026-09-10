@@ -5,6 +5,12 @@ function toInt(v) {
     return isNaN(n) ? 0 : n;
 }
 
+// Publishing scope: the highest community the post may surface under (its
+// ceiling). 0 means no ceiling, i.e. everywhere including the Global feed.
+function publishCeiling(raw) {
+    return toInt(raw.publish_scope_community_id);
+}
+
 // Default true (on-chain); only an explicit false/"false"/0 means DB-only
 function onChainFlag(raw) {
     return raw.post_to_blockchain !== false
@@ -35,9 +41,7 @@ function parseList(val) {
 
 var _entities = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">" };
 
-// Called once per row per page, on the UI thread, against the full article body.
-// The four entity rules were four separate full-string passes; one alternation
-// does the same work in a single scan. Three passes now: tags, entities, spaces.
+// Hot path (per row per page); single-pass entity alternation instead of four
 function stripHtml(html, max) {
     if (!html)
         return "";
@@ -58,16 +62,39 @@ function fixThumb(url) {
     return url;
 }
 
-// Pick a thumbnail for a post: explicit list field, else first <img> in the body.
-function firstImage(raw) {
+// First YouTube link in the body, either format: web editor's data-video-url container,
+// or our own app's <a href> (isolated-link paragraph or inline).
+function firstEmbedThumb(desc) {
+    if (!desc) return "";
+    var dm = /data-video-url="([^"]*)"/i.exec(desc);
+    var url = dm ? dm[1] : null;
+    if (!url) {
+        var am = /<a\s+[^>]*href="([^"]*(?:youtube\.com|youtu\.be)[^"]*)"/i.exec(desc);
+        url = am ? am[1] : null;
+    }
+    if (!url) return "";
+    var idm = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/i.exec(url);
+    return idm ? ("https://img.youtube.com/vi/" + idm[1] + "/hqdefault.jpg") : "";
+}
+
+// Only what is stored on the post; firstImage() below is the display fallback chain.
+function storedCover(raw) {
     var imgs = parseList(raw.image_url);
-    if (imgs.length)
-        return fixThumb(imgs[0]);
-    if (raw.thumbnail_url)
-        return fixThumb(raw.thumbnail_url);
-    var desc = raw.description || raw.post_description || "";
-    var m = /<img[^>]+src=["']([^"']+)["']/i.exec(desc);
-    return m ? fixThumb(m[1]) : "";
+    if (imgs.length) return fixThumb(imgs[0]);
+    if (raw.thumbnail_url) return fixThumb(raw.thumbnail_url);
+    return "";
+}
+
+// Pick a thumbnail for a post: the stored cover, else an embedded video's thumb.
+// Deliberately NOT the body's first <img>: the web keys its card off json_meta.image
+// alone, so deriving here made a removed cover look like it came back - the card kept
+// showing the article's own picture. Cover-less posts fall back to the Serey banner
+// PostCard draws, which is what the web shows too.
+function firstImage(raw) {
+    var stored = storedCover(raw);
+    if (stored)
+        return stored;
+    return firstEmbedThumb(raw.description || raw.post_description || "");
 }
 
 // Normalise a voters/flaggers list to plain usernames; the API sends either ["alice"] or [{voter:"alice"}] depending on endpoint.
@@ -87,8 +114,7 @@ function voterNames(arr) {
 
 function toPost(raw) {
     raw = raw || {};
-    // Each of these was recomputed per field below (categories parsed 4x, each
-    // voter list walked twice) for every row of every page. Same values, built once.
+    // Built once instead of recomputed per field below (was parsed/walked multiple times)
     var cats = parseList(raw.categories);
     var voters = voterNames(raw.voters);
     var flaggers = voterNames(raw.flaggers);
@@ -100,6 +126,10 @@ function toPost(raw) {
         body: raw.description || "",
         excerpt: stripHtml(raw.short_desc || raw.description || "", 180),
         thumbnail: firstImage(raw),
+        // The cover the author actually stored (json_meta.image), with no body-image
+        // fallback: the editor needs to tell "no cover set" from "we derived one", or
+        // removing a cover looks impossible - the derived one comes straight back.
+        coverImage: storedCover(raw),
         authorImage: raw.author_image_url || "",
         date: raw.publish_date || "",
         votes: toInt(raw.voter_count),
@@ -108,9 +138,7 @@ function toPost(raw) {
         categories: cats,
         // Scalar copy of the first category since a dynamicRoles ListModel wraps the `categories` array (losing [] indexing); edit-prefill reads this.
         primaryCategory: cats[0] || "",
-        // The post's tag list is [mainCategory, ...subcategories]; everything after
-        // the first is a sub-category. Scalar copy of the first for the same
-        // ListModel-wrapping reason as primaryCategory.
+        // Tag list is [mainCategory, ...subcategories]; scalar copy for ListModel-wrapping reason
         subCategories: cats.slice(1),
         primarySubCategory: cats[1] || "",
         voters: voters,
@@ -120,7 +148,10 @@ function toPost(raw) {
         community: raw.community_title || "",
         communityId: toInt(raw.community_id),
         checkmark: raw.checkmark_icon || "",
-        postToBlockchain: onChainFlag(raw)
+        postToBlockchain: onChainFlag(raw),
+        // Edit prefill: without this an edit would send the ceiling back as 0 and
+        // quietly widen a capped post's audience.
+        publishCeilingId: publishCeiling(raw)
     };
 }
 
@@ -149,7 +180,10 @@ function toGalleryPost(raw) {
         // Post's own community title, so editing keeps it in place.
         community: raw.community_title || "",
         checkmark: raw.checkmark_icon || "",
-        postToBlockchain: onChainFlag(raw)
+        postToBlockchain: onChainFlag(raw),
+        // Edit prefill: without this an edit would send the ceiling back as 0 and
+        // quietly widen a capped post's audience.
+        publishCeilingId: publishCeiling(raw)
     };
 }
 
@@ -182,6 +216,9 @@ function toVideo(raw) {
     raw = raw || {};
     return {
         id: raw.id,
+        // A video's `id` is the youtube_components row (an integer); post-keyed actions
+        // like report-post need the post UUID, which the API sends as post_id.
+        postId: raw.post_id || "",
         author: raw.username || raw.author || "",
         permlink: raw.permlink || "",
         title: raw.title || "(untitled)",
@@ -204,7 +241,10 @@ function toVideo(raw) {
         primaryCategory: parseList(raw.categories)[0] || "",
         community: raw.community_title || "",
         communityId: toInt(raw.community_id),
-        postToBlockchain: onChainFlag(raw)
+        postToBlockchain: onChainFlag(raw),
+        // Edit prefill: without this an edit would send the ceiling back as 0 and
+        // quietly widen a capped post's audience.
+        publishCeilingId: publishCeiling(raw)
     };
 }
 
@@ -216,12 +256,13 @@ function toCommunity(raw) {
         dns: raw.dns || "",
         icon: raw.icon_url || raw.logo_url || "",
         country: raw.country || "",
+        description: raw.meta_description || "",   // owner-set blurb, often empty
         level: toInt(raw.level),
-        // is_allow_post=true means anyone may post, false means owner/managers only; drives whether the compose buttons are shown for this community.
+        // Drives whether compose buttons are shown for this community
         allowPost: !!raw.is_allow_post,
-        // video_is_allow_post gates the Video upload FAB independently of the blog flag (true = anyone, false = owner/managers only).
+        // Gates the Video upload FAB independently of the blog flag
         videoAllowPost: !!raw.video_is_allow_post,
-        // Number of sub-communities under this one, used to hide empty countries from the picker.
+        // Used to hide empty countries from the picker
         childCount: Array.isArray(raw.child_communities) ? raw.child_communities.length : 0
     };
 }
@@ -266,5 +307,21 @@ function toUser(username, raw) {
         checkmark: raw.checkmark_icon || "",
         email: raw.email || "",
         phone: phone || ""
+    };
+}
+
+// Web client posts literal "Unknown" when it has no geo; blank it out
+function devicePlace(v) {
+    var s = (v || "").trim();
+    return (s === "Unknown" || s === "None" || s === "null") ? "" : s;
+}
+
+function toDevice(raw) {
+    return {
+        id: raw.id, // UUID string, not numeric — do not toInt()
+        deviceName: devicePlace(raw.device_name),
+        city: devicePlace(raw.city_name),
+        country: devicePlace(raw.country_name),
+        lastActiveAt: raw.last_active_at || ""
     };
 }

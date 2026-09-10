@@ -15,9 +15,7 @@ function listFeedFollowing(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-feed-following", params, token, onOk, onErr);
 }
 
-// Posts from followed authors OR subscribed communities; a superset of
-// listFeedFollowing. This is what My Feed uses, so subscribing to a community
-// actually fills it.
+// Posts from followed authors OR subscribed communities; what My Feed uses
 function listFeedMixed(baseUrl, params, token, onOk, onErr) {
     return _list(baseUrl, "/serey-web/list-by-feed-mixed", params, token, onOk, onErr);
 }
@@ -111,11 +109,21 @@ function createPost(baseUrl, params, token, onOk, onErr) {
         body.permlink = params.permlink;
     // Explicit bool so an edit can flip it either way; omitting it defaults true
     body.post_to_blockchain = (params.postToBlockchain !== false);
-    if (params.communityId)            // omit when 0/empty so we don't post a falsy id
+    // Publishing scope: the ceiling community, null for everywhere. Only sent for
+    // a real community - Global is the combined feed, so capping there would just
+    // hide the post from the one feed it was posted to.
+    if (params.communityId)
+        body.publish_scope_community_id = Number(params.publishCeilingId) > 0
+                                          ? Number(params.publishCeilingId) : null;
+    // Always send the post's own community_id, on create AND edit, so an edit keeps the post in
+    // the same community it was originally posted to. Never send country_name alongside a real
+    // id - only as a fallback when id is unknown (0/missing) - since sending both together was
+    // getting rejected as "Invalid community".
+    if (params.communityId) {
         body.community_id = Number(params.communityId);
-    // Server resolves by id when present, else by title, letting "Global" (id 0) and unheld ids still resolve server-side.
-    if (params.communityName)
+    } else if (params.communityName) {
         body.country_name = params.communityName;
+    }
     Http.post(baseUrl, "/serey-web/create-or-update-post", body,
               token, function (data) { onOk(data || {}); }, onErr);
 }
@@ -136,15 +144,22 @@ function createVideoPost(baseUrl, params, token, onOk, onErr) {
         is_ai_generated: false,
         site_credit: '<p>This was posted using <a href="https://serey.io" rel="nofollow noopener">Serey.io</a></p>'
     };
-    // "Post to blockchain" toggle (see createPost): explicit bool, false = DB-only.
+    // "Post on the blockchain" toggle (see createPost): explicit bool, false = DB-only.
     body.post_to_blockchain = (params.postToBlockchain !== false);
+    // Publishing scope, same contract as createPost.
+    if (params.communityId)
+        body.publish_scope_community_id = Number(params.publishCeilingId) > 0
+                                          ? Number(params.publishCeilingId) : null;
     // Editing an existing video post: sending its permlink makes the backend update in place (same contract as createPost).
     if (params.permlink)
         body.permlink = params.permlink;
-    if (params.communityId)
+    // Always send the post's own community_id, on create AND edit - see createPost() for why
+    // country_name is never sent alongside a real id.
+    if (params.communityId) {
         body.community_id = Number(params.communityId);
-    if (params.communityName)
+    } else if (params.communityName) {
         body.country_name = params.communityName;
+    }
     Http.post(baseUrl, "/serey-web/create-or-update-post", body,
               token, function (data) { onOk(data || {}); }, onErr);
 }
@@ -158,22 +173,50 @@ function deletePost(baseUrl, username, permlink, token, onOk, onErr) {
 
 // --- Admin/CMS moderation (requires an owner/manager token) ----------------
 
-// Moderator delete of any post/comment by numeric row id (unlike deletePost,
-// not limited to the token's own username).
+// Moderator delete by numeric row id, unlike deletePost not limited to own username
 function adminDeletePost(baseUrl, id, token, onOk, onErr) {
     Http.del(baseUrl, "/serey-web/admin-delete-post-or-comment/" + id, token,
              function (data) { onOk(data || {}); }, onErr);
 }
 
-// Needs a JSON body (list of ids), so it goes through Http.delWithBody
-// rather than the bodiless del().
+// Needs a JSON body (list of ids), so uses Http.delWithBody not bodiless del()
 function adminBulkDeletePosts(baseUrl, ids, token, onOk, onErr) {
     Http.delWithBody(baseUrl, "/serey-web/admin-bulk-delete-posts", { ids: ids }, token,
                       function (data) { onOk(data || {}); }, onErr);
 }
 
-// Used by BlogManagementPage to list/filter a community's posts for moderation.
-// Same paginated {posts:[...]} shape as the other feeds.
-function listAdvancedSearch(baseUrl, params, token, onOk, onErr) {
-    return _list(baseUrl, "/serey-web/search-advanced", params, token, onOk, onErr);
+// Response shape differs from other list endpoints: { new_posts, trending_posts, feed_posts }
+function searchAdvanced(baseUrl, params, token, onOk, onErr) {
+    return Http.get(baseUrl, "/serey-web/search-advanced", params, token, function (data) {
+        var buckets = (data.new_posts || []).concat(data.trending_posts || [], data.feed_posts || []);
+        onOk(buckets.map(M.toPost));
+    }, onErr);
+}
+
+// Fires search_title + search_username in parallel, merges+dedupes by id
+function searchPosts(baseUrl, query, extraParams, token, onOk, onErr) {
+    var pending = 2;
+    var byId = {};
+    var order = [];
+    var lastErr = null;
+    function record(posts) {
+        for (var i = 0; i < posts.length; i++) {
+            var p = posts[i];
+            var key = p.id !== undefined ? String(p.id) : (p.author + "/" + p.permlink);
+            if (byId[key]) continue;
+            byId[key] = true;
+            order.push(p);
+        }
+    }
+    function done(err) {
+        if (err) lastErr = err;
+        if (--pending > 0) return;
+        if (order.length === 0 && lastErr) { onErr(lastErr); return; }
+        onOk(order);
+    }
+    var titleParams = Object.assign({}, extraParams, { search_title: query });
+    var userParams = Object.assign({}, extraParams, { search_username: query });
+    var t1 = searchAdvanced(baseUrl, titleParams, token, function (posts) { record(posts); done(null); }, function (err) { done(err); });
+    var t2 = searchAdvanced(baseUrl, userParams, token, function (posts) { record(posts); done(null); }, function (err) { done(err); });
+    return { abort: function () { t1.abort(); t2.abort(); } };
 }

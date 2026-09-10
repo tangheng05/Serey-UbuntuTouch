@@ -1,4 +1,4 @@
-import QtQuick 2.7
+import QtQuick 2.14      // WheelHandler
 import QtQuick.Window 2.2
 import Lomiri.Components 1.3
 import "../Theme"
@@ -21,6 +21,8 @@ Item {
     readonly property bool isOwn: Session.isLoggedIn && authorName !== "" && authorName === Session.username
     // No video editor exists, so Edit is offered for blog/gallery only.
     readonly property bool canEdit: isOwn && PostActions.kind !== "video"
+    // Opened straight at a sub-step (report/delete/block), bypassing the main menu
+    readonly property bool openedDirectly: PostActions.startStep !== 0
     property bool deleting: false
     property bool blocking: false
     property bool reporting: false
@@ -28,16 +30,16 @@ Item {
     property bool reportTypesLoaded: false
     property bool reportTypesLoading: false
     property string selectedReportTypeId: ""
-    // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm, 4 = edit video caption.
+    // 0 = main menu, 1 = report reasons, 2 = delete confirm, 3 = block confirm.
     property int step: 0
-    property bool savingCaption: false
 
-    // Lift the sheet above the OSK (the edit-caption step has text inputs).
-    readonly property real kbHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
+    // The backdrop's MouseArea blocks presses, but nothing blocks the wheel: over the backdrop, or
+    // over any part of the sheet that doesn't scroll, it reached the page underneath and scrolled it
+    // behind the modal. Whatever is under the pointer and scrollable still takes the event first
+    // (the sheet's own flick), so this only swallows what would otherwise fall through.
+    WheelHandler { onWheel: {} }
 
-    // ---- Keyboard navigation (UBports HIG input parity): Up/Down or Tab move a
-    // highlight over the current step's actions, Enter/Space activates, Escape backs
-    // out/closes. The highlight only appears after a key press, so touch is unchanged.
+    // Keyboard nav: Up/Down/Tab move a highlight, Enter/Space activates, Escape backs out
     property var navRows: []
     property int navIndex: -1
     readonly property Item navCurrent: (navIndex >= 0 && navIndex < navRows.length) ? navRows[navIndex] : null
@@ -74,19 +76,13 @@ Item {
     }
 
     Keys.onPressed: {
-        var busy = (step === 1 && reporting) || (step === 2 && deleting)
-                || (step === 3 && blocking) || (step === 4 && savingCaption);
+        var busy = (step === 1 && reporting) || (step === 2 && deleting) || (step === 3 && blocking);
         if (event.key === Qt.Key_Escape) {
-            if (!busy) { if (step === 0) closeSheet(); else step = 0; }
-            event.accepted = true;
-        } else if (step === 4) {
-            // Text-entry step: trap Tab between the two fields so focus can't
-            // tunnel to the covered page; every other key belongs to the fields.
-            if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-                if (captionTitleField.activeFocus) captionDescField.forceActiveFocus();
-                else captionTitleField.forceActiveFocus();
-                event.accepted = true;
+            if (!busy) {
+                if (step === 0 || sheet.openedDirectly) closeSheet();
+                else step = 0;
             }
+            event.accepted = true;
         } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
             _navMove(1); event.accepted = true;
         } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Backtab) {
@@ -97,14 +93,7 @@ Item {
         }
     }
 
-    onStepChanged: {
-        if (step !== 4) {
-            Qt.inputMethod.hide();
-            // Reclaim key events from the caption fields when leaving the edit step.
-            if (visible) sheet.forceActiveFocus();
-        }
-        Qt.callLater(_rebuildNav);
-    }
+    onStepChanged: Qt.callLater(_rebuildNav)
 
     // Report reasons arrive async; refresh the arrow-key row list when they land.
     onReportTypesChanged: if (step === 1) Qt.callLater(_rebuildNav)
@@ -122,16 +111,31 @@ Item {
                 try { if (_prevFocus.visible) _prevFocus.forceActiveFocus(); } catch (e) { /* item destroyed since */ }
                 _prevFocus = null;
             }
-        } else {
-            step = PostActions.startStep;
-            backdropFade.start();
-            sheetSlide.start();
-            // Guard on !reportTypesLoading too, so reopening before the first fetch resolves doesn't fire a duplicate concurrent request.
-            if (!reportTypesLoaded && !reportTypesLoading) _loadReportTypes();
-            _prevFocus = Window.activeFocusItem;
-            sheet.forceActiveFocus();
-            Qt.callLater(_rebuildNav);
         }
+    }
+
+    // shows the sheet on PostActions.opened(), not just onVisibleChanged
+    property int _openEpoch: 0
+    property int _pendingCloseEpoch: -1
+
+    function _showSheet() {
+        // stale close animations no longer count
+        sheet._openEpoch++;
+        step = PostActions.startStep;
+        // seed fields for direct-entry edit
+        backdropFade.start();
+        if (sheetRect.wide) { sheetFadeIn.start(); sheetScaleIn.start(); }
+        else sheetSlide.start();
+        // avoids a duplicate concurrent fetch
+        if (!reportTypesLoaded && !reportTypesLoading) _loadReportTypes();
+        _prevFocus = Window.activeFocusItem;
+        sheet.forceActiveFocus();
+        Qt.callLater(_rebuildNav);
+    }
+
+    Connections {
+        target: PostActions
+        function onOpened() { sheet._showSheet(); }
     }
 
     function _loadReportTypes() {
@@ -153,8 +157,11 @@ Item {
     }
 
     function closeSheet() {
+        // marks this as the current close, so a superseded one can't wipe a fresh open
+        sheet._pendingCloseEpoch = sheet._openEpoch;
         backdropFadeOut.start();
-        sheetSlideOut.start();
+        if (sheetRect.wide) sheetFadeOut.start();
+        else sheetSlideOut.start();
     }
 
     function submitReport(typeId, typeName) {
@@ -165,19 +172,52 @@ Item {
         if (!Session.isLoggedIn) { Toast.error(Lang.tr("Please log in to report.")); return; }
         var p = PostActions.post;
         if (!p) return;
-        // Backend expects the post id; fall back to permlink only if present.
-        var postId = (p.id !== undefined && p.id !== null) ? p.id : (p.permlink || "");
-        if (postId === "" || postId === null || postId === undefined) {
+        // report_posts.post_id is a UUID column. A blog's `id` IS that uuid, but a video's
+        // is the youtube_components row (an integer), which the insert rejects with a 500.
+        // Newer API builds send the post uuid as post_id; older ones don't, so fall back to
+        // resolving it from author+permlink before reporting.
+        var postId = String(p.postId || "");
+        if (!sheet._isUuid(postId) && sheet._isUuid(String(p.id || ""))) postId = String(p.id);
+
+        if (sheet._isUuid(postId)) {
+            sheet._sendReport(postId, typeId, typeName);
+            return;
+        }
+        var author = p.author || p.username || "";
+        var permlink = p.permlink || "";
+        if (author === "" || permlink === "") {
             Toast.error(Lang.tr("Failed to submit report."));
             return;
         }
+        sheet.reporting = true;
+        PostService.detail(Config.baseUrl, author, permlink, Session.token,
+            function (result) {
+                var uuid = (result && result.post) ? String(result.post.id || "") : "";
+                if (!sheet._isUuid(uuid)) {
+                    sheet.reporting = false;
+                    Toast.error(Lang.tr("Failed to submit report."));
+                    return;
+                }
+                sheet._sendReport(uuid, typeId, typeName);
+            },
+            function (err) {
+                sheet.reporting = false;
+                Toast.error((err && err.message) ? err.message : Lang.tr("Failed to submit report."));
+            });
+    }
+
+    function _isUuid(v) {
+        return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(v || "");
+    }
+
+    function _sendReport(postId, typeId, typeName) {
         sheet.reporting = true;
         ReportService.submitReport(Config.baseUrl, Session.token,
             postId, typeId, typeName || "Report",
             function () {
                 sheet.reporting = false;
                 sheet.closeSheet();
-                Toast.show(Lang.tr("Report submitted. Thank you."));
+                Toast.show(Lang.tr("Thanks for your report"));
             },
             function (err) {
                 sheet.reporting = false;
@@ -195,7 +235,7 @@ Item {
                 BlockedUsers.add(username);   // persist so feeds stay filtered on reload
                 PostActions.userBlocked(username);
                 sheet.closeSheet();
-                Toast.show(Lang.tr("@%1 blocked.").arg(username));
+                Toast.show(Lang.tr("%1 blocked").arg(username));
             },
             function (err) {
                 sheet.blocking = false;
@@ -204,59 +244,7 @@ Item {
     }
 
     // The stored description is HTML; strip tags for editing and rebuild <p> paragraphs (text re-escaped) when saving.
-    function _htmlToPlain(html) {
-        return (html || "")
-            .replace(/<\/p>\s*<p[^>]*>/gi, "\n")
-            .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/<[^>]+>/g, "")
-            .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-            .replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&nbsp;/g, " ")
-            .trim();
-    }
-    function _plainToHtml(text) {
-        var lines = (text || "").split(/\n+/);
-        var out = [];
-        for (var i = 0; i < lines.length; i++) {
-            var t = lines[i].trim();
-            if (t.length === 0) continue;
-            t = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            out.push("<p>" + t + "</p>");
-        }
-        return out.join("");
-    }
-
-    // Update a video post's caption in place by reusing the create-or-update endpoint with the existing permlink; other fields resent unchanged.
-    function doSaveCaption() {
-        var p = PostActions.post;
-        if (!p || sheet.savingCaption) return;
-        var newTitle = captionTitleField.text.trim();
-        if (newTitle.length === 0) { Toast.error(Lang.tr("Title can't be empty.")); return; }
-        var newBody = sheet._plainToHtml(captionDescField.text);
-        sheet.savingCaption = true;
-        PostService.createVideoPost(Config.baseUrl, {
-            title: newTitle,
-            desc: newBody,
-            permlink: p.permlink || "",
-            videoUrl: p.videoLink || "",
-            thumbUrl: p.thumbnail || "",
-            communityId: p.communityId || 0,
-            communityName: p.community || "",
-            postToBlockchain: p.postToBlockchain !== false
-        }, Session.token,
-            function () {
-                sheet.savingCaption = false;
-                PostActions.postUpdated(p.author || "", p.permlink || "", newTitle, newBody);
-                sheet.closeSheet();
-                Toast.success(Lang.tr("Post updated!"));
-            },
-            function (err) {
-                sheet.savingCaption = false;
-                Toast.error((err && err.message) ? err.message : Lang.tr("Couldn't update post."));
-            });
-    }
-
-    // ---- Video offline download, mirroring VideoDetailPage's routing: direct-file
-    // videos download as-is, YouTube clips resolve a direct URL via InnerTube first.
+    // Video offline download: direct-file downloads as-is, YouTube resolves via InnerTube first
     function _isDirectFile(u) {
         return /\.(mp4|webm|m4v|mov)(\?|$)/i.test(u || "");
     }
@@ -289,7 +277,6 @@ Item {
         var direct = sheet._videoRemoteUrl(p);
         if (direct.length > 0) {
             Downloads.start(p, direct);
-            Toast.show(Lang.tr("Downloading video…"));
             sheet.closeSheet();
             return;
         }
@@ -301,7 +288,6 @@ Item {
                 saveVideoBtn._extracting = false;
                 if (result && result.url) {
                     Downloads.start(p, result.url);
-                    Toast.show(Lang.tr("Downloading video…"));
                 } else {
                     Toast.error(Lang.tr("This YouTube video can't be downloaded."));
                 }
@@ -338,33 +324,41 @@ Item {
     NumberAnimation { id: backdropFade; target: backdrop; property: "opacity"; from: 0; to: 1; duration: 200 }
     NumberAnimation { id: backdropFadeOut; target: backdrop; property: "opacity"; to: 0; duration: 200 }
 
-    // Full-width sheet on phone, centered width-capped card on desktop
+    // Bottom sheet on phone; true centered modal on desktop, no drag handle (not swipe-dismiss)
     Rectangle {
         id: sheetRect
         readonly property bool wide: Config.wideMode
-        // Centered + explicit width handles both cases (full-width on phone, capped
-        // card on desktop) without mixing left/right/horizontalCenter, which QML warns on.
         anchors {
             horizontalCenter: parent.horizontalCenter
-            bottom: parent.bottom
-            bottomMargin: sheet.kbHeight + (sheetRect.wide ? units.gu(4) : 0)
+            bottom: sheetRect.wide ? undefined : parent.bottom
+            verticalCenter: sheetRect.wide ? parent.verticalCenter : undefined
         }
         width: sheetRect.wide ? Math.min(parent.width - units.gu(4), units.gu(60)) : parent.width
         height: (sheet.step === 0 ? mainCol.height
                  : sheet.step === 1 ? reportCol.height
                  : sheet.step === 2 ? deleteCol.height
-                 : sheet.step === 4 ? editCol.height
                  : blockCol.height) + units.gu(4)
         radius: units.dp(16)
         color: Style.surface
 
-        transform: Translate { id: sheetTranslate; y: 0 }
+        // Phone: slides up from the bottom.
+        transform: Translate { id: sheetTranslate; y: sheetRect.wide ? 0 : sheetTranslate.y }
         NumberAnimation { id: sheetSlide; target: sheetTranslate; property: "y"; from: sheetRect.height + units.gu(4); to: 0; duration: 300; easing.type: Easing.OutCubic }
-        NumberAnimation { id: sheetSlideOut; target: sheetTranslate; property: "y"; to: sheetRect.height + units.gu(4); duration: 250; easing.type: Easing.InCubic; onStopped: PostActions.close() }
+        NumberAnimation { id: sheetSlideOut; target: sheetTranslate; property: "y"; to: sheetRect.height + units.gu(4); duration: 250; easing.type: Easing.InCubic
+            onStopped: if (sheet._pendingCloseEpoch === sheet._openEpoch) PostActions.close() }
+
+        // Desktop: fades and scales in centered, like a standard modal dialog.
+        scale: 1
+        opacity: 1
+        NumberAnimation { id: sheetFadeIn; target: sheetRect; property: "opacity"; from: 0; to: 1; duration: 200; easing.type: Easing.OutQuad }
+        NumberAnimation { id: sheetScaleIn; target: sheetRect; property: "scale"; from: 0.94; to: 1; duration: 200; easing.type: Easing.OutQuad }
+        NumberAnimation { id: sheetFadeOut; target: sheetRect; property: "opacity"; to: 0; duration: 150; easing.type: Easing.InQuad
+            onStopped: if (sheet._pendingCloseEpoch === sheet._openEpoch) PostActions.close() }
 
         Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
 
         Rectangle {
+            visible: !sheetRect.wide
             anchors { top: parent.top; topMargin: Style.spacingS; horizontalCenter: parent.horizontalCenter }
             width: units.gu(4.5)
             height: units.dp(4)
@@ -440,8 +434,7 @@ Item {
                 }
             }
 
-            // Save video for offline playback (SEREY/direct-file or YouTube via InnerTube).
-            // Toggles to "Remove download" when already saved; spinner while in flight.
+            // Save video offline; toggles to "Remove download" when already saved
             AbstractButton {
                 id: saveVideoBtn
                 width: parent.width; height: units.gu(8)
@@ -473,7 +466,7 @@ Item {
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter; spacing: units.dp(2)
-                        Label { text: saveVideoBtn._busy ? Lang.tr("Downloading…")
+                        Label { text: saveVideoBtn._busy ? Lang.tr("Downloading… %1%").arg(Math.round((saveVideoBtn._active && saveVideoBtn._active.progress) || 0))
                                       : (saveVideoBtn._saved ? Lang.tr("Remove download") : Lang.tr("Save video offline"))
                                 font.pixelSize: Style.fontMedium; font.weight: Font.DemiBold; color: Style.textPrimary }
                         Label { text: saveVideoBtn._saved ? Lang.tr("Available offline")
@@ -484,11 +477,12 @@ Item {
             }
 
             // Separates utility actions (Save) from owner/moderation actions below.
+            // Full-width dp(1) hairline like every other divider; it used to be an
+            // inset dp(2) in lightGray, which read as a heavier rule than the rest.
             Rectangle {
-                width: parent.width - Style.spacingM * 2
-                anchors.horizontalCenter: parent.horizontalCenter
-                height: units.dp(2)
-                color: Style.lightGray
+                width: parent.width
+                height: units.dp(1)
+                color: Style.divider
                 visible: saveOfflineBtn.visible || saveVideoBtn.visible
             }
             Item { width: 1; height: Style.spacingS; visible: saveOfflineBtn.visible || saveVideoBtn.visible }
@@ -527,9 +521,8 @@ Item {
                 visible: sheet.isOwn && PostActions.kind === "video"
                 onClicked: {
                     var p = PostActions.post;
-                    captionTitleField.text = (p && p.title) || "";
-                    captionDescField.text = sheet._htmlToPlain((p && p.body) || "");
-                    sheet.step = 4;
+                    sheet.closeSheet();
+                    if (p) Nav.editCaption(p);
                 }
                 Row {
                     anchors { fill: parent; leftMargin: Style.spacingM; rightMargin: Style.spacingM }
@@ -674,6 +667,8 @@ Item {
                 width: parent.width; height: units.gu(5)
 
                 AbstractButton {
+                    // Opened directly at the report step: no main menu underneath to go back to
+                    visible: !sheet.openedDirectly
                     anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                     width: units.gu(3.5); height: units.gu(3.5)
                     onClicked: sheet.step = 0
@@ -784,7 +779,7 @@ Item {
             Label {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: Lang.tr("Block @%1?").arg(sheet.authorName)
+                text: Lang.tr("Block %1?").arg(sheet.authorName)
                 font.pixelSize: Style.fontLarge
                 font.weight: Font.DemiBold
                 color: Style.textPrimary
@@ -923,101 +918,7 @@ Item {
             Item { width: 1; height: Style.spacingM }
         }
 
-        // ===================== Step 4: Edit video caption =====================
-        Column {
-            id: editCol
-            anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: Style.spacingL }
-            spacing: 0
-            visible: sheet.step === 4
-
-            Item {
-                width: parent.width; height: units.gu(5)
-
-                AbstractButton {
-                    anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
-                    width: units.gu(3.5); height: units.gu(3.5)
-                    enabled: !sheet.savingCaption
-                    onClicked: sheet.step = 0
-                    Icon { anchors.centerIn: parent; width: units.gu(2.2); height: width; name: "back"; color: Style.textPrimary }
-                }
-
-                Label {
-                    anchors.centerIn: parent
-                    text: Lang.tr("Edit caption")
-                    font.pixelSize: Style.fontMedium
-                    font.weight: Font.DemiBold
-                    color: Style.textPrimary
-                }
-            }
-
-            Rectangle { width: parent.width; height: units.dp(1); color: Style.divider }
-
-            Item { width: 1; height: Style.spacingM }
-
-            Label {
-                x: Style.spacingM
-                text: Lang.tr("Title")
-                font.pixelSize: Style.fontSmall
-                font.weight: Font.DemiBold
-                color: Style.textSecondary
-            }
-            Item { width: 1; height: Style.spacingXs }
-            TextField {
-                id: captionTitleField
-                width: parent.width - Style.spacingM * 2
-                anchors.horizontalCenter: parent.horizontalCenter
-                enabled: !sheet.savingCaption
-                placeholderText: Lang.tr("Title")
-            }
-
-            Item { width: 1; height: Style.spacingM }
-
-            Label {
-                x: Style.spacingM
-                text: Lang.tr("Description")
-                font.pixelSize: Style.fontSmall
-                font.weight: Font.DemiBold
-                color: Style.textSecondary
-            }
-            Item { width: 1; height: Style.spacingXs }
-            TextArea {
-                id: captionDescField
-                width: parent.width - Style.spacingM * 2
-                anchors.horizontalCenter: parent.horizontalCenter
-                height: units.gu(10)
-                enabled: !sheet.savingCaption
-                placeholderText: Lang.tr("Description")
-            }
-
-            Item { width: 1; height: Style.spacingL }
-
-            AbstractButton {
-                width: parent.width - Style.spacingM * 2
-                anchors.horizontalCenter: parent.horizontalCenter
-                height: units.gu(6)
-                enabled: !sheet.savingCaption
-                onClicked: sheet.doSaveCaption()
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Style.cardRadius
-                    color: Style.brand
-                    opacity: sheet.savingCaption ? 0.6 : 1
-                }
-                Label {
-                    anchors.centerIn: parent
-                    text: sheet.savingCaption ? Lang.tr("Saving…") : Lang.tr("Save")
-                    font.pixelSize: Style.fontMedium
-                    font.weight: Font.DemiBold
-                    color: Style.textOnBrand
-                }
-            }
-
-            Item { width: 1; height: Style.spacingM }
-        }
-
-        // Keyboard-highlight ring: one Rectangle reparented into whichever row is
-        // arrow-key selected (same brand ring as the card focus ring, so keyboard
-        // users see one consistent affordance). Touch/pointer users never see it.
+        // Keyboard-highlight ring: reparented into whichever row is arrow-key selected
         Rectangle {
             parent: sheet.navCurrent ? sheet.navCurrent : sheetRect
             anchors.fill: parent

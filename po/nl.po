@@ -160,8 +160,8 @@ msgstr "Kon reactie niet verwijderen."
 msgid "Couldn't delete the post."
 msgstr "Kon het bericht niet verwijderen."
 
-msgid "Couldn't load reels."
-msgstr "Kon reels niet laden."
+msgid "Couldn't load Serey Shorts."
+msgstr "Kon Serey Shorts niet laden."
 
 msgid "Couldn't post comment."
 msgstr "Kon reactie niet plaatsen."
@@ -208,6 +208,9 @@ msgstr "Huidig wachtwoord"
 msgid "Date"
 msgstr "Datum"
 
+msgid "DD-MM-YYYY"
+msgstr "DD-MM-JJJJ"
+
 msgid "Date of birth"
 msgstr "Geboortedatum"
 
@@ -248,7 +251,7 @@ msgid "Edit Post"
 msgstr "Bericht bewerken"
 
 msgid "Edit cover"
-msgstr "Omslag bewerken"
+msgstr "Achtergrond foto veranderen"
 
 msgid "Edit post"
 msgstr "Bericht bewerken"
@@ -484,8 +487,8 @@ msgstr "Geen berichten in %1"
 msgid "No posts yet"
 msgstr "Nog geen berichten"
 
-msgid "No reels yet"
-msgstr "Nog geen reels"
+msgid "No Serey Shorts yet"
+msgstr "Nog geen Serey Shorts"
 
 msgid "No saved articles yet"
 msgstr "Nog geen opgeslagen artikelen"
@@ -619,8 +622,8 @@ msgstr "Trek om te vernieuwen"
 msgid "Read this article without a connection"
 msgstr "Lees dit artikel zonder verbinding"
 
-msgid "Reels"
-msgstr "Reels"
+msgid "Serey Shorts"
+msgstr "Serey Shorts"
 
 msgid "Remove"
 msgstr "Verwijderen"
@@ -662,7 +665,7 @@ msgid "Reset password"
 msgstr "Wachtwoord opnieuw instellen"
 
 msgid "Retry"
-msgstr "Opnieuw proberen"
+msgstr "Opnieuw verbinden"
 
 msgid "Save"
 msgstr "Opslaan"
@@ -684,6 +687,9 @@ msgstr "Opgeslagen artikelen"
 
 msgid "Saving…"
 msgstr "Opslaan…"
+
+msgid "Screenshots (%1/%2)"
+msgstr "Schermafbeeldingen (%1/%2)"
 
 msgid "Search users..."
 msgstr "Gebruikers zoeken..."
@@ -776,7 +782,7 @@ msgid "Unblocking…"
 msgstr "Deblokkeren…"
 
 msgid "Unfollowed"
-msgstr "Gevolgd gestopt"
+msgstr "Gestopt met volgen"
 
 msgid "Unsubscribed"
 msgstr "Afgemeld"
@@ -822,6 +828,9 @@ msgstr "Versie"
 
 msgid "Video"
 msgstr "Video"
+
+msgid "Video (%1/1)"
+msgstr "Video (%1/1)"
 
 msgid "Video published!"
 msgstr "Video gepubliceerd!"
@@ -874,9 +883,6 @@ msgstr "Schrijf een bijschrift..."
 msgid "Write your article here..."
 msgstr "Schrijf hier uw artikel..."
 
-msgid "YYYY-MM-DD"
-msgstr "JJJJ-MM-DD"
-
 msgid "You have %1 new notifications"
 msgstr "U heeft %1 nieuwe meldingen"
 
@@ -884,7 +890,7 @@ msgid "You have 1 new notification"
 msgstr "U heeft 1 nieuwe melding"
 
 msgid "You hold your own private key. It can't be recovered if lost."
-msgstr "U beheert uw eigen privésleutel. Hij kan niet worden hersteld als hij verloren gaat."
+msgstr "Volledige controle. U beheert uw eigen privésleutel, niemand anders heeft toegang. Bewaar hem goed, want hij kan niet worden hersteld."
 
 msgid "You won't be able to see any posts from this person"
 msgstr "U kunt geen berichten meer zien van deze persoon"

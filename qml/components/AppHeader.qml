@@ -10,6 +10,9 @@ Rectangle {
     property alias center: centerSlot.data
     // Bigger touch targets on desktop/tablet
     property bool wide: false
+    // Lets the community picker anchor a dropdown under the pill on desktop
+    // instead of opening a centered modal.
+    readonly property alias communityButton: titleBtn
 
     signal communityButtonClicked()
 
@@ -79,8 +82,7 @@ Rectangle {
                 }
             }
 
-            // Community name, shown beside the flag on wide windows only;
-            // phones keep the compact icon-only chip.
+            // Community name beside the flag on wide windows; phones keep icon-only chip
             Label {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: appHeader.wide && text !== ""

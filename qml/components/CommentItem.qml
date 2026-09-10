@@ -12,44 +12,36 @@ Item {
     readonly property var c: comment ? comment : ({})
     readonly property var replies: c.replies || []
     property int depth: 0
-    // Nested replies start collapsed so a deep thread doesn't eagerly instantiate
-    property bool repliesExpanded: depth < 1
+    // always expanded, no collapse toggle
+    property bool repliesExpanded: true
     property bool topLevel: true
+    // Rail density: the desktop side panel is ~gu(34) wide, so the body drops the
+    // avatar indent, margins tighten, and long comments clamp behind "Read more".
+    property bool compact: false
+    property bool bodyExpanded: false
+    readonly property real _bodyIndent: item.compact ? 0 : units.gu(3.5) + Style.spacingS
+    readonly property real _sideMargin: item.compact ? Style.spacingS : Style.spacingM
 
     // Only the author can edit/delete, and only a comment that exists server-side (optimistic local comments carry an empty permlink).
     readonly property bool canModify: Session.isLoggedIn
                                       && c.author === Session.username
                                       && (c.permlink || "").length > 0
-    property bool menuOpen: false
+    // Keyed to the singleton so opening one comment's menu closes any other on the page.
+    readonly property string _menuKey: (c.permlink || "") + "@" + (c.author || "")
+    readonly property bool menuOpen: item._menuKey !== "@" && CommentMenu.openKey === item._menuKey
+    function _closeMenu() { CommentMenu.openKey = ""; }
     property bool confirmingDelete: false
-    property bool editing: false
-    property string editText: ""
-    property bool saving: false
 
     signal deleted(string permlink)
-    signal edited(string permlink, string newBody, string parentAuthor, string parentPermlink)
     signal replyRequested(var comment)
+    // Editing runs in the host's own comment box, the same one Reply uses: a second text
+    // field inside the row was easy to mistake for the composer, and it pushed the
+    // like/reply rail onto a line of its own under Save/Cancel.
+    signal editRequested(var comment)
     signal authorClicked(string author)
 
-    function startEdit() {
-        item.editText = c.body || "";
-        item.editing = true;
-    }
-
-    function cancelEdit() {
-        item.editing = false;
-    }
-
-    function saveEdit() {
-        var text = item.editText.trim();
-        if (text.length === 0)
-            return;
-        // Emit only. CommentItem is Loader-instantiated for nested replies, where JS module imports resolve to null, so the host page's handler makes the server call.
-        item.editing = false;
-        item.edited(c.permlink, text, c.parentAuthor || "", c.parentPermlink || "");
-    }
-
-    // Optimistic delete; same Loader/null-import reason as saveEdit for why the host page's onDeleted handler does the actual call.
+    // Optimistic delete; CommentItem is Loader-instantiated for nested replies, where JS
+    // module imports resolve to null, so the host page's onDeleted handler does the actual call.
     function doDelete() {
         item.deleted(c.permlink);
     }
@@ -63,21 +55,21 @@ Item {
             left: parent.left
             right: parent.right
             top: parent.top
-            leftMargin: Style.spacingM
-            rightMargin: Style.spacingM
+            leftMargin: item._sideMargin
+            rightMargin: item._sideMargin
             topMargin: Style.spacingS
         }
         spacing: Style.spacingXs
 
         Item {
             width: parent.width
-            height: avatar.height
+            height: Math.max(avatar.height, nameCol.implicitHeight)
             z: item.menuOpen ? 20 : 0
 
             Item {
                 id: avatar
                 anchors.verticalCenter: parent.verticalCenter
-                width: units.gu(3.5); height: width
+                width: units.gu(4); height: width
 
                 Rectangle {
                     anchors.fill: parent
@@ -88,7 +80,7 @@ Item {
                     Label {
                         anchors.centerIn: parent
                         text: (c.author || "?").charAt(0).toUpperCase()
-                        font.pixelSize: Style.fontSmall
+                        font.pixelSize: Style.fontRegular
                         font.bold: true
                         color: Style.brand
                     }
@@ -105,27 +97,38 @@ Item {
                 MouseArea { anchors.fill: parent; onClicked: item.authorClicked(c.author || "") }
             }
 
-            Row {
+            Column {
                 id: nameCol
                 anchors {
                     left: avatar.right
                     leftMargin: Style.spacingS
                     right: moreButton.left
+                    rightMargin: Style.spacingXs
                     verticalCenter: parent.verticalCenter
                 }
-                spacing: Style.spacingXs
+                spacing: units.dp(1)
 
                 Label {
+                    width: parent.width
                     text: c.author || ""
-                    font.pixelSize: Style.fontSmall
+                    font.pixelSize: Style.fontRegular
                     font.weight: Font.DemiBold
                     color: Style.textPrimary
-                    MouseArea { anchors.fill: parent; onClicked: item.authorClicked(c.author || "") }
+                    elide: Text.ElideRight
+                    // Label stretches to fill the byline, so tap only the painted name, not the blank space after it
+                    MouseArea {
+                        anchors.left: parent.left
+                        height: parent.height
+                        width: Math.min(parent.width, parent.implicitWidth)
+                        onClicked: item.authorClicked(c.author || "")
+                    }
                 }
                 Label {
-                    text: "· " + Style.formatTimeAgo(c.date || "")
-                    font.pixelSize: Style.fontXSmall
+                    width: parent.width
+                    text: Style.formatTimeAgo(c.date || "")
+                    font.pixelSize: Style.fontSmall
                     color: Style.textSecondary
+                    elide: Text.ElideRight
                 }
             }
 
@@ -134,14 +137,20 @@ Item {
                 visible: item.canModify
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 width: units.gu(3); height: units.gu(3)
-                onClicked: item.menuOpen = !item.menuOpen
+                onClicked: CommentMenu.openKey = item.menuOpen ? "" : item._menuKey
 
-                Label {
+                Column {
                     anchors.centerIn: parent
-                    text: "•••"
-                    font.pixelSize: Style.fontMedium
-                    font.weight: Font.Bold
-                    color: Style.textSecondary
+                    spacing: units.dp(3)
+                    Repeater {
+                        model: 3
+                        delegate: Rectangle {
+                            width: units.dp(4); height: units.dp(4)
+                            radius: width / 2
+                            color: Style.textSecondary
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+                    }
                 }
             }
 
@@ -150,7 +159,10 @@ Item {
                 visible: item.menuOpen
                 z: 10
                 anchors { top: moreButton.bottom; right: moreButton.right; topMargin: Style.spacingXs }
-                width: units.gu(16)
+                // Grows for the confirm row: gu(16) fits "Cancel"/"Delete" but not
+                // "Annuleren"/"Verwijderen", which ran into each other.
+                width: Math.min(item.width, Math.max(units.gu(16),
+                       cancelLabel.implicitWidth + confirmDeleteLabel.implicitWidth + Style.spacingM * 3))
                 height: item.confirmingDelete ? confirmCol.height : menuCol.height
                 radius: Style.cardRadius
                 color: Style.surface
@@ -164,7 +176,7 @@ Item {
 
                     AbstractButton {
                         width: parent.width; height: units.gu(5)
-                        onClicked: { item.menuOpen = false; item.startEdit(); }
+                        onClicked: { item._closeMenu(); item.editRequested(c); }
                         Label {
                             anchors { left: parent.left; leftMargin: Style.spacingM; verticalCenter: parent.verticalCenter }
                             text: Lang.tr("Edit")
@@ -203,13 +215,30 @@ Item {
                         width: parent.width
                         AbstractButton {
                             width: parent.width / 2; height: units.gu(5)
-                            onClicked: { item.menuOpen = false; item.confirmingDelete = false; }
-                            Label { anchors.centerIn: parent; text: Lang.tr("Cancel"); color: Style.textSecondary }
+                            onClicked: { item._closeMenu(); item.confirmingDelete = false; }
+                            Label {
+                                id: cancelLabel
+                                anchors.centerIn: parent
+                                width: Math.min(implicitWidth, parent.width - Style.spacingS)
+                                elide: Text.ElideRight
+                                horizontalAlignment: Text.AlignHCenter
+                                text: Lang.tr("Cancel")
+                                color: Style.textSecondary
+                            }
                         }
                         AbstractButton {
                             width: parent.width / 2; height: units.gu(5)
-                            onClicked: { item.menuOpen = false; item.confirmingDelete = false; item.doDelete(); }
-                            Label { anchors.centerIn: parent; text: Lang.tr("Delete"); color: Style.danger; font.weight: Font.DemiBold }
+                            onClicked: { item._closeMenu(); item.confirmingDelete = false; item.doDelete(); }
+                            Label {
+                                id: confirmDeleteLabel
+                                anchors.centerIn: parent
+                                width: Math.min(implicitWidth, parent.width - Style.spacingS)
+                                elide: Text.ElideRight
+                                horizontalAlignment: Text.AlignHCenter
+                                text: Lang.tr("Delete")
+                                color: Style.danger
+                                font.weight: Font.DemiBold
+                            }
                         }
                     }
                 }
@@ -217,62 +246,41 @@ Item {
         }
 
         Label {
-            visible: !item.editing
+            id: bodyLabel
             width: parent.width - x - Style.wrapSafeMargin
-            x: units.gu(3.5) + Style.spacingS
+            x: item._bodyIndent
             text: c.body || ""
             font.pixelSize: Style.fontRegular
             font.family: Style.fontFor(text)
             color: Style.textPrimary
             wrapMode: Text.Wrap
+            // A 900-character comment otherwise fills the whole rail and buries
+            // every comment under it. 999 is "no clamp": 0 would render nothing.
+            maximumLineCount: (item.compact && !item.bodyExpanded) ? 6 : 999
+            elide: (item.compact && !item.bodyExpanded) ? Text.ElideRight : Text.ElideNone
         }
 
-        Column {
-            visible: item.editing
-            width: parent.width - (units.gu(3.5) + Style.spacingS)
-            x: units.gu(3.5) + Style.spacingS
-            spacing: Style.spacingXs
-
-            TextArea {
-                id: editField
-                width: parent.width
-                text: item.editText
-                font.pixelSize: Style.fontRegular
-                wrapMode: Text.Wrap
-                onTextChanged: item.editText = text
-            }
-            Row {
-                spacing: Style.spacingS
-
-                AbstractButton {
-                    width: saveLabel.implicitWidth + Style.spacingM * 2
-                    height: units.gu(3.5)
-                    enabled: !item.saving && item.editText.trim().length > 0
-                    onClicked: item.saveEdit()
-                    Rectangle { anchors.fill: parent; radius: Style.cardRadius; color: parent.enabled ? Style.brand : Style.iconBackground }
-                    Label {
-                        id: saveLabel
-                        anchors.centerIn: parent
-                        text: item.saving ? Lang.tr("Saving…") : Lang.tr("Save")
-                        color: Style.textOnBrand
-                    }
-                }
-                AbstractButton {
-                    width: cancelEditLabel.implicitWidth + Style.spacingM * 2
-                    height: units.gu(3.5)
-                    onClicked: item.cancelEdit()
-                    Label {
-                        id: cancelEditLabel
-                        anchors.centerIn: parent
-                        text: Lang.tr("Cancel")
-                        color: Style.textSecondary
-                    }
-                }
+        AbstractButton {
+            // truncated goes false once expanded, so bodyExpanded carries the "Show less" state
+            visible: bodyLabel.truncated || item.bodyExpanded
+            x: item._bodyIndent
+            width: readMoreLabel.implicitWidth
+            height: units.gu(2.75)
+            onClicked: item.bodyExpanded = !item.bodyExpanded
+            Label {
+                id: readMoreLabel
+                anchors.verticalCenter: parent.verticalCenter
+                text: item.bodyExpanded ? Lang.tr("Show less") : Lang.tr("Read more")
+                font.pixelSize: Style.fontSmall
+                font.weight: Font.DemiBold
+                color: Style.brand
             }
         }
 
         Row {
-            x: units.gu(3.5) + Style.spacingS
+            id: voteReplyRow
+            // Rail (compact): left edge, under the body. Everywhere else: right-aligned.
+            x: item.compact ? item._bodyIndent : parent.width - voteReplyRow.width
             spacing: Style.spacingM
 
             VoteBar {
@@ -302,53 +310,14 @@ Item {
 
             AbstractButton {
                 anchors.verticalCenter: parent.verticalCenter
-                width: replyRow.implicitWidth
+                width: units.gu(3.5)
                 height: units.gu(3.5)
                 onClicked: item.replyRequested(c)
 
-                Row {
-                    id: replyRow
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.spacingXs
-                    Icon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: units.gu(2.2); height: width
-                        name: "message"
-                        color: Style.textSecondary
-                    }
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Lang.tr("Reply")
-                        font.pixelSize: Style.fontSmall
-                        color: Style.textSecondary
-                    }
-                }
-            }
-        }
-
-        AbstractButton {
-            visible: item.replies.length > 0
-            x: units.gu(3.5) + Style.spacingS
-            width: toggleLabel.implicitWidth
-            height: units.gu(3)
-            onClicked: item.repliesExpanded = !item.repliesExpanded
-
-            Row {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.spacingXs
-                Label {
-                    id: toggleLabel
-                    text: item.repliesExpanded
-                        ? Lang.tr("Hide replies")
-                        : Lang.tr("%1 replies").arg(item.replies.length)
-                    font.pixelSize: Style.fontSmall
-                    font.weight: Font.DemiBold
-                    color: Style.textSecondary
-                }
                 Icon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: units.gu(1.6); height: width
-                    name: item.repliesExpanded ? "up" : "down"
+                    anchors.centerIn: parent
+                    width: units.gu(2.2); height: width
+                    name: "mail-reply"
                     color: Style.textSecondary
                 }
             }
@@ -360,26 +329,28 @@ Item {
             width: parent.width
             height: visible ? repliesCol.height : 0
 
-            // Guide line only on the first indent level
+            // Guide line only on the first indent level; brand-tinted to trace the thread
             Rectangle {
                 visible: item.depth === 0
-                x: units.gu(1.75) - units.dp(1)
+                x: units.gu(1.25) - units.dp(1)
                 width: units.dp(2)
                 height: parent.height
-                color: Style.divider
+                color: Style.brand
+                opacity: 0.35
             }
 
             Column {
                 id: repliesCol
                 // 'item' inside a Loader delegate shadows the outer CommentItem id
                 readonly property int ownerDepth: item.depth
-                x: ownerDepth === 0 ? units.gu(3.5) : 0
+                readonly property bool ownerCompact: item.compact
+                x: ownerDepth === 0 ? (ownerCompact ? units.gu(1.75) : units.gu(2.5)) : 0
                 width: parent.width - x
 
                 function forwardSignals(loaderItem) {
                     if (!loaderItem) return;
                     loaderItem.deleted.connect(function(permlink) { item.deleted(permlink) })
-                    loaderItem.edited.connect(function(permlink, newBody, pa, pp) { item.edited(permlink, newBody, pa, pp) })
+                    loaderItem.editRequested.connect(function(c) { item.editRequested(c) })
                     loaderItem.replyRequested.connect(function(c) { item.replyRequested(c) })
                     loaderItem.authorClicked.connect(function(author) { item.authorClicked(author) })
                 }
@@ -394,6 +365,7 @@ Item {
                         Component.onCompleted: setSource(Qt.resolvedUrl("CommentItem.qml"), {
                             comment:  replyData,
                             topLevel: false,
+                            compact:  repliesCol.ownerCompact,
                             depth:    Math.min(repliesCol.ownerDepth + 1, 1)
                         })
                         onItemChanged: repliesCol.forwardSignals(replyLoader.item)

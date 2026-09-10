@@ -5,9 +5,7 @@ import Lomiri.Components 1.3
 QtObject {
     id: style
 
-    // Single light/dark switch; Main.qml binds it to the system theme so every
-    // token below re-skins for SuruDark centrally. Values are Suru palette hexes.
-    // Brand tokens stay fixed (Serey blue is identity, not a theme role).
+    // Single light/dark switch bound to system theme; brand tokens stay fixed
     property bool dark: false
 
     // --- Brand (fixed across themes) ------------------------------------------
@@ -46,9 +44,7 @@ QtObject {
     readonly property real spacingL: units.gu(3)
     readonly property real cellPadding: units.gu(2)
 
-    // Grid-unit type scale per the Ubuntu typography guide. gu(n) == dp(8n) on
-    // Ubuntu Touch, so these match the old dp() values pixel-for-pixel;
-    // fontMedium/Large/Title are the app's own intermediate steps.
+    // Grid-unit type scale; gu(n) == dp(8n), matches old dp() values pixel-for-pixel
     readonly property int fontXSmall: units.gu(1.375) // ~x-small
     readonly property int fontSmall:  units.gu(1.5)   // small
     readonly property int fontRegular: units.gu(1.75) // medium
@@ -71,7 +67,7 @@ QtObject {
     readonly property real coinIconSize: units.dp(16)
     readonly property real fabSize: units.gu(7)
 
-    // Bundled Noto Sans Khmer/SC fonts don't cover each other's glyphs and Qt won't fall back between them, so pick the right face via `fontFor(text)` to avoid tofu boxes.
+    // Bundled fonts don't cover each other's glyphs; pick right face via fontFor() to avoid tofu boxes
     property FontLoader fontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansKhmer-Regular.ttf")
     }
@@ -85,14 +81,33 @@ QtObject {
     readonly property string cjkFamily: cjkFontLoader.status === FontLoader.Ready
                                         ? cjkFontLoader.name : fontFamily
 
+    // Korean face (~1.9 MB, subset to Hangul + Latin). The CJK face above is
+    // Simplified Chinese and carries no Hangul syllables at all, so Korean text
+    // renders as tofu without this.
+    property FontLoader koreanFontLoader: FontLoader {
+        source: Qt.resolvedUrl("../../assets/fonts/NotoSansKR-Regular.otf")
+    }
+    readonly property string koreanFamily: koreanFontLoader.status === FontLoader.Ready
+                                           ? koreanFontLoader.name : fontFamily
+
     property FontLoader bengaliFontLoader: FontLoader {
         source: Qt.resolvedUrl("../../assets/fonts/NotoSansBengali-Regular.ttf")
     }
     readonly property string bengaliFamily: bengaliFontLoader.status === FontLoader.Ready
                                             ? bengaliFontLoader.name : fontFamily
 
+    // Emoji only, never returned by fontFor(); registered so Qt's glyph fallback can find it
+    property FontLoader emojiFontLoader: FontLoader {
+        source: Qt.resolvedUrl("../../assets/fonts/NotoEmoji-Regular.ttf")
+    }
+
     // Script face by codepoint, else Khmer/Latin default.
     function fontFor(text) {
+        // Hangul is tested first on purpose: Korean text carrying CJK punctuation
+        // (U+3000-303F) also matches the CJK range below, which would pick a face
+        // with no Hangul and put the whole label back to tofu.
+        if (text && /[ᄀ-ᇿ㄰-㆏가-힣]/.test(text))
+            return koreanFamily;
         if (text && /[⺀-鿿豈-﫿＀-￯]/.test(text))
             return cjkFamily;
         if (text && /[ঀ-৿]/.test(text))
@@ -103,8 +118,28 @@ QtObject {
     // Khmer combining vowel signs can ink past their advance-width box, so wrapped text needs this margin subtracted to avoid clipping.
     readonly property real wrapSafeMargin: units.gu(0.5)
 
+    // Uppercases the first letter only, the way a keyboard's auto-shift would. Leaves the rest
+    // of the string alone, and anything that doesn't start with a letter untouched.
+    function sentenceCase(s) {
+        if (!s || s.length === 0) return s;
+        var first = s.charAt(0);
+        var up = first.toUpperCase();
+        return up === first ? s : up + s.substring(1);
+    }
+
     // Helpers: relative timestamp formatted as "just now / Xm / Xh / Xd ago / DD Mon [YYYY]".
+    // Bumped every minute so every formatTimeAgo() binding re-runs: Date.now() is not
+    // reactive, so a post published a moment ago read "just now" until the feed reloaded.
+    property int timeRev: 0
+    property Timer _timeTicker: Timer {
+        interval: 60000
+        running: true
+        repeat: true
+        onTriggered: style.timeRev++
+    }
+
     function formatTimeAgo(dateStr) {
+        style.timeRev;      // dependency only; the value is unused
         if (!dateStr)
             return "";
         var diff = (Date.now() - new Date(dateStr).getTime()) / 1000;

@@ -57,10 +57,12 @@ Page {
         }
     }
 
+    // Reached from Settings, which already owns the third column, so the detail page
+    // opens without its own rail rather than stacking a fourth.
     function open(modelData) {
         page.pageStack.push(Qt.resolvedUrl("PostDetailPage.qml"),
             { author: modelData.author, permlink: modelData.permlink,
-              title: modelData.title, preloadedPost: modelData });
+              title: modelData.title, preloadedPost: modelData, allowSidePanel: false });
     }
 
     ListView {
@@ -112,14 +114,13 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: Lang.tr("Share")
+                        text: Lang.tr("Share…")
                         onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
                     }
                 ]
             }
 
-            // Pointer/keyboard parity: right-click or the MENU key opens the same
-            // Remove/Share actions the swipe exposes (see ContextActionArea).
+            // Right-click or MENU key opens the same actions the swipe exposes
             ContextActionArea {
                 id: contextArea
                 onActivated: page.open(modelData)   // Enter opens the saved post
@@ -129,7 +130,7 @@ Page {
                         onTriggered: SavedPosts.remove(modelData.permlink)
                     }
                     Action {
-                        iconName: "share"; text: Lang.tr("Share")
+                        iconName: "share"; text: Lang.tr("Share…")
                         onTriggered: Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink)
                     }
                 }
@@ -193,9 +194,9 @@ Page {
                     onClicked: actionSheet.show([
                         { iconName: "delete", text: Lang.tr("Remove"), danger: true,
                           onTriggered: function () { SavedPosts.remove(modelData.permlink); } },
-                        { iconName: "share", text: Lang.tr("Share"),
+                        { iconName: "share", text: Lang.tr("Share…"),
                           onTriggered: function () { Share.open("https://serey.io/authors/" + modelData.author + "/" + modelData.permlink); } }
-                    ])
+                    ], moreBtn)
 
                     Column {
                         anchors.centerIn: parent

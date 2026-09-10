@@ -107,7 +107,7 @@ Page {
                 actions: [
                     Action {
                         iconName: "share"
-                        text: Lang.tr("Share")
+                        text: Lang.tr("Share…")
                         onTriggered: Share.open(
                             "https://serey.io/video-component/watch?author=" + modelData.author + "&permalink=" + modelData.permlink)
                     }
@@ -118,7 +118,10 @@ Page {
                 id: videoCard
                 width: parent.width
                 video: modelData
-                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"), { video: modelData })
+                compactMenu: false
+                // No rail, offline mode
+                onClicked: page.pageStack.push(Qt.resolvedUrl("VideoDetailPage.qml"),
+                    { video: modelData, allowSidePanel: false, offlineMode: true })
                 onAuthorClicked: page.pageStack.push(Qt.resolvedUrl("ProfileViewPage.qml"),
                     { username: modelData.author })
                 onMoreClicked: { page._pendingRemove = modelData.permlink || ""; PopupUtils.open(removeDialog); }

@@ -3,12 +3,14 @@ import Lomiri.Components 1.3
 import "../Theme"
 import "../Session"
 
-Flow {
+// Rules fill in with a green tick as they're met. Unmet is neutral, never red:
+// a rule you haven't reached yet isn't an error, and `○` read as a radio button.
+Column {
     id: root
 
     property string password: ""
 
-    spacing: Style.spacingM
+    spacing: units.gu(0.75)
     width: parent ? parent.width : 0
 
     QtObject {
@@ -25,20 +27,35 @@ Flow {
     Repeater {
         model: d.rules
         delegate: Row {
-            spacing: Style.spacingXs
-            Label {
-                text: modelData.ok ? "✓" : "○"
-                textSize: Label.Small
-                font.family: Style.fontFor(text)
-                color: root.password.length === 0 ? Style.textSecondary
-                                                  : modelData.ok ? Style.success : Style.danger
+            spacing: Style.spacingS
+
+            Item {
+                width: units.gu(2); height: units.gu(2)
+                anchors.verticalCenter: parent.verticalCenter
+
+                Icon {
+                    anchors.centerIn: parent
+                    width: units.gu(1.6); height: width
+                    name: "tick"
+                    color: Style.positive
+                    visible: modelData.ok
+                }
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: units.gu(0.6); height: width
+                    radius: width / 2
+                    color: Style.textSecondary
+                    opacity: 0.4
+                    visible: !modelData.ok
+                }
             }
+
             Label {
+                anchors.verticalCenter: parent.verticalCenter
                 text: modelData.label
                 textSize: Label.Small
                 font.family: Style.fontFor(text)
-                color: root.password.length === 0 ? Style.textSecondary
-                                                  : modelData.ok ? Style.success : Style.danger
+                color: modelData.ok ? Style.positive : Style.textSecondary
             }
         }
     }

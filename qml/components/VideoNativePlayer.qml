@@ -63,9 +63,7 @@ Item {
         fillMode: VideoOutput.PreserveAspectFit
     }
 
-    // Toggle play/pause; tracks an explicit user pause so the overlay can tell it
-    // apart from media-hub's buffering "paused". Public so the detail page's
-    // Space-bar handler drives it too (same API name as VideoWebView).
+    // Tracks explicit user pause vs media-hub's buffering "paused"; public for Space-bar handler
     function togglePause() {
         if (player.playbackState === MediaPlayer.PlayingState) {
             player.pause();
